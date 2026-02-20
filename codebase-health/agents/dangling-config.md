@@ -91,45 +91,26 @@ For each read, record: the key name, the file it's read in, and the line number.
 - **high**: Code reads a value with a default, but the default is clearly a placeholder (e.g., `"TODO"`, `"changeme"`, `"xxx"`).
 - **medium**: Code reads a value with a reasonable default, but the value should probably be explicitly configured.
 
-### 6. Write findings
+### 6. Record findings
 
-Write a JSON array to `output_json_path`:
+For each finding, use the add-finding script:
 
-```json
-{
-  "category": "dangling-config",
-  "severity": "medium",
-  "confidence": "high | medium | low",
-  "title": "Environment variable 'LEGACY_API_KEY' defined in .env but never read",
-  "location": {
-    "file": ".env",
-    "lines": [23, 23],
-    "symbol": "LEGACY_API_KEY"
-  },
-  "evidence": "LEGACY_API_KEY is defined in .env (line 23) and .env.example (line 20). No file in the project references this variable. The project previously used a legacy API client (removed in the migration to tools/v2/) which likely consumed this key.",
-  "recommendation": "remove",
-  "notes": "Also remove from .env.example to avoid confusing new developers."
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category dangling-config \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/file>" \
+    --lines <start>,<end> \
+    --symbol "<config_key_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
 
-For missing config, locate the finding at the code that reads it:
-
-```json
-{
-  "category": "dangling-config",
-  "severity": "critical",
-  "confidence": "high",
-  "title": "Code reads undefined env var 'VECTOR_DB_URL' with no default",
-  "location": {
-    "file": "tools/embeddings.py",
-    "lines": [8, 8],
-    "symbol": null
-  },
-  "evidence": "Line 8: `url = os.environ[\"VECTOR_DB_URL\"]` — this will raise KeyError at runtime. VECTOR_DB_URL is not defined in any .env file, config file, docker-compose.yml, or CI config. No .env.example mentions it either.",
-  "recommendation": "investigate",
-  "notes": "This may be set at deployment time via a secrets manager or platform config that isn't visible in the repo."
-}
-```
+For dangling config (defined but never read), use the config file as `--file`. For missing config (read but never defined), use the source file that reads it as `--file`.
 
 Also write a human-readable log to `output_log_path`.
 

@@ -13,6 +13,8 @@ Read references/schema.md
 
 This tells you the exact format of `health-scan-findings.json` and what fields you're responsible for filling in (the `verification` object on each finding).
 
+**Script reference:** Verification recording uses `{SCRIPTS_DIR}/verify-finding.py` for all JSON updates. This path is resolved at install time.
+
 **Read config.** Load pipeline configuration using layered lookup:
 - **First**, check `<project-root>/.health-scan/.health-scan.config.json` (project-level overrides).
 - **If not found**, read global defaults from `{GLOBAL_CONFIG}`.
@@ -34,11 +36,29 @@ For scans with many findings (15+), verifying every finding sequentially may exh
 - The full `health-scan-findings.json` (for cross-finding context)
 - The orientation summary from `.health-scan/scan-logs/scan-orientation.md`
 - The category to verify (e.g., "orphaned-code") and the IDs of findings in that category
-- Instructions to write its verified findings to `.health-scan/scan-logs/verify-<category>.json`
+- Instructions to record each verification result using the verify-finding script in append mode:
+  ```bash
+  python3 {SCRIPTS_DIR}/verify-finding.py \
+      --output <project-root>/.health-scan/scan-logs/verify-<category>.json \
+      --id <FINDING_ID> \
+      --safety <safe-to-fix|needs-review|do-not-touch> \
+      --reasoning "..." \
+      --impact-analysis "..." \
+      --dependents "file1.py:func,file2.py:Class" \
+      --test-coverage <covered|partial|none> \
+      --proposed-change "..." \
+      [--risk-notes "..."] \
+      [--requires-human-approval]
+  ```
 
-After all subagents complete, merge their verification results back into `health-scan-findings.json`.
+After all subagents complete, merge their verification results into `health-scan-findings.json` using batch mode:
+```bash
+python3 {SCRIPTS_DIR}/verify-finding.py \
+    --findings <project-root>/.health-scan/health-scan-findings.json \
+    --batch <project-root>/.health-scan/scan-logs/verify-<category>.json
+```
 
-For smaller scans, work through findings sequentially. Write verification results to disk after each finding to free context.
+For smaller scans, work through findings sequentially using single mode (see Step 4).
 
 ## Process
 
@@ -144,7 +164,25 @@ If the project has a test suite:
 
 ### Step 4: Update health-scan-findings.json
 
-For each finding, fill in the `verification` object:
+For each finding, record the verification result using the verify-finding script:
+
+```bash
+python3 {SCRIPTS_DIR}/verify-finding.py \
+    --findings <project-root>/.health-scan/health-scan-findings.json \
+    --id <FINDING_ID> \
+    --safety <safe-to-fix|needs-review|do-not-touch> \
+    --reasoning "..." \
+    --impact-analysis "..." \
+    --dependents "file1.py:func,file2.py:Class" \
+    --test-coverage <covered|partial|none> \
+    --proposed-change "..." \
+    [--risk-notes "..."] \
+    [--requires-human-approval]
+```
+
+Set `--requires-human-approval` for any `needs-review` finding where the risk is non-trivial.
+
+**Verification field reference:**
 
 ```json
 "verification": {
@@ -158,8 +196,6 @@ For each finding, fill in the `verification` object:
   "requires_human_approval": false
 }
 ```
-
-Set `requires_human_approval: true` for any `needs-review` finding where the risk is non-trivial.
 
 ### Step 5: Write Verification Report
 
@@ -204,12 +240,39 @@ or too risky.]
 [Overall advice: should the user proceed with implementation?
 Any concerns about the test baseline? Any systemic issues noticed?]
 
+## Two-Track Implementation Path
+
+1. **Autonomous track** — [X] safe-to-fix findings → `/mg:codebase-health-implement`
+   Queue: `.health-scan/health-implement-queue.json`
+
+2. **Guided track** — [Y] needs-review findings → `gsd:plan-phase` or manual review
+   Bootstrap: `.health-scan/health-verify-gsd-bootstrap.md`
+
 ## Next Step
 
 Review the findings above. Approve or reject the needs-review items.
 Set up a git branch for the cleanup work, then run `/mg:codebase-health-implement`
 to apply the safe-to-fix changes (and any approved needs-review changes).
 ```
+
+### Step 5B: Split Findings for Downstream Consumers
+
+After writing the verification report, use the split script to generate downstream documents:
+
+```bash
+python3 {SCRIPTS_DIR}/split-findings.py \
+    --findings <project-root>/.health-scan/health-scan-findings.json \
+    --bootstrap-out <project-root>/.health-scan/health-verify-gsd-bootstrap.md \
+    --implementor-out <project-root>/.health-scan/health-implement-queue.json \
+    --test-baseline <project-root>/.health-scan/health-verify-test-baseline.json
+```
+
+This produces:
+- `health-verify-gsd-bootstrap.md` — needs-review findings grouped by category,
+  formatted as a GSD planning context document. Only generated if needs-review
+  findings exist.
+- `health-implement-queue.json` — safe-to-fix findings extracted for the implementor.
+  Smaller than the full findings JSON, focused on the work queue.
 
 ### Step 6: Present Results
 

@@ -245,11 +245,20 @@ Modules importing each other in cycles, or unhealthy dependency patterns.
 
 After all categories are scanned:
 
-1. **Merge findings** — Collect all per-category JSON files from `.health-scan/scan-logs/`. Assign sequential IDs (`F001`, `F002`, ...). Deduplicate any findings that appear in multiple categories.
+1. **Merge findings** — Use the merge script:
 
-2. **Write `health-scan-findings.json`** — Following the schema in `references/schema.md` exactly. Set `verification` and `implementation` to `null` for every finding (those are for the downstream steps).
+```bash
+python3 {SCRIPTS_DIR}/merge-findings.py \
+    --scan-dir <project-root>/.health-scan/scan-logs \
+    --output <project-root>/.health-scan/health-scan-findings.json \
+    --project "<project-name>" \
+    --root-path "<project-root>"
+```
 
-3. **Write `health-scan-report.md`** — A human-readable version with this structure:
+This reads all `scan-*.json` files, assigns sequential IDs (F001, F002, ...),
+deduplicates, computes summary counts, and writes the final findings JSON.
+
+2. **Write `health-scan-report.md`** — A human-readable version with this structure:
 
 ```markdown
 # Codebase Health Scan Report

@@ -208,6 +208,14 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   fi
 done
 
+# Resolve {SCRIPTS_DIR} placeholder in command files (for script calls)
+echo "  Resolving {SCRIPTS_DIR} in command files ..."
+for cmd_file in "${COMMANDS_DIR}/"*.md; do
+  if grep -q '{SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
+  fi
+done
+
 # ── Scaffold project .health-scan config ─────────────────────────────────────
 #
 # For --project installs, also create .health-scan/ with config files in the

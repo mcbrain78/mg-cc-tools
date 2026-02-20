@@ -57,25 +57,23 @@ Read the JSON output. For each finding category, apply LLM judgment:
 - Agent-to-agent imports or tool-to-agent imports in agentic systems are high severity
 - Minor utility shortcuts may be low severity
 
-### 4. Write findings
+### 4. Record findings
 
-Convert assessed results into the standard finding format. Write JSON array to `output_json_path`:
+For each finding, use the add-finding script:
 
-```json
-{
-  "category": "circular-dependency",
-  "severity": "high",
-  "confidence": "high",
-  "title": "Circular import between tools/search.py and tools/registry.py",
-  "location": {
-    "file": "tools/search.py",
-    "lines": [3, 3],
-    "symbol": null
-  },
-  "evidence": "Import graph analysis found cycle: tools/search.py -> tools/registry.py -> tools/search.py. search.py imports get_tool_config from registry (line 3), registry.py imports search to register it. Runtime circular import risk in Python.",
-  "recommendation": "refactor",
-  "notes": "Consider a registration decorator pattern or lazy imports to break the cycle."
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category circular-dependency \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/file>" \
+    --lines <start>,<end> \
+    --symbol "<function_or_class_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
 
 Also write a human-readable log to `output_log_path` including graph statistics and a summary of all findings.

@@ -63,6 +63,11 @@ This installs into `~/.claude/`.
     ├── references/
     │   └── schema.md                        ← shared data contract
     └── scripts/                             ← Python helper scripts
+        ├── add-finding.py                   ← record one finding (scanner subagents)
+        ├── merge-findings.py                ← merge per-category scans into final JSON
+        ├── verify-finding.py                ← record verification results
+        ├── update-findings.py               ← JSON updates for implementation recording
+        ├── split-findings.py                ← split verified findings into downstream docs
         ├── circular-deps.py                 ← deterministic cycle detection
         ├── unused-deps.py                   ← deterministic dependency analysis
         └── lib/                             ← shared Python library
@@ -75,7 +80,7 @@ This installs into `~/.claude/`.
 
 - **Required:** `git` (for the implementor's commit-per-finding workflow)
 - **Recommended:** `python3` 3.8+ (for fast, deterministic circular-deps and unused-deps scanning). Without Python, these scanners fall back to LLM-only analysis, which is slower and may exhaust context on large codebases.
-- **No pip dependencies.** The Python scripts use only the standard library (`ast`, `fnmatch`, `json`, `pathlib`, `sys`).
+- **No pip dependencies.** The Python scripts use only the standard library (`ast`, `fnmatch`, `json`, `pathlib`, `sys`). A `pyproject.toml` at the repo root defines optional dev dependencies (`pytest`, `ruff`) for contributors. Create a `.venv` if needed: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
 
 ---
 
@@ -222,6 +227,12 @@ This produces:
 - Updated `health-scan-findings.json` with verification data on each finding
 - `health-verify-report.md`
 - `health-verify-test-baseline.json` (if tests exist)
+- `health-verify-gsd-bootstrap.md` (if needs-review findings exist) — grouped by category for GSD planning
+- `health-implement-queue.json` (if safe-to-fix findings exist) — focused work queue for the implementor
+
+**Two-track implementation path:**
+1. **Autonomous track** — safe-to-fix findings go to `/mg:codebase-health-implement` (reads from `health-implement-queue.json`)
+2. **Guided track** — needs-review findings go to `gsd:plan-phase` or manual review (reads from `health-verify-gsd-bootstrap.md`)
 
 **Review the verification report.** Pay attention to:
 - `needs-review` items — decide which to approve
@@ -282,6 +293,8 @@ your-project/
 │   ├── health-scan-report.md                  ← scanner's report
 │   ├── health-verify-report.md                ← verifier's report
 │   ├── health-verify-test-baseline.json       ← test results before changes
+│   ├── health-verify-gsd-bootstrap.md         ← needs-review findings for GSD planning
+│   ├── health-implement-queue.json            ← safe-to-fix findings for implementor
 │   ├── health-implement-report.md             ← implementor's report
 │   └── scan-logs/                             ← per-category scanner detail
 │       ├── scan-orientation.md

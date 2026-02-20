@@ -74,25 +74,23 @@ Pay special attention to:
 - **medium**: Clearly orphaned utility, helper, or standalone file with no naming ambiguity.
 - **low**: Small orphaned function inside an otherwise-active file, orphaned test helper.
 
-### 7. Write findings
+### 7. Record findings
 
-Write a JSON array to `output_json_path` where each element follows this structure:
+For each finding, use the add-finding script:
 
-```json
-{
-  "category": "orphaned-code",
-  "severity": "high | medium | low",
-  "confidence": "high | medium | low",
-  "title": "Orphaned tool implementation `legacy_search` in tools/legacy_search.py",
-  "location": {
-    "file": "tools/legacy_search.py",
-    "lines": [1, 85],
-    "symbol": "legacy_search"
-  },
-  "evidence": "No file in the project imports from tools/legacy_search.py. No dynamic import pattern references 'legacy_search'. The tool registry in tools/__init__.py does not include it. The file appears to be a predecessor of tools/search.py based on similar function signatures.",
-  "recommendation": "remove",
-  "notes": ""
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category orphaned-code \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/file>" \
+    --lines <start>,<end> \
+    --symbol "<function_or_class_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
 
 Also write a human-readable log to `output_log_path` summarizing what you checked and what you found.

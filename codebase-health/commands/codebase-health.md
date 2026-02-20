@@ -88,20 +88,29 @@ Read `health-verify-report.md` and show a brief summary:
 Verification complete — findings classified:
 
   [X] safe-to-fix    (will be applied automatically)
-  [Y] needs-review   (requires your approval)
+  [Y] needs-review   (exported to GSD bootstrap for planning)
   [Z] do-not-touch   (false positives or too risky)
 
 Review the full report:  .health-scan/health-verify-report.md
+```
 
-Before implementing, set up a branch for the cleanup work:
+If safe-to-fix findings exist:
+```
+For autonomous fixes (safe-to-fix):
   git checkout -b health-scan-cleanup
-
-Then run:  /mg:codebase-health-implement
+  /mg:codebase-health-implement
 ```
 
-If there are `needs-review` items, mention that the user can approve specific ones:
+If needs-review findings exist and `health-verify-gsd-bootstrap.md` exists:
 ```
-To approve specific needs-review items:
+For needs-review items (require planning):
+  Review .health-scan/health-verify-gsd-bootstrap.md
+  Feed into gsd:plan-phase as context for detailed implementation planning
+```
+
+If there are `needs-review` items the user wants to approve directly:
+```
+To approve specific needs-review items for autonomous implementation:
   /mg:codebase-health-implement apply fixes, also approve F007 and F012
 ```
 

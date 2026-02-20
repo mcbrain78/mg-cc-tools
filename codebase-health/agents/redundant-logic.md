@@ -66,28 +66,26 @@ Not all duplication is bad. Downgrade or skip:
 - **medium**: Identical duplication with no drift yet, but in code that's actively maintained (drift is likely).
 - **low**: Duplication in stable, rarely-touched code where drift risk is minimal.
 
-### 6. Write findings
+### 6. Record findings
 
-Write a JSON array to `output_json_path`:
+For each finding, use the add-finding script:
 
-```json
-{
-  "category": "redundant-logic",
-  "severity": "high | medium | low",
-  "confidence": "high | medium | low",
-  "title": "Duplicate retry wrapper in tools/search.py and tools/fetch.py",
-  "location": {
-    "file": "tools/search.py",
-    "lines": [20, 45],
-    "symbol": "_retry_with_backoff"
-  },
-  "evidence": "tools/search.py:20-45 and tools/fetch.py:15-38 both define a _retry_with_backoff function with nearly identical logic (exponential backoff with jitter, max 3 retries). The search version adds a 429-specific header check (line 35) that the fetch version lacks, suggesting the copies have already drifted.",
-  "recommendation": "merge",
-  "notes": "The search version's 429 handling is likely the correct behavior for both. Recommend extracting to a shared utility in utils/retry.py."
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category redundant-logic \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/file>" \
+    --lines <start>,<end> \
+    --symbol "<function_or_class_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
 
-When reporting redundant logic, always include **both** (or all) locations. Use the `location` field for the primary instance and reference the others in `evidence`.
+When reporting redundant logic, always include **both** (or all) locations. Use the `--file` and `--lines` for the primary instance and reference the others in `--evidence`.
 
 Also write a human-readable log to `output_log_path`.
 

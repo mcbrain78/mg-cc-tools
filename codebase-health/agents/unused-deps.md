@@ -61,25 +61,23 @@ For each confirmed unused dependency:
 - **medium**: Unused production dependency that's lightweight, or unused heavy dev dependency
 - **low**: Unused lightweight dev dependency (linters, formatters, type stubs)
 
-### 5. Write findings
+### 5. Record findings
 
-Convert confirmed findings into the standard finding format. Write JSON array to `output_json_path`:
+For each confirmed finding, use the add-finding script:
 
-```json
-{
-  "category": "unused-dependency",
-  "severity": "medium",
-  "confidence": "high",
-  "title": "Unused production dependency 'redis' in requirements.txt",
-  "location": {
-    "file": "requirements.txt",
-    "lines": [15, 15],
-    "symbol": "redis==4.5.0"
-  },
-  "evidence": "Script analysis: package 'redis' declared in requirements.txt. Import names checked: ['redis']. No imports found in any source file. No CLI usage in scripts or CI. No config references. Manual check: no dynamic loading patterns found, project uses PostgreSQL with no caching layer.",
-  "recommendation": "remove",
-  "notes": "Verify no runtime Redis usage via environment-specific config before removing."
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category unused-dependency \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/manifest>" \
+    --lines <start>,<end> \
+    --symbol "<package_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
 
 Do NOT create findings for dependencies classified as `used`. Only report `unused` (confirmed) and `uncertain` (where you couldn't determine status — use `confidence: low`).

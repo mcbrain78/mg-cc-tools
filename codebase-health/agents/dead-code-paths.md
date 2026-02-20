@@ -77,25 +77,23 @@ Not all "dead" code is unintentional. Exclude or downgrade:
 - **medium**: Standard dead code paths (post-return code, impossible conditions) in non-critical paths.
 - **low**: Defensive exhaustive-check remainders, small dead branches unlikely to cause confusion.
 
-### 6. Write findings
+### 6. Record findings
 
-Write a JSON array to `output_json_path`:
+For each finding, use the add-finding script:
 
-```json
-{
-  "category": "dead-code-path",
-  "severity": "medium | high | low",
-  "confidence": "high | medium | low",
-  "title": "Unreachable branch for retired model 'gpt-3' in agents/router.py",
-  "location": {
-    "file": "agents/router.py",
-    "lines": [45, 62],
-    "symbol": "route_to_model"
-  },
-  "evidence": "Lines 45-62 handle the case `if model == 'gpt-3'`, but the MODEL_OPTIONS constant (config.py:8) only contains 'gpt-4o' and 'claude-sonnet-4-20250514'. No code path sets model to 'gpt-3'. This branch is unreachable.",
-  "recommendation": "remove",
-  "notes": ""
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category dead-code-path \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/file>" \
+    --lines <start>,<end> \
+    --symbol "<function_or_class_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
 
 Also write a human-readable log to `output_log_path`.

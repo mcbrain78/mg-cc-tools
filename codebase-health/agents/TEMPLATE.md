@@ -20,7 +20,7 @@ You are a specialized scanner subagent for the **[CATEGORY_NAME]** scan category
 
 - **project_root**: Path to the project.
 - **orientation_path**: Path to `.health-scan/scan-logs/scan-orientation.md`.
-- **output_json_path**: Where to write the findings JSON array.
+- **output_json_path**: Path to the per-category JSON array file (e.g., `.health-scan/scan-logs/scan-orphaned-code.json`). Findings are recorded here via `add-finding.py`.
 - **output_log_path**: Where to write the human-readable log.
 - **ignore_patterns**: (Optional) List of directory/file patterns to skip (from `.health-scan/.health-ignore`). These are provided in the subagent prompt. Do not scan files matching these patterns.
 
@@ -34,30 +34,30 @@ You are a specialized scanner subagent for the **[CATEGORY_NAME]** scan category
 3. **Search systematically** — Use grep, file listing, and file reading to find instances matching your category's detection criteria. Skip files/directories matching ignore patterns.
 4. **Periodically update WIP** — After every ~10 files checked or after each major finding, flush current state to the WIP file (update `files_checked` and `findings_so_far`). This ensures progress is preserved if the subagent is interrupted.
 5. **Evaluate each candidate** — Assess severity and confidence. Check for false positive conditions.
-6. **Write findings JSON** — Array of finding objects (see format below).
+6. **Record findings** — Use the `add-finding.py` script to record each finding (see below).
 7. **Write scan log** — Markdown summary of what you checked and what you found.
 8. **Finalize WIP** — Update the WIP file to `{"status": "completed"}`.
 
-## Finding Format
+## Recording Findings
 
-Each finding in the JSON array:
+For each finding, use the add-finding script:
 
-```json
-{
-  "category": "[category-slug]",
-  "severity": "critical | high | medium | low",
-  "confidence": "high | medium | low",
-  "title": "Short description of the finding",
-  "location": {
-    "file": "relative/path/to/file",
-    "lines": [10, 25],
-    "symbol": "function_or_class_name_or_null"
-  },
-  "evidence": "Specific explanation of what was observed and why it's a finding.",
-  "recommendation": "remove | refactor | update | merge | investigate",
-  "notes": "Caveats, uncertainty, or additional context. Empty string if none."
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category <category-slug> \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/file>" \
+    --lines <start>,<end> \
+    --symbol "<function_or_class_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
+
+The script appends each finding to the JSON array file at `output_json_path`. It validates all field values and performs atomic writes. The `--symbol` and `--notes` arguments are optional.
 
 ## Principles
 

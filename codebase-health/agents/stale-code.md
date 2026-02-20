@@ -68,25 +68,23 @@ Pay special attention to:
 - **medium**: Convention drift that creates confusion but doesn't break anything, stale schemas that happen to still work by coincidence.
 - **low**: Old TODO comments, minor style inconsistencies, cosmetic staleness.
 
-### 6. Write findings
+### 6. Record findings
 
-Write a JSON array to `output_json_path`:
+For each finding, use the add-finding script:
 
-```json
-{
-  "category": "stale-code",
-  "severity": "high | medium | low",
-  "confidence": "high | medium | low",
-  "title": "Tool schema references removed API field `legacy_id` in tools/search.py",
-  "location": {
-    "file": "tools/search.py",
-    "lines": [12, 18],
-    "symbol": "SearchToolSchema"
-  },
-  "evidence": "The schema declares a return field `legacy_id` (line 15) but the external API removed this field in v3 (the project uses v3 based on requirements.txt). The function body (line 45) wraps the API call in a try/except KeyError for this field, suggesting an awareness that it's unreliable.",
-  "recommendation": "update",
-  "notes": "The try/except means this won't crash, but the LLM sees `legacy_id` in the schema and may try to use it."
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category stale-code \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/file>" \
+    --lines <start>,<end> \
+    --symbol "<function_or_class_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
 
 Also write a human-readable log to `output_log_path`.

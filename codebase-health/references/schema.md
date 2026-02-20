@@ -93,6 +93,8 @@ All three steps read from and write to a shared workspace directory:
 │   ├── health-scan-report.md                  ← human-readable scan report
 │   ├── health-verify-report.md                ← human-readable verification report
 │   ├── health-verify-test-baseline.json       ← test results before changes
+│   ├── health-verify-gsd-bootstrap.md         ← needs-review findings for GSD planning
+│   ├── health-implement-queue.json            ← safe-to-fix findings for implementor
 │   ├── health-implement-report.md             ← human-readable implementation report
 │   └── scan-logs/                             ← per-category scanner logs
 │       ├── scan-orientation.md
@@ -175,3 +177,104 @@ Scanner subagents write work-in-progress state files to preserve progress in cas
 The scanner uses WIP files for retry logic: if a subagent fails before writing its final output, the scanner can re-spawn it with the partial results and a narrowed scope (only unchecked files).
 
 Script-backed categories (circular-deps, unused-deps) do not use WIP files — their Python scripts are deterministic and fast.
+
+## Pipeline Scripts
+
+### add-finding.py
+
+Records a single finding to a per-category JSON array file. Called by scanner
+subagents instead of hand-writing JSON.
+
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <scan-logs/scan-orphaned-code.json> \
+    --category orphaned-code \
+    --severity high \
+    --confidence high \
+    --title "Orphaned tool implementation legacy_search" \
+    --file "tools/legacy_search.py" \
+    --lines 1,85 \
+    --symbol "legacy_search" \
+    --evidence "No file imports from tools/legacy_search.py..." \
+    --recommendation remove \
+    [--notes "Optional caveats"]
+```
+
+### merge-findings.py
+
+Merges per-category scan JSON files into the final `health-scan-findings.json`.
+Called by the scanner orchestrator after all subagents complete.
+
+```bash
+python3 {SCRIPTS_DIR}/merge-findings.py \
+    --scan-dir <project-root>/.health-scan/scan-logs \
+    --output <project-root>/.health-scan/health-scan-findings.json \
+    --project "project-name" \
+    --root-path "/absolute/path/to/project"
+```
+
+### verify-finding.py
+
+Records verification results. Three modes:
+
+**Append mode** (verifier subagent building per-category results):
+```bash
+python3 {SCRIPTS_DIR}/verify-finding.py \
+    --output <scan-logs/verify-orphaned-code.json> \
+    --id F001 --safety safe-to-fix \
+    --reasoning "..." --impact-analysis "..." \
+    --dependents "file1.py:func,file2.py:Class" \
+    --test-coverage covered --proposed-change "..."
+```
+
+**Single mode** (update one finding inline):
+```bash
+python3 {SCRIPTS_DIR}/verify-finding.py \
+    --findings <health-scan-findings.json> \
+    --id F001 --safety safe-to-fix \
+    --reasoning "..." --impact-analysis "..." \
+    --dependents "file1.py:func,file2.py:Class" \
+    --test-coverage covered --proposed-change "..."
+```
+
+**Batch mode** (merge subagent results):
+```bash
+python3 {SCRIPTS_DIR}/verify-finding.py \
+    --findings <health-scan-findings.json> \
+    --batch <scan-logs/verify-orphaned-code.json>
+```
+
+### update-findings.py
+
+Handles all JSON updates to `health-scan-findings.json` during implementation.
+Replaces manual LLM editing, which becomes unreliable at scale (50+ findings).
+
+**Batch mode** (after subagent completes):
+```bash
+python3 {SCRIPTS_DIR}/update-findings.py \
+    --findings .health-scan/health-scan-findings.json \
+    --batch .health-scan/scan-logs/implement-<category>.json
+```
+
+**Single mode** (inline per-finding):
+```bash
+python3 {SCRIPTS_DIR}/update-findings.py \
+    --findings .health-scan/health-scan-findings.json \
+    --id F001 --status applied \
+    --change-description "Removed function X" \
+    --files-modified tools/parser.py \
+    --tests-run --tests-passed --rollback-commit abc123f
+```
+
+### split-findings.py
+
+Splits verified findings into downstream documents. Called by the verifier
+after writing the verification report.
+
+```bash
+python3 {SCRIPTS_DIR}/split-findings.py \
+    --findings .health-scan/health-scan-findings.json \
+    --bootstrap-out .health-scan/health-verify-gsd-bootstrap.md \
+    --implementor-out .health-scan/health-implement-queue.json \
+    --test-baseline .health-scan/health-verify-test-baseline.json
+```

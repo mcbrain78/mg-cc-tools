@@ -79,25 +79,23 @@ For each tool, find the code that processes its output:
 - Does the tool return fields the consumer ignores? (lower severity, but worth noting)
 - Are there type mismatches between what the tool returns and what the consumer parses?
 
-### 6. Write findings
+### 6. Record findings
 
-Write a JSON array to `output_json_path` where each element follows this structure:
+For each finding, use the add-finding script:
 
-```json
-{
-  "category": "contract-drift",
-  "severity": "critical | high | medium | low",
-  "confidence": "high | medium | low",
-  "title": "Tool 'search_documents' schema declares unused parameter 'max_results'",
-  "location": {
-    "file": "tools/search.py",
-    "lines": [15, 42],
-    "symbol": "search_documents"
-  },
-  "evidence": "Parameter 'max_results' is declared as required in the tool schema (line 15) but is never referenced in the function body (lines 20-42). The function always returns all results.",
-  "recommendation": "update",
-  "notes": ""
-}
+```bash
+python3 {SCRIPTS_DIR}/add-finding.py \
+    --output <output_json_path> \
+    --category contract-drift \
+    --severity <critical|high|medium|low> \
+    --confidence <high|medium|low> \
+    --title "<short description>" \
+    --file "<relative/path/to/file>" \
+    --lines <start>,<end> \
+    --symbol "<function_or_class_name>" \
+    --evidence "<what was observed>" \
+    --recommendation <remove|refactor|update|merge|investigate> \
+    [--notes "<caveats>"]
 ```
 
 Also write a human-readable log to `output_log_path` summarizing what you checked and what you found.
