@@ -13,7 +13,12 @@ Read references/schema.md
 
 This tells you the exact format of `health-scan-findings.json` and what fields you're responsible for filling in (the `verification` object on each finding).
 
-**Read `.health-scan.config.json`** — If `<project-root>/.health-scan/.health-scan.config.json` exists, read it for pipeline configuration. Use the `verifier_model` field (default: `"sonnet"`) as the `model` parameter when spawning verification subagents via the Task tool.
+**Read config.** Load pipeline configuration using layered lookup:
+- **First**, check `<project-root>/.health-scan/.health-scan.config.json` (project-level overrides).
+- **If not found**, read global defaults from `{GLOBAL_CONFIG}`.
+- If a project config exists, its fields override the global defaults (merge, don't replace — missing fields fall back to global values).
+
+Use the `verifier_model` field (default: `"sonnet"`) as the `model` parameter when spawning verification subagents via the Task tool.
 
 ## Prerequisites
 

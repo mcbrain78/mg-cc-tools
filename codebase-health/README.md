@@ -34,9 +34,10 @@ This installs into `~/.claude/`.
 
 1. Copies command files to `<target>/commands/mg/`.
 2. Copies supporting files (scanner agents, schema, Python scripts) to `<target>/codebase-health/`.
-3. Resolves all relative paths (`references/schema.md`, `agents/*.md`, `{SCRIPTS_DIR}`) to absolute paths, so the LLM can find them at runtime.
-4. Checks for `python3` availability and warns if not found.
-5. (`--project` mode only) Creates `.health-scan/` in the project root with default `.health-scan.config.json` and an empty `.health-ignore`. Existing config files are preserved.
+3. Creates global default config at `<target>/codebase-health/references/.health-scan.config.json`.
+4. Resolves all relative paths (`references/schema.md`, `{GLOBAL_CONFIG}`, `agents/*.md`, `{SCRIPTS_DIR}`) to absolute paths, so the LLM can find them at runtime.
+5. Checks for `python3` availability and warns if not found.
+6. (`--project` mode only) Creates `.health-scan/` in the project root with project-level `.health-scan.config.json` and an empty `.health-ignore`. Existing config files are preserved.
 
 ### Installed structure
 
@@ -105,7 +106,9 @@ The scanner automatically merges your patterns with sensible defaults (`.git`, `
 
 ### `.health-scan.config.json` — Pipeline settings
 
-The installer creates `.health-scan/.health-scan.config.json` with default values when using `--project` mode. Edit it to configure the pipeline:
+The installer creates global default config in `<target>/codebase-health/references/.health-scan.config.json` for all install modes. For `--project` installs, it also creates a project-level copy at `<project>/.health-scan/.health-scan.config.json`.
+
+**Config layering:** Project config overrides global defaults on a per-field basis. If a field is missing from the project config, the global value is used. To customize a single project, edit its `.health-scan/.health-scan.config.json`. To change defaults for all projects, edit the global config.
 
 ```json
 {

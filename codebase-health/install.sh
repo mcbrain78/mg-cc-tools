@@ -155,12 +155,23 @@ cp "${SCRIPT_DIR}"/scripts/*.py "${SUPPORT_DIR}/scripts/"
 cp "${SCRIPT_DIR}"/scripts/lib/*.py "${SUPPORT_DIR}/scripts/lib/"
 chmod +x "${SUPPORT_DIR}/scripts/"*.py
 
+# Global default config (all install modes)
+echo "  Defaults  → ${SUPPORT_DIR}/references/.health-scan.config.json"
+cat > "${SUPPORT_DIR}/references/.health-scan.config.json" <<'CONFIGEOF'
+{
+  "scanner_model": "sonnet",
+  "verifier_model": "sonnet",
+  "implementer_model": "sonnet"
+}
+CONFIGEOF
+
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 #
 # Replace relative placeholders with absolute paths so the LLM can find them
 # at runtime without knowing the command file's directory.
 
 SCHEMA_ABSOLUTE="${SUPPORT_DIR}/references/schema.md"
+CONFIG_ABSOLUTE="${SUPPORT_DIR}/references/.health-scan.config.json"
 AGENTS_ABSOLUTE="${SUPPORT_DIR}/agents"
 SCRIPTS_ABSOLUTE="${SUPPORT_DIR}/scripts"
 
@@ -170,6 +181,10 @@ for cmd in "${COMMANDS[@]}"; do
   # Resolve schema reference (all three commands)
   if grep -q 'references/schema.md' "$cmd_file" 2>/dev/null; then
     sed -i "s|references/schema.md|${SCHEMA_ABSOLUTE}|g" "$cmd_file"
+  fi
+  # Resolve global config reference (scan, verify, implement)
+  if grep -q '{GLOBAL_CONFIG}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{GLOBAL_CONFIG}|${CONFIG_ABSOLUTE}|g" "$cmd_file"
   fi
 done
 
@@ -193,17 +208,18 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   fi
 done
 
-# ── Scaffold .health-scan config ─────────────────────────────────────────────
+# ── Scaffold project .health-scan config ─────────────────────────────────────
 #
-# For --project installs, create .health-scan/ with default config files
-# in the project root. Skip files that already exist to preserve user edits.
+# For --project installs, also create .health-scan/ with config files in the
+# project root. These override the global defaults. Skip files that already
+# exist to preserve user edits.
 
 if [[ -n "$PROJECT_ROOT" ]]; then
   HEALTH_DIR="${PROJECT_ROOT}/.health-scan"
   mkdir -p "$HEALTH_DIR"
   echo "  Config    → ${HEALTH_DIR}/"
 
-  # Default config
+  # Project config (overrides global defaults)
   CONFIG_FILE="${HEALTH_DIR}/.health-scan.config.json"
   if [[ ! -f "$CONFIG_FILE" ]]; then
     cat > "$CONFIG_FILE" <<'CONFIGEOF'
@@ -240,11 +256,12 @@ done
 echo ""
 echo "  Supporting files:"
 echo "    ${SUPPORT_DIR}/references/schema.md"
+echo "    ${SUPPORT_DIR}/references/.health-scan.config.json  (global defaults)"
 echo "    ${SUPPORT_DIR}/agents/ ($(ls "${SUPPORT_DIR}/agents/" | wc -l) files)"
 echo "    ${SUPPORT_DIR}/scripts/ ($(ls "${SUPPORT_DIR}/scripts/"*.py | wc -l) scripts + lib/)"
 if [[ -n "$PROJECT_ROOT" ]]; then
 echo ""
-echo "  Config files:"
+echo "  Project config (overrides global defaults):"
 echo "    ${HEALTH_DIR}/.health-scan.config.json"
 echo "    ${HEALTH_DIR}/.health-ignore"
 fi
@@ -254,9 +271,3 @@ echo "  /mg:codebase-health              ← start here (guides you through the 
 echo "  /mg:codebase-health-scan         ← step 1: scan"
 echo "  /mg:codebase-health-verify       ← step 2: verify"
 echo "  /mg:codebase-health-implement    ← step 3: implement"
-if [[ -z "$PROJECT_ROOT" ]]; then
-echo ""
-echo "Note: create .health-scan/ config files in your project before scanning:"
-echo "  <project>/.health-scan/.health-scan.config.json"
-echo "  <project>/.health-scan/.health-ignore"
-fi

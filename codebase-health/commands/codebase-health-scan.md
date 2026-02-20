@@ -24,14 +24,18 @@ Before scanning, understand the project:
 5. Note the testing framework and where tests live.
 6. Look for existing linter/type-checker configs (eslint, mypy, pyright, tsc, etc.).
 7. **Read `.health-ignore`** — If `<project-root>/.health-scan/.health-ignore` exists, read it to get exclusion patterns. These are gitignore-style patterns (one per line, `#` comments). Merge with the default ignore list (`.git`, `node_modules`, `__pycache__`, `.health-scan`, `dist`, `build`, `.venv`, `venv`, `.mypy_cache`, `*.pyc`, `target`). Include the full merged list in the orientation summary so subagents know what to skip.
-8. **Read `.health-scan.config.json`** — If `<project-root>/.health-scan/.health-scan.config.json` exists, read it for pipeline configuration:
+8. **Read config.** Load pipeline configuration using layered lookup:
+   - **First**, check `<project-root>/.health-scan/.health-scan.config.json` (project-level overrides).
+   - **If not found**, read global defaults from `{GLOBAL_CONFIG}`.
+   - If a project config exists, its fields override the global defaults (merge, don't replace — missing fields fall back to global values).
    ```json
    {
      "scanner_model": "sonnet",
-     "verifier_model": "sonnet"
+     "verifier_model": "sonnet",
+     "implementer_model": "sonnet"
    }
    ```
-   Default to `"sonnet"` for `scanner_model` if the config file doesn't exist or the field is missing. This model will be used for all subagent Task tool calls.
+   Use the `scanner_model` field (default: `"sonnet"`) for all subagent Task tool calls.
 9. Create the workspace: `<project-root>/.health-scan/` and `scan-logs/` subdirectory. If `.health-scan/` already exists from a previous run, **clear it first** (`rm -rf .health-scan/scan-logs/ .health-scan/health-scan-findings.json .health-scan/health-scan-report.md`) to avoid stale data leaking into the new scan. Preserve `health-verify-*` and `health-implement-*` files only if the user explicitly asks to re-scan without losing verification/implementation data.
 10. Check if `.health-scan/` is in the project's `.gitignore`. If not, inform the user they should add it — scan artifacts (logs, findings JSON, reports) generally shouldn't be committed alongside cleanup changes.
 11. **Check for `python3`** — Run `python3 --version` to determine if Python is available. Record this in orientation — it affects whether circular-deps and unused-deps can use the fast script path.

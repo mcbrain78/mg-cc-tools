@@ -30,7 +30,12 @@ If any are missing or if `verification` is `null` on any finding, **stop** and t
 
 3. **Load the test baseline.** Read `health-verify-test-baseline.json` to know what "passing" looks like. If there are pre-existing failures, note them — you won't be blamed for those.
 
-4. **Read config.** If `<project-root>/.health-scan/.health-scan.config.json` exists, read it for pipeline configuration. Use the `implementer_model` field (default: `"sonnet"`) as the `model` parameter when spawning implementation subagents via the Task tool.
+4. **Read config.** Load pipeline configuration using layered lookup:
+   - **First**, check `<project-root>/.health-scan/.health-scan.config.json` (project-level overrides).
+   - **If not found**, read global defaults from `{GLOBAL_CONFIG}`.
+   - If a project config exists, its fields override the global defaults (merge, don't replace — missing fields fall back to global values).
+
+   Use the `implementer_model` field (default: `"sonnet"`) as the `model` parameter when spawning implementation subagents via the Task tool.
 
 5. **Build the work queue.** From `health-scan-findings.json`, collect:
    - All findings where `verification.safety == "safe-to-fix"` → auto-implement

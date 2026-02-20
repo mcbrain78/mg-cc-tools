@@ -127,7 +127,12 @@ vendor
 
 ### `.health-scan.config.json`
 
-Place in `.health-scan/` directory. Controls pipeline behavior.
+Controls pipeline behavior. Uses layered lookup:
+
+1. **Project config**: `<project-root>/.health-scan/.health-scan.config.json` — per-project overrides.
+2. **Global defaults**: installed to `<target>/codebase-health/references/.health-scan.config.json` by the installer.
+
+Project fields override global defaults on a per-field basis (merge, not replace). Missing fields fall back to the global config.
 
 ```json
 {
