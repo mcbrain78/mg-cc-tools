@@ -132,7 +132,8 @@ Place in `.health-scan/` directory. Controls pipeline behavior.
 ```json
 {
   "scanner_model": "sonnet",
-  "verifier_model": "sonnet"
+  "verifier_model": "sonnet",
+  "implementer_model": "sonnet"
 }
 ```
 
@@ -140,6 +141,7 @@ Place in `.health-scan/` directory. Controls pipeline behavior.
 |-------|---------|-------------|
 | `scanner_model` | `"sonnet"` | Model for scanner subagents (Task tool `model` parameter). Options: `"sonnet"`, `"opus"`, `"haiku"`. |
 | `verifier_model` | `"sonnet"` | Model for verifier subagents. |
+| `implementer_model` | `"sonnet"` | Model for implementor subagents (used when work queue exceeds 10 findings). |
 
 ## WIP State Files
 

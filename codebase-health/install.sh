@@ -170,11 +170,16 @@ for cmd in "${COMMANDS[@]}"; do
   fi
 done
 
-# Resolve agent references only in the scanner (verify/implement have
-# example paths like "agents/search.py" that must not be rewritten)
+# Resolve agent references in the scanner (all agents/ paths)
 SCAN_FILE="${COMMANDS_DIR}/codebase-health-scan.md"
 if grep -q 'agents/' "$SCAN_FILE" 2>/dev/null; then
   sed -i "s|agents/|${AGENTS_ABSOLUTE}/|g" "$SCAN_FILE"
+fi
+
+# Resolve agent references in the implementor (agents/implementor.md only)
+IMPL_FILE="${COMMANDS_DIR}/codebase-health-implement.md"
+if grep -q 'agents/implementor.md' "$IMPL_FILE" 2>/dev/null; then
+  sed -i "s|agents/implementor.md|${AGENTS_ABSOLUTE}/implementor.md|g" "$IMPL_FILE"
 fi
 
 # Resolve {SCRIPTS_DIR} placeholder in agent files

@@ -56,7 +56,8 @@ This installs into `~/.claude/`.
     │   ├── unused-deps.md
     │   ├── contract-drift.md                ← specialized (highest-value for agentic)
     │   ├── dangling-config.md
-    │   └── circular-deps.md
+    │   ├── circular-deps.md
+    │   └── implementor.md                   ← subagent for batched implementation
     ├── references/
     │   └── schema.md                        ← shared data contract
     └── scripts/                             ← Python helper scripts
@@ -108,7 +109,8 @@ Create a `.health-scan/.health-scan.config.json` file to configure the pipeline:
 ```json
 {
   "scanner_model": "sonnet",
-  "verifier_model": "sonnet"
+  "verifier_model": "sonnet",
+  "implementer_model": "sonnet"
 }
 ```
 
@@ -116,8 +118,11 @@ Create a `.health-scan/.health-scan.config.json` file to configure the pipeline:
 |-------|---------|-------------|
 | `scanner_model` | `"sonnet"` | Model for scanner subagents. Options: `"sonnet"`, `"opus"`, `"haiku"`. |
 | `verifier_model` | `"sonnet"` | Model for verifier subagents. |
+| `implementer_model` | `"sonnet"` | Model for implementor subagents (used when work queue exceeds 10 findings). |
 
 Using `"sonnet"` (the default) is recommended for scanning — it's sufficient for focused analysis work and much cheaper than opus. Use `"opus"` for projects where you need maximum accuracy on complex contract drift or subtle dead code patterns.
+
+**Automatic batching:** When the implementor's work queue has more than 10 findings, it automatically switches to category-batched subagent mode. Each category is delegated to a subagent sequentially, with inter-batch test validation and rollback. This prevents context exhaustion on large finding sets while maintaining the safety guarantees (test after every change, one commit per finding). Below 10 findings, the implementor works inline as usual.
 
 ---
 
