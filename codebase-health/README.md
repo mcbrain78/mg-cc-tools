@@ -36,6 +36,7 @@ This installs into `~/.claude/`.
 2. Copies supporting files (scanner agents, schema, Python scripts) to `<target>/codebase-health/`.
 3. Resolves all relative paths (`references/schema.md`, `agents/*.md`, `{SCRIPTS_DIR}`) to absolute paths, so the LLM can find them at runtime.
 4. Checks for `python3` availability and warns if not found.
+5. (`--project` mode only) Creates `.health-scan/` in the project root with default `.health-scan.config.json` and an empty `.health-ignore`. Existing config files are preserved.
 
 ### Installed structure
 
@@ -81,7 +82,7 @@ This installs into `~/.claude/`.
 
 ### `.health-ignore` — Exclude directories and files
 
-Create a `.health-scan/.health-ignore` file to exclude directories or files from scanning. Uses gitignore-style syntax:
+The installer creates an empty `.health-scan/.health-ignore` file when using `--project` mode. Add gitignore-style patterns to exclude directories or files from scanning:
 
 ```
 # Heavy directories
@@ -104,7 +105,7 @@ The scanner automatically merges your patterns with sensible defaults (`.git`, `
 
 ### `.health-scan.config.json` — Pipeline settings
 
-Create a `.health-scan/.health-scan.config.json` file to configure the pipeline:
+The installer creates `.health-scan/.health-scan.config.json` with default values when using `--project` mode. Edit it to configure the pipeline:
 
 ```json
 {

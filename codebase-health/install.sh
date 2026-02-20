@@ -79,13 +79,16 @@ fi
 
 case "$MODE" in
   project)
-    TARGET_DIR="$(cd "${PROJECT_PATH:-.}" && pwd)/.claude"
+    PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
+    TARGET_DIR="${PROJECT_ROOT}/.claude"
     ;;
   global)
+    PROJECT_ROOT=""
     TARGET_DIR="${HOME}/.claude"
     ;;
   custom)
-    # already set
+    PROJECT_ROOT=""
+    # TARGET_DIR already set
     ;;
 esac
 
@@ -190,6 +193,41 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   fi
 done
 
+# ── Scaffold .health-scan config ─────────────────────────────────────────────
+#
+# For --project installs, create .health-scan/ with default config files
+# in the project root. Skip files that already exist to preserve user edits.
+
+if [[ -n "$PROJECT_ROOT" ]]; then
+  HEALTH_DIR="${PROJECT_ROOT}/.health-scan"
+  mkdir -p "$HEALTH_DIR"
+  echo "  Config    → ${HEALTH_DIR}/"
+
+  # Default config
+  CONFIG_FILE="${HEALTH_DIR}/.health-scan.config.json"
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    cat > "$CONFIG_FILE" <<'CONFIGEOF'
+{
+  "scanner_model": "sonnet",
+  "verifier_model": "sonnet",
+  "implementer_model": "sonnet"
+}
+CONFIGEOF
+    echo "    Created .health-scan.config.json (defaults)"
+  else
+    echo "    .health-scan.config.json already exists — kept"
+  fi
+
+  # Default ignore (empty)
+  IGNORE_FILE="${HEALTH_DIR}/.health-ignore"
+  if [[ ! -f "$IGNORE_FILE" ]]; then
+    touch "$IGNORE_FILE"
+    echo "    Created .health-ignore (empty)"
+  else
+    echo "    .health-ignore already exists — kept"
+  fi
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 echo ""
@@ -204,13 +242,21 @@ echo "  Supporting files:"
 echo "    ${SUPPORT_DIR}/references/schema.md"
 echo "    ${SUPPORT_DIR}/agents/ ($(ls "${SUPPORT_DIR}/agents/" | wc -l) files)"
 echo "    ${SUPPORT_DIR}/scripts/ ($(ls "${SUPPORT_DIR}/scripts/"*.py | wc -l) scripts + lib/)"
+if [[ -n "$PROJECT_ROOT" ]]; then
+echo ""
+echo "  Config files:"
+echo "    ${HEALTH_DIR}/.health-scan.config.json"
+echo "    ${HEALTH_DIR}/.health-ignore"
+fi
 echo ""
 echo "Invoke with:"
 echo "  /mg:codebase-health              ← start here (guides you through the pipeline)"
 echo "  /mg:codebase-health-scan         ← step 1: scan"
 echo "  /mg:codebase-health-verify       ← step 2: verify"
 echo "  /mg:codebase-health-implement    ← step 3: implement"
+if [[ -z "$PROJECT_ROOT" ]]; then
 echo ""
-echo "Optional config files (place in your project's .health-scan/ directory):"
-echo "  .health-scan/.health-ignore              ← gitignore-style exclusions"
-echo "  .health-scan/.health-scan.config.json    ← model selection and pipeline settings"
+echo "Note: create .health-scan/ config files in your project before scanning:"
+echo "  <project>/.health-scan/.health-scan.config.json"
+echo "  <project>/.health-scan/.health-ignore"
+fi
