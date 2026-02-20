@@ -1,3 +1,26 @@
+# ============================================
+# SECRETS & ENVIRONMENT
+# ============================================
+# Contains API keys and database credentials
+.env
+.venv/
+
+# ============================================
+# PYTHON RUNTIME
+# ============================================
+# Compiled Python files
+__pycache__/
+*.pyc
+
+# ============================================
+# TESTING
+# ============================================
+# Pytest cache directory (exists in your project)
+.pytest_cache/
+.coverage
+htmlcov/
+
+
 # OS
 .DS_Store
 Thumbs.db
