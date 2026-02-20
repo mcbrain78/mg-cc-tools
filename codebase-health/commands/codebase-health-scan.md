@@ -23,10 +23,20 @@ Before scanning, understand the project:
 4. Identify all entry points: main files, route definitions, CLI commands, event handlers, scheduled jobs, exported modules, agent entry points, tool registries.
 5. Note the testing framework and where tests live.
 6. Look for existing linter/type-checker configs (eslint, mypy, pyright, tsc, etc.).
-7. Create the workspace: `<project-root>/.health-scan/` and `scan-logs/` subdirectory. If `.health-scan/` already exists from a previous run, **clear it first** (`rm -rf .health-scan/scan-logs/ .health-scan/health-scan-findings.json .health-scan/health-scan-report.md`) to avoid stale data leaking into the new scan. Preserve `health-verify-*` and `health-implement-*` files only if the user explicitly asks to re-scan without losing verification/implementation data.
-8. Check if `.health-scan/` is in the project's `.gitignore`. If not, inform the user they should add it — scan artifacts (logs, findings JSON, reports) generally shouldn't be committed alongside cleanup changes.
+7. **Read `.health-ignore`** — If `<project-root>/.health-scan/.health-ignore` exists, read it to get exclusion patterns. These are gitignore-style patterns (one per line, `#` comments). Merge with the default ignore list (`.git`, `node_modules`, `__pycache__`, `.health-scan`, `dist`, `build`, `.venv`, `venv`, `.mypy_cache`, `*.pyc`, `target`). Include the full merged list in the orientation summary so subagents know what to skip.
+8. **Read `.health-scan.config.json`** — If `<project-root>/.health-scan/.health-scan.config.json` exists, read it for pipeline configuration:
+   ```json
+   {
+     "scanner_model": "sonnet",
+     "verifier_model": "sonnet"
+   }
+   ```
+   Default to `"sonnet"` for `scanner_model` if the config file doesn't exist or the field is missing. This model will be used for all subagent Task tool calls.
+9. Create the workspace: `<project-root>/.health-scan/` and `scan-logs/` subdirectory. If `.health-scan/` already exists from a previous run, **clear it first** (`rm -rf .health-scan/scan-logs/ .health-scan/health-scan-findings.json .health-scan/health-scan-report.md`) to avoid stale data leaking into the new scan. Preserve `health-verify-*` and `health-implement-*` files only if the user explicitly asks to re-scan without losing verification/implementation data.
+10. Check if `.health-scan/` is in the project's `.gitignore`. If not, inform the user they should add it — scan artifacts (logs, findings JSON, reports) generally shouldn't be committed alongside cleanup changes.
+11. **Check for `python3`** — Run `python3 --version` to determine if Python is available. Record this in orientation — it affects whether circular-deps and unused-deps can use the fast script path.
 
-Write a brief orientation summary to `.health-scan/scan-logs/scan-orientation.md` documenting what you found. This context will be referenced by subagents.
+Write a brief orientation summary to `.health-scan/scan-logs/scan-orientation.md` documenting what you found. Include: project structure, languages, entry points, ignore patterns, config settings, python3 availability. This context will be referenced by subagents.
 
 ### Step 2: Scan Categories
 
@@ -42,18 +52,22 @@ For each category, the process is:
 
 Use the **Task tool** to spawn one subagent per category. You can launch multiple subagents in parallel by including multiple Task tool calls in a single message. Each subagent should use `subagent_type: "general-purpose"`.
 
+**Model selection:** Pass the `model` parameter from `.health-scan/.health-scan.config.json`'s `scanner_model` field (default: `"sonnet"`) to each Task tool call. This keeps subagent costs reasonable for focused scanning work.
+
 For each subagent, compose a prompt that includes:
 1. The full contents of the agent instructions file (`agents/<category>.md`) — read it yourself and paste the contents into the prompt, since the subagent cannot read paths relative to the command file.
 2. The orientation summary: tell the subagent to read `.health-scan/scan-logs/scan-orientation.md` from the project root.
 3. The output paths: `.health-scan/scan-logs/scan-<category>.json` (structured) and `.health-scan/scan-logs/scan-<category>.md` (human-readable log).
 4. The project root path.
+5. **Ignore patterns**: include the merged ignore patterns from orientation so the subagent knows what to skip.
 
 Example Task tool call:
 ```
 Task(
   description="Scan orphaned code",
   subagent_type="general-purpose",
-  prompt="You are a specialized scanner subagent. [paste agents/orphaned-code.md contents here]\n\nProject root: /path/to/project\nRead orientation from: /path/to/project/.health-scan/scan-logs/scan-orientation.md\nWrite JSON findings to: /path/to/project/.health-scan/scan-logs/scan-orphaned-code.json\nWrite log to: /path/to/project/.health-scan/scan-logs/scan-orphaned-code.md"
+  model="sonnet",
+  prompt="You are a specialized scanner subagent. [paste agents/orphaned-code.md contents here]\n\nProject root: /path/to/project\nRead orientation from: /path/to/project/.health-scan/scan-logs/scan-orientation.md\nWrite JSON findings to: /path/to/project/.health-scan/scan-logs/scan-orphaned-code.json\nWrite log to: /path/to/project/.health-scan/scan-logs/scan-orphaned-code.md\n\nIgnore patterns (do not scan files/dirs matching these):\n- node_modules\n- .git\n- dist\n- ..."
 )
 ```
 
@@ -62,6 +76,20 @@ Launch all 8 category subagents in parallel when possible. Each subagent writes 
 **Without subagents:**
 
 Execute each category's agent instructions inline, sequentially. After completing each category, write findings to disk immediately to free context.
+
+### Retry Logic for Failed Subagents
+
+After all subagents return, check for missing `scan-<category>.json` files:
+
+1. For each category where the expected output JSON is missing:
+   a. Check if a WIP file exists (`.health-scan/scan-logs/scan-<category>-wip.json`)
+   b. If WIP exists with `status: "in_progress"`:
+      - Read the `files_checked` and `findings_so_far` from the WIP
+      - Re-spawn the subagent with a narrowed scope: tell it which files were already checked and provide findings so far
+      - The retry subagent should only scan the remaining files
+   c. If no WIP exists: the subagent failed before starting — re-spawn it normally
+   d. If the retry also fails: log the failure and continue with the other categories
+2. **Script-backed categories (circular-deps, unused-deps) don't need retry** — the Python scripts are fast and deterministic. If they fail, it's a Python availability issue, not a context limit.
 
 ---
 

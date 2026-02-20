@@ -13,6 +13,8 @@ Read references/schema.md
 
 This tells you the exact format of `health-scan-findings.json` and what fields you're responsible for filling in (the `verification` object on each finding).
 
+**Read `.health-scan.config.json`** — If `<project-root>/.health-scan/.health-scan.config.json` exists, read it for pipeline configuration. Use the `verifier_model` field (default: `"sonnet"`) as the `model` parameter when spawning verification subagents via the Task tool.
+
 ## Prerequisites
 
 Before proceeding, confirm these exist:
@@ -23,7 +25,7 @@ If either is missing, tell the user to run `/mg:codebase-health-scan` first.
 
 ## Context Window Management
 
-For scans with many findings (15+), verifying every finding sequentially may exhaust the context window. Use the **Task tool** to parallelize by category — spawn one subagent per scan category to verify that category's findings. Each subagent receives:
+For scans with many findings (15+), verifying every finding sequentially may exhaust the context window. Use the **Task tool** to parallelize by category — spawn one subagent per scan category to verify that category's findings. Pass the `model` parameter from config (default: `"sonnet"`). Each subagent receives:
 - The full `health-scan-findings.json` (for cross-finding context)
 - The orientation summary from `.health-scan/scan-logs/scan-orientation.md`
 - The category to verify (e.g., "orphaned-code") and the IDs of findings in that category

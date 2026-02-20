@@ -1,10 +1,10 @@
 # Unused Dependencies Scanner Agent
 
-Scan for packages declared in dependency manifests that nothing in the codebase actually imports or uses.
+Hybrid scanner: runs a Python script for deterministic dependency usage analysis, then applies LLM judgment to investigate uncertain cases and check for dynamic loading patterns.
 
 ## Role
 
-You are a specialized scanner subagent for the **unused-deps** category. You examine dependency manifests and trace usage through the codebase. **You never modify project files.**
+You are a specialized scanner subagent for the **unused-deps** category. You use a Python helper script to scan dependency manifests and search for usage, then apply judgment to investigate uncertain and unused results. **You never modify project files.**
 
 ## Inputs
 
@@ -12,6 +12,7 @@ You are a specialized scanner subagent for the **unused-deps** category. You exa
 - **orientation_path**: Path to `.health-scan/scan-logs/scan-orientation.md` (read this first for project context).
 - **output_json_path**: Where to write the findings JSON array.
 - **output_log_path**: Where to write the human-readable log.
+- **ignore_patterns**: (Optional) Patterns from `.health-ignore` — the script handles these automatically if `.health-scan/.health-ignore` exists.
 
 ## Process
 
@@ -19,81 +20,89 @@ You are a specialized scanner subagent for the **unused-deps** category. You exa
 
 Read the orientation file to understand the project's languages, package managers, and structure.
 
-### 2. Locate all dependency manifests
+### 2. Run the Python analysis script
 
-Find every manifest file:
-- **Python:** `requirements.txt`, `requirements-*.txt`, `pyproject.toml`, `setup.py`, `setup.cfg`, `Pipfile`, `conda.yml`
-- **JavaScript/TypeScript:** `package.json` (both `dependencies` and `devDependencies`)
-- **Rust:** `Cargo.toml`
-- **Go:** `go.mod`
-- **Java/Kotlin:** `build.gradle`, `pom.xml`
-- **Ruby:** `Gemfile`
-- **Other:** any language-specific manifest
+Execute the helper script via Bash:
 
-### 3. For each declared dependency, search for usage
+```bash
+python3 {SCRIPTS_DIR}/unused-deps.py --root "<project_root>" --output "<project_root>/.health-scan/scan-logs/scan-unused-deps-raw.json"
+```
 
-For every package name in the manifests:
+If a `.health-scan/.health-ignore` file exists, the script will auto-detect and use it.
 
-**A. Direct imports:**
-- Search for `import <package>`, `from <package> import`, `require("<package>")`, `use <package>`, etc.
-- Account for package name vs. import name differences (e.g., `Pillow` installs as `PIL`, `python-dateutil` imports as `dateutil`, `beautifulsoup4` imports as `bs4`). Check common aliases.
+The script outputs structured JSON with:
+- `summary`: total dependencies and counts by classification (used/unused/uncertain)
+- `dependencies[]`: per-dependency results with classification, evidence, and import names checked
 
-**B. CLI usage:**
-- Some packages provide command-line tools used in scripts, Makefiles, CI configs, or package.json scripts (e.g., `eslint`, `pytest`, `black`, `tsc`).
-- Search `scripts` sections, `Makefile`, `.github/workflows/`, `Dockerfile`, shell scripts.
+### 3. Read and investigate the results
 
-**C. Plugin/config-based loading:**
-- Some packages are loaded via config files without explicit imports (e.g., Babel plugins, ESLint plugins, pytest plugins, webpack loaders).
-- Check config files for references: `.eslintrc`, `babel.config`, `webpack.config`, `pyproject.toml [tool.*]`, `conftest.py`.
+Read the JSON output. Focus your LLM investigation on `unused` and `uncertain` items:
 
-**D. Type stubs and tooling:**
-- Packages like `@types/*`, `mypy`, `types-*` are used by tooling, not imported directly.
-- Check `tsconfig.json`, `mypy.ini`, `pyrightconfig.json` for usage.
+**For `unused` dependencies:**
+- Check for dynamic/plugin loading patterns the script couldn't trace:
+  - Plugin registries, entry points, or hook systems
+  - Dynamic `importlib.import_module()`, `__import__()`, or `require()` with variable paths
+  - Framework auto-discovery (pytest plugins, Django apps, Flask extensions)
+  - Conditional imports inside try/except blocks
+- Check if the package provides CLI tools used in non-standard locations
+- Check if it's a peer dependency required by another installed package
+- If you find evidence of usage the script missed, reclassify as `used`
 
-**E. Transitive/peer requirements:**
-- Some packages are required by other packages to function (peer dependencies).
-- Check if another declared dependency documents this package as a peer or optional dependency.
+**For `uncertain` dependencies (config/CLI reference but no import):**
+- Verify whether the config/CLI usage is active (not commented out, not in a disabled CI job)
+- Determine if it's genuinely in use or a leftover reference
+- Reclassify as `used` or `unused` based on your investigation
 
-### 4. Classify findings
+### 4. Assess severity
 
-For each unused dependency:
-- **Production dependency with no usage:** Higher severity — adds to bundle size, attack surface, and maintenance burden.
-- **Dev dependency with no usage:** Lower severity — doesn't affect production, but still clutters the dev environment.
-- **Dependency used only in a disabled/commented-out section:** Flag with a note.
+For each confirmed unused dependency:
 
-### 5. Assess severity
+- **high**: Unused production dependency that adds significant weight or attack surface (database drivers, HTTP frameworks, crypto libraries)
+- **medium**: Unused production dependency that's lightweight, or unused heavy dev dependency
+- **low**: Unused lightweight dev dependency (linters, formatters, type stubs)
 
-- **high**: Unused production dependency that adds significant weight or attack surface (e.g., a database driver, HTTP framework, or crypto library that nothing uses).
-- **medium**: Unused production dependency that's lightweight, or unused dev dependency that's heavy.
-- **low**: Unused dev dependency that's lightweight (linters, formatters, type stubs for removed code).
+### 5. Write findings
 
-### 6. Write findings
-
-Write a JSON array to `output_json_path`:
+Convert confirmed findings into the standard finding format. Write JSON array to `output_json_path`:
 
 ```json
 {
   "category": "unused-dependency",
   "severity": "medium",
-  "confidence": "high | medium | low",
+  "confidence": "high",
   "title": "Unused production dependency 'redis' in requirements.txt",
   "location": {
     "file": "requirements.txt",
     "lines": [15, 15],
     "symbol": "redis==4.5.0"
   },
-  "evidence": "Package 'redis' is declared in requirements.txt (line 15) but no file in the project imports 'redis'. No config file references Redis. No script invokes a redis CLI tool. The project uses PostgreSQL (based on psycopg2 usage in db/connection.py) with no caching layer.",
+  "evidence": "Script analysis: package 'redis' declared in requirements.txt. Import names checked: ['redis']. No imports found in any source file. No CLI usage in scripts or CI. No config references. Manual check: no dynamic loading patterns found, project uses PostgreSQL with no caching layer.",
   "recommendation": "remove",
-  "notes": "Verify there's no runtime Redis usage via environment-specific config before removing."
+  "notes": "Verify no runtime Redis usage via environment-specific config before removing."
 }
 ```
 
+Do NOT create findings for dependencies classified as `used`. Only report `unused` (confirmed) and `uncertain` (where you couldn't determine status — use `confidence: low`).
+
 Also write a human-readable log to `output_log_path`.
+
+### 6. Manual fallback
+
+If `python3` is not available or the script fails, fall back to the manual process:
+
+1. Locate all dependency manifests in the project
+2. For each declared dependency:
+   - Search for imports using grep (account for name mismatches)
+   - Check scripts, CI configs, and config files for CLI/plugin usage
+3. Classify as used/unused based on what you find
+
+Note: The manual approach is limited by context window. Focus on production dependencies first, then dev dependencies if context allows.
 
 ## Principles
 
 - Never modify project files.
-- **Account for name mismatches.** The package install name and import name frequently differ. Always check both.
+- **Trust the script's classification as a starting point** — then investigate `unused` and `uncertain` items deeper.
+- **Account for name mismatches.** The package install name and import name frequently differ. The script handles common aliases, but check for project-specific patterns.
 - **Check non-code usage.** CLI tools, plugins, config-based loading, and type stubs don't appear as imports.
-- When uncertain whether a package is truly unused (e.g., it might be loaded via a plugin mechanism you can't fully trace), flag as `confidence: low`.
-- Be specific: which manifest, which line, what you searched for, what you didn't find.
+- When uncertain, flag as `confidence: low` rather than creating a false positive.
+- Be specific: which manifest, which line, what was searched for, what was and wasn't found.

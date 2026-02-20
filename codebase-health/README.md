@@ -33,8 +33,9 @@ This installs into `~/.claude/`.
 ### What the installer does
 
 1. Copies command files to `<target>/commands/mg/`.
-2. Copies supporting files (scanner agents, shared schema) to `<target>/codebase-health/`.
-3. Resolves all relative paths (`references/schema.md`, `agents/*.md`) to absolute paths in the command files, so the LLM can read them at runtime.
+2. Copies supporting files (scanner agents, schema, Python scripts) to `<target>/codebase-health/`.
+3. Resolves all relative paths (`references/schema.md`, `agents/*.md`, `{SCRIPTS_DIR}`) to absolute paths, so the LLM can find them at runtime.
+4. Checks for `python3` availability and warns if not found.
 
 ### Installed structure
 
@@ -56,13 +57,67 @@ This installs into `~/.claude/`.
     │   ├── contract-drift.md                ← specialized (highest-value for agentic)
     │   ├── dangling-config.md
     │   └── circular-deps.md
-    └── references/
-        └── schema.md                        ← shared data contract
+    ├── references/
+    │   └── schema.md                        ← shared data contract
+    └── scripts/                             ← Python helper scripts
+        ├── circular-deps.py                 ← deterministic cycle detection
+        ├── unused-deps.py                   ← deterministic dependency analysis
+        └── lib/                             ← shared Python library
+            ├── __init__.py
+            ├── ignore.py                    ← .health-ignore pattern handling
+            └── imports.py                   ← multi-language import extraction
 ```
 
 ### Dependencies
 
-No external dependencies. The commands use standard tools available in Claude Code (file reading, grep, bash). The implementor expects `git` to be available for committing changes.
+- **Required:** `git` (for the implementor's commit-per-finding workflow)
+- **Recommended:** `python3` 3.8+ (for fast, deterministic circular-deps and unused-deps scanning). Without Python, these scanners fall back to LLM-only analysis, which is slower and may exhaust context on large codebases.
+- **No pip dependencies.** The Python scripts use only the standard library (`ast`, `fnmatch`, `json`, `pathlib`, `sys`).
+
+---
+
+## Configuration
+
+### `.health-ignore` — Exclude directories and files
+
+Create a `.health-scan/.health-ignore` file to exclude directories or files from scanning. Uses gitignore-style syntax:
+
+```
+# Heavy directories
+node_modules
+dist
+build
+vendor
+.venv
+
+# Generated files
+*.min.js
+*.generated.ts
+*.pb.go
+
+# Specific paths
+legacy/
+```
+
+The scanner automatically merges your patterns with sensible defaults (`.git`, `node_modules`, `__pycache__`, etc.). The Python helper scripts also respect these patterns.
+
+### `.health-scan.config.json` — Pipeline settings
+
+Create a `.health-scan/.health-scan.config.json` file to configure the pipeline:
+
+```json
+{
+  "scanner_model": "sonnet",
+  "verifier_model": "sonnet"
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `scanner_model` | `"sonnet"` | Model for scanner subagents. Options: `"sonnet"`, `"opus"`, `"haiku"`. |
+| `verifier_model` | `"sonnet"` | Model for verifier subagents. |
+
+Using `"sonnet"` (the default) is recommended for scanning — it's sufficient for focused analysis work and much cheaper than opus. Use `"opus"` for projects where you need maximum accuracy on complex contract drift or subtle dead code patterns.
 
 ---
 
@@ -212,6 +267,8 @@ All pipeline artifacts live in a single workspace directory:
 ```
 your-project/
 ├── .health-scan/                              ← created by the scanner
+│   ├── .health-ignore                         ← optional: gitignore-style exclusions
+│   ├── .health-scan.config.json               ← optional: model & pipeline settings
 │   ├── health-scan-findings.json              ← shared contract (enriched by each step)
 │   ├── health-scan-report.md                  ← scanner's report
 │   ├── health-verify-report.md                ← verifier's report
@@ -225,6 +282,12 @@ your-project/
 ```
 
 Consider adding `.health-scan/` to your `.gitignore` if you don't want to track the workspace.
+
+### WIP state and retry
+
+Scanner subagents write work-in-progress (WIP) state files (`scan-<category>-wip.json`) as they work. If a subagent is interrupted (e.g., context window exhaustion), the scanner can re-spawn it with partial results and a narrowed scope. This means large codebases can be scanned reliably even when individual subagents hit limits.
+
+The circular-deps and unused-deps categories use deterministic Python scripts instead of LLM analysis, so they don't need WIP/retry — they run fast and produce consistent results regardless of codebase size.
 
 ---
 

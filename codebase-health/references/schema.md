@@ -87,6 +87,8 @@ All three steps read from and write to a shared workspace directory:
 ```
 <project-root>/
 ├── .health-scan/                              ← workspace
+│   ├── .health-ignore                         ← optional: gitignore-style exclusions
+│   ├── .health-scan.config.json               ← optional: model & pipeline settings
 │   ├── health-scan-findings.json              ← the shared contract
 │   ├── health-scan-report.md                  ← human-readable scan report
 │   ├── health-verify-report.md                ← human-readable verification report
@@ -100,3 +102,69 @@ All three steps read from and write to a shared workspace directory:
 ```
 
 The scanner creates the workspace. The verifier and implementor expect it to exist.
+
+## Configuration Files
+
+### `.health-ignore`
+
+Place in `.health-scan/` directory. Gitignore-style syntax for excluding files and directories from scanning.
+
+```
+# Directories to skip
+node_modules
+dist
+build
+.venv
+vendor
+
+# File patterns
+*.min.js
+*.generated.ts
+```
+
+**Default ignore patterns** (always applied even without a `.health-ignore` file):
+`.git`, `node_modules`, `__pycache__`, `.health-scan`, `dist`, `build`, `.venv`, `venv`, `.mypy_cache`, `*.pyc`, `.tox`, `.eggs`, `*.egg-info`, `.next`, `.nuxt`, `coverage`, `.nyc_output`, `target`
+
+### `.health-scan.config.json`
+
+Place in `.health-scan/` directory. Controls pipeline behavior.
+
+```json
+{
+  "scanner_model": "sonnet",
+  "verifier_model": "sonnet"
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `scanner_model` | `"sonnet"` | Model for scanner subagents (Task tool `model` parameter). Options: `"sonnet"`, `"opus"`, `"haiku"`. |
+| `verifier_model` | `"sonnet"` | Model for verifier subagents. |
+
+## WIP State Files
+
+Scanner subagents write work-in-progress state files to preserve progress in case of interruption.
+
+**File pattern:** `.health-scan/scan-logs/scan-<category>-wip.json`
+
+**States:**
+
+```json
+// In progress (written at start, updated periodically)
+{
+  "status": "in_progress",
+  "files_checked": ["src/foo.py", "src/bar.py"],
+  "findings_so_far": [
+    { /* partial finding object */ }
+  ]
+}
+
+// Completed (written when final output is ready)
+{
+  "status": "completed"
+}
+```
+
+The scanner uses WIP files for retry logic: if a subagent fails before writing its final output, the scanner can re-spawn it with the partial results and a narrowed scope (only unchecked files).
+
+Script-backed categories (circular-deps, unused-deps) do not use WIP files — their Python scripts are deterministic and fast.

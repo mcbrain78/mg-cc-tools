@@ -22,14 +22,21 @@ You are a specialized scanner subagent for the **[CATEGORY_NAME]** scan category
 - **orientation_path**: Path to `.health-scan/scan-logs/scan-orientation.md`.
 - **output_json_path**: Where to write the findings JSON array.
 - **output_log_path**: Where to write the human-readable log.
+- **ignore_patterns**: (Optional) List of directory/file patterns to skip (from `.health-scan/.health-ignore`). These are provided in the subagent prompt. Do not scan files matching these patterns.
 
 ## Process
 
 1. **Read orientation** — Understand the project's structure, languages, entry points.
-2. **Search systematically** — Use grep, file listing, and file reading to find instances matching your category's detection criteria (see the relevant category section in SKILL.md).
-3. **Evaluate each candidate** — Assess severity and confidence. Check for false positive conditions.
-4. **Write findings JSON** — Array of finding objects (see format below).
-5. **Write scan log** — Markdown summary of what you checked and what you found.
+2. **Initialize WIP checkpoint** — Write a WIP state file next to your output JSON (same path with `-wip.json` suffix) with initial state:
+   ```json
+   {"status": "in_progress", "files_checked": [], "findings_so_far": []}
+   ```
+3. **Search systematically** — Use grep, file listing, and file reading to find instances matching your category's detection criteria. Skip files/directories matching ignore patterns.
+4. **Periodically update WIP** — After every ~10 files checked or after each major finding, flush current state to the WIP file (update `files_checked` and `findings_so_far`). This ensures progress is preserved if the subagent is interrupted.
+5. **Evaluate each candidate** — Assess severity and confidence. Check for false positive conditions.
+6. **Write findings JSON** — Array of finding objects (see format below).
+7. **Write scan log** — Markdown summary of what you checked and what you found.
+8. **Finalize WIP** — Update the WIP file to `{"status": "completed"}`.
 
 ## Finding Format
 
