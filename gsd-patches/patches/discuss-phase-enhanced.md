@@ -8,14 +8,14 @@
 
 ### 1. Add recommendation behavior
 
-Adds inline reasoning about the best option, marks it "(Recommended)", and places it first.
+Supplements upstream's brief recommendation hint with explicit reasoning step, naming convention, and ordering rule.
 
 **Anchor:**
 ```
 2. **Ask 4 questions using AskUserQuestion:**
    - header: "[Area]" (max 12 chars — abbreviate if needed)
    - question: Specific decision for this area
-   - options: 2-3 concrete choices (AskUserQuestion adds "Other" automatically)
+   - options: 2-3 concrete choices (AskUserQuestion adds "Other" automatically), with the recommended choice highlighted and brief explanation why
    - Include "You decide" as an option when reasonable — captures Claude discretion
 ```
 
@@ -24,7 +24,7 @@ Adds inline reasoning about the best option, marks it "(Recommended)", and place
 2. **Ask 4 questions using AskUserQuestion:**
    - header: "[Area]" (max 12 chars — abbreviate if needed)
    - question: Specific decision for this area
-   - options: 2-3 concrete choices (AskUserQuestion adds "Other" automatically)
+   - options: 2-3 concrete choices (AskUserQuestion adds "Other" automatically), with the recommended choice highlighted and brief explanation why
    - Include "You decide" as an option when reasonable — captures Claude discretion
    - **Recommend an option:** Before presenting each question, internally reason about
      which option best fits the phase context, user's prior answers, and common patterns
