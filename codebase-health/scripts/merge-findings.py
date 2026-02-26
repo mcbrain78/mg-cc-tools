@@ -7,8 +7,8 @@ summary counts, and writes the final findings file.
 
 Usage:
     python3 merge-findings.py \
-        --scan-dir <project-root>/.health-scan/scan-logs \
-        --output <project-root>/.health-scan/health-scan-findings.json \
+        --scan-dir <project-root>/.mg/health-scan/scan-logs \
+        --output <project-root>/.mg/health-scan/health-scan-findings.json \
         --project "project-name" \
         --root-path "/absolute/path/to/project"
 

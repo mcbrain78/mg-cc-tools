@@ -86,21 +86,22 @@ All three steps read from and write to a shared workspace directory:
 
 ```
 <project-root>/
-├── .health-scan/                              ← workspace
-│   ├── .health-ignore                         ← optional: gitignore-style exclusions
-│   ├── .health-scan.config.json               ← optional: model & pipeline settings
-│   ├── health-scan-findings.json              ← the shared contract
-│   ├── health-scan-report.md                  ← human-readable scan report
-│   ├── health-verify-report.md                ← human-readable verification report
-│   ├── health-verify-test-baseline.json       ← test results before changes
-│   ├── health-verify-gsd-bootstrap.md         ← needs-review findings for GSD planning
-│   ├── health-implement-queue.json            ← safe-to-fix findings for implementor
-│   ├── health-implement-report.md             ← human-readable implementation report
-│   └── scan-logs/                             ← per-category scanner logs
-│       ├── scan-orientation.md
-│       ├── scan-orphaned-code.md / .json
-│       ├── scan-stale-code.md / .json
-│       └── ...
+├── .mg/                                          ← mutable workspace root
+│   └── health-scan/                              ← codebase-health workspace
+│       ├── .health-ignore                        ← optional: gitignore-style exclusions
+│       ├── .health-scan.config.json              ← optional: model & pipeline settings
+│       ├── health-scan-findings.json             ← the shared contract
+│       ├── health-scan-report.md                 ← human-readable scan report
+│       ├── health-verify-report.md               ← human-readable verification report
+│       ├── health-verify-test-baseline.json      ← test results before changes
+│       ├── health-verify-gsd-bootstrap.md        ← needs-review findings for GSD planning
+│       ├── health-implement-queue.json           ← safe-to-fix findings for implementor
+│       ├── health-implement-report.md            ← human-readable implementation report
+│       └── scan-logs/                            ← per-category scanner logs
+│           ├── scan-orientation.md
+│           ├── scan-orphaned-code.md / .json
+│           ├── scan-stale-code.md / .json
+│           └── ...
 ```
 
 The scanner creates the workspace. The verifier and implementor expect it to exist.
@@ -109,7 +110,7 @@ The scanner creates the workspace. The verifier and implementor expect it to exi
 
 ### `.health-ignore`
 
-Place in `.health-scan/` directory. Gitignore-style syntax for excluding files and directories from scanning.
+Place in `.mg/health-scan/` directory. Gitignore-style syntax for excluding files and directories from scanning.
 
 ```
 # Directories to skip
@@ -125,13 +126,13 @@ vendor
 ```
 
 **Default ignore patterns** (always applied even without a `.health-ignore` file):
-`.git`, `node_modules`, `__pycache__`, `.health-scan`, `dist`, `build`, `.venv`, `venv`, `.mypy_cache`, `*.pyc`, `.tox`, `.eggs`, `*.egg-info`, `.next`, `.nuxt`, `coverage`, `.nyc_output`, `target`
+`.git`, `node_modules`, `__pycache__`, `.mg`, `dist`, `build`, `.venv`, `venv`, `.mypy_cache`, `*.pyc`, `.tox`, `.eggs`, `*.egg-info`, `.next`, `.nuxt`, `coverage`, `.nyc_output`, `target`
 
 ### `.health-scan.config.json`
 
 Controls pipeline behavior. Uses layered lookup:
 
-1. **Project config**: `<project-root>/.health-scan/.health-scan.config.json` — per-project overrides.
+1. **Project config**: `<project-root>/.mg/health-scan/.health-scan.config.json` — per-project overrides.
 2. **Global defaults**: installed to `<target>/codebase-health/references/.health-scan.config.json` by the installer.
 
 Project fields override global defaults on a per-field basis (merge, not replace). Missing fields fall back to the global config.
@@ -154,7 +155,7 @@ Project fields override global defaults on a per-field basis (merge, not replace
 
 Scanner subagents write work-in-progress state files to preserve progress in case of interruption.
 
-**File pattern:** `.health-scan/scan-logs/scan-<category>-wip.json`
+**File pattern:** `.mg/health-scan/scan-logs/scan-<category>-wip.json`
 
 **States:**
 
@@ -207,8 +208,8 @@ Called by the scanner orchestrator after all subagents complete.
 
 ```bash
 python3 {SCRIPTS_DIR}/merge-findings.py \
-    --scan-dir <project-root>/.health-scan/scan-logs \
-    --output <project-root>/.health-scan/health-scan-findings.json \
+    --scan-dir <project-root>/.mg/health-scan/scan-logs \
+    --output <project-root>/.mg/health-scan/health-scan-findings.json \
     --project "project-name" \
     --root-path "/absolute/path/to/project"
 ```
@@ -252,14 +253,14 @@ Replaces manual LLM editing, which becomes unreliable at scale (50+ findings).
 **Batch mode** (after subagent completes):
 ```bash
 python3 {SCRIPTS_DIR}/update-findings.py \
-    --findings .health-scan/health-scan-findings.json \
-    --batch .health-scan/scan-logs/implement-<category>.json
+    --findings .mg/health-scan/health-scan-findings.json \
+    --batch .mg/health-scan/scan-logs/implement-<category>.json
 ```
 
 **Single mode** (inline per-finding):
 ```bash
 python3 {SCRIPTS_DIR}/update-findings.py \
-    --findings .health-scan/health-scan-findings.json \
+    --findings .mg/health-scan/health-scan-findings.json \
     --id F001 --status applied \
     --change-description "Removed function X" \
     --files-modified tools/parser.py \
@@ -273,8 +274,8 @@ after writing the verification report.
 
 ```bash
 python3 {SCRIPTS_DIR}/split-findings.py \
-    --findings .health-scan/health-scan-findings.json \
-    --bootstrap-out .health-scan/health-verify-gsd-bootstrap.md \
-    --implementor-out .health-scan/health-implement-queue.json \
-    --test-baseline .health-scan/health-verify-test-baseline.json
+    --findings .mg/health-scan/health-scan-findings.json \
+    --bootstrap-out .mg/health-scan/health-verify-gsd-bootstrap.md \
+    --implementor-out .mg/health-scan/health-implement-queue.json \
+    --test-baseline .mg/health-scan/health-verify-test-baseline.json
 ```

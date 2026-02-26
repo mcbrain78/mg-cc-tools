@@ -19,28 +19,28 @@ You review reports between each step. Nothing happens without your sign-off.
 
 ## Your Task: Detect State and Route
 
-Check the project's `.health-scan/` directory and determine where the user is in the pipeline.
+Check the project's `.mg/health-scan/` directory and determine where the user is in the pipeline.
 
 ### State Detection
 
 Run these checks in order:
 
-1. **Does `.health-scan/` exist?**
+1. **Does `.mg/health-scan/` exist?**
    - NO → The pipeline hasn't been run yet. Go to **Route A**.
 
-2. **Does `.health-scan/health-scan-findings.json` exist?**
+2. **Does `.mg/health-scan/health-scan-findings.json` exist?**
    - NO → Scan started but didn't finish or was corrupted. Go to **Route A**.
 
 3. **Do any findings have a `verification` object that is not `null`?**
    - NO → Scan complete, verification not started. Go to **Route B**.
 
-4. **Does `.health-scan/health-verify-report.md` exist?**
+4. **Does `.mg/health-scan/health-verify-report.md` exist?**
    - NO → Verification started but didn't finish. Go to **Route B**.
 
 5. **Do any findings have an `implementation` object that is not `null`?**
    - NO → Verification complete, implementation not started. Go to **Route C**.
 
-6. **Does `.health-scan/health-implement-report.md` exist?**
+6. **Does `.mg/health-scan/health-implement-report.md` exist?**
    - NO → Implementation started but didn't finish. Go to **Route C**.
 
 7. **All three reports exist** → Pipeline complete. Go to **Route D**.
@@ -74,7 +74,7 @@ Scan complete — [N] findings found.
 
   [X] critical, [Y] high, [Z] medium, [W] low
 
-Review the full report:  .health-scan/health-scan-report.md
+Review the full report:  .mg/health-scan/health-scan-report.md
 
 When ready, run the verifier to classify each finding by safety:
   /mg:codebase-health-verify
@@ -91,7 +91,7 @@ Verification complete — findings classified:
   [Y] needs-review   (exported to GSD bootstrap for planning)
   [Z] do-not-touch   (false positives or too risky)
 
-Review the full report:  .health-scan/health-verify-report.md
+Review the full report:  .mg/health-scan/health-verify-report.md
 ```
 
 If safe-to-fix findings exist:
@@ -104,7 +104,7 @@ For autonomous fixes (safe-to-fix):
 If needs-review findings exist and `health-verify-gsd-bootstrap.md` exists:
 ```
 For needs-review items (require planning):
-  Review .health-scan/health-verify-gsd-bootstrap.md
+  Review .mg/health-scan/health-verify-gsd-bootstrap.md
   Feed into gsd:plan-phase as context for detailed implementation planning
 ```
 
@@ -123,7 +123,7 @@ Pipeline complete — last run results:
 
   [X] applied, [Y] skipped, [Z] rolled back
 
-Review the implementation report:  .health-scan/health-implement-report.md
+Review the implementation report:  .mg/health-scan/health-implement-report.md
 
 To start a fresh scan:  /mg:codebase-health-scan
   (this will clear previous scan data)

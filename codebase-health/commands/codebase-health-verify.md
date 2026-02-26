@@ -16,7 +16,7 @@ This tells you the exact format of `health-scan-findings.json` and what fields y
 **Script reference:** Verification recording uses `{SCRIPTS_DIR}/verify-finding.py` for all JSON updates. This path is resolved at install time.
 
 **Read config.** Load pipeline configuration using layered lookup:
-- **First**, check `<project-root>/.health-scan/.health-scan.config.json` (project-level overrides).
+- **First**, check `<project-root>/.mg/health-scan/.health-scan.config.json` (project-level overrides).
 - **If not found**, read global defaults from `{GLOBAL_CONFIG}`.
 - If a project config exists, its fields override the global defaults (merge, don't replace — missing fields fall back to global values).
 
@@ -25,8 +25,8 @@ Use the `verifier_model` field (default: `"sonnet"`) as the `model` parameter wh
 ## Prerequisites
 
 Before proceeding, confirm these exist:
-- `<project-root>/.health-scan/health-scan-findings.json` — the scanner's output
-- `<project-root>/.health-scan/health-scan-report.md` — the scanner's report
+- `<project-root>/.mg/health-scan/health-scan-findings.json` — the scanner's output
+- `<project-root>/.mg/health-scan/health-scan-report.md` — the scanner's report
 
 If either is missing, tell the user to run `/mg:codebase-health-scan` first.
 
@@ -34,12 +34,12 @@ If either is missing, tell the user to run `/mg:codebase-health-scan` first.
 
 For scans with many findings (15+), verifying every finding sequentially may exhaust the context window. Use the **Task tool** to parallelize by category — spawn one subagent per scan category to verify that category's findings. Pass the `model` parameter from config (default: `"sonnet"`). Each subagent receives:
 - The full `health-scan-findings.json` (for cross-finding context)
-- The orientation summary from `.health-scan/scan-logs/scan-orientation.md`
+- The orientation summary from `.mg/health-scan/scan-logs/scan-orientation.md`
 - The category to verify (e.g., "orphaned-code") and the IDs of findings in that category
 - Instructions to record each verification result using the verify-finding script in append mode:
   ```bash
   python3 {SCRIPTS_DIR}/verify-finding.py \
-      --output <project-root>/.health-scan/scan-logs/verify-<category>.json \
+      --output <project-root>/.mg/health-scan/scan-logs/verify-<category>.json \
       --id <FINDING_ID> \
       --safety <safe-to-fix|needs-review|do-not-touch> \
       --reasoning "..." \
@@ -54,8 +54,8 @@ For scans with many findings (15+), verifying every finding sequentially may exh
 After all subagents complete, merge their verification results into `health-scan-findings.json` using batch mode:
 ```bash
 python3 {SCRIPTS_DIR}/verify-finding.py \
-    --findings <project-root>/.health-scan/health-scan-findings.json \
-    --batch <project-root>/.health-scan/scan-logs/verify-<category>.json
+    --findings <project-root>/.mg/health-scan/health-scan-findings.json \
+    --batch <project-root>/.mg/health-scan/scan-logs/verify-<category>.json
 ```
 
 For smaller scans, work through findings sequentially using single mode (see Step 4).
@@ -138,7 +138,7 @@ If the project has a test suite:
 
 1. Run the full test suite (or at minimum the relevant test files) to establish a **baseline**. Record which tests pass and which fail.
 2. This baseline is critical — the implementor will re-run tests after each change and compare against it. If tests already fail, the implementor shouldn't be blamed for pre-existing failures.
-3. Write the baseline test results to `.health-scan/health-verify-test-baseline.json`:
+3. Write the baseline test results to `.mg/health-scan/health-verify-test-baseline.json`:
 
 ```json
 {
@@ -168,7 +168,7 @@ For each finding, record the verification result using the verify-finding script
 
 ```bash
 python3 {SCRIPTS_DIR}/verify-finding.py \
-    --findings <project-root>/.health-scan/health-scan-findings.json \
+    --findings <project-root>/.mg/health-scan/health-scan-findings.json \
     --id <FINDING_ID> \
     --safety <safe-to-fix|needs-review|do-not-touch> \
     --reasoning "..." \
@@ -199,7 +199,7 @@ Set `--requires-human-approval` for any `needs-review` finding where the risk is
 
 ### Step 5: Write Verification Report
 
-Create `.health-scan/health-verify-report.md`:
+Create `.mg/health-scan/health-verify-report.md`:
 
 ```markdown
 # Verification Report
@@ -243,10 +243,10 @@ Any concerns about the test baseline? Any systemic issues noticed?]
 ## Two-Track Implementation Path
 
 1. **Autonomous track** — [X] safe-to-fix findings → `/mg:codebase-health-implement`
-   Queue: `.health-scan/health-implement-queue.json`
+   Queue: `.mg/health-scan/health-implement-queue.json`
 
 2. **Guided track** — [Y] needs-review findings → `gsd:plan-phase` or manual review
-   Bootstrap: `.health-scan/health-verify-gsd-bootstrap.md`
+   Bootstrap: `.mg/health-scan/health-verify-gsd-bootstrap.md`
 
 ## Next Step
 
@@ -261,10 +261,10 @@ After writing the verification report, use the split script to generate downstre
 
 ```bash
 python3 {SCRIPTS_DIR}/split-findings.py \
-    --findings <project-root>/.health-scan/health-scan-findings.json \
-    --bootstrap-out <project-root>/.health-scan/health-verify-gsd-bootstrap.md \
-    --implementor-out <project-root>/.health-scan/health-implement-queue.json \
-    --test-baseline <project-root>/.health-scan/health-verify-test-baseline.json
+    --findings <project-root>/.mg/health-scan/health-scan-findings.json \
+    --bootstrap-out <project-root>/.mg/health-scan/health-verify-gsd-bootstrap.md \
+    --implementor-out <project-root>/.mg/health-scan/health-implement-queue.json \
+    --test-baseline <project-root>/.mg/health-scan/health-verify-test-baseline.json
 ```
 
 This produces:
@@ -286,7 +286,7 @@ Show the user the verification report. Highlight:
 
 ## Important Principles
 
-- **Read-only on project source code.** Never modify files in the project's source directories. The only directory you write to is `.health-scan/`.
+- **Read-only on project source code.** Never modify files in the project's source directories. The only directory you write to is `.mg/health-scan/`.
 - **Conservative by default.** If you're unsure whether a change is safe, classify it as `needs-review`. If you're unsure whether a finding is real, classify it as `do-not-touch`. The user can always override.
 - **Test baseline is essential.** Without a test baseline, the implementor has no way to verify its changes didn't break anything. If there are no tests, call this out prominently and suggest extra caution.
 - **Think about runtime.** Static analysis misses a lot in agentic systems. Consider event-driven flows, message queues, dynamic tool loading, and LLM-initiated calls.

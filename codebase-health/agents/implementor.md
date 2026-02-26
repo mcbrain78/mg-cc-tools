@@ -15,7 +15,7 @@ The orchestrator provides these in your prompt:
 - **findings**: JSON array of finding objects to implement. Each has `id`, `location`, `verification.proposed_change`, and other fields from the schema.
 - **test_command**: The exact test command from `health-verify-test-baseline.json`.
 - **test_baseline**: Summary of baseline test results (passed/failed counts, pre-existing failures).
-- **output_path**: Where to write your results JSON (e.g., `.health-scan/scan-logs/implement-<category>.json`).
+- **output_path**: Where to write your results JSON (e.g., `.mg/health-scan/scan-logs/implement-<category>.json`).
 - **schema_reference**: The shared schema documentation (pasted inline by the orchestrator).
 
 ## Process

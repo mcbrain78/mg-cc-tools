@@ -101,7 +101,7 @@ def format_finding_entry(finding):
     file_ref = loc.get("file", "?")
     loc_lines = loc.get("lines")
     if loc_lines:
-        file_ref += ":" + ",".join(str(l) for l in loc_lines)
+        file_ref += ":" + ",".join(str(ln) for ln in loc_lines)
     lines.append(f"- **Severity:** {severity} | **Category:** {category}")
     lines.append(f"- **File:** `{file_ref}`")
 
@@ -151,7 +151,7 @@ def generate_bootstrap(data, needs_review, test_baseline):
     scan_date = data.get("scan_date", datetime.now(timezone.utc).isoformat())
     lines.append("# Needs-Review Findings — Codebase Health Verification")
     lines.append("")
-    lines.append(f"**Source:** `.health-scan/health-scan-findings.json` (verified {scan_date[:10]})")
+    lines.append(f"**Source:** `.mg/health-scan/health-scan-findings.json` (verified {scan_date[:10]})")
     lines.append("**Purpose:** Context document for GSD phase planning. Each finding has been "
                  "verified by a dedicated agent and classified as `needs-review` — meaning the "
                  "fix is likely correct but has uncertainty, touches multiple files, or affects "

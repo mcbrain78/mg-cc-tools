@@ -9,9 +9,8 @@ Zero external dependencies — stdlib only.
 import ast
 import os
 import re
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Dict, List, Optional, Set
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 # ---------------------------------------------------------------------------
 # Data structures

@@ -216,14 +216,14 @@ for cmd_file in "${COMMANDS_DIR}/"*.md; do
   fi
 done
 
-# ── Scaffold project .health-scan config ─────────────────────────────────────
+# ── Scaffold project .mg/health-scan config ───────────────────────────────────
 #
-# For --project installs, also create .health-scan/ with config files in the
+# For --project installs, also create .mg/health-scan/ with config files in the
 # project root. These override the global defaults. Skip files that already
 # exist to preserve user edits.
 
 if [[ -n "$PROJECT_ROOT" ]]; then
-  HEALTH_DIR="${PROJECT_ROOT}/.health-scan"
+  HEALTH_DIR="${PROJECT_ROOT}/.mg/health-scan"
   mkdir -p "$HEALTH_DIR"
   echo "  Config    → ${HEALTH_DIR}/"
 

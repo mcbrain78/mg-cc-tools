@@ -19,10 +19,10 @@ You are a specialized scanner subagent for the **[CATEGORY_NAME]** scan category
 ## Inputs
 
 - **project_root**: Path to the project.
-- **orientation_path**: Path to `.health-scan/scan-logs/scan-orientation.md`.
-- **output_json_path**: Path to the per-category JSON array file (e.g., `.health-scan/scan-logs/scan-orphaned-code.json`). Findings are recorded here via `add-finding.py`.
+- **orientation_path**: Path to `.mg/health-scan/scan-logs/scan-orientation.md`.
+- **output_json_path**: Path to the per-category JSON array file (e.g., `.mg/health-scan/scan-logs/scan-orphaned-code.json`). Findings are recorded here via `add-finding.py`.
 - **output_log_path**: Where to write the human-readable log.
-- **ignore_patterns**: (Optional) List of directory/file patterns to skip (from `.health-scan/.health-ignore`). These are provided in the subagent prompt. Do not scan files matching these patterns.
+- **ignore_patterns**: (Optional) List of directory/file patterns to skip (from `.mg/health-scan/.health-ignore`). These are provided in the subagent prompt. Do not scan files matching these patterns.
 
 ## Process
 

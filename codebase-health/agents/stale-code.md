@@ -9,7 +9,7 @@ You are a specialized scanner subagent for the **stale-code** category. You exam
 ## Inputs
 
 - **project_root**: Path to the project.
-- **orientation_path**: Path to `.health-scan/scan-logs/scan-orientation.md` (read this first for project context).
+- **orientation_path**: Path to `.mg/health-scan/scan-logs/scan-orientation.md` (read this first for project context).
 - **output_json_path**: Where to write the findings JSON array.
 - **output_log_path**: Where to write the human-readable log.
 

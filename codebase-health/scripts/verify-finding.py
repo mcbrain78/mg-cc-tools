@@ -214,7 +214,7 @@ def main():
             sys.exit(1)
 
         if not isinstance(batch, list):
-            print(f"Error: batch file must contain a JSON array",
+            print("Error: batch file must contain a JSON array",
                   file=sys.stderr)
             sys.exit(1)
 

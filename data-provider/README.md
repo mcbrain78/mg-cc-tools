@@ -59,14 +59,14 @@ manually in each project.
     │   ├── status.py                   ← list/read/update task state
     │   └── summarize.py                ← generate coverage report
     └── references/
-        └── 00-field-reference.md       ← template field definitions
+        └── fields.yaml       ← template field definitions
 
 <project>/                              (--project mode only)
 └── .mg/data-provider/
     ├── README.md                       ← usage guide
     ├── DESIGN.md                       ← design rationale
     ├── input/
-    │   ├── 00-field-reference.md       ← field definitions (edit for your use case)
+    │   ├── fields.yaml       ← field definitions (edit for your use case)
     │   └── providers.txt               ← provider names, one per line
     ├── tasks/                          ← task files (one per field×provider)
     └── output/
@@ -85,7 +85,7 @@ manually in each project.
 ### 1. Prepare inputs
 
 Edit `.mg/data-provider/input/providers.txt` with your provider names (one per line).
-Edit `.mg/data-provider/input/00-field-reference.md` if your field definitions differ.
+Edit `.mg/data-provider/input/fields.yaml` if your field definitions differ.
 
 ### 2. Generate task files
 
@@ -147,4 +147,4 @@ python <scripts-path>/status.py clear-research --file <filename>
 ### Editing inputs
 
 - Add/remove providers: edit `input/providers.txt`, re-run generate (existing tasks preserved)
-- Change field definitions: edit `input/00-field-reference.md`, delete affected tasks, re-run generate
+- Change field definitions: edit `input/fields.yaml`, delete affected tasks, re-run generate

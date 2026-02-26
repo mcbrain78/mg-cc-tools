@@ -13,7 +13,7 @@ DEFAULT_IGNORE_PATTERNS = [
     ".git",
     "node_modules",
     "__pycache__",
-    ".health-scan",
+    ".mg",
     "dist",
     "build",
     ".venv",

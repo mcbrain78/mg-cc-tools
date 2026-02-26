@@ -37,7 +37,7 @@ This installs into `~/.claude/`.
 3. Creates global default config at `<target>/codebase-health/references/.health-scan.config.json`.
 4. Resolves all relative paths (`references/schema.md`, `{GLOBAL_CONFIG}`, `agents/*.md`, `{SCRIPTS_DIR}`) to absolute paths, so the LLM can find them at runtime.
 5. Checks for `python3` availability and warns if not found.
-6. (`--project` mode only) Creates `.health-scan/` in the project root with project-level `.health-scan.config.json` and an empty `.health-ignore`. Existing config files are preserved.
+6. (`--project` mode only) Creates `.mg/health-scan/` in the project root with project-level `.health-scan.config.json` and an empty `.health-ignore`. Existing config files are preserved.
 
 ### Installed structure
 
@@ -88,7 +88,7 @@ This installs into `~/.claude/`.
 
 ### `.health-ignore` — Exclude directories and files
 
-The installer creates an empty `.health-scan/.health-ignore` file when using `--project` mode. Add gitignore-style patterns to exclude directories or files from scanning:
+The installer creates an empty `.mg/health-scan/.health-ignore` file when using `--project` mode. Add gitignore-style patterns to exclude directories or files from scanning:
 
 ```
 # Heavy directories
@@ -111,9 +111,9 @@ The scanner automatically merges your patterns with sensible defaults (`.git`, `
 
 ### `.health-scan.config.json` — Pipeline settings
 
-The installer creates global default config in `<target>/codebase-health/references/.health-scan.config.json` for all install modes. For `--project` installs, it also creates a project-level copy at `<project>/.health-scan/.health-scan.config.json`.
+The installer creates global default config in `<target>/codebase-health/references/.health-scan.config.json` for all install modes. For `--project` installs, it also creates a project-level copy at `<project>/.mg/health-scan/.health-scan.config.json`.
 
-**Config layering:** Project config overrides global defaults on a per-field basis. If a field is missing from the project config, the global value is used. To customize a single project, edit its `.health-scan/.health-scan.config.json`. To change defaults for all projects, edit the global config.
+**Config layering:** Project config overrides global defaults on a per-field basis. If a field is missing from the project config, the global value is used. To customize a single project, edit its `.mg/health-scan/.health-scan.config.json`. To change defaults for all projects, edit the global config.
 
 ```json
 {
@@ -210,7 +210,7 @@ The pipeline is designed around one principle: **never break anything.**
 /mg:codebase-health-scan scan my codebase for health issues
 ```
 
-This produces (all inside `.health-scan/`):
+This produces (all inside `.mg/health-scan/`):
 - `health-scan-findings.json` — structured findings
 - `health-scan-report.md` — human-readable report
 - `scan-logs/` — per-category detail
@@ -286,24 +286,25 @@ All pipeline artifacts live in a single workspace directory:
 
 ```
 your-project/
-├── .health-scan/                              ← created by the scanner
-│   ├── .health-ignore                         ← optional: gitignore-style exclusions
-│   ├── .health-scan.config.json               ← optional: model & pipeline settings
-│   ├── health-scan-findings.json              ← shared contract (enriched by each step)
-│   ├── health-scan-report.md                  ← scanner's report
-│   ├── health-verify-report.md                ← verifier's report
-│   ├── health-verify-test-baseline.json       ← test results before changes
-│   ├── health-verify-gsd-bootstrap.md         ← needs-review findings for GSD planning
-│   ├── health-implement-queue.json            ← safe-to-fix findings for implementor
-│   ├── health-implement-report.md             ← implementor's report
-│   └── scan-logs/                             ← per-category scanner detail
-│       ├── scan-orientation.md
-│       ├── scan-orphaned-code.md / .json
-│       ├── scan-contract-drift.md / .json
-│       └── ...
+├── .mg/                                          ← mutable workspace root
+│   └── health-scan/                              ← created by the scanner
+│       ├── .health-ignore                        ← optional: gitignore-style exclusions
+│       ├── .health-scan.config.json              ← optional: model & pipeline settings
+│       ├── health-scan-findings.json             ← shared contract (enriched by each step)
+│       ├── health-scan-report.md                 ← scanner's report
+│       ├── health-verify-report.md               ← verifier's report
+│       ├── health-verify-test-baseline.json      ← test results before changes
+│       ├── health-verify-gsd-bootstrap.md        ← needs-review findings for GSD planning
+│       ├── health-implement-queue.json           ← safe-to-fix findings for implementor
+│       ├── health-implement-report.md            ← implementor's report
+│       └── scan-logs/                            ← per-category scanner detail
+│           ├── scan-orientation.md
+│           ├── scan-orphaned-code.md / .json
+│           ├── scan-contract-drift.md / .json
+│           └── ...
 ```
 
-Consider adding `.health-scan/` to your `.gitignore` if you don't want to track the workspace.
+Consider adding `.mg/` to your `.gitignore` if you don't want to track the workspace.
 
 ### WIP state and retry
 

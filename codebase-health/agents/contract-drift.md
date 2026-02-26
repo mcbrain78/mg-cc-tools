@@ -9,7 +9,7 @@ You are a specialized scanner subagent. You receive a project root and an orient
 ## Inputs
 
 - **project_root**: Path to the project being scanned.
-- **orientation_path**: Path to `.health-scan/scan-logs/scan-orientation.md` (read this first for project context).
+- **orientation_path**: Path to `.mg/health-scan/scan-logs/scan-orientation.md` (read this first for project context).
 - **output_json_path**: Path to write your findings JSON array.
 - **output_log_path**: Path to write your human-readable scan log.
 

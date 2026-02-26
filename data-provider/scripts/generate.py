@@ -24,40 +24,61 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def parse_fields(field_ref_path: Path) -> list[dict]:
-    """Parse the field reference markdown to extract field definitions.
+def parse_fields_yaml(field_ref_path: Path) -> list[dict]:
+    """Parse the fields.yaml reference file.
 
-    Returns a list of dicts with keys: number, name, definition, derivation_inputs.
+    Handles the subset of YAML used here: a top-level ``fields:`` key
+    containing a list of mappings with scalar string values.  Supports
+    ``#`` comments, blank lines, and double-quoted values.
+
+    Returns a list of dicts with keys: number, name, category,
+    definition, derivation_inputs.
     """
-    content = field_ref_path.read_text()
+    fields: list[dict] = []
+    current: dict | None = None
 
-    # Parse the fields table rows: | # | `Field Name` | Definition |
-    field_pattern = re.compile(
-        r"^\|\s*(\d+)\s*\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|$", re.MULTILINE
-    )
-    fields = []
-    for match in field_pattern.finditer(content):
-        fields.append(
-            {
-                "number": int(match.group(1)),
-                "name": match.group(2),
-                "definition": match.group(3).strip(),
-                "derivation_inputs": "",
-            }
-        )
+    for raw_line in field_ref_path.read_text().splitlines():
+        # Strip inline comments (only outside quotes)
+        line = raw_line.split(" #")[0] if " #" in raw_line and '"' not in raw_line else raw_line
+        stripped = line.strip()
 
-    # Parse the substitutions table: | `Field Name` (#N) | Raw Inputs Needed |
-    sub_pattern = re.compile(
-        r"^\|\s*`([^`]+)`\s*\(#(\d+)\)\s*\|\s*(.+?)\s*\|$", re.MULTILINE
-    )
-    sub_map = {}
-    for match in sub_pattern.finditer(content):
-        sub_map[int(match.group(2))] = match.group(3).strip()
+        # Skip blank lines and full-line comments
+        if not stripped or stripped.startswith("#"):
+            continue
 
-    for field in fields:
-        field["derivation_inputs"] = sub_map.get(field["number"], "")
+        # Skip the top-level "fields:" key
+        if stripped == "fields:":
+            continue
+
+        # List item start: "  - key: value"
+        list_match = re.match(r"^\s*-\s+(\w[\w\s]*?):\s*(.*?)\s*$", line)
+        if list_match:
+            if current is not None:
+                fields.append(current)
+            current = {"number": 0, "name": "", "category": "", "definition": "", "derivation_inputs": ""}
+            key = list_match.group(1).strip()
+            val = _unquote(list_match.group(2))
+            current[key] = int(val) if key == "number" else val
+            continue
+
+        # Continuation key: "    key: value"
+        kv_match = re.match(r"^\s+(\w[\w\s]*?):\s*(.*?)\s*$", line)
+        if kv_match and current is not None:
+            key = kv_match.group(1).strip()
+            val = _unquote(kv_match.group(2))
+            current[key] = int(val) if key == "number" else val
+
+    if current is not None:
+        fields.append(current)
 
     return fields
+
+
+def _unquote(val: str) -> str:
+    """Strip surrounding double quotes from a value."""
+    if len(val) >= 2 and val.startswith('"') and val.endswith('"'):
+        return val[1:-1]
+    return val
 
 
 def parse_providers(providers_path: Path) -> list[str]:
@@ -75,6 +96,7 @@ def generate_task_file(
 ## Config
 field_number: {field['number']}
 field_name: {field['name']}
+field_category: {field['category']}
 field_definition: >
   {field['definition']}
 derivation_inputs: {field['derivation_inputs']}
@@ -136,7 +158,7 @@ def main():
 
     input_dir = args.work_dir / "input"
     tasks_dir = args.work_dir / "tasks"
-    field_ref = input_dir / "00-field-reference.md"
+    field_ref = input_dir / "fields.yaml"
     providers_file = input_dir / "providers.txt"
 
     if not field_ref.exists():
@@ -149,7 +171,7 @@ def main():
 
     tasks_dir.mkdir(parents=True, exist_ok=True)
 
-    fields = parse_fields(field_ref)
+    fields = parse_fields_yaml(field_ref)
     if not fields:
         print("Error: No fields parsed from field reference.", file=sys.stderr)
         sys.exit(1)

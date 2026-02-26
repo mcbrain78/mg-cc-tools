@@ -1,0 +1,172 @@
+# UCR Scoring Field Reference
+#
+# 25 fields a data provider must supply. Each entry defines the field,
+# its category, and what raw inputs can be used to derive it when the
+# provider doesn't supply it directly.
+#
+# Match categories (used during provider evaluation):
+#   DIRECT    — Provider supplies this field natively
+#   DERIVABLE — Provider supplies the raw inputs; we compute it
+#   NONE      — Provider cannot supply this field or its inputs
+
+fields:
+
+  # ── Growth ──────────────────────────────────────────────────────────
+
+  - number: 1
+    name: Revenue YoY
+    category: Growth
+    definition: "Revenue growth YoY: % change from TTM revenue vs the TTM period one year prior. Decimal (0.15 = 15%)."
+    derivation_inputs: Quarterly revenue
+
+  - number: 2
+    name: Revenue FWD
+    category: Growth
+    definition: "Forward revenue growth rate — consensus analyst estimate. Decimal. No derivation possible without analyst data."
+    derivation_inputs: ""
+
+  - number: 3
+    name: Revenue TTM
+    category: Growth
+    definition: "Trailing twelve month revenue, absolute $."
+    derivation_inputs: Quarterly revenue
+
+  - number: 4
+    name: Revenue 3Y
+    category: Growth
+    definition: Revenue CAGR over 3 years. Decimal.
+    derivation_inputs: Annual revenue
+
+  - number: 5
+    name: Revenue 5Y
+    category: Growth
+    definition: Revenue CAGR over 5 years. Decimal.
+    derivation_inputs: Annual revenue
+
+  - number: 6
+    name: Revenue Surprise
+    category: Growth
+    definition: "Revenue surprise vs consensus estimate, absolute $ amount. Positive = beat."
+    derivation_inputs: Revenue actual + revenue estimate (earnings event)
+
+  # ── Valuation ───────────────────────────────────────────────────────
+
+  - number: 7
+    name: EV / Sales
+    category: Valuation
+    definition: "Enterprise value ÷ TTM revenue. Ratio."
+    derivation_inputs: "Enterprise value, revenue TTM"
+
+  - number: 8
+    name: PEG FWD
+    category: Valuation
+    definition: "Forward P/E ÷ forward 3–5 year consensus EPS growth rate. Requires analyst estimates."
+    derivation_inputs: "Last price, forward EPS estimate, forward EPS growth rate (3-5Y)"
+
+  - number: 9
+    name: Market Cap
+    category: Valuation
+    definition: "Market capitalization: shares outstanding × price. Absolute $."
+    derivation_inputs: "Shares outstanding, last price"
+
+  # ── Profitability & Efficiency ──────────────────────────────────────
+
+  - number: 10
+    name: EBITDA Margin
+    category: Profitability & Efficiency
+    definition: "EBITDA ÷ revenue, TTM. Decimal."
+    derivation_inputs: "Quarterly EBITDA, revenue TTM"
+
+  - number: 11
+    name: FCF Margin
+    category: Profitability & Efficiency
+    definition: "Free cash flow ÷ revenue, TTM. Decimal."
+    derivation_inputs: "Quarterly operating cash flow + capex, revenue TTM"
+
+  - number: 12
+    name: Profit Margin
+    category: Profitability & Efficiency
+    definition: "Gross profit margin, TTM. Decimal."
+    derivation_inputs: "Quarterly gross profit, revenue TTM"
+
+  - number: 13
+    name: Return on Total Capital
+    category: Profitability & Efficiency
+    definition: "Return on total capital, TTM. Decimal."
+    derivation_inputs: "EBIT (TTM), total debt, total equity"
+
+  - number: 14
+    name: Net Income / Employee
+    category: Profitability & Efficiency
+    definition: "Net income per employee, TTM. Absolute $."
+    derivation_inputs: "Quarterly net income, employee count"
+
+  - number: 15
+    name: Asset Turnover
+    category: Profitability & Efficiency
+    definition: "Net sales ÷ average total assets, TTM. Ratio."
+    derivation_inputs: "Revenue TTM, total assets"
+
+  # ── Balance Sheet ───────────────────────────────────────────────────
+
+  - number: 16
+    name: Debt to FCF
+    category: Balance Sheet
+    definition: "Total debt ÷ free cash flow, TTM. Ratio."
+    derivation_inputs: "Total debt, operating cash flow, capex"
+
+  - number: 17
+    name: Interest Coverage Ratio
+    category: Balance Sheet
+    definition: "EBIT ÷ interest expense. Ratio."
+    derivation_inputs: "EBIT (TTM), interest expense (TTM)"
+
+  - number: 18
+    name: Current Ratio
+    category: Balance Sheet
+    definition: "Current assets ÷ current liabilities, TTM. Ratio."
+    derivation_inputs: "Current assets, current liabilities"
+
+  - number: 19
+    name: Quick Ratio
+    category: Balance Sheet
+    definition: "(Cash + marketable securities + receivables) ÷ current liabilities, TTM. Ratio."
+    derivation_inputs: "Cash, marketable securities, receivables, current liabilities"
+
+  - number: 20
+    name: Debt to Equity
+    category: Balance Sheet
+    definition: "Total debt ÷ shareholder equity. Ratio."
+    derivation_inputs: "Total debt, total equity"
+
+  - number: 21
+    name: LT Debt to Total Capital
+    category: Balance Sheet
+    definition: "Long-term debt ÷ (LT debt + equity). Ratio."
+    derivation_inputs: "Long-term debt, total equity"
+
+  # ── Market / Sentiment ──────────────────────────────────────────────
+
+  - number: 22
+    name: Last Price Vs. 200D SMA
+    category: Market / Sentiment
+    definition: "% difference: (Price / SMA200) - 1. Decimal."
+    derivation_inputs: "Last price, 200-day SMA (or daily closes)"
+
+  - number: 23
+    name: Short Interest
+    category: Market / Sentiment
+    definition: Shares sold short as % of shares outstanding.
+    derivation_inputs: "Shares sold short (absolute), shares outstanding"
+
+  - number: 24
+    name: Institutional Percent
+    category: Market / Sentiment
+    definition: Institutional ownership as % of shares outstanding.
+    derivation_inputs: "Institutional shares held, shares outstanding"
+
+  - number: 25
+    name: Insider %
+    category: Market / Sentiment
+    definition: Insider ownership as % of shares outstanding.
+    derivation_inputs: "Insider shares held, shares outstanding"

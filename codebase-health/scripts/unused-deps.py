@@ -17,13 +17,12 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 # Add parent directory to path for lib imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib.ignore import load_ignore_patterns, walk_source_files, ALL_SOURCE_EXTENSIONS
+from lib.ignore import load_ignore_patterns, walk_source_files
 
 # ---------------------------------------------------------------------------
 # Known package-name → import-name mappings
@@ -482,7 +481,6 @@ def _search_in_scripts_and_ci(root: str, dep_name: str) -> List[str]:
             if os.path.isdir(full_dir):
                 for f in os.listdir(full_dir):
                     ext = os.path.splitext(f)[1]
-                    name_part = os.path.splitext(os.path.basename(pattern_path))[0]
                     if ext in (".yml", ".yaml"):
                         search_files.append(os.path.join(full_dir, f))
         else:
@@ -658,9 +656,9 @@ def main() -> None:
         print(f"Error: {root} is not a directory", file=sys.stderr)
         sys.exit(1)
 
-    # Auto-detect .health-ignore if not specified (lives in .health-scan/)
+    # Auto-detect .health-ignore if not specified (lives in .mg/health-scan/)
     if args.ignore_file is None:
-        default_ignore = os.path.join(root, ".health-scan", ".health-ignore")
+        default_ignore = os.path.join(root, ".mg", "health-scan", ".health-ignore")
         if os.path.isfile(default_ignore):
             args.ignore_file = default_ignore
 

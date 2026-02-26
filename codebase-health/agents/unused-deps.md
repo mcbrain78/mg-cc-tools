@@ -9,10 +9,10 @@ You are a specialized scanner subagent for the **unused-deps** category. You use
 ## Inputs
 
 - **project_root**: Path to the project.
-- **orientation_path**: Path to `.health-scan/scan-logs/scan-orientation.md` (read this first for project context).
+- **orientation_path**: Path to `.mg/health-scan/scan-logs/scan-orientation.md` (read this first for project context).
 - **output_json_path**: Where to write the findings JSON array.
 - **output_log_path**: Where to write the human-readable log.
-- **ignore_patterns**: (Optional) Patterns from `.health-ignore` — the script handles these automatically if `.health-scan/.health-ignore` exists.
+- **ignore_patterns**: (Optional) Patterns from `.health-ignore` — the script handles these automatically if `.mg/health-scan/.health-ignore` exists.
 
 ## Process
 
@@ -25,10 +25,10 @@ Read the orientation file to understand the project's languages, package manager
 Execute the helper script via Bash:
 
 ```bash
-python3 {SCRIPTS_DIR}/unused-deps.py --root "<project_root>" --output "<project_root>/.health-scan/scan-logs/scan-unused-deps-raw.json"
+python3 {SCRIPTS_DIR}/unused-deps.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-unused-deps-raw.json"
 ```
 
-If a `.health-scan/.health-ignore` file exists, the script will auto-detect and use it.
+If a `.mg/health-scan/.health-ignore` file exists, the script will auto-detect and use it.
 
 The script outputs structured JSON with:
 - `summary`: total dependencies and counts by classification (used/unused/uncertain)

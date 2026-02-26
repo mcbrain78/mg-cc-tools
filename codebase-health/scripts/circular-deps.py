@@ -26,7 +26,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.ignore import load_ignore_patterns, walk_source_files
 from lib.imports import (
-    Import,
     detect_language,
     extract_imports,
     is_internal_import,
@@ -354,9 +353,9 @@ def main() -> None:
         print(f"Error: {root} is not a directory", file=sys.stderr)
         sys.exit(1)
 
-    # Auto-detect .health-ignore if not specified (lives in .health-scan/)
+    # Auto-detect .health-ignore if not specified (lives in .mg/health-scan/)
     if args.ignore_file is None:
-        default_ignore = os.path.join(root, ".health-scan", ".health-ignore")
+        default_ignore = os.path.join(root, ".mg", "health-scan", ".health-ignore")
         if os.path.isfile(default_ignore):
             args.ignore_file = default_ignore
 

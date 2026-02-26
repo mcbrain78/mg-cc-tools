@@ -17,7 +17,7 @@ All files live under `.mg/data-provider/`:
 ```
 .mg/data-provider/
   input/
-    00-field-reference.md    # Field definitions (25 fields)
+    fields.yaml              # Field definitions (25 fields)
     providers.txt            # Provider names, one per line
   tasks/                     # Task files (one per field×provider)
   output/

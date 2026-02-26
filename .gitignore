@@ -3,7 +3,9 @@
 # ============================================
 # Contains API keys and database credentials
 .env
-.venv/
+.venv
+*.egg.info
+.ruff_cache
 
 # ============================================
 # PYTHON RUNTIME
@@ -33,3 +35,4 @@ Thumbs.db
 
 # Claude Code local
 .claude/
+

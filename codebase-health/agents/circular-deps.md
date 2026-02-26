@@ -9,10 +9,10 @@ You are a specialized scanner subagent for the **circular-deps** category. You u
 ## Inputs
 
 - **project_root**: Path to the project.
-- **orientation_path**: Path to `.health-scan/scan-logs/scan-orientation.md` (read this first for project context).
+- **orientation_path**: Path to `.mg/health-scan/scan-logs/scan-orientation.md` (read this first for project context).
 - **output_json_path**: Where to write the findings JSON array.
 - **output_log_path**: Where to write the human-readable log.
-- **ignore_patterns**: (Optional) Patterns from `.health-ignore` — the script handles these automatically if `.health-scan/.health-ignore` exists.
+- **ignore_patterns**: (Optional) Patterns from `.health-ignore` — the script handles these automatically if `.mg/health-scan/.health-ignore` exists.
 
 ## Process
 
@@ -25,10 +25,10 @@ Read the orientation file to understand the project's languages, frameworks, mod
 Execute the helper script via Bash:
 
 ```bash
-python3 {SCRIPTS_DIR}/circular-deps.py --root "<project_root>" --output "<project_root>/.health-scan/scan-logs/scan-circular-deps-raw.json"
+python3 {SCRIPTS_DIR}/circular-deps.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-circular-deps-raw.json"
 ```
 
-If a `.health-scan/.health-ignore` file exists, the script will auto-detect and use it. You can also pass `--ignore-file <path>` explicitly.
+If a `.mg/health-scan/.health-ignore` file exists, the script will auto-detect and use it. You can also pass `--ignore-file <path>` explicitly.
 
 The script outputs structured JSON with:
 - `graph_stats`: total files, edges, average imports per file

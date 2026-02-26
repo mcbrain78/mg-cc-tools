@@ -17,7 +17,8 @@ set -euo pipefail
 #   3. Copies reference files to <target>/data-provider/references/
 #   4. Copies DESIGN.md to <target>/data-provider/
 #   5. Resolves {SCRIPTS_DIR} in the command file to absolute paths
-#   6. (--project only) Scaffolds .mg/data-provider/ work directory
+#   6. (--project only) Scaffolds .mg/data-provider/ work directory with
+#      default field reference (fields.yaml) and provider list
 # ──────────────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -143,7 +144,7 @@ chmod +x "${SUPPORT_DIR}/scripts/"*.py
 # References
 echo "  References → ${SUPPORT_DIR}/references/"
 mkdir -p "${SUPPORT_DIR}/references"
-cp "${SCRIPT_DIR}"/references/*.md "${SUPPORT_DIR}/references/"
+cp "${SCRIPT_DIR}"/references/* "${SUPPORT_DIR}/references/"
 
 # Design doc
 echo "  Design     → ${SUPPORT_DIR}/DESIGN.md"
@@ -176,11 +177,11 @@ if [[ -n "$PROJECT_ROOT" ]]; then
   mkdir -p "${WORK_DIR}/input" "${WORK_DIR}/tasks" "${WORK_DIR}/output"
 
   # Copy field reference template (don't overwrite if exists)
-  if [[ ! -f "${WORK_DIR}/input/00-field-reference.md" ]]; then
-    cp "${SCRIPT_DIR}/references/00-field-reference.md" "${WORK_DIR}/input/00-field-reference.md"
-    echo "    Created input/00-field-reference.md (template)"
+  if [[ ! -f "${WORK_DIR}/input/fields.yaml" ]]; then
+    cp "${SCRIPT_DIR}/references/fields.yaml" "${WORK_DIR}/input/fields.yaml"
+    echo "    Created input/fields.yaml (template)"
   else
-    echo "    input/00-field-reference.md already exists — kept"
+    echo "    input/fields.yaml already exists — kept"
   fi
 
   # Create empty providers.txt if missing
@@ -225,12 +226,12 @@ done
 echo ""
 echo "  Supporting files:"
 echo "    ${SUPPORT_DIR}/scripts/ ($(ls "${SUPPORT_DIR}/scripts/"*.py | wc -l) scripts)"
-echo "    ${SUPPORT_DIR}/references/ ($(ls "${SUPPORT_DIR}/references/"*.md | wc -l) files)"
+echo "    ${SUPPORT_DIR}/references/ ($(ls "${SUPPORT_DIR}/references/" | wc -l) files)"
 echo "    ${SUPPORT_DIR}/DESIGN.md"
 if [[ -n "$PROJECT_ROOT" ]]; then
 echo ""
 echo "  Project work directory:"
-echo "    ${WORK_DIR}/input/00-field-reference.md"
+echo "    ${WORK_DIR}/input/fields.yaml"
 echo "    ${WORK_DIR}/input/providers.txt"
 echo "    ${WORK_DIR}/tasks/              (empty — run generate.py to populate)"
 echo "    ${WORK_DIR}/output/             (empty — run summarize.py to populate)"
