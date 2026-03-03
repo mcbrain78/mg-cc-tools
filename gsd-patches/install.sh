@@ -117,12 +117,14 @@ echo "  Patches  → ${PATCHES_DIR}/"
 # ── Resolve paths ────────────────────────────────────────────────────────────
 
 PATCHES_ABSOLUTE="$PATCHES_DIR"
+SOURCE_PATCHES_ABSOLUTE="${SCRIPT_DIR}/patches"
 
-echo "  Resolving {PATCHES_DIR} in command files ..."
+echo "  Resolving placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  if grep -q '{PATCHES_DIR}' "$cmd_file" 2>/dev/null; then
+  if grep -q '{PATCHES_DIR}\|{SOURCE_PATCHES_DIR}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{PATCHES_DIR}|${PATCHES_ABSOLUTE}|g" "$cmd_file"
+    sed -i "s|{SOURCE_PATCHES_DIR}|${SOURCE_PATCHES_ABSOLUTE}|g" "$cmd_file"
   fi
 done
 

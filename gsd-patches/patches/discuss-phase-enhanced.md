@@ -8,7 +8,7 @@
 
 ### 1. Add recommendation behavior
 
-Supplements upstream's brief recommendation hint with explicit reasoning step, naming convention, and ordering rule.
+Adds inline reasoning about the best option, marks it "(Recommended)", and places it first.
 
 **Anchor:**
 ```
@@ -16,6 +16,13 @@ Supplements upstream's brief recommendation hint with explicit reasoning step, n
    - header: "[Area]" (max 12 chars — abbreviate if needed)
    - question: Specific decision for this area
    - options: 2-3 concrete choices (AskUserQuestion adds "Other" automatically), with the recommended choice highlighted and brief explanation why
+   - **Annotate options with code context** when relevant:
+     ```
+     "How should posts be displayed?"
+     - Cards (reuses existing Card component — consistent with Messages)
+     - List (simpler, would be a new pattern)
+     - Timeline (needs new Timeline component — none exists yet)
+     ```
    - Include "You decide" as an option when reasonable — captures Claude discretion
 ```
 
@@ -24,7 +31,14 @@ Supplements upstream's brief recommendation hint with explicit reasoning step, n
 2. **Ask 4 questions using AskUserQuestion:**
    - header: "[Area]" (max 12 chars — abbreviate if needed)
    - question: Specific decision for this area
-   - options: 2-3 concrete choices (AskUserQuestion adds "Other" automatically), with the recommended choice highlighted and brief explanation why
+   - options: 2-3 concrete choices (AskUserQuestion adds "Other" automatically)
+   - **Annotate options with code context** when relevant:
+     ```
+     "How should posts be displayed?"
+     - Cards (reuses existing Card component — consistent with Messages)
+     - List (simpler, would be a new pattern)
+     - Timeline (needs new Timeline component — none exists yet)
+     ```
    - Include "You decide" as an option when reasonable — captures Claude discretion
    - **Recommend an option:** Before presenting each question, internally reason about
      which option best fits the phase context, user's prior answers, and common patterns

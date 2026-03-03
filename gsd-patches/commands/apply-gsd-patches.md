@@ -23,6 +23,7 @@ Each patch is a `.md` file in `{PATCHES_DIR}` containing structured anchor/repla
 Target project argument: $ARGUMENTS
 
 Patches directory: {PATCHES_DIR}
+Source patches directory: {SOURCE_PATCHES_DIR}
 </context>
 
 <process>
@@ -56,11 +57,97 @@ Found N patch(es):
   - patch-name.md — [description from Meta section]
 ```
 
-## Step 3: Apply Each Patch
+## Step 3: Pre-flight Patch Review
+
+Before applying anything, review each patch against the current GSD version to detect upstream changes in the patched areas.
+
+**For each patch:**
+
+1. Read the patch file and parse each modification's **Anchor** text.
+2. Read the target file from `<TARGET_PROJECT>/.claude/<target-path>`.
+3. For each modification, check whether the **Anchor** text exists verbatim in the target file.
+
+**If all anchors match across all patches:**
+```
+Pre-flight check: All patches compatible with current GSD version.
+```
+Proceed directly to Step 4 (Apply Each Patch).
+
+**If any anchor does NOT match:**
+
+For each mismatched modification:
+
+1. Use Grep to locate the general area in the target file (search for a distinctive fragment from the anchor — e.g., the first meaningful line).
+2. Read the surrounding context (±15 lines) from the target file.
+3. Compare with the patch's anchor and replacement to understand what changed upstream.
+4. Present the analysis to the user:
+
+```
+Patch: [patch-name]
+Modification N: [description]
+
+The GSD version has changed in this area.
+
+Anchor expects:
+  [first 3-5 lines of anchor text...]
+
+Current GSD has:
+  [corresponding lines from target file...]
+
+Analysis: [Brief explanation of what changed — e.g., "GSD added a recommendation
+suffix to the options line" or "The step was restructured with new sub-bullets"]
+
+The patch [is still useful / may need adjustment / is no longer needed] because:
+  [reasoning]
+```
+
+5. Ask the user via AskUserQuestion:
+   - header: "Patch drift"
+   - question: "Modification N of [patch-name] has anchor drift. How should I proceed?"
+   - options:
+     - "Update patch" — "Update the patch definition in mg-cc-tools to match the new GSD version"
+     - "Still apply as-is" — "Proceed to apply step; handle the mismatch via conflict resolution"
+     - "Skip this patch" — "Don't apply this patch at all"
+
+6. **If "Update patch":** Edit the patch `.md` file in the patches directory to update the **Anchor** (and **Replace with** if needed) so they align with the current GSD version. Track that a patch file was modified.
+
+7. **If "Still apply as-is":** Mark this patch for normal conflict resolution in Step 4.
+
+8. **If "Skip this patch":** Exclude this patch from Step 4.
+
+**After reviewing all patches, if any patch files were modified:**
+
+Sync modified patches back to the source directory so the repo stays in sync:
+
+```bash
+cp "{PATCHES_DIR}/<modified-patch>.md" "{SOURCE_PATCHES_DIR}/<modified-patch>.md"
+```
+
+Repeat for each modified patch file.
+
+```
+--- Patch definitions updated ---
+
+Modified patches:
+  - [patch-name].md — Modification N anchor updated
+
+Synced to source: {SOURCE_PATCHES_DIR}/
+
+The updated patch definitions need to be reloaded.
+Please exit Claude (/exit) and restart, then re-run:
+
+  /mg:apply-gsd-patches [same-target-argument]
+```
+
+**Stop here — do not proceed to Step 4.** The command file is loaded at conversation start, so changes to patch definitions won't take effect until the next session.
+
+**If no patch files were modified:** Proceed to Step 4.
+
+## Step 4: Apply Each Patch
 
 For each patch file, parse its structure and apply modifications.
 
-### 3a. Parse Patch File
+### 4a. Parse Patch File
 
 Read the patch `.md` file. Extract from the `## Meta` section:
 - **Target:** — relative path within `.claude/` (e.g., `get-shit-done/workflows/discuss-phase.md`)
@@ -70,12 +157,12 @@ Extract each `### N. ...` subsection under `## Modifications`. Each modification
 - **Anchor:** — the exact text block to find in the target file (in a fenced code block)
 - **Replace with:** — the replacement text (in a fenced code block)
 
-### 3b. Read Target File
+### 4b. Read Target File
 
 Read `<TARGET_PROJECT>/.claude/<target-path>`. If the file doesn't exist, report and skip this patch:
 > "Target file not found: `<target-path>`. Skipping patch."
 
-### 3c. Apply Each Modification
+### 4c. Apply Each Modification
 
 For each modification in the patch:
 
@@ -105,7 +192,7 @@ For each modification in the patch:
    - **Abort this patch:** Move to next patch.
    - **Abort all:** Stop entirely and go to summary.
 
-### 3d. Report Patch Result
+### 4d. Report Patch Result
 
 After all modifications for a patch:
 ```
@@ -114,7 +201,7 @@ Patch [patch-name]: N/M modifications applied
   2. [description] — applied / already applied / skipped / adapted / conflict
 ```
 
-## Step 4: Summary
+## Step 5: Summary
 
 After all patches are processed:
 
@@ -140,7 +227,8 @@ If all modifications were "already applied", add:
 </process>
 
 <important_notes>
-- **Never modify files in mg-cc-tools.** Only modify files in the target project.
+- **Only modify mg-cc-tools patch files during Step 3 (Pre-flight Patch Review)** when the user explicitly chooses "Update patch". All other modifications go to the target project only.
+- **Always sync modified patches back to source** — after editing any patch file in `{PATCHES_DIR}`, copy it to `{SOURCE_PATCHES_DIR}` so the repo stays in sync.
 - **Preserve exact whitespace** in anchors and replacements — the Edit tool requires exact matches.
 - **Read before editing** — always Read the target file before attempting Edit operations.
 - When parsing patch files, the anchor and replacement text are inside fenced code blocks (triple backticks). Extract the content between the fences, not including the fence markers themselves.
