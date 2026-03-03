@@ -203,6 +203,9 @@ def cmd_list(args: argparse.Namespace) -> None:
         if args.status and status != args.status:
             continue
 
+        if args.field_number and config.get("field_number", "") != args.field_number:
+            continue
+
         results.append(
             {
                 "file": f.name,
@@ -216,6 +219,22 @@ def cmd_list(args: argparse.Namespace) -> None:
 
     if args.format == "json":
         print(json.dumps(results, indent=2))
+    elif args.format == "files":
+        for r in results:
+            print(r["file"])
+    elif args.format == "summary":
+        # Group by field_number, show counts per status
+        from collections import Counter
+        by_field: dict[str, Counter] = {}
+        for r in results:
+            fn = r["field_number"]
+            if fn not in by_field:
+                by_field[fn] = Counter()
+            by_field[fn][r["status"]] += 1
+        for fn in sorted(by_field, key=lambda x: int(x) if x.isdigit() else 0):
+            counts = by_field[fn]
+            parts = [f"{s}={c}" for s, c in sorted(counts.items())]
+            print(f"field {fn}: {', '.join(parts)}")
     else:
         for r in results:
             print(
@@ -410,10 +429,15 @@ def main() -> None:
         help="Filter by status",
     )
     p_list.add_argument(
+        "--field-number",
+        default="",
+        help="Filter by field number (e.g., 1, 12)",
+    )
+    p_list.add_argument(
         "--format",
-        choices=["text", "json"],
+        choices=["text", "json", "files", "summary"],
         default="text",
-        help="Output format",
+        help="Output format (files=filenames only, summary=counts per field)",
     )
 
     # read

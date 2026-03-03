@@ -156,13 +156,18 @@ cp "${SCRIPT_DIR}/DESIGN.md" "${SUPPORT_DIR}/DESIGN.md"
 # the Python scripts at runtime.
 
 SCRIPTS_ABSOLUTE="${SUPPORT_DIR}/scripts"
+REFERENCES_ABSOLUTE="${SUPPORT_DIR}/references"
 
-echo "  Resolving {SCRIPTS_DIR} in command files ..."
+echo "  Resolving placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  if grep -q '{SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
-  fi
+  sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file" 2>/dev/null || true
+  sed -i "s|{REFERENCES_DIR}|${REFERENCES_ABSOLUTE}|g" "$cmd_file" 2>/dev/null || true
+done
+
+echo "  Resolving placeholders in reference files ..."
+for ref_file in "${REFERENCES_ABSOLUTE}"/*.md; do
+  sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$ref_file" 2>/dev/null || true
 done
 
 # ── Scaffold project work directory ──────────────────────────────────────────
