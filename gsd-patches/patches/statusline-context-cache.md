@@ -14,8 +14,10 @@ When `remaining_percentage` is null (Claude Code intermittently omits it), read 
 ```
     const remaining = data.context_window?.remaining_percentage;
 
-    // Context window display (shows USED percentage scaled to 80% limit)
-    // Claude Code enforces an 80% context limit, so we scale to show 100% at that point
+    // Context window display (shows USED percentage scaled to usable context)
+    // Claude Code reserves ~16.5% for autocompact buffer, so usable context
+    // is 83.5% of the total window. We normalize to show 100% at that point.
+    const AUTO_COMPACT_BUFFER_PCT = 16.5;
     let ctx = '';
     if (remaining != null) {
 ```
@@ -50,8 +52,10 @@ When `remaining_percentage` is null (Claude Code intermittently omits it), read 
       }
     } catch (e) {}
 
-    // Context window display (shows USED percentage scaled to 80% limit)
-    // Claude Code enforces an 80% context limit, so we scale to show 100% at that point
+    // Context window display (shows USED percentage scaled to usable context)
+    // Claude Code reserves ~16.5% for autocompact buffer, so usable context
+    // is 83.5% of the total window. We normalize to show 100% at that point.
+    const AUTO_COMPACT_BUFFER_PCT = 16.5;
     let ctx = '';
     if (remaining != null) {
 ```
