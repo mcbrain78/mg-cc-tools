@@ -28,6 +28,54 @@ Source patches directory: {SOURCE_PATCHES_DIR}
 
 <process>
 
+## Step 0: Source Sync Check
+
+Before doing anything, verify that installed patches are in sync with the source repository.
+
+```bash
+# Compare installed vs source patches
+INSTALLED_FILES=$(cd "{PATCHES_DIR}" && md5sum *.md 2>/dev/null | sort)
+SOURCE_FILES=$(cd "{SOURCE_PATCHES_DIR}" && md5sum *.md 2>/dev/null | sort)
+```
+
+**If identical:** Log `Patches in sync.` and proceed to Step 1.
+
+**If different:** Determine what changed:
+- **New in source:** Files in `{SOURCE_PATCHES_DIR}` not present in `{PATCHES_DIR}`
+- **Modified:** Files present in both but with different checksums
+- **Orphaned:** Files in `{PATCHES_DIR}` not present in `{SOURCE_PATCHES_DIR}` (deleted from source)
+
+Report:
+```
+--- Patch Sync Check ---
+
+Source: {SOURCE_PATCHES_DIR}
+Installed: {PATCHES_DIR}
+
+  New:      [list of new patch names, or "none"]
+  Modified: [list of modified patch names, or "none"]
+  Orphaned: [list of orphaned patch names, or "none"]
+```
+
+Ask via AskUserQuestion:
+- header: "Patch sync"
+- question: "Installed patches are out of sync with source. Sync now?"
+- options:
+  - "Sync now" — "Copy all patches from source to installed directory, then continue"
+  - "Continue stale" — "Proceed with currently installed patches (source changes ignored)"
+
+**If "Sync now":**
+```bash
+# Remove orphaned patches
+rm -f "{PATCHES_DIR}/<orphaned-file>.md"  # for each orphaned file
+
+# Copy all source patches to installed directory
+cp "{SOURCE_PATCHES_DIR}"/*.md "{PATCHES_DIR}/"
+```
+Log `Synced {N} patch(es) from source.` and proceed to Step 1.
+
+**If "Continue stale":** Proceed to Step 1 with installed patches as-is.
+
 ## Step 1: Resolve Target Project
 
 The argument `$ARGUMENTS` is either:
