@@ -61,7 +61,7 @@ Ask via AskUserQuestion:
 - header: "Patch sync"
 - question: "Installed patches are out of sync with source. Sync now?"
 - options:
-  - "Sync now" — "Copy all patches from source to installed directory, then continue"
+  - "Sync now" — "Copy all patches from source to installed directory, then stop (re-run to apply)"
   - "Continue stale" — "Proceed with currently installed patches (source changes ignored)"
 
 **If "Sync now":**
@@ -72,7 +72,19 @@ rm -f "{PATCHES_DIR}/<orphaned-file>.md"  # for each orphaned file
 # Copy all source patches to installed directory
 cp "{SOURCE_PATCHES_DIR}"/*.md "{PATCHES_DIR}/"
 ```
-Log `Synced {N} patch(es) from source.` and proceed to Step 1.
+
+```
+--- Patches synced ---
+
+Synced {N} patch(es) from source.
+
+The updated patch definitions need to be reloaded.
+Please exit Claude (/exit) and restart, then re-run:
+
+  /mg:apply-gsd-patches [same-target-argument]
+```
+
+**Stop here — do not proceed to Step 1.** The command file is loaded at conversation start, so changes to patch definitions won't take effect until the next session.
 
 **If "Continue stale":** Proceed to Step 1 with installed patches as-is.
 
