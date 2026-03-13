@@ -11,7 +11,7 @@ You are the **entry point** for a 3-step codebase health pipeline. Your job is t
 ```
 
 Three commands, always run in order:
-1. `/mg:codebase-health-scan` — Scans the codebase for 8 categories of issues (orphaned code, stale code, dead paths, redundant logic, unused deps, contract drift, dangling config, circular deps). Read-only — never touches your code.
+1. `/mg:codebase-health-scan` — Scans the codebase for 12 categories of issues (orphaned code, stale code, dead paths, redundant logic, unused deps, contract drift, dangling config, circular deps, anti-patterns, security hygiene, dependency health, resilience gaps). Read-only — never touches your code.
 2. `/mg:codebase-health-verify` — Reviews each finding, traces dependents, assesses test coverage, and classifies safety (`safe-to-fix`, `needs-review`, `do-not-touch`). Read-only — the safety gate.
 3. `/mg:codebase-health-implement` — Applies verified fixes one at a time, testing after each change and rolling back on failure. One commit per fix for easy reversal.
 
@@ -52,11 +52,13 @@ Present the pipeline overview and ask if the user wants to start a scan:
 ```
 This project hasn't been scanned yet.
 
-The codebase health pipeline checks for 8 categories of issues:
-  1. Orphaned code         5. Unused dependencies
-  2. Stale code            6. Contract drift
-  3. Dead code paths       7. Dangling configuration
-  4. Redundant logic       8. Circular dependencies
+The codebase health pipeline checks for 12 categories of issues:
+  1. Orphaned code          7. Dangling configuration
+  2. Stale code             8. Circular dependencies
+  3. Dead code paths        9. Anti-patterns
+  4. Redundant logic       10. Security hygiene
+  5. Unused dependencies   11. Dependency health
+  6. Contract drift        12. Resilience gaps
 
 The pipeline is 3 steps: scan → verify → implement.
 Steps 1 and 2 are read-only. Only step 3 modifies your code,

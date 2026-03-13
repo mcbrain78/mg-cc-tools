@@ -122,9 +122,9 @@ if command -v python3 &>/dev/null; then
   PYTHON_VERSION="$(python3 --version 2>&1)"
   echo "  python3 found: ${PYTHON_VERSION}"
 else
-  echo "  Warning: python3 not found. The circular-deps and unused-deps scanners"
-  echo "  will fall back to LLM-only analysis (slower, uses more context)."
-  echo "  Install Python 3.8+ for optimal performance."
+  echo "Error: python3 is required. Scanner scripts (vulture-scan.py, jscpd-scan.py,"
+  echo "pyright-scan.py, circular-deps.py, unused-deps.py) need Python 3.8+."
+  exit 1
 fi
 
 # ── Install ───────────────────────────────────────────────────────────────────
@@ -273,6 +273,12 @@ echo "  Project config (overrides global defaults):"
 echo "    ${HEALTH_DIR}/.health-scan.config.json"
 echo "    ${HEALTH_DIR}/.health-ignore"
 fi
+echo ""
+echo "Required external tools (install before scanning):"
+echo "  ruff     — pip install ruff"
+echo "  vulture  — pip install vulture"
+echo "  jscpd    — npm install -g jscpd"
+echo "  pyright  — npm install -g pyright (or npx pyright)"
 echo ""
 echo "Invoke with:"
 echo "  /mg:codebase-health              ← start here (guides you through the pipeline)"

@@ -19,7 +19,7 @@ Each step adds its own fields — never overwrites another step's data. This cre
   "findings": [
     {
       "id": "F001",
-      "category": "orphaned-code | stale-code | dead-code-path | redundant-logic | unused-dependency | contract-drift | dangling-config | circular-dependency",
+      "category": "orphaned-code | stale-code | dead-code-path | redundant-logic | unused-dependency | contract-drift | dangling-config | circular-dependency | anti-pattern | security-hygiene | dependency-health | resilience-gap",
       "severity": "critical | high | medium | low",
       "confidence": "high | medium | low",
       "title": "Short human-readable description",
@@ -29,7 +29,7 @@ Each step adds its own fields — never overwrites another step's data. This cre
         "symbol": "function_name or ClassName or null"
       },
       "evidence": "Why this was flagged — what the scanner observed.",
-      "recommendation": "remove | refactor | update | merge | investigate",
+      "recommendation": "remove | refactor | update | merge | investigate | narrow | sanitize | harden",
       "notes": "Any caveats, e.g. 'may be used via dynamic dispatch'",
 
       "verification": null,
@@ -197,7 +197,7 @@ python3 {SCRIPTS_DIR}/add-finding.py \
     --lines 1,85 \
     --symbol "legacy_search" \
     --evidence "No file imports from tools/legacy_search.py..." \
-    --recommendation remove \
+    --recommendation <remove|refactor|update|merge|investigate|narrow|sanitize|harden> \
     [--notes "Optional caveats"]
 ```
 

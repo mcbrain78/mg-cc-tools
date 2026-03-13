@@ -1,5 +1,7 @@
 # Stale Code Scanner Agent
 
+Linter-backed hybrid scanner: runs ruff UP/ERA001 for staleness patterns, then applies LLM judgment for novel patterns linters can't catch.
+
 Scan for code that is still reachable but shows signs of drift or neglect — it hasn't kept pace with the rest of the codebase.
 
 ## Role
@@ -19,7 +21,28 @@ You are a specialized scanner subagent for the **stale-code** category. You exam
 
 Read the orientation file to understand the project's languages, frameworks, entry points, and conventions.
 
-### 2. Establish the "modern" baseline
+### 2. Linter phase — ruff (staleness rules)
+
+Run ruff for deprecated API usage and commented-out code:
+
+```bash
+ruff check --select UP,ERA001 --output-format json <project_root>
+```
+
+Rules covered:
+- `UP` (pyupgrade): deprecated Python syntax and API patterns (e.g., old-style string formatting, deprecated `typing` imports, unnecessary `open` encoding args)
+- `ERA001`: commented-out code blocks
+
+Parse the JSON output. For each finding:
+- `UP` findings → record with `--recommendation update` (modernize to current syntax)
+- `ERA001` findings → record with `--recommendation remove` (dead commented-out code)
+- LLM assesses severity by context:
+  - Actively maintained module with deprecated syntax → high
+  - Stable legacy module → medium
+  - Commented-out code in active files → medium; in dormant files → low
+- Set confidence to `high` (linter-detected, structurally verified)
+
+### 4. Establish the "modern" baseline
 
 Before you can identify stale code, you need to know what current code looks like. Scan the most recently active parts of the codebase to establish:
 - The current error handling pattern (e.g., custom error classes, Result types, try/catch style)
@@ -29,7 +52,9 @@ Before you can identify stale code, you need to know what current code looks lik
 - The current typing/annotation approach
 - The current testing patterns
 
-### 3. Search for staleness indicators
+### 5. Novel detections — search for staleness indicators
+
+These patterns have no linter coverage — detect them via Grep + Read. Skip files/lines already flagged by ruff to avoid double-counting.
 
 **Deprecated API usage:**
 - Look for imports or calls that languages/frameworks have deprecated. Check for deprecation warnings, `@deprecated` decorators, or known deprecated patterns for the project's framework version.
@@ -52,7 +77,7 @@ Before you can identify stale code, you need to know what current code looks lik
 - Code that references environment variables, endpoints, database tables, or external APIs that no longer exist or have been renamed.
 - Import statements for modules that have been moved or renamed (working only because of compatibility shims).
 
-### 4. Check agentic-specific staleness
+### 6. Check agentic-specific staleness
 
 Pay special attention to:
 - **Prompt templates** using outdated model names (e.g., `gpt-3.5-turbo` when the project uses `gpt-4o` everywhere else), deprecated API parameters, or old instruction formats.
@@ -62,13 +87,13 @@ Pay special attention to:
 - **Agent instructions** referencing capabilities, tools, or output formats that no longer exist.
 - **SDK usage patterns** from older library versions when newer, cleaner patterns are available.
 
-### 5. Assess severity
+### 7. Assess severity
 
 - **high**: Deprecated API that will break on the next dependency upgrade, or agent instructions referencing a tool/capability that no longer exists (silently causing wrong behavior).
 - **medium**: Convention drift that creates confusion but doesn't break anything, stale schemas that happen to still work by coincidence.
 - **low**: Old TODO comments, minor style inconsistencies, cosmetic staleness.
 
-### 6. Record findings
+### 8. Record findings
 
 For each finding, use the add-finding script:
 

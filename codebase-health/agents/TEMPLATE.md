@@ -3,14 +3,19 @@
 This template documents the common execution pattern shared by all scan category agents. Each agent has its own file with category-specific detection logic, but they all follow this structure for inputs, outputs, and principles.
 
 The following agent files exist:
-- `agents/orphaned-code.md`
-- `agents/stale-code.md`
-- `agents/dead-code-paths.md`
-- `agents/redundant-logic.md`
+- `agents/orphaned-code.md` (linter-backed hybrid — vulture + ruff F401)
+- `agents/stale-code.md` (linter-backed hybrid — ruff UP/ERA001)
+- `agents/dead-code-paths.md` (linter-backed hybrid — ruff F841/PLW0101 + pyright)
+- `agents/redundant-logic.md` (linter-backed hybrid — jscpd)
 - `agents/unused-deps.md`
-- `agents/contract-drift.md` (specialized — highest-value check for agentic systems)
+- `agents/contract-drift.md` (linter-backed hybrid — pyright; highest-value check for agentic systems)
 - `agents/dangling-config.md`
 - `agents/circular-deps.md`
+- `agents/anti-patterns.md` (linter-backed hybrid — ruff BLE001/BLE002/E722)
+- `agents/security-hygiene.md` (linter-backed hybrid — ruff S-rules)
+- `agents/dependency-health.md`
+- `agents/resilience-gaps.md`
+- `agents/deferred-imports.md` (linter-backed hybrid — ruff PLC0415)
 
 ## Role
 
@@ -53,11 +58,32 @@ python3 {SCRIPTS_DIR}/add-finding.py \
     --lines <start>,<end> \
     --symbol "<function_or_class_name>" \
     --evidence "<what was observed>" \
-    --recommendation <remove|refactor|update|merge|investigate> \
+    --recommendation <remove|refactor|update|merge|investigate|narrow|sanitize|harden> \
     [--notes "<caveats>"]
 ```
 
 The script appends each finding to the JSON array file at `output_json_path`. It validates all field values and performs atomic writes. The `--symbol` and `--notes` arguments are optional.
+
+## Linter-Backed Hybrid Pattern
+
+Eight agents integrate external linters for their deterministic phase. All linters are **hard requirements** — availability is verified during orientation (step 1 of the scan command). If any linter is missing, the scan aborts with install instructions before spawning subagents.
+
+**Tool-to-agent mappings:**
+- **ruff**: anti-patterns (BLE001,BLE002,E722), security-hygiene (S105,S106,S107,S301,S506,S602), stale-code (UP,ERA001), dead-code-paths (F841,PLW0101), orphaned-code (F401), deferred-imports (PLC0415)
+- **vulture**: orphaned-code
+- **jscpd**: redundant-logic
+- **pyright**: dead-code-paths, contract-drift (run once during orientation, results shared)
+
+**How it works:**
+
+1. **Run linter**: invoke with JSON output, parse structured results
+2. **LLM adds context**: assess contextual severity, filter false positives, deduplicate overlapping findings
+3. **Proceed to novel detections**: Grep-based patterns the linter doesn't cover, skipping lines already flagged
+
+**Key rules:**
+- Never grep-replicate what a linter does — the linter phase covers those patterns deterministically.
+- Linter findings get `confidence: high` (structurally verified). Novel LLM detections use standard confidence assessment.
+- Always note in the scan log how many findings came from linter vs novel detection.
 
 ## Principles
 

@@ -1,5 +1,7 @@
 # Dead Code Paths Scanner Agent
 
+Linter-backed hybrid scanner: runs ruff F841/PLW0101 + pyright for deterministic dead code detection, then applies LLM judgment for novel patterns linters can't catch.
+
 Scan for code inside reachable functions that can never actually execute — unreachable branches, impossible conditions, redundant guards.
 
 ## Role
@@ -10,6 +12,7 @@ You are a specialized scanner subagent for the **dead-code-paths** category. You
 
 - **project_root**: Path to the project.
 - **orientation_path**: Path to `.mg/health-scan/scan-logs/scan-orientation.md` (read this first for project context).
+- **pyright_raw_path**: Path to pre-computed `scan-pyright-raw.json` (generated during orientation).
 - **output_json_path**: Where to write the findings JSON array.
 - **output_log_path**: Where to write the human-readable log.
 
@@ -19,7 +22,29 @@ You are a specialized scanner subagent for the **dead-code-paths** category. You
 
 Read the orientation file to understand the project's languages, frameworks, and structure.
 
-### 2. Search for unreachable code patterns
+### 2. Linter phase — ruff + pyright
+
+Run ruff for dead code rules:
+
+```bash
+ruff check --select F841,PLW0101 --preview --output-format json <project_root>
+```
+
+Rules covered:
+- `F841`: local variable assigned but never used
+- `PLW0101`: unreachable code after return/raise/break/continue (requires `--preview`)
+
+Read the pre-computed pyright results from `pyright_raw_path` and extract the `dead_code_paths` section. This contains `reportUnreachable`, `reportUnusedExpression`, and `reportUnusedVariable` diagnostics.
+
+For each finding from ruff and pyright:
+- **Deduplicate**: when both ruff and pyright flag the same file+line, keep pyright (type-aware = higher confidence)
+- Read surrounding code to assess contextual severity
+- Record each finding via `add-finding.py`
+- Set confidence to `high` (linter/type-checker detected)
+
+### 3. Novel detections
+
+These patterns have no linter coverage — detect them via Grep + Read. Skip files/lines already flagged by ruff or pyright.
 
 Work through each detection pattern systematically:
 
@@ -53,7 +78,7 @@ Work through each detection pattern systematically:
 - Switch/match cases for enum values or string constants that no longer exist in the codebase.
 - Dispatch branches for types or categories that have been removed.
 
-### 3. Check agentic-specific dead paths
+### 4. Check agentic-specific dead paths
 
 Pay special attention to:
 - **Model-specific branches** for models no longer in use (e.g., `if model == "gpt-3"`, `if model == "claude-1"`).
@@ -62,7 +87,7 @@ Pay special attention to:
 - **Error recovery paths** for failure modes that upstream fixes have eliminated (e.g., retry logic for a bug that was patched).
 - **Provider-specific branches** for LLM providers or APIs that the project no longer uses.
 
-### 4. Filter out intentional patterns
+### 5. Filter out intentional patterns
 
 Not all "dead" code is unintentional. Exclude or downgrade:
 - **Defensive programming:** Exhaustive match `default` cases with assertions or logging are often intentional guards against future additions. Flag as `low` severity.
@@ -70,14 +95,14 @@ Not all "dead" code is unintentional. Exclude or downgrade:
 - **Type narrowing:** Some "always true" checks exist to help type checkers or provide runtime safety. Look for type: ignore comments or assertion-style patterns.
 - **Documentation examples:** Code in docstrings or comments that's meant to be illustrative.
 
-### 5. Assess severity
+### 6. Assess severity
 
 - **critical**: Dead branch in a tool dispatch or agent routing path — the system thinks it can handle something it can't, or silently ignores a case.
 - **high**: Dead feature flag branch that contains significant logic (wasted maintenance burden, confusion risk).
 - **medium**: Standard dead code paths (post-return code, impossible conditions) in non-critical paths.
 - **low**: Defensive exhaustive-check remainders, small dead branches unlikely to cause confusion.
 
-### 6. Record findings
+### 7. Record findings
 
 For each finding, use the add-finding script:
 

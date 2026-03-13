@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Create Context — Installer ──────────────────────────────────────────────
+# ── Permission Hooks — Installer ────────────────────────────────────────────
 #
-# Installs the mg:create-context command into a Claude Code configuration.
+# Installs the permission-guard hook and management command into a Claude Code
+# configuration. Copies files only — does NOT edit settings.json.
+# Run /mg:install-permission-hooks after install to register the hook.
 #
 # Usage:
 #   ./install.sh --project [<dir>]  Install into project's .claude/ (default: cwd)
@@ -14,13 +16,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 COMMANDS=(
-  create-context
+  install-permission-hooks
 )
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
 
 TARGET_DIR=""
 MODE=""
+PROJECT_PATH=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -67,12 +70,15 @@ fi
 
 case "$MODE" in
   project)
-    TARGET_DIR="$(cd "${PROJECT_PATH:-.}" && pwd)/.claude"
+    PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
+    TARGET_DIR="${PROJECT_ROOT}/.claude"
     ;;
   global)
+    PROJECT_ROOT=""
     TARGET_DIR="${HOME}/.claude"
     ;;
   custom)
+    PROJECT_ROOT=""
     # TARGET_DIR already set
     ;;
 esac
@@ -86,35 +92,55 @@ for cmd in "${COMMANDS[@]}"; do
   fi
 done
 
-SNAPSHOT_FILE="context-template.snapshot"
-if [[ ! -f "${SCRIPT_DIR}/commands/${SNAPSHOT_FILE}" ]]; then
-  echo "Error: missing commands/${SNAPSHOT_FILE} in source directory (${SCRIPT_DIR})"
+if [[ ! -f "${SCRIPT_DIR}/hooks/permission-guard.py" ]]; then
+  echo "Error: missing hooks/permission-guard.py"
+  exit 1
+fi
+
+# ── Check for python3 ───────────────────────────────────────────────────────
+
+if ! command -v python3 &>/dev/null; then
+  echo "Error: python3 is required for the permission-guard hook."
   exit 1
 fi
 
 # ── Install ──────────────────────────────────────────────────────────────────
 
 COMMANDS_DIR="${TARGET_DIR}/commands/mg"
+SUPPORT_DIR="${TARGET_DIR}/permission-hooks"
 
-echo "Installing create-context to: ${TARGET_DIR}"
+echo "Installing permission-hooks to: ${TARGET_DIR}"
 
+# Commands
 mkdir -p "$COMMANDS_DIR"
 for cmd in "${COMMANDS[@]}"; do
   cp "${SCRIPT_DIR}/commands/${cmd}.md" "${COMMANDS_DIR}/${cmd}.md"
 done
-
-# Copy template snapshot alongside command
-cp "${SCRIPT_DIR}/commands/${SNAPSHOT_FILE}" "${COMMANDS_DIR}/${SNAPSHOT_FILE}"
-
-# Resolve {TEMPLATE_SNAPSHOT} placeholder in command file
-SNAPSHOT_ABSOLUTE="${COMMANDS_DIR}/${SNAPSHOT_FILE}"
-cmd_file="${COMMANDS_DIR}/create-context.md"
-if grep -q '{TEMPLATE_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
-  sed -i "s|{TEMPLATE_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
-fi
-
 echo "  Commands → ${COMMANDS_DIR}/"
-echo "  Snapshot → ${SNAPSHOT_ABSOLUTE}"
+
+# Hook file
+mkdir -p "${SUPPORT_DIR}/hooks"
+cp "${SCRIPT_DIR}/hooks/permission-guard.py" "${SUPPORT_DIR}/hooks/"
+chmod +x "${SUPPORT_DIR}/hooks/permission-guard.py"
+echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
+
+# ── Resolve placeholders ────────────────────────────────────────────────────
+
+HOOKS_ABSOLUTE="${SUPPORT_DIR}/hooks"
+SOURCE_ABSOLUTE="${SCRIPT_DIR}"
+
+echo "  Resolving placeholders ..."
+
+# Command file: {HOOKS_DIR} and {SOURCE_DIR}
+for cmd in "${COMMANDS[@]}"; do
+  cmd_file="${COMMANDS_DIR}/${cmd}.md"
+  sed -i "s|{HOOKS_DIR}|${HOOKS_ABSOLUTE}|g" "$cmd_file"
+  sed -i "s|{SOURCE_DIR}|${SOURCE_ABSOLUTE}|g" "$cmd_file"
+done
+
+# Hook file: {PROJECT_ROOT}
+hook_file="${SUPPORT_DIR}/hooks/permission-guard.py"
+sed -i "s|{PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 
@@ -125,10 +151,17 @@ echo "  Commands:"
 for cmd in "${COMMANDS[@]}"; do
   echo "    ${COMMANDS_DIR}/${cmd}.md"
 done
-echo "  Snapshot:"
-echo "    ${SNAPSHOT_ABSOLUTE}"
+echo ""
+echo "  Hook:"
+echo "    ${SUPPORT_DIR}/hooks/permission-guard.py"
+if [[ -n "$PROJECT_ROOT" ]]; then
+  echo "    PROJECT_ROOT: ${PROJECT_ROOT}"
+else
+  echo "    PROJECT_ROOT: (empty — falls back to cwd from hook event)"
+fi
+echo ""
+echo "Next step:"
+echo "  Run /mg:install-permission-hooks to register the hook in settings.json"
 echo ""
 echo "Invoke with:"
-echo "  /mg:create-context <phase-number> <source-file-path>"
-echo ""
-echo "Prerequisite: GSD must be installed (uses .claude/get-shit-done/templates/context.md)"
+echo "  /mg:install-permission-hooks"

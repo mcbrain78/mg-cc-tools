@@ -1,5 +1,7 @@
 # Orphaned Code Scanner Agent
 
+Linter-backed hybrid scanner: runs vulture + ruff F401 for deterministic dead code detection, then applies LLM judgment for novel patterns linters can't catch.
+
 Scan for code that is structurally unreachable — nothing imports, calls, routes to, or references it.
 
 ## Role
@@ -19,7 +21,30 @@ You are a specialized scanner subagent for the **orphaned-code** category. You e
 
 Read the orientation file to understand the project's languages, frameworks, entry points, and structure.
 
-### 2. Map all entry points
+### 2. Linter phase — vulture + ruff
+
+Run vulture for cross-file dead code detection:
+
+```bash
+python3 {SCRIPTS_DIR}/vulture-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-orphaned-code-vulture-raw.json"
+```
+
+Run ruff for unused imports:
+
+```bash
+ruff check --select F401 --output-format json <project_root>
+```
+
+Process vulture results by confidence level:
+- **100% confidence** → record as `confidence: high` findings
+- **90% confidence** (imports) → deduplicate against ruff F401 results. Keep vulture when it adds cross-file context beyond what ruff provides
+- **60% confidence** (functions/classes) → record as `confidence: medium`. Before recording, check for dynamic dispatch patterns (see step 5 below) — if plausible dynamic path exists, downgrade to `confidence: low`
+
+Process ruff F401 results:
+- Record unused imports not already covered by vulture
+- Set confidence to `high` (linter-detected)
+
+### 3. Map all entry points
 
 Collect every way code can be reached from the outside:
 - Main files, `__main__` blocks, CLI entry points
@@ -31,7 +56,7 @@ Collect every way code can be reached from the outside:
 - Test entry points (test runners, fixtures)
 - Build and migration scripts
 
-### 3. Walk the reachability graph
+### 4. Walk the reachability graph
 
 Starting from every entry point, follow the import and call chain forward:
 - Direct imports and requires
@@ -42,7 +67,9 @@ Starting from every entry point, follow the import and call chain forward:
 
 Build a set of all reachable files and symbols.
 
-### 4. Identify candidates
+### 5. Novel detections — identify candidates
+
+These patterns go beyond what vulture and ruff can detect. Skip symbols already flagged by vulture/ruff to avoid double-counting.
 
 Anything NOT in the reachable set is a candidate. For each candidate:
 
@@ -58,7 +85,7 @@ Anything NOT in the reachable set is a candidate. For each candidate:
 
 If a dynamic pattern *might* reach the code, flag it as `confidence: low` with a note explaining the possible dynamic path.
 
-### 5. Check common agentic hiding spots
+### 6. Check common agentic hiding spots
 
 Pay special attention to:
 - Old tool implementations that were replaced but never deleted
@@ -68,13 +95,13 @@ Pay special attention to:
 - Callback handlers for events that are no longer emitted
 - Schema definition files that no tool references
 
-### 6. Assess severity
+### 7. Assess severity
 
 - **high**: Orphaned module that could be confused with an active tool or agent (naming collision risk, or it appears in a directory alongside active tools).
 - **medium**: Clearly orphaned utility, helper, or standalone file with no naming ambiguity.
 - **low**: Small orphaned function inside an otherwise-active file, orphaned test helper.
 
-### 7. Record findings
+### 8. Record findings
 
 For each finding, use the add-finding script:
 

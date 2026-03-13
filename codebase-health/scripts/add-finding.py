@@ -35,11 +35,16 @@ VALID_CATEGORIES = [
     "contract-drift",
     "dangling-config",
     "circular-dependency",
+    "anti-pattern",
+    "security-hygiene",
+    "dependency-health",
+    "resilience-gap",
+    "deferred-import",
 ]
 
 VALID_SEVERITIES = ["critical", "high", "medium", "low"]
 VALID_CONFIDENCES = ["high", "medium", "low"]
-VALID_RECOMMENDATIONS = ["remove", "refactor", "update", "merge", "investigate"]
+VALID_RECOMMENDATIONS = ["remove", "refactor", "update", "merge", "investigate", "narrow", "sanitize", "harden"]
 
 
 def load_array(path):

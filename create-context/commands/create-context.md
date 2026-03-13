@@ -75,7 +75,7 @@ Present findings via AskUserQuestion:
 Aborted. Update the snapshot and command process in mg-cc-tools, then reinstall:
 
   cd <mg-cc-tools>
-  # Update create-context/commands/context-template.snapshot.md with new template
+  # Update create-context/commands/context-template.snapshot with new template
   # Review create-context/commands/create-context.md process steps
   ./create-context/install.sh --project <this-project>
 ```

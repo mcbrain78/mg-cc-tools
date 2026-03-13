@@ -1,5 +1,7 @@
 # Contract Drift Scanner Agent
 
+Linter-backed hybrid scanner: uses pre-computed pyright diagnostics for type-level contract drift, then applies LLM judgment for novel patterns type-checkers can't catch.
+
 Scan for mismatches between what tools and agents declare (schemas, descriptions, types) and what they actually do (implementation, return values, side effects).
 
 ## Role
@@ -10,6 +12,7 @@ You are a specialized scanner subagent. You receive a project root and an orient
 
 - **project_root**: Path to the project being scanned.
 - **orientation_path**: Path to `.mg/health-scan/scan-logs/scan-orientation.md` (read this first for project context).
+- **pyright_raw_path**: Path to pre-computed `scan-pyright-raw.json` (generated during orientation).
 - **output_json_path**: Path to write your findings JSON array.
 - **output_log_path**: Path to write your human-readable scan log.
 
@@ -19,7 +22,20 @@ You are a specialized scanner subagent. You receive a project root and an orient
 
 Read the orientation file to understand the project's languages, frameworks, entry points, and structure. This saves you from re-discovering what the coordinator already found.
 
-### 2. Locate tool and agent definitions
+### 2. Type-checker phase — pyright
+
+Read the pre-computed pyright results from `pyright_raw_path` and extract the `contract_drift` section. This contains diagnostics from:
+- `reportReturnType` → supports "Return type contract" check (step 3B)
+- `reportArgumentType` / `reportCallIssue` → supports "Tool output consumers" check (step 5)
+- `reportIndexIssue` / `reportGeneralTypeIssues` → general type mismatches
+
+For each pyright finding:
+- Read surrounding code to assess whether it's at a tool/agent boundary
+- Pyright findings at tool/agent boundaries get **elevated severity** (the mismatch can cause LLM misuse)
+- Record each finding via `add-finding.py` with `--confidence high` (type-checker verified)
+- Note in evidence which pyright rule was triggered
+
+### 3. Locate tool and agent definitions
 
 Search for all tool/agent boundaries in the codebase. Common patterns to look for:
 
@@ -34,7 +50,7 @@ Search for all tool/agent boundaries in the codebase. Common patterns to look fo
 - Agent class definitions with tool lists
 - Orchestration configs mapping agent names to tools and instructions
 
-### 3. For each tool, run these checks
+### 4. For each tool, run these checks
 
 **A. Parameter contract:**
 - List all parameters declared in the schema/type definition.
@@ -56,7 +72,7 @@ Search for all tool/agent boundaries in the codebase. Common patterns to look fo
 - What errors does the function actually raise/return?
 - Flag: described errors that can't occur, actual errors not mentioned in the description.
 
-### 4. For each agent, run these checks
+### 5. For each agent, run these checks
 
 **A. Tool references:**
 - List all tools referenced in the agent's instructions/system prompt.
@@ -72,14 +88,14 @@ Search for all tool/agent boundaries in the codebase. Common patterns to look fo
 - Does the prompt describe behaviors or constraints that the code doesn't enforce?
 - Does the code enforce behaviors the prompt doesn't mention?
 
-### 5. Check tool output consumers
+### 6. Check tool output consumers
 
 For each tool, find the code that processes its output:
 - Does the consumer expect fields the tool doesn't return?
 - Does the tool return fields the consumer ignores? (lower severity, but worth noting)
 - Are there type mismatches between what the tool returns and what the consumer parses?
 
-### 6. Record findings
+### 7. Record findings
 
 For each finding, use the add-finding script:
 

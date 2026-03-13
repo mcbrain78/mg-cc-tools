@@ -39,12 +39,32 @@ Before scanning, understand the project:
 9. Create the workspace: `<project-root>/.mg/health-scan/` and `scan-logs/` subdirectory. If `.mg/health-scan/` already exists from a previous run, **clear it first** (`rm -rf .mg/health-scan/scan-logs/ .mg/health-scan/health-scan-findings.json .mg/health-scan/health-scan-report.md`) to avoid stale data leaking into the new scan. Preserve `health-verify-*` and `health-implement-*` files only if the user explicitly asks to re-scan without losing verification/implementation data.
 10. Check if `.mg/` is in the project's `.gitignore`. If not, inform the user they should add it — scan artifacts (logs, findings JSON, reports) generally shouldn't be committed alongside cleanup changes.
 11. **Check for `python3`** — Run `python3 --version` to determine if Python is available. Record this in orientation — it affects whether circular-deps and unused-deps can use the fast script path.
+12. **Check required linters** — Verify all required external tools are installed. Run each check and abort with install instructions if any are missing:
+    ```bash
+    ruff --version          # requires 0.4.0+ for --preview PLW0101
+    python3 -c "import vulture; print(vulture.__version__)"
+    jscpd --version || npx --yes jscpd --version
+    pyright --version || npx --yes pyright --version
+    ```
+    Record tool versions in orientation. If any tool is missing, stop and tell the user:
+    ```
+    Required tools missing. Install before scanning:
+      ruff     — pip install ruff
+      vulture  — pip install vulture
+      jscpd    — npm install -g jscpd
+      pyright  — npm install -g pyright (or npx pyright)
+    ```
+13. **Run pyright scan** — Invoke the pyright wrapper script once to pre-compute type diagnostics for shared use by dead-code-paths and contract-drift agents:
+    ```bash
+    python3 {SCRIPTS_DIR}/pyright-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-pyright-raw.json"
+    ```
+    Record the output path in orientation so subagents can reference it.
 
-Write a brief orientation summary to `.mg/health-scan/scan-logs/scan-orientation.md` documenting what you found. Include: project structure, languages, entry points, ignore patterns, config settings, python3 availability. This context will be referenced by subagents.
+Write a brief orientation summary to `.mg/health-scan/scan-logs/scan-orientation.md` documenting what you found. Include: project structure, languages, entry points, ignore patterns, config settings, python3 availability, linter versions, pyright raw path. This context will be referenced by subagents.
 
 ### Step 2: Scan Categories
 
-Work through each of the 8 categories below. **Use subagents when available** — spawn one per category so each gets a clean context window. If subagents are not available, work through them sequentially, but be mindful of context: after each category, write your findings to disk before moving to the next.
+Work through each of the 13 categories below. **Use subagents when available** — spawn one per category so each gets a clean context window. If subagents are not available, work through them sequentially, but be mindful of context: after each category, write your findings to disk before moving to the next.
 
 For each category, the process is:
 1. Search the codebase for instances matching the detection criteria.
@@ -64,6 +84,7 @@ For each subagent, compose a prompt that includes:
 3. The output paths: `.mg/health-scan/scan-logs/scan-<category>.json` (structured) and `.mg/health-scan/scan-logs/scan-<category>.md` (human-readable log).
 4. The project root path.
 5. **Ignore patterns**: include the merged ignore patterns from orientation so the subagent knows what to skip.
+6. **Pyright raw path** (dead-code-paths and contract-drift only): include the path to `scan-pyright-raw.json` so these agents can read pre-computed type diagnostics.
 
 Example Task tool call:
 ```
@@ -75,7 +96,7 @@ Task(
 )
 ```
 
-Launch all 8 category subagents in parallel when possible. Each subagent writes its findings as a JSON array to `.mg/health-scan/scan-logs/scan-<category>.json`. After all subagents complete, merge these into the final `health-scan-findings.json`.
+Launch all 13 category subagents in parallel when possible. Each subagent writes its findings as a JSON array to `.mg/health-scan/scan-logs/scan-<category>.json`. After all subagents complete, merge these into the final `health-scan-findings.json`.
 
 **Without subagents:**
 
@@ -102,8 +123,11 @@ After all subagents return, check for missing `scan-<category>.json` files:
 ### Category 1: Orphaned Code
 
 > Agent reference: `agents/orphaned-code.md`
+> **Linter-backed hybrid** — vulture + ruff F401 for deterministic dead code detection, plus novel LLM detections.
 
 Code that is structurally unreachable — nothing imports, calls, routes to, or references it.
+
+**Linter phase:** vulture (cross-file dead code) + ruff F401 (unused imports). Vulture 100% confidence → high confidence findings; 60% → medium, LLM checks for dynamic dispatch.
 
 **Detection approach:**
 - Build the reachability graph from all entry points.
@@ -122,8 +146,11 @@ Code that is structurally unreachable — nothing imports, calls, routes to, or 
 ### Category 2: Stale Code
 
 > Agent reference: `agents/stale-code.md`
+> **Linter-backed hybrid** — ruff UP/ERA001 for deprecated syntax and commented-out code, plus novel LLM detections.
 
 Code that is still reachable but shows signs of drift or neglect.
+
+**Linter phase:** ruff UP (pyupgrade — deprecated Python syntax) + ERA001 (commented-out code). UP findings → `recommendation: update`; ERA001 → `recommendation: remove`.
 
 **Detection approach:**
 - Deprecated API usage (check for deprecation warnings in the language/framework).
@@ -142,8 +169,11 @@ Code that is still reachable but shows signs of drift or neglect.
 ### Category 3: Dead Code Paths
 
 > Agent reference: `agents/dead-code-paths.md`
+> **Linter-backed hybrid** — ruff F841/PLW0101 + pyright for deterministic dead code detection, plus novel LLM detections.
 
 Code inside reachable functions that can never actually execute.
+
+**Linter phase:** ruff F841 (unused variables) + PLW0101 (unreachable code, requires `--preview`) + pre-computed pyright dead_code_paths (reportUnreachable, reportUnusedExpression, reportUnusedVariable). Deduplicate: when both flag same file+line, keep pyright (type-aware).
 
 **Detection approach:**
 - Conditions that are always true or always false.
@@ -162,8 +192,11 @@ Code inside reachable functions that can never actually execute.
 ### Category 4: Redundant / Duplicated Logic
 
 > Agent reference: `agents/redundant-logic.md`
+> **Linter-backed hybrid** — jscpd for token-level copy-paste detection, plus novel LLM detections.
 
 Multiple locations doing substantially the same thing.
+
+**Linter phase:** jscpd (token-level clone detection, min 6 lines / 50 tokens). For each clone pair, LLM assesses intentionality and checks for drift.
 
 **Detection approach:**
 - Functions or methods with near-identical bodies.
@@ -192,9 +225,12 @@ Packages declared in dependency manifests that nothing imports.
 ### Category 6: Tool / Agent Contract Drift
 
 > Agent reference: `agents/contract-drift.md`
+> **Linter-backed hybrid** — pyright for type-level contract drift, plus novel LLM detections.
 > **This is the highest-value check for agentic codebases. Prioritize thoroughness here.**
 
 Mismatches between what tools/agents declare and what they actually do.
+
+**Type-checker phase:** pre-computed pyright contract_drift diagnostics (reportReturnType, reportArgumentType, reportCallIssue, reportIndexIssue, reportGeneralTypeIssues). Pyright findings at tool/agent boundaries get elevated severity.
 
 **Detection approach:**
 - For each tool definition (schema, function signature, type annotation):
@@ -238,6 +274,126 @@ Modules importing each other in cycles, or unhealthy dependency patterns.
 - Identify "god modules" imported by a disproportionate number of others.
 - Look for layering violations: utilities importing from high-level modules.
 - In agentic systems: agents importing from each other (should go through orchestrator), tools importing agent-level concerns.
+
+### Category 9: Anti-Patterns
+
+> Agent reference: `agents/anti-patterns.md`
+> **Linter-backed hybrid** — uses ruff BLE001/BLE002/E722, plus novel LLM detections.
+
+Code patterns that mask errors, hide failures, or create fragile runtime behavior.
+
+**Linter phase (ruff):**
+- Runs `ruff check --select BLE001,BLE002,E722 --output-format json`
+- Catches: broad `except Exception:`, bare `except:`, missing re-raise
+- LLM adds contextual severity (data pipeline vs cleanup code)
+
+**Novel detections (always Grep-based, no linter coverage):**
+- Swallowed exceptions: catch → log → continue without re-raising. Masks root causes.
+- Module-level mutable global state: runtime-mutable singletons with silent failure modes.
+- Silent failure patterns: functions that catch errors and return defaults, hiding failures from callers.
+
+**Severity guidance:**
+- Critical: swallowed exception around external API calls needing different handling per error type
+- High: silent failure in data pipeline (error → empty dict, callers process garbage)
+- Medium: swallowed exception with `exc_info=True` logging (at least diagnosable)
+- Low: global mutable state genuinely immutable after init
+
+**Recommendations:** `narrow` (broad exception → specific types), `refactor` (swallowed/silent patterns)
+
+### Category 10: Security Hygiene
+
+> Agent reference: `agents/security-hygiene.md`
+> **Linter-backed hybrid** — uses ruff S-rules, plus novel LLM detections.
+
+Patterns that could leak secrets, expose sensitive data in errors, or create injection vectors.
+
+**Linter phase (ruff S-rules):**
+- Runs `ruff check --select S105,S106,S107,S301,S506,S602 --output-format json`
+- Catches: hardcoded secrets (`S105/S106/S107`), unsafe deserialization (`S301/S506`), shell injection (`S602`)
+- LLM adds contextual severity (test fixture vs production) and filters false positives
+
+**Novel detections (always Grep-based, no linter coverage):**
+- Unsanitized error logging: response bodies logged without truncation.
+- Secrets in error propagation: API keys in URL params surfacing in `HTTPError` messages.
+- Credential exposure through error chains: auth tokens propagating through exception `__context__`.
+
+**Severity guidance:**
+- High: API response bodies logged unsanitized for auth/payment endpoints
+- Medium: unsanitized error logging for general API endpoints, ruff S-rule findings in production code
+- Low: verbose error logging behind debug guards, ruff S-rule findings in test code
+
+**Recommendation:** `sanitize`
+
+**False positive guidance:** Skip test files (`**/test_*`, `**/tests/**`), fixtures, mock data, `.env.example`.
+
+### Category 11: Dependency Health
+
+> Agent reference: `agents/dependency-health.md`
+
+Signs that dependencies are at risk or being used in fragile ways.
+
+**Detection approach:**
+- Deprecation warning suppression: `filterwarnings("ignore", ...)` for `DeprecationWarning` or `FutureWarning` — signals a dependency is on borrowed time.
+- Deprecated internal imports: code importing from `._internal` or `._compat` submodules of third-party packages — undocumented APIs that break without notice.
+- Silent provider fallbacks: default-to-X patterns on unrecognized input that mask misconfiguration.
+
+**Severity guidance:**
+- High: filterwarnings suppressing DeprecationWarning for a dependency with known breaking version
+- Medium: FutureWarning suppression (change coming but not yet breaking)
+- Low: transitive deprecation from a dependency's own dependency
+
+**Recommendations:** `update` (upgrade to version that doesn't need suppression), `investigate` (migration path unclear)
+
+### Category 12: Resilience Gaps
+
+> Agent reference: `agents/resilience-gaps.md`
+
+Missing timeout and retry handling on external calls.
+
+**Detection approach:**
+- Missing timeout on HTTP calls: external API calls without explicit timeout — can hang indefinitely.
+- Incomplete retry coverage: retry logic that handles some failure types but not others (e.g., retries timeouts but not 5xx errors).
+- Missing retry on critical paths: external API calls in batch jobs or data pipelines with no retry at all.
+
+**Context the agent gathers first:** before checking individual files, greps for existing retry utilities/decorators in the project. If found, recommendations reference the existing utility rather than suggesting new code.
+
+**Severity guidance:**
+- High: HTTP call in data pipeline with no timeout, or retry that misses 5xx
+- Medium: missing timeout on background/batch call, or retry missing connection errors
+- Low: missing retry on one-off scripts or dev utilities
+
+**Recommendation:** `harden`
+
+### Category 13: Deferred Imports
+
+> Agent reference: `agents/deferred-imports.md`
+> **Linter-backed hybrid** — ruff PLC0415 for deterministic detection, plus LLM cross-references circular dependency graph.
+> **Python only.** JS/TS `require()` inside functions is out of scope.
+
+Imports inside function/method bodies (deferred/lazy imports) that should be at module level.
+
+**Linter phase (ruff PLC0415):**
+- Runs `ruff check --select PLC0415 --output-format json`
+- Catches: all import statements inside function or method bodies
+- Skip findings in test files (`**/test_*`, `**/tests/**`, `**/*_test.py`)
+
+**Cycle cross-reference:** After collecting ruff findings, the agent checks the circular dependency graph (from `scan-circular-deps-raw.json` or by running `circular-deps.py`) to determine which internal deferred imports are justified by real cycles.
+
+**Classification logic:**
+- stdlib/third-party import deferred → medium severity, high confidence (no cycle justifies deferring external imports)
+- Internal import also at top of same file → medium severity, high confidence (deferral contradicts itself)
+- Internal import deferred in 3+ functions in same file → medium severity, medium confidence (scattered deferrals)
+- Internal import with no cycle between source and target → medium severity, medium confidence
+- Internal import with real cycle → low severity, low confidence (may be justified)
+
+**False positive exclusions (skip entirely):**
+- PEP 562 `__getattr__` lazy loading in `__init__.py`
+- Performance-motivated heavy imports (`numpy`, `pandas`, ML libs) in rarely-called functions
+- Optional dependency probing (`try: import optional_lib` / `except ImportError`)
+- Django model imports inside methods (standard circular dep avoidance)
+- Test files
+
+**Recommendation:** `refactor`
 
 ---
 
