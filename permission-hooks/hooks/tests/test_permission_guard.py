@@ -800,6 +800,32 @@ class TestClaudeMemoryExemption:
         )
         assert result is None
 
+    # ── /tmp/claude-<uid>/ task output files ───────────────────────────
+
+    def test_allow_tmp_claude_task_output(self):
+        import os
+        uid = os.getuid()
+        result = check_outside_project(
+            f"cat /tmp/claude-{uid}/-home-user-myproject/abc123/tasks/xyz.output",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_file_read_tmp_claude(self):
+        import os
+        uid = os.getuid()
+        result = check_file_outside_project(
+            f"/tmp/claude-{uid}/-home-user-myproject/abc123/tasks/xyz.output",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_still_block_other_tmp_paths(self):
+        result = check_file_outside_project(
+            "/tmp/secrets.txt", self.PROJECT
+        )
+        assert result is not None
+
     # ── Still block non-.claude home paths ────────────────────────────────
 
     def test_still_block_other_home_paths(self):

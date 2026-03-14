@@ -97,14 +97,17 @@ for category, patterns in CATEGORIES.items():
 # Absolute paths that are always safe to reference
 SAFE_ABSOLUTE_PATHS = ["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr"]
 
-# Claude's internal directory (memory, settings, etc.) — always allowed
-_CLAUDE_DIR_TILDE = "~/.claude/"
-_CLAUDE_DIR_ABS = os.path.expanduser("~/.claude/")
+# Claude's internal directories — always allowed
+_CLAUDE_INTERNAL_PREFIXES = [
+    "~/.claude/",
+    os.path.expanduser("~/.claude/"),
+    f"/tmp/claude-{os.getuid()}/",  # task/agent output files
+]
 
 
 def _is_claude_internal(path):
-    """Return True if *path* points inside Claude's own ~/.claude/ directory."""
-    return path.startswith(_CLAUDE_DIR_TILDE) or path.startswith(_CLAUDE_DIR_ABS)
+    """Return True if *path* points inside a Claude-managed directory."""
+    return any(path.startswith(p) for p in _CLAUDE_INTERNAL_PREFIXES)
 
 # Characters to strip from tokens when extracting potential file paths.
 # Quotes plus common shell/code punctuation that isn't part of real paths.
