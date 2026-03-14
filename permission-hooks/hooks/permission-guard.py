@@ -13,6 +13,7 @@ PROJECT_ROOT is embedded at install time via sed. For --global installs
 it's empty and falls back to cwd from the hook event.
 """
 import json
+import os
 import re
 import sys
 
@@ -96,6 +97,19 @@ for category, patterns in CATEGORIES.items():
 # Absolute paths that are always safe to reference
 SAFE_ABSOLUTE_PATHS = ["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr"]
 
+# Claude's internal directory (memory, settings, etc.) — always allowed
+_CLAUDE_DIR_TILDE = "~/.claude/"
+_CLAUDE_DIR_ABS = os.path.expanduser("~/.claude/")
+
+
+def _is_claude_internal(path):
+    """Return True if *path* points inside Claude's own ~/.claude/ directory."""
+    return path.startswith(_CLAUDE_DIR_TILDE) or path.startswith(_CLAUDE_DIR_ABS)
+
+# Characters to strip from tokens when extracting potential file paths.
+# Quotes plus common shell/code punctuation that isn't part of real paths.
+_TOKEN_STRIP_CHARS = "'\"`(),[]{}"
+
 # Commands that modify files (used by out-of-project path guard)
 FILE_MODIFYING_CMDS = re.compile(
     r"\b(rm|mv|cp|mkdir|touch|tee)\b"
@@ -146,14 +160,14 @@ def check_file_path(file_path):
 def check_sensitive_in_command(command):
     """Check if a Bash command references sensitive file paths.
 
-    Tokenises the command on whitespace and shell operators, strips quotes,
-    and tests each token against SENSITIVE_FILE_PATTERNS.
+    Tokenises the command on whitespace and shell operators, strips quotes
+    and shell punctuation, and tests each token against SENSITIVE_FILE_PATTERNS.
 
     Returns (description, matched_path) or None.
     """
     tokens = re.split(r'[\s;|&]+', command)
     for token in tokens:
-        token = token.strip("'\"")
+        token = token.strip(_TOKEN_STRIP_CHARS)
         if not token:
             continue
         for compiled_re, description in SENSITIVE_FILE_PATTERNS:
@@ -172,12 +186,19 @@ def check_file_outside_project(file_path, project_root):
 
     project_root = project_root.rstrip("/")
 
+    # Claude's own internal files (memory, settings) are always allowed
+    if _is_claude_internal(file_path):
+        return None
+
     # Expand ~ to detect home directory paths
     if file_path.startswith("~/") or file_path == "~":
         return f"home directory path: {file_path}"
 
-    # Parent traversal
+    # Parent traversal — resolve to absolute and check against project root
     if "../" in file_path:
+        resolved = os.path.realpath(file_path)
+        if resolved.startswith(project_root + "/") or resolved == project_root:
+            return None  # resolves inside the project
         return f"parent directory traversal: {file_path}"
 
     # Absolute paths not under project root
@@ -214,13 +235,20 @@ def check_outside_project(command, project_root):
     tokens = re.split(r'[\s;|&]+', command)
 
     for token in tokens:
-        # Strip quotes
-        token = token.strip("'\"")
+        # Strip quotes and shell punctuation
+        token = token.strip(_TOKEN_STRIP_CHARS)
         if not token:
+            continue
+
+        # Claude's own internal files (memory, settings) are always allowed
+        if _is_claude_internal(token):
             continue
 
         # Check absolute paths not under project root
         if token.startswith("/"):
+            # Skip bare slash tokens (e.g. Python's // operator)
+            if token.rstrip("/") == "":
+                continue
             # Allow safe paths
             if any(token == safe or token.startswith(safe + "/")
                    for safe in SAFE_ABSOLUTE_PATHS):
@@ -239,8 +267,11 @@ def check_outside_project(command, project_root):
                 token,
             )
 
-        # Check parent traversal
+        # Check parent traversal — resolve and allow if inside project
         if "../" in token:
+            resolved = os.path.realpath(token)
+            if resolved.startswith(project_root + "/") or resolved == project_root:
+                continue  # resolves inside the project
             return (
                 f"parent directory traversal: {token}",
                 token,

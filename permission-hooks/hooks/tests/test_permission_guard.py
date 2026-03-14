@@ -487,6 +487,15 @@ class TestOutsideProject:
         assert result is not None
         assert "../" in result[1]
 
+    def test_allow_parent_traversal_resolving_inside(self):
+        """cp to ../subdir resolves inside project root when cwd is a child."""
+        import os
+        project = os.path.dirname(os.getcwd())  # parent of cwd
+        result = check_outside_project(
+            "cp file.txt ../somefile.txt", project
+        )
+        assert result is None
+
     def test_allow_relative_within_project(self):
         result = check_outside_project(
             "cp file.txt other.txt", self.PROJECT
@@ -533,6 +542,44 @@ class TestOutsideProject:
             "echo error > /dev/stderr", self.PROJECT
         )
         assert result is None
+
+    def test_allow_python_floor_division(self):
+        """Python's // operator should not be flagged as an absolute path."""
+        result = check_outside_project(
+            'python3 -c "x = 10 // 3; print(f\'{x:>5}\')"', self.PROJECT
+        )
+        assert result is None
+
+    def test_allow_bare_slash(self):
+        """A bare / token should not be flagged."""
+        result = check_outside_project(
+            'echo "a / b" > /dev/null', self.PROJECT
+        )
+        assert result is None
+
+    def test_allow_path_in_python_parens(self):
+        """sys.path.insert(0, '/home/user/myproject') should not false-alarm."""
+        result = check_outside_project(
+            "python -c \"sys.path.insert(0, '/home/user/myproject')\"",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_path_in_brackets(self):
+        """Paths wrapped in brackets/commas should be cleaned before checking."""
+        result = check_outside_project(
+            "cp file.txt ['/home/user/myproject/out.txt']",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_still_block_real_outside_path_in_parens(self):
+        """Stripping parens should still block genuinely outside paths."""
+        result = check_outside_project(
+            "cp file.txt ('/etc/passwd')",
+            self.PROJECT,
+        )
+        assert result is not None
 
 
 # ── Sensitive file path guard (Read/Edit/Write) ─────────────────────────────
@@ -646,6 +693,22 @@ class TestFileOutsideProject:
         assert result is not None
         assert "parent directory" in result
 
+    def test_allow_parent_traversal_resolving_inside(self):
+        """../.claude/plans/foo.md resolves inside project root when cwd is a child."""
+        import os
+        project = os.path.dirname(os.getcwd())  # parent of cwd
+        result = check_file_outside_project(
+            "../somefile.txt", project
+        )
+        assert result is None
+
+    def test_block_parent_traversal_resolving_outside(self):
+        """../../../../etc/passwd resolves outside project root."""
+        result = check_file_outside_project(
+            "../../../../etc/passwd", self.PROJECT
+        )
+        assert result is not None
+
     def test_allow_inside_project(self):
         result = check_file_outside_project(
             "/home/user/myproject/src/main.py", self.PROJECT
@@ -678,4 +741,75 @@ class TestFileOutsideProject:
 
     def test_block_home_directory_listing(self):
         result = check_file_outside_project("/home/user", self.PROJECT)
+        assert result is not None
+
+
+# ── Claude internal memory exemption ─────────────────────────────────────────
+
+class TestClaudeMemoryExemption:
+    """Claude's ~/.claude/ directory must be allowed through all guards."""
+    PROJECT = "/home/user/myproject"
+
+    # ── Read/Edit/Write file path guard ──────────────────────────────────
+
+    def test_allow_memory_tilde(self):
+        result = check_file_outside_project(
+            "~/.claude/projects/-home-user-myproject/memory/MEMORY.md",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_memory_absolute(self):
+        import os
+        home = os.path.expanduser("~")
+        result = check_file_outside_project(
+            f"{home}/.claude/projects/-home-user-myproject/memory/user_role.md",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_settings_tilde(self):
+        result = check_file_outside_project(
+            "~/.claude/settings.json", self.PROJECT
+        )
+        assert result is None
+
+    def test_allow_settings_absolute(self):
+        import os
+        home = os.path.expanduser("~")
+        result = check_file_outside_project(
+            f"{home}/.claude/settings.json", self.PROJECT
+        )
+        assert result is None
+
+    # ── Bash out-of-project guard ────────────────────────────────────────
+
+    def test_allow_bash_cp_to_claude_dir(self):
+        result = check_outside_project(
+            "cp file.txt ~/.claude/projects/slug/memory/note.md",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_bash_cat_claude_memory(self):
+        import os
+        home = os.path.expanduser("~")
+        result = check_outside_project(
+            f"cat {home}/.claude/projects/slug/memory/MEMORY.md",
+            self.PROJECT,
+        )
+        assert result is None
+
+    # ── Still block non-.claude home paths ────────────────────────────────
+
+    def test_still_block_other_home_paths(self):
+        result = check_file_outside_project(
+            "~/Documents/secrets.txt", self.PROJECT
+        )
+        assert result is not None
+
+    def test_still_block_other_dotdirs(self):
+        result = check_file_outside_project(
+            "~/.ssh/id_rsa", self.PROJECT
+        )
         assert result is not None
