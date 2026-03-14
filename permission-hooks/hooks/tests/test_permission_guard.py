@@ -508,11 +508,11 @@ class TestOutsideProject:
         )
         assert result is None
 
-    def test_block_rm_outside(self):
+    def test_allow_rm_tmp(self):
         result = check_outside_project(
             "rm /tmp/secrets.txt", self.PROJECT
         )
-        assert result is not None
+        assert result is None
 
     def test_block_mkdir_outside(self):
         result = check_outside_project(
@@ -531,11 +531,11 @@ class TestOutsideProject:
         )
         assert result is not None
 
-    def test_block_touch_outside(self):
+    def test_allow_touch_tmp(self):
         result = check_outside_project(
             "touch /tmp/marker", self.PROJECT
         )
-        assert result is not None
+        assert result is None
 
     def test_allow_dev_stderr(self):
         result = check_outside_project(
@@ -800,31 +800,20 @@ class TestClaudeMemoryExemption:
         )
         assert result is None
 
-    # ── /tmp/claude-<uid>/ task output files ───────────────────────────
+    # ── /tmp/ is always allowed ─────────────────────────────────────────
 
-    def test_allow_tmp_claude_task_output(self):
-        import os
-        uid = os.getuid()
+    def test_allow_tmp_in_bash(self):
         result = check_outside_project(
-            f"cat /tmp/claude-{uid}/-home-user-myproject/abc123/tasks/xyz.output",
+            "cat /tmp/claude-1000/abc/tasks/xyz.output",
             self.PROJECT,
         )
         assert result is None
 
-    def test_allow_file_read_tmp_claude(self):
-        import os
-        uid = os.getuid()
+    def test_allow_tmp_file_read(self):
         result = check_file_outside_project(
-            f"/tmp/claude-{uid}/-home-user-myproject/abc123/tasks/xyz.output",
-            self.PROJECT,
+            "/tmp/some-scratch-file.txt", self.PROJECT
         )
         assert result is None
-
-    def test_still_block_other_tmp_paths(self):
-        result = check_file_outside_project(
-            "/tmp/secrets.txt", self.PROJECT
-        )
-        assert result is not None
 
     # ── Still block non-.claude home paths ────────────────────────────────
 
