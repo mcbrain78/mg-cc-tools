@@ -40,6 +40,7 @@ VALID_CATEGORIES = [
     "dependency-health",
     "resilience-gap",
     "deferred-import",
+    "sprawling-code",
 ]
 
 VALID_SEVERITIES = ["critical", "high", "medium", "low"]

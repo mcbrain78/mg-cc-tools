@@ -19,7 +19,7 @@ Each step adds its own fields — never overwrites another step's data. This cre
   "findings": [
     {
       "id": "F001",
-      "category": "orphaned-code | stale-code | dead-code-path | redundant-logic | unused-dependency | contract-drift | dangling-config | circular-dependency | anti-pattern | security-hygiene | dependency-health | resilience-gap",
+      "category": "orphaned-code | stale-code | dead-code-path | redundant-logic | unused-dependency | contract-drift | dangling-config | circular-dependency | anti-pattern | security-hygiene | dependency-health | resilience-gap | sprawling-code",
       "severity": "critical | high | medium | low",
       "confidence": "high | medium | low",
       "title": "Short human-readable description",

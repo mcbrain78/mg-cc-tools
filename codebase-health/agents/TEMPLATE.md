@@ -16,6 +16,7 @@ The following agent files exist:
 - `agents/dependency-health.md`
 - `agents/resilience-gaps.md`
 - `agents/deferred-imports.md` (linter-backed hybrid — ruff PLC0415)
+- `agents/sprawling-code.md` (linter-backed hybrid — lizard)
 
 ## Role
 
@@ -73,6 +74,7 @@ Eight agents integrate external linters for their deterministic phase. All linte
 - **vulture**: orphaned-code
 - **jscpd**: redundant-logic
 - **pyright**: dead-code-paths, contract-drift (run once during orientation, results shared)
+- **lizard**: sprawling-code (per-function NLOC, CCN, nesting, params)
 
 **How it works:**
 

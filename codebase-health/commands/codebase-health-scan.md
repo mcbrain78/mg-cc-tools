@@ -45,6 +45,7 @@ Before scanning, understand the project:
     python3 -c "import vulture; print(vulture.__version__)"
     jscpd --version || npx --yes jscpd --version
     pyright --version || npx --yes pyright --version
+    lizard --version || python3 -c "import lizard; print(lizard.__version__)"
     ```
     Record tool versions in orientation. If any tool is missing, stop and tell the user:
     ```
@@ -53,6 +54,7 @@ Before scanning, understand the project:
       vulture  — pip install vulture
       jscpd    — npm install -g jscpd
       pyright  — npm install -g pyright (or npx pyright)
+      lizard   — pip install lizard
     ```
 13. **Run pyright scan** — Invoke the pyright wrapper script once to pre-compute type diagnostics for shared use by dead-code-paths and contract-drift agents:
     ```bash
@@ -64,7 +66,7 @@ Write a brief orientation summary to `.mg/health-scan/scan-logs/scan-orientation
 
 ### Step 2: Scan Categories
 
-Work through each of the 13 categories below. **Use subagents when available** — spawn one per category so each gets a clean context window. If subagents are not available, work through them sequentially, but be mindful of context: after each category, write your findings to disk before moving to the next.
+Work through each of the 14 categories below. **Use subagents when available** — spawn one per category so each gets a clean context window. If subagents are not available, work through them sequentially, but be mindful of context: after each category, write your findings to disk before moving to the next.
 
 For each category, the process is:
 1. Search the codebase for instances matching the detection criteria.
@@ -96,7 +98,7 @@ Task(
 )
 ```
 
-Launch all 13 category subagents in parallel when possible. Each subagent writes its findings as a JSON array to `.mg/health-scan/scan-logs/scan-<category>.json`. After all subagents complete, merge these into the final `health-scan-findings.json`.
+Launch all 14 category subagents in parallel when possible. Each subagent writes its findings as a JSON array to `.mg/health-scan/scan-logs/scan-<category>.json`. After all subagents complete, merge these into the final `health-scan-findings.json`.
 
 **Without subagents:**
 
@@ -392,6 +394,33 @@ Imports inside function/method bodies (deferred/lazy imports) that should be at 
 - Optional dependency probing (`try: import optional_lib` / `except ImportError`)
 - Django model imports inside methods (standard circular dep avoidance)
 - Test files
+
+**Recommendation:** `refactor`
+
+### Category 14: Sprawling Code
+
+> Agent reference: `agents/sprawling-code.md`
+> **Linter-backed hybrid** — lizard for per-function complexity/size metrics, plus novel LLM detections.
+
+Functions that are too long, too complex, too deeply nested, or take too many parameters — and files that have grown beyond a manageable size.
+
+**Linter phase (lizard):**
+- Runs `lizard-scan.py` which invokes lizard with `-ENS` (nesting depth) and CSV output
+- Measures per-function: NLOC, cyclomatic complexity, parameter count, nesting depth
+- Also detects bloated files (500+ lines) via line counting
+- Functions exceeding any threshold are reported for LLM classification
+
+**Multi-metric classification:**
+- High NLOC + high CCN + high nesting → true sprawl, high severity
+- High NLOC + low CCN → likely data/boilerplate, skip or low severity
+- High CCN + low nesting → flat dispatch table, medium severity
+
+**False positive filters:**
+- Generated code (skip entirely)
+- Test files (2x relaxed thresholds)
+- Data definitions / config arrays (skip if CCN <= 5)
+- Switch/match dispatch (downgrade if flat independent cases)
+- Serialization boilerplate (skip if low CCN + low nesting)
 
 **Recommendation:** `refactor`
 
