@@ -269,6 +269,14 @@ class TestDestructiveFilesystem:
     def test_block_ln(self):
         assert_blocked("ln -s target link", self.CAT)
 
+    def test_block_ln_after_shell_operator(self):
+        assert_blocked("echo done && ln -s target link", self.CAT)
+        assert_blocked("echo done; ln -sf target link", self.CAT)
+
+    def test_allow_ln_as_variable(self):
+        assert_allowed('python3 -c "ln = 42"')
+        assert_allowed("r = {}; ln = r.get('line', 0)")
+
     def test_block_disk_ops(self):
         assert_blocked("mkfs.ext4 /dev/sda1", self.CAT)
         assert_blocked("mount /dev/sda1 /mnt", self.CAT)

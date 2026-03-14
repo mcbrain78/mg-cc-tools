@@ -64,7 +64,7 @@ CATEGORIES = {
     "Destructive Filesystem": [
         (r"\brm\s+.*-\w*[rR]", "recursive rm"),
         (r"\b(chmod|chown)\b", "permission/ownership change"),
-        (r"\bln\s", "symlink creation"),
+        (r"(?:^|[;&|]\s*)ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
         (r"\bdd\s", "raw disk operations"),
     ],
