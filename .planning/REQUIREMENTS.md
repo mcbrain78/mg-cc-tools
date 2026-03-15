@@ -122,12 +122,72 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| CMD-01 | Phase 5 | Pending |
+| CMD-02 | Phase 3 | Pending |
+| CMD-03 | Phase 4 | Pending |
+| CMD-04 | Phase 5 | Pending |
+| CMD-05 | Phase 5 | Pending |
+| DOC-01 | Phase 4 | Pending |
+| DOC-02 | Phase 4 | Pending |
+| DOC-03 | Phase 4 | Pending |
+| DOC-04 | Phase 4 | Pending |
+| DOC-05 | Phase 4 | Pending |
+| DOC-06 | Phase 4 | Pending |
+| DOC-07 | Phase 4 | Pending |
+| DOC-08 | Phase 4 | Pending |
+| DOC-09 | Phase 4 | Pending |
+| DOC-10 | Phase 4 | Pending |
+| DOC-11 | Phase 4 | Pending |
+| DOC-12 | Phase 4 | Pending |
+| DOC-13 | Phase 4 | Pending |
+| TPL-01 | Phase 2 | Pending |
+| TPL-02 | Phase 2 | Pending |
+| TPL-03 | Phase 2 | Pending |
+| AGT-01 | Phase 2 | Pending |
+| AGT-02 | Phase 2 | Pending |
+| AGT-03 | Phase 2 | Pending |
+| AGT-04 | Phase 2 | Pending |
+| AGT-05 | Phase 2 | Pending |
+| AGT-06 | Phase 2 | Pending |
+| AGT-07 | Phase 2 | Pending |
+| AGT-08 | Phase 2 | Pending |
+| SCN-01 | Phase 3 | Pending |
+| SCN-02 | Phase 3 | Pending |
+| SCN-03 | Phase 3 | Pending |
+| SCN-04 | Phase 3 | Pending |
+| SCN-05 | Phase 3 | Pending |
+| SCN-06 | Phase 3 | Pending |
+| SCN-07 | Phase 3 | Pending |
+| SCN-08 | Phase 3 | Pending |
+| GEN-01 | Phase 4 | Pending |
+| GEN-02 | Phase 4 | Pending |
+| GEN-03 | Phase 4 | Pending |
+| GEN-04 | Phase 4 | Pending |
+| GEN-05 | Phase 4 | Pending |
+| GEN-06 | Phase 4 | Pending |
+| VFY-01 | Phase 5 | Pending |
+| VFY-02 | Phase 5 | Pending |
+| VFY-03 | Phase 5 | Pending |
+| VFY-04 | Phase 5 | Pending |
+| VFY-05 | Phase 5 | Pending |
+| VFY-06 | Phase 5 | Pending |
+| VFY-07 | Phase 5 | Pending |
+| INF-01 | Phase 1 | Pending |
+| INF-02 | Phase 1 | Pending |
+| INF-03 | Phase 1 | Pending |
+| INF-04 | Phase 1 | Pending |
+| INF-05 | Phase 1 | Pending |
+| INF-06 | Phase 1 | Pending |
+| INF-07 | Phase 1 | Pending |
+| INF-08 | Phase 1 | Pending |
+| INF-09 | Phase 1 | Pending |
+| INF-10 | Phase 1 | Pending |
 
 **Coverage:**
-- v1 requirements: 50 total
-- Mapped to phases: 0
-- Unmapped: 50
+- v1 requirements: 60 total
+- Mapped to phases: 60
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-15 after initial definition*
+*Last updated: 2026-03-15 after roadmap creation (traceability added)*

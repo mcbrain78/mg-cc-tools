@@ -1,0 +1,113 @@
+# Roadmap: /mg:docs Documentation Lifecycle Tool
+
+## Overview
+
+Build a documentation lifecycle tool that scans a project and generates audience-segmented documentation through a 3-step pipeline (scan, generate, verify). The work progresses from foundational infrastructure (scripts, schema, config) through static content authoring (templates, agent definitions), then sequentially through each pipeline step (scan, generate, verify), culminating in the integration commands that tie everything together. First test target is road-runner.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases (1, 2, 3): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 1: Foundation & Infrastructure** - Python scripts, schema, config, install.sh, style guide, project scaffolding
+- [ ] **Phase 2: Templates & Agent Definitions** - Three-layer template architecture, ~13 templates, 7 agent definitions, parallel execution setup
+- [ ] **Phase 3: Scan Pipeline** - Project orientation, source material index, staleness detection, notes classification, gap analysis, scan command
+- [ ] **Phase 4: Generate Pipeline** - Section-by-section generation, update mode, notes integration, all 13 document types, generate command
+- [ ] **Phase 5: Verify, Notes Command & Router** - Reference integrity, cross-doc consistency, Diataxis checks, completeness, add-docs command, router command
+
+## Phase Details
+
+### Phase 1: Foundation & Infrastructure
+**Goal**: All supporting infrastructure exists so pipeline steps and commands can be built on top of them
+**Depends on**: Nothing (first phase)
+**Requirements**: INF-01, INF-02, INF-03, INF-04, INF-05, INF-06, INF-07, INF-08, INF-09, INF-10
+**Success Criteria** (what must be TRUE):
+  1. Running `install.sh --project` on a test directory creates `.claude/commands/mg/`, `.claude/docs/agents/`, `.claude/docs/scripts/`, `.claude/docs/references/` with correct structure and sed-resolved paths
+  2. Running `install.sh --project` scaffolds `.mg/docs/` with default config, empty notes inbox, and scan-logs directory
+  3. Each Python script (add-note, classify-note, check-references, merge-scan, staleness-check) can be invoked standalone and produces correct JSON output for valid input
+  4. `references/schema.md` defines the complete `docs-scan.json` data contract with all fields documented
+  5. `references/style-guide.md` contains cross-audience writing conventions that writer agents can follow
+**Plans**: TBD
+
+Plans:
+- [ ] 01-01: TBD
+- [ ] 01-02: TBD
+
+### Phase 2: Templates & Agent Definitions
+**Goal**: All static content files (templates and agent prompts) are authored so the pipeline can use them for generation
+**Depends on**: Phase 1
+**Requirements**: TPL-01, TPL-02, TPL-03, AGT-01, AGT-02, AGT-03, AGT-04, AGT-05, AGT-06, AGT-07, AGT-08
+**Success Criteria** (what must be TRUE):
+  1. Each of the ~13 templates in `references/templates/` contains all three layers: Diataxis classification comment, structural headings with purpose statements, and concrete exemplar per section
+  2. Optional sections are explicitly marked with `<!-- OPTIONAL -->` comments in every template where applicable
+  3. Each of the 4 audience writer agents (end-user, developer, agent, devops) contains audience-specific format conventions, Diataxis guidance, and instructions for section-by-section generation
+  4. Glossary writer, staleness scanner, and verifier agent definitions contain complete operational instructions for their specialized roles
+  5. Agent definitions include instructions for parallel execution (one writer per audience + glossary concurrently)
+**Plans**: TBD
+
+Plans:
+- [ ] 02-01: TBD
+- [ ] 02-02: TBD
+
+### Phase 3: Scan Pipeline
+**Goal**: The scan step analyzes a project and produces a complete docs-scan.json that downstream generation can consume
+**Depends on**: Phase 2
+**Requirements**: SCN-01, SCN-02, SCN-03, SCN-04, SCN-05, SCN-06, SCN-07, SCN-08, CMD-02
+**Success Criteria** (what must be TRUE):
+  1. Running `/mg:create-docs-scan` on a project produces a valid `docs-scan.json` containing project model (tech stack, components, entry points), source material index (code files mapped to document sections), and gap analysis
+  2. On a project with existing docs, the scan detects stale sections via code-reference checks (dead file paths, missing symbols) and git-based freshness (source files changed since section generated)
+  3. On a project with `.planning/` directory, the scan loads GSD context (phase summaries, requirements traceability, verification gaps) into the scan output
+  4. Pending notes in `notes-inbox.json` are classified with audience, document, section, and confidence level in the scan output
+**Plans**: TBD
+
+Plans:
+- [ ] 03-01: TBD
+- [ ] 03-02: TBD
+
+### Phase 4: Generate Pipeline
+**Goal**: The generate step creates or updates all audience-segmented documents section-by-section using templates and scan results
+**Depends on**: Phase 3
+**Requirements**: GEN-01, GEN-02, GEN-03, GEN-04, GEN-05, GEN-06, DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07, DOC-08, DOC-09, DOC-10, DOC-11, DOC-12, DOC-13, CMD-03
+**Success Criteria** (what must be TRUE):
+  1. Running `/mg:create-docs-generate` in initial mode on a scanned project creates all 13 document types across `docs/auto-doc/` with shared OVERVIEW.md and GLOSSARY.md at root plus audience subdirectories (end-users, developers, agents, devops)
+  2. Each generated section contains a `docs-meta` HTML comment tracking last-updated timestamp and source files
+  3. Running in update mode presents a staleness report, accepts user approval for which sections to update, and regenerates only approved sections (not full documents)
+  4. Approved inbox notes are expanded into proper prose matching the target document style and placed at classified locations
+  5. OVERVIEW.md is generated after all audience docs complete and accurately routes readers to audience-specific documents
+**Plans**: TBD
+
+Plans:
+- [ ] 04-01: TBD
+- [ ] 04-02: TBD
+- [ ] 04-03: TBD
+
+### Phase 5: Verify, Notes Command & Router
+**Goal**: The verify step validates documentation quality, the add-docs command captures notes standalone, and the router ties the full pipeline together
+**Depends on**: Phase 4
+**Requirements**: VFY-01, VFY-02, VFY-03, VFY-04, VFY-05, VFY-06, VFY-07, CMD-01, CMD-04, CMD-05
+**Success Criteria** (what must be TRUE):
+  1. Running `/mg:create-docs-verify` produces `docs-verify-report.md` with issues categorized by severity covering reference integrity (file paths, symbols), cross-doc consistency (glossary terms), Diataxis mixing, completeness, example validity, and link integrity
+  2. Running `/mg:add-docs "some note"` appends the note to `notes-inbox.json` with auto-classification (audience, document, section, confidence) and displays the classification for user correction
+  3. Running `/mg:create-docs` detects pipeline state (no docs = initial creation, existing docs = update mode, partial scan = resume) and routes to the correct step automatically
+  4. The complete pipeline (scan, generate, verify) can be run end-to-end via `/mg:create-docs` on a real project (road-runner) producing usable documentation
+**Plans**: TBD
+
+Plans:
+- [ ] 05-01: TBD
+- [ ] 05-02: TBD
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Foundation & Infrastructure | 0/2 | Not started | - |
+| 2. Templates & Agent Definitions | 0/2 | Not started | - |
+| 3. Scan Pipeline | 0/2 | Not started | - |
+| 4. Generate Pipeline | 0/3 | Not started | - |
+| 5. Verify, Notes Command & Router | 0/2 | Not started | - |
