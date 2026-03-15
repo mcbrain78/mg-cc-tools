@@ -207,6 +207,10 @@ def check_file_outside_project(file_path, project_root):
         if any(file_path == safe or file_path.startswith(safe + "/")
                for safe in SAFE_ABSOLUTE_PATHS):
             return None
+        # Allow sibling projects in the same workspace directory
+        workspace = os.path.dirname(project_root)
+        if workspace and file_path.startswith(workspace + "/"):
+            return None
         if not file_path.startswith(project_root + "/") and file_path != project_root:
             return f"path outside project root: {file_path}"
 
@@ -252,6 +256,10 @@ def check_outside_project(command, project_root):
             # Allow safe paths
             if any(token == safe or token.startswith(safe + "/")
                    for safe in SAFE_ABSOLUTE_PATHS):
+                continue
+            # Allow sibling projects in the same workspace directory
+            workspace = os.path.dirname(project_root)
+            if workspace and token.startswith(workspace + "/"):
                 continue
             # Block if not under project root
             if not token.startswith(project_root + "/") and token != project_root:

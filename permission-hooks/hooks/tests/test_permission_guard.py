@@ -475,6 +475,12 @@ class TestOutsideProject:
         )
         assert result is None
 
+    def test_allow_workspace_sibling(self):
+        result = check_outside_project(
+            "cp /home/user/other-project/lib.py .", self.PROJECT
+        )
+        assert result is None
+
     def test_allow_dev_null(self):
         result = check_outside_project(
             "echo output > /dev/null", self.PROJECT
@@ -687,8 +693,13 @@ class TestFileOutsideProject:
         assert result is not None
         assert "/etc/passwd" in result
 
-    def test_block_home_dir(self):
-        result = check_file_outside_project("/home/user/secret.txt", self.PROJECT)
+    def test_allow_workspace_sibling(self):
+        """Files in sibling projects (same parent dir) are allowed."""
+        result = check_file_outside_project("/home/user/other-project/file.txt", self.PROJECT)
+        assert result is None
+
+    def test_block_outside_workspace(self):
+        result = check_file_outside_project("/opt/secret.txt", self.PROJECT)
         assert result is not None
 
     def test_block_tilde_path(self):
@@ -741,11 +752,11 @@ class TestFileOutsideProject:
         result = check_file_outside_project("/etc/passwd", "")
         assert result is None
 
-    def test_block_sibling_project(self):
+    def test_allow_sibling_project(self):
         result = check_file_outside_project(
             "/home/user/other-project/file.txt", self.PROJECT
         )
-        assert result is not None
+        assert result is None
 
     def test_block_home_directory_listing(self):
         result = check_file_outside_project("/home/user", self.PROJECT)
