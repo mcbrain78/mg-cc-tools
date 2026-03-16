@@ -39,10 +39,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Writer Agents
 
-- [ ] **AGT-01**: End-user writer agent with plain language, scannable formatting conventions
-- [ ] **AGT-02**: Developer writer agent with code-first, Stripe/Twilio-style conventions
-- [ ] **AGT-03**: Agent writer agent with explicit, machine-optimized conventions and YAML frontmatter
-- [ ] **AGT-04**: DevOps writer agent with runbook structure, copy-paste-ready commands
+- [x] **AGT-01**: End-user writer agent with plain language, scannable formatting conventions
+- [x] **AGT-02**: Developer writer agent with code-first, Stripe/Twilio-style conventions
+- [x] **AGT-03**: Agent writer agent with explicit, machine-optimized conventions and YAML frontmatter
+- [x] **AGT-04**: DevOps writer agent with runbook structure, copy-paste-ready commands
 - [x] **AGT-05**: Glossary writer agent for terminology reconciliation across audiences
 - [ ] **AGT-06**: Staleness scanner agent for per-section freshness analysis
 - [ ] **AGT-07**: Verifier agent for cross-reference, Diataxis, and completeness checking
@@ -143,10 +143,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TPL-01 | Phase 2 | Complete |
 | TPL-02 | Phase 2 | Complete |
 | TPL-03 | Phase 2 | Complete |
-| AGT-01 | Phase 2 | Pending |
-| AGT-02 | Phase 2 | Pending |
-| AGT-03 | Phase 2 | Pending |
-| AGT-04 | Phase 2 | Pending |
+| AGT-01 | Phase 2 | Complete |
+| AGT-02 | Phase 2 | Complete |
+| AGT-03 | Phase 2 | Complete |
+| AGT-04 | Phase 2 | Complete |
 | AGT-05 | Phase 2 | Complete |
 | AGT-06 | Phase 2 | Pending |
 | AGT-07 | Phase 2 | Pending |
