@@ -13,8 +13,8 @@ Build a documentation lifecycle tool that scans a project and generates audience
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Infrastructure** - Python scripts, schema, config, install.sh, style guide, project scaffolding
-- [ ] **Phase 2: Templates & Agent Definitions** - Three-layer template architecture, ~13 templates, 7 agent definitions, parallel execution setup
-- [ ] **Phase 3: Scan Pipeline** - Project orientation, source material index, staleness detection, notes classification, gap analysis, scan command
+- [x] **Phase 2: Templates & Agent Definitions** - Three-layer template architecture, ~13 templates, 7 agent definitions, parallel execution setup
+- [x] **Phase 3: Scan Pipeline** - Project orientation, source material index, staleness detection, notes classification, gap analysis, scan command
 - [ ] **Phase 4: Generate Pipeline** - Section-by-section generation, update mode, notes integration, all 13 document types, generate command
 - [ ] **Phase 5: Verify, Notes Command & Router** - Reference integrity, cross-doc consistency, Diataxis checks, completeness, add-docs command, router command
 
@@ -48,13 +48,13 @@ Plans:
   3. Each of the 4 audience writer agents (end-user, developer, agent, devops) contains audience-specific format conventions, Diataxis guidance, and instructions for section-by-section generation
   4. Glossary writer, staleness scanner, and verifier agent definitions contain complete operational instructions for their specialized roles
   5. Agent definitions include instructions for parallel execution (one writer per audience + glossary concurrently)
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
-- [ ] 02-01-PLAN.md — Shared agent pattern (TEMPLATE.md), glossary writer, shared + end-user templates
-- [ ] 02-02-PLAN.md — Developer, agent, and devops audience templates (9 templates)
-- [ ] 02-03-PLAN.md — Four audience-specific writer agent definitions
-- [ ] 02-04-PLAN.md — Staleness scanner, verifier agents, and install.sh templates patch
+- [x] 02-01-PLAN.md — Shared agent pattern (TEMPLATE.md), glossary writer, shared + end-user templates
+- [x] 02-02-PLAN.md — Developer, agent, and devops audience templates (9 templates)
+- [x] 02-03-PLAN.md — Four audience-specific writer agent definitions
+- [x] 02-04-PLAN.md — Staleness scanner, verifier agents, and install.sh templates patch
 
 ### Phase 3: Scan Pipeline
 **Goal**: The scan step analyzes a project and produces a complete docs-scan.json that downstream generation can consume
@@ -68,8 +68,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Scan-audience subagent template and full create-docs-scan.md command
-- [ ] 03-02-PLAN.md — Install validation, test suite verification, and user smoke test
+- [x] 03-01-PLAN.md — Scan-audience subagent template and full create-docs-scan.md command
+- [x] 03-02-PLAN.md — Install validation, test suite verification, and user smoke test
 
 ### Phase 4: Generate Pipeline
 **Goal**: The generate step creates or updates all audience-segmented documents section-by-section using templates and scan results
@@ -111,7 +111,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Infrastructure | 4/4 | Complete | 2026-03-16 |
-| 2. Templates & Agent Definitions | 3/4 | In Progress|  |
-| 3. Scan Pipeline | 0/2 | Not started | - |
+| 2. Templates & Agent Definitions | 4/4 | Complete | 2026-03-16 |
+| 3. Scan Pipeline | 2/2 | Complete | 2026-03-16 |
 | 4. Generate Pipeline | 0/3 | Not started | - |
 | 5. Verify, Notes Command & Router | 0/2 | Not started | - |
