@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-03-16T15:06:23.372Z"
-last_activity: "2026-03-16 -- Plan 02-03 complete (4 writer agents: end-user, developer, agent, devops)"
+status: completed
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-03-16T17:06:09.404Z"
+last_activity: 2026-03-16 -- Plan 02-04 complete (staleness-scanner + verifier agents, install.sh templates patch)
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 88
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -26,34 +26,35 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 2 of 5 (Templates & Agent Definitions)
-Plan: 3 of 4 in current phase
-Status: In Progress
-Last activity: 2026-03-16 -- Plan 02-03 complete (4 writer agents: end-user, developer, agent, devops)
+Plan: 4 of 4 in current phase
+Status: Phase Complete
+Last activity: 2026-03-16 -- Plan 02-04 complete (staleness-scanner + verifier agents, install.sh templates patch)
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 6min
-- Total execution time: 0.67 hours
+- Total execution time: 0.72 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation-infrastructure | 4/4 | 24min | 6min |
-| 02-templates-agent-definitions | 3/4 | 16min | 5min |
+| 02-templates-agent-definitions | 4/4 | 21min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (6min), 01-04 (4min), 02-01 (4min), 02-02 (9min), 02-03 (3min)
+- Last 5 plans: 01-04 (4min), 02-01 (4min), 02-02 (9min), 02-03 (3min), 02-04 (5min)
 - Trend: Stable
 
 *Updated after each plan completion*
 | Phase 02 P01 | 4min | 2 tasks | 6 files |
 | Phase 02 P02 | 9min | 3 tasks | 9 files |
 | Phase 02 P03 | 3min | 2 tasks | 4 files |
+| Phase 02 P04 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [02-03]: Each agent includes audience-specific post-processing steps in Process (jargon check, code review, heading uniqueness, rollback verification)
 - [02-03]: Agent definitions kept lean (80-100 lines) by referencing style guide and templates by path rather than inlining
 - [02-03]: Convention sections use exact language from CONTEXT.md locked decisions for traceability
+- [Phase 02-04]: Staleness scanner uses conservative classification: only marks stale/broken with concrete evidence from git or dead references
+- [Phase 02-04]: Verifier agent uses 5-tier severity model (critical/high/medium/low/info) matching docs-verify-report.md format
+- [Phase 02-04]: install.sh uses cp -r preserving subdirectory structure for templates
 
 ### Pending Todos
 
@@ -98,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T15:06:23.370Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-03-16T17:06:09.402Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None

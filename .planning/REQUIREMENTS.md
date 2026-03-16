@@ -44,8 +44,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **AGT-03**: Agent writer agent with explicit, machine-optimized conventions and YAML frontmatter
 - [x] **AGT-04**: DevOps writer agent with runbook structure, copy-paste-ready commands
 - [x] **AGT-05**: Glossary writer agent for terminology reconciliation across audiences
-- [ ] **AGT-06**: Staleness scanner agent for per-section freshness analysis
-- [ ] **AGT-07**: Verifier agent for cross-reference, Diataxis, and completeness checking
+- [x] **AGT-06**: Staleness scanner agent for per-section freshness analysis
+- [x] **AGT-07**: Verifier agent for cross-reference, Diataxis, and completeness checking
 - [x] **AGT-08**: Writer agents run in parallel (one per audience + glossary)
 
 ### Scan
@@ -148,8 +148,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AGT-03 | Phase 2 | Complete |
 | AGT-04 | Phase 2 | Complete |
 | AGT-05 | Phase 2 | Complete |
-| AGT-06 | Phase 2 | Pending |
-| AGT-07 | Phase 2 | Pending |
+| AGT-06 | Phase 2 | Complete |
+| AGT-07 | Phase 2 | Complete |
 | AGT-08 | Phase 2 | Complete |
 | SCN-01 | Phase 3 | Pending |
 | SCN-02 | Phase 3 | Pending |
