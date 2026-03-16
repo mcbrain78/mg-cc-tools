@@ -7,7 +7,6 @@ encoding="utf-8" to avoid platform-dependent encoding issues.
 Zero external dependencies -- stdlib only.
 """
 
-import os
 import subprocess
 
 
