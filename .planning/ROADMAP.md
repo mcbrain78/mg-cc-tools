@@ -81,12 +81,11 @@ Plans:
   3. Running in update mode presents a staleness report, accepts user approval for which sections to update, and regenerates only approved sections (not full documents)
   4. Approved inbox notes are expanded into proper prose matching the target document style and placed at classified locations
   5. OVERVIEW.md is generated after all audience docs complete and accurately routes readers to audience-specific documents
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
-- [ ] 04-03: TBD
+- [ ] 04-01-PLAN.md — Full create-docs-generate.md command: initial mode, update mode, 4-stage pipeline, notes integration
+- [ ] 04-02-PLAN.md — Install validation, test suite regression check, and road-runner smoke test
 
 ### Phase 5: Verify, Notes Command & Router
 **Goal**: The verify step validates documentation quality, the add-docs command captures notes standalone, and the router ties the full pipeline together
@@ -113,5 +112,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Foundation & Infrastructure | 4/4 | Complete | 2026-03-16 |
 | 2. Templates & Agent Definitions | 4/4 | Complete | 2026-03-16 |
 | 3. Scan Pipeline | 2/2 | Complete | 2026-03-16 |
-| 4. Generate Pipeline | 0/3 | Not started | - |
+| 4. Generate Pipeline | 0/2 | Not started | - |
 | 5. Verify, Notes Command & Router | 0/2 | Not started | - |
