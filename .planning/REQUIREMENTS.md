@@ -85,11 +85,11 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **INF-03**: Python script: check-references.py (verify file paths and symbol names in docs exist)
 - [ ] **INF-04**: Python script: merge-scan.py (merge per-audience scan results into docs-scan.json)
 - [ ] **INF-05**: Python script: staleness-check.py (git-based section freshness analysis)
-- [ ] **INF-06**: Schema definition: docs-scan.json format in references/schema.md
-- [ ] **INF-07**: Style guide: cross-audience writing conventions in references/style-guide.md
+- [x] **INF-06**: Schema definition: docs-scan.json format in references/schema.md
+- [x] **INF-07**: Style guide: cross-audience writing conventions in references/style-guide.md
 - [ ] **INF-08**: install.sh with --project, --global, --target modes and sed path resolution
 - [ ] **INF-09**: Project scaffolding: .mg/docs/ with config, empty inbox, scan-logs directory
-- [ ] **INF-10**: Config: .docs.config.json with audience enable/disable, custom documents, docs_dir override
+- [x] **INF-10**: Config: .docs.config.json with audience enable/disable, custom documents, docs_dir override
 
 ## v2 Requirements
 
@@ -177,11 +177,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INF-03 | Phase 1 | Pending |
 | INF-04 | Phase 1 | Pending |
 | INF-05 | Phase 1 | Pending |
-| INF-06 | Phase 1 | Pending |
-| INF-07 | Phase 1 | Pending |
+| INF-06 | Phase 1 | Complete |
+| INF-07 | Phase 1 | Complete |
 | INF-08 | Phase 1 | Pending |
 | INF-09 | Phase 1 | Pending |
-| INF-10 | Phase 1 | Pending |
+| INF-10 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 60 total
