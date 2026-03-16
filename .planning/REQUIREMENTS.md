@@ -33,9 +33,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Templates
 
-- [ ] **TPL-01**: Three-layer template architecture: Diataxis classification + structural headings with purpose + exemplar per section
+- [x] **TPL-01**: Three-layer template architecture: Diataxis classification + structural headings with purpose + exemplar per section
 - [ ] **TPL-02**: ~13 audience-organized templates in references/templates/ matching each document type
-- [ ] **TPL-03**: Optional section markers (prevent empty boilerplate in generated docs)
+- [x] **TPL-03**: Optional section markers (prevent empty boilerplate in generated docs)
 
 ### Writer Agents
 
@@ -43,10 +43,10 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **AGT-02**: Developer writer agent with code-first, Stripe/Twilio-style conventions
 - [ ] **AGT-03**: Agent writer agent with explicit, machine-optimized conventions and YAML frontmatter
 - [ ] **AGT-04**: DevOps writer agent with runbook structure, copy-paste-ready commands
-- [ ] **AGT-05**: Glossary writer agent for terminology reconciliation across audiences
+- [x] **AGT-05**: Glossary writer agent for terminology reconciliation across audiences
 - [ ] **AGT-06**: Staleness scanner agent for per-section freshness analysis
 - [ ] **AGT-07**: Verifier agent for cross-reference, Diataxis, and completeness checking
-- [ ] **AGT-08**: Writer agents run in parallel (one per audience + glossary)
+- [x] **AGT-08**: Writer agents run in parallel (one per audience + glossary)
 
 ### Scan
 
@@ -140,17 +140,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOC-11 | Phase 4 | Pending |
 | DOC-12 | Phase 4 | Pending |
 | DOC-13 | Phase 4 | Pending |
-| TPL-01 | Phase 2 | Pending |
+| TPL-01 | Phase 2 | Complete |
 | TPL-02 | Phase 2 | Pending |
-| TPL-03 | Phase 2 | Pending |
+| TPL-03 | Phase 2 | Complete |
 | AGT-01 | Phase 2 | Pending |
 | AGT-02 | Phase 2 | Pending |
 | AGT-03 | Phase 2 | Pending |
 | AGT-04 | Phase 2 | Pending |
-| AGT-05 | Phase 2 | Pending |
+| AGT-05 | Phase 2 | Complete |
 | AGT-06 | Phase 2 | Pending |
 | AGT-07 | Phase 2 | Pending |
-| AGT-08 | Phase 2 | Pending |
+| AGT-08 | Phase 2 | Complete |
 | SCN-01 | Phase 3 | Pending |
 | SCN-02 | Phase 3 | Pending |
 | SCN-03 | Phase 3 | Pending |
