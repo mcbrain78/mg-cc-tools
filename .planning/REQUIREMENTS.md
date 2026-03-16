@@ -34,7 +34,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Templates
 
 - [x] **TPL-01**: Three-layer template architecture: Diataxis classification + structural headings with purpose + exemplar per section
-- [ ] **TPL-02**: ~13 audience-organized templates in references/templates/ matching each document type
+- [x] **TPL-02**: ~13 audience-organized templates in references/templates/ matching each document type
 - [x] **TPL-03**: Optional section markers (prevent empty boilerplate in generated docs)
 
 ### Writer Agents
@@ -141,7 +141,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOC-12 | Phase 4 | Pending |
 | DOC-13 | Phase 4 | Pending |
 | TPL-01 | Phase 2 | Complete |
-| TPL-02 | Phase 2 | Pending |
+| TPL-02 | Phase 2 | Complete |
 | TPL-03 | Phase 2 | Complete |
 | AGT-01 | Phase 2 | Pending |
 | AGT-02 | Phase 2 | Pending |
