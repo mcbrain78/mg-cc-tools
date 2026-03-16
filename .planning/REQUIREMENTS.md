@@ -11,25 +11,25 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **CMD-01**: `/mg:create-docs` router detects pipeline state (no docs, existing docs, partial scan) and routes to correct step
 - [x] **CMD-02**: `/mg:create-docs-scan` analyzes project and builds source material index mapping code files to document sections
-- [ ] **CMD-03**: `/mg:create-docs-generate` creates or updates documents section-by-section using templates and source material
+- [x] **CMD-03**: `/mg:create-docs-generate` creates or updates documents section-by-section using templates and source material
 - [ ] **CMD-04**: `/mg:create-docs-verify` checks reference integrity, cross-doc consistency, Diataxis mixing, and completeness
 - [ ] **CMD-05**: `/mg:add-docs` captures a note to inbox with auto-classification (audience, document, section, confidence)
 
 ### Documents
 
-- [ ] **DOC-01**: Shared OVERVIEW.md generated as landing page with audience routing
-- [ ] **DOC-02**: Shared GLOSSARY.md generated as terminology source of truth
-- [ ] **DOC-03**: End-user USER_GUIDE.md with task-oriented how-to articles
+- [x] **DOC-01**: Shared OVERVIEW.md generated as landing page with audience routing
+- [x] **DOC-02**: Shared GLOSSARY.md generated as terminology source of truth
+- [x] **DOC-03**: End-user USER_GUIDE.md with task-oriented how-to articles
 - [ ] **DOC-04**: End-user domain-specific documents defined in project config
-- [ ] **DOC-05**: Developer ARCHITECTURE.md with system design, data model, ADRs
-- [ ] **DOC-06**: Developer DEVELOPER_GUIDE.md with code examples and extension patterns
-- [ ] **DOC-07**: Developer QUICK_REFERENCE.md as cheat sheet with paths, commands, lookups
-- [ ] **DOC-08**: Agent SYSTEM_MAP.md with component registry, file paths, API surface
-- [ ] **DOC-09**: Agent CONVENTIONS.md with code patterns, naming, do/don't rules
-- [ ] **DOC-10**: Agent GOTCHAS.md with edge cases, ordering constraints, invariants
-- [ ] **DOC-11**: Agent TESTING.md with test patterns, isolation, fixtures
-- [ ] **DOC-12**: DevOps OPERATIONS.md with deployment, service management, config
-- [ ] **DOC-13**: DevOps TROUBLESHOOTING.md with symptom-cause-fix runbook entries
+- [x] **DOC-05**: Developer ARCHITECTURE.md with system design, data model, ADRs
+- [x] **DOC-06**: Developer DEVELOPER_GUIDE.md with code examples and extension patterns
+- [x] **DOC-07**: Developer QUICK_REFERENCE.md as cheat sheet with paths, commands, lookups
+- [x] **DOC-08**: Agent SYSTEM_MAP.md with component registry, file paths, API surface
+- [x] **DOC-09**: Agent CONVENTIONS.md with code patterns, naming, do/don't rules
+- [x] **DOC-10**: Agent GOTCHAS.md with edge cases, ordering constraints, invariants
+- [x] **DOC-11**: Agent TESTING.md with test patterns, isolation, fixtures
+- [x] **DOC-12**: DevOps OPERATIONS.md with deployment, service management, config
+- [x] **DOC-13**: DevOps TROUBLESHOOTING.md with symptom-cause-fix runbook entries
 
 ### Templates
 
@@ -61,12 +61,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Generate
 
-- [ ] **GEN-01**: Initial mode: section-by-section generation following three-layer templates with source material
-- [ ] **GEN-02**: Update mode: staleness report presented, user approves which sections to update
-- [ ] **GEN-03**: Notes integration: approved inbox notes expanded and placed at classified locations
-- [ ] **GEN-04**: Section ownership tracking via docs-meta HTML comments (last-updated, sources)
-- [ ] **GEN-05**: Cross-document consistency: writers receive glossary, new terms proposed for addition
-- [ ] **GEN-06**: OVERVIEW.md generated last (after all audience docs complete) for accurate routing
+- [x] **GEN-01**: Initial mode: section-by-section generation following three-layer templates with source material
+- [x] **GEN-02**: Update mode: staleness report presented, user approves which sections to update
+- [x] **GEN-03**: Notes integration: approved inbox notes expanded and placed at classified locations
+- [x] **GEN-04**: Section ownership tracking via docs-meta HTML comments (last-updated, sources)
+- [x] **GEN-05**: Cross-document consistency: writers receive glossary, new terms proposed for addition
+- [x] **GEN-06**: OVERVIEW.md generated last (after all audience docs complete) for accurate routing
 
 ### Verify
 
@@ -124,22 +124,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | CMD-01 | Phase 5 | Pending |
 | CMD-02 | Phase 3 | Complete |
-| CMD-03 | Phase 4 | Pending |
+| CMD-03 | Phase 4 | Complete |
 | CMD-04 | Phase 5 | Pending |
 | CMD-05 | Phase 5 | Pending |
-| DOC-01 | Phase 4 | Pending |
-| DOC-02 | Phase 4 | Pending |
-| DOC-03 | Phase 4 | Pending |
+| DOC-01 | Phase 4 | Complete |
+| DOC-02 | Phase 4 | Complete |
+| DOC-03 | Phase 4 | Complete |
 | DOC-04 | Phase 4 | Pending |
-| DOC-05 | Phase 4 | Pending |
-| DOC-06 | Phase 4 | Pending |
-| DOC-07 | Phase 4 | Pending |
-| DOC-08 | Phase 4 | Pending |
-| DOC-09 | Phase 4 | Pending |
-| DOC-10 | Phase 4 | Pending |
-| DOC-11 | Phase 4 | Pending |
-| DOC-12 | Phase 4 | Pending |
-| DOC-13 | Phase 4 | Pending |
+| DOC-05 | Phase 4 | Complete |
+| DOC-06 | Phase 4 | Complete |
+| DOC-07 | Phase 4 | Complete |
+| DOC-08 | Phase 4 | Complete |
+| DOC-09 | Phase 4 | Complete |
+| DOC-10 | Phase 4 | Complete |
+| DOC-11 | Phase 4 | Complete |
+| DOC-12 | Phase 4 | Complete |
+| DOC-13 | Phase 4 | Complete |
 | TPL-01 | Phase 2 | Complete |
 | TPL-02 | Phase 2 | Complete |
 | TPL-03 | Phase 2 | Complete |
@@ -159,12 +159,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCN-06 | Phase 3 | Complete |
 | SCN-07 | Phase 3 | Complete |
 | SCN-08 | Phase 3 | Complete |
-| GEN-01 | Phase 4 | Pending |
-| GEN-02 | Phase 4 | Pending |
-| GEN-03 | Phase 4 | Pending |
-| GEN-04 | Phase 4 | Pending |
-| GEN-05 | Phase 4 | Pending |
-| GEN-06 | Phase 4 | Pending |
+| GEN-01 | Phase 4 | Complete |
+| GEN-02 | Phase 4 | Complete |
+| GEN-03 | Phase 4 | Complete |
+| GEN-04 | Phase 4 | Complete |
+| GEN-05 | Phase 4 | Complete |
+| GEN-06 | Phase 4 | Complete |
 | VFY-01 | Phase 5 | Pending |
 | VFY-02 | Phase 5 | Pending |
 | VFY-03 | Phase 5 | Pending |
