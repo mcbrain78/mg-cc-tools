@@ -4,4 +4,170 @@ description: Verify documentation quality -- references, consistency, Diataxis, 
 allowed-tools: Bash, Read, Write, Glob, Grep, Task
 ---
 
-<!-- Content added in Phase 5 -->
+# Documentation Verifier
+
+You are the **Verifier** -- step 3 of a 3-step documentation pipeline (scan, generate, verify). Your job is to check generated documentation for quality issues: broken references, inconsistent terminology, Diataxis type mixing, completeness gaps, example validity, and link integrity. **You never modify documentation files.** You only write to the `.mg/docs/` workspace (verification output files).
+
+## Before You Start
+
+Read the shared schema that defines the data contract:
+```
+Read references/schema.md
+```
+
+This tells you the JSON format of `docs-scan.json` -- the input produced by the scanner (step 1) and consumed by the generator (step 2). You use it for completeness checks.
+
+Read the verifier agent definition. You will paste its full contents into the Task prompt when spawning the agent:
+```
+Read agents/verifier.md
+```
+
+Store the entire contents of `agents/verifier.md` in memory -- you will need it for Step 3.
+
+## Prerequisites
+
+Before proceeding, confirm these exist:
+
+1. **Scan data:** `.mg/docs/docs-scan.json` must exist. If missing:
+   ```
+   Error: No scan data found at .mg/docs/docs-scan.json.
+   Run /mg:create-docs-scan first to analyze the project.
+   ```
+
+2. **Generated docs:** The docs directory (from config `docs_dir`, default `docs/auto-doc`) must contain `.md` files. If empty or missing:
+   ```
+   Error: No generated documentation found in {docs_dir}.
+   Run /mg:create-docs-generate first to create documentation.
+   ```
+
+If either prerequisite fails, abort with the corresponding message and do not proceed.
+
+## Process
+
+### Step 1: Load Context
+
+1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
+   - `docs_dir` (default: `docs/auto-doc`)
+   - `audiences` (which are enabled and their document lists)
+
+2. **Read scan data.** Load `.mg/docs/docs-scan.json`. Extract:
+   - `root_path` as `project_root`
+   - `source_material_index` (needed for completeness checks)
+
+3. **Build runtime paths:**
+   - `docs_dir_abs` = `{project_root}/{docs_dir}`
+   - `scan_data_path` = `{project_root}/.mg/docs/docs-scan.json`
+   - `glossary_path` = `{docs_dir_abs}/GLOSSARY.md`
+   - `verify_refs_path` = `{project_root}/.mg/docs/scan-logs/verify-refs.json`
+   - `output_report_path` = `{project_root}/.mg/docs/docs-verify-report.md`
+
+4. **Ensure scan-logs directory exists:**
+   ```bash
+   mkdir -p {project_root}/.mg/docs/scan-logs
+   ```
+
+### Step 2: Reference Extraction (deterministic)
+
+Run `check-references.py` ONCE for the entire docs directory to extract all file path and symbol references:
+
+```bash
+python3 {SCRIPTS_DIR}/check-references.py \
+  --docs-dir <docs_dir_abs> \
+  --project-root <project_root> \
+  --output <project_root>/.mg/docs/scan-logs/verify-refs.json
+```
+
+**IMPORTANT:** Use `--docs-dir` (directory-level), NOT `--doc-file`. The script iterates all `.md` files in the directory internally.
+
+Save the output path (`verify-refs.json`) -- the verifier agent will read this file for Check 1.
+
+If the script fails, log the error and continue. The agent can still run the remaining 5 checks without reference extraction data.
+
+### Step 3: Spawn Verifier Agent
+
+Spawn a **single** verifier agent instance via the Task tool. Unlike codebase-health which parallelizes verification by category, documentation verification runs 6 sequential checks in one agent.
+
+Build the Task prompt by pasting the full contents of `agents/verifier.md` and providing these parameters:
+
+```
+Task(
+  description="Verify documentation quality (6 checks)",
+  prompt="You are the documentation verifier agent.
+
+[paste full contents of agents/verifier.md here]
+
+Parameters:
+- project_root: {project_root}
+- docs_dir: {docs_dir_abs}
+- scan_data_path: {project_root}/.mg/docs/docs-scan.json
+- glossary_path: {docs_dir_abs}/GLOSSARY.md
+- style_guide_path: references/style-guide.md
+- output_report_path: {project_root}/.mg/docs/docs-verify-report.md
+
+Pre-extracted references: {project_root}/.mg/docs/scan-logs/verify-refs.json
+
+OVERRIDE for Check 1 (Reference Integrity):
+Read the pre-extracted references from {project_root}/.mg/docs/scan-logs/verify-refs.json instead of running check-references.py yourself. For entries with type 'file_path', use the script's status directly (status 'broken' = critical issue, status 'valid' = no issue). For entries with type 'symbol', IGNORE the script's status -- instead use the LSP tool (go-to-definition) to verify each symbol. If LSP resolves it, it is valid. If LSP cannot resolve it, report as severity high.
+
+ADDITIONAL for Check 2 (Cross-Doc Consistency):
+During Check 2, also surface glossary inconsistency flags from the generate pipeline's reconciliation pass if {project_root}/.mg/docs/scan-logs/glossary-reconciliation.log exists. Include any flagged terms as medium-severity cross-doc consistency issues."
+)
+```
+
+Wait for the agent to complete. The agent writes `docs-verify-report.md` to the `output_report_path`.
+
+### Step 4: Present Results
+
+1. **Read the generated report:** Load `{project_root}/.mg/docs/docs-verify-report.md`.
+
+2. **Parse the severity summary table.** Extract counts for each severity level.
+
+3. **Present a concise summary:**
+   ```
+   Verification complete -- {total} issues found.
+     {N} critical, {N} high, {N} medium, {N} low, {N} info
+
+   Full report: .mg/docs/docs-verify-report.md
+   ```
+
+4. **Conditional guidance:**
+   - If critical or high issues exist:
+     ```
+     To fix documentation issues, re-run /mg:create-docs-generate after a fresh scan.
+     ```
+   - If no critical or high issues:
+     ```
+     Documentation quality looks good.
+     ```
+
+5. **Documentation gaps note:**
+   ```
+   Found {N} documentation gaps. Consider adding to .planning/BACKLOG.md as documentation debt.
+   ```
+   (Where N comes from completeness check issues in the report. If zero gaps, omit this line.)
+
+### Step 5: Suggest Next Steps
+
+- If this is the last pipeline step:
+  ```
+  Pipeline complete. Review the report and re-generate as needed.
+  ```
+
+- Direct the user to the router for pipeline overview:
+  ```
+  Run /mg:create-docs for a full pipeline status overview.
+  ```
+
+## Important Principles
+
+- **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `verify-refs.json` (scan-logs), `docs-verify-report.md`.
+- **Use `--docs-dir` not `--doc-file` for check-references.py.** The script iterates the directory internally. Calling it per-file would be redundant and slower.
+- **Agent instructions ARE pasted into the Task prompt.** The full contents of `agents/verifier.md` are included in the Task prompt so the spawned agent has its complete instruction set. The agent then reads data files itself via the paths provided.
+- **The agent uses LSP for symbol verification.** DO NOT use check-references.py's symbol status results. The script's regex-based `_symbol_exists_in_project()` misses valid symbols (re-exports, decorators, cross-module imports). The agent uses LSP go-to-definition which resolves semantically.
+- **5-tier severity model:** critical, high, medium, low, info. This matches the verifier agent's definition and the report output format.
+- **Prefer false negatives over false positives.** Same principle as the verifier agent -- only flag issues with high confidence. A noisy report trains users to ignore it.
+- **Do not modify the verifier agent file** (`agents/verifier.md`). Override behavior in the Task prompt only. The agent definition is shared infrastructure from Phase 2.
+- **Do not modify check-references.py.** It is used as-is for reference extraction.
+- **Do not modify install.sh.** All commands and sed placeholders are already handled.
+- **Use `{SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
+- **Use `{GLOBAL_CONFIG}` placeholder for default config path** -- resolved by install.sh at install time.
