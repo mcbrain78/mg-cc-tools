@@ -1,5 +1,6 @@
 """Tests for check-references.py -- file path and symbol reference checking."""
 
+import importlib
 import json
 import os
 import sys
@@ -11,7 +12,14 @@ import pytest
 # Add scripts directory to path so we can import the module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import check_references
+# Import module with hyphenated filename via importlib
+_loader = importlib.machinery.SourceFileLoader(
+    "check_references",
+    os.path.join(os.path.dirname(__file__), "..", "check-references.py"),
+)
+_spec = importlib.util.spec_from_loader("check_references", _loader)
+check_references = importlib.util.module_from_spec(_spec)
+_loader.exec_module(check_references)
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -261,11 +269,11 @@ class TestCLI:
         """--help should exit 0."""
         import subprocess
 
+        script = os.path.join(os.path.dirname(__file__), "..", "check-references.py")
         result = subprocess.run(
-            [sys.executable, "-m", "check_references", "--help"],
+            [sys.executable, script, "--help"],
             capture_output=True,
             text=True,
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
         )
         assert result.returncode == 0
 
@@ -276,15 +284,15 @@ class TestCLI:
         doc = docs_dir / "api.md"
         doc.write_text("See `src/deleted.py` for details.\n")
 
+        script = os.path.join(os.path.dirname(__file__), "..", "check-references.py")
         result = subprocess.run(
             [
-                sys.executable, "-m", "check_references",
+                sys.executable, script,
                 "--docs-dir", str(docs_dir),
                 "--project-root", str(project_dir),
             ],
             capture_output=True,
             text=True,
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
         )
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -299,16 +307,16 @@ class TestCLI:
         doc.write_text("See `src/main.py` for details.\n")
         output_file = tmp_path / "results.json"
 
+        script = os.path.join(os.path.dirname(__file__), "..", "check-references.py")
         result = subprocess.run(
             [
-                sys.executable, "-m", "check_references",
+                sys.executable, script,
                 "--docs-dir", str(docs_dir),
                 "--project-root", str(project_dir),
                 "--output", str(output_file),
             ],
             capture_output=True,
             text=True,
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
         )
         assert result.returncode == 0
         assert output_file.exists()
