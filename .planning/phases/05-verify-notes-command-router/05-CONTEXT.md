@@ -16,7 +16,9 @@ The verify step validates documentation quality, the add-docs command captures n
 
 ### Reference Integrity Check (VFY-01)
 - Every file path, symbol, command mentioned in docs → verify it exists in the codebase
-- Uses `check-references.py` (built in Phase 1)
+- File path verification: uses `check-references.py` (built in Phase 1) — filesystem checks are deterministic
+- Symbol verification: the verify **agent** uses the **LSP tool** (go-to-definition) instead of the regex-based `_symbol_exists_in_project()` in check-references.py. LSP resolves inheritance, re-exports, decorators, cross-module imports — a step change over text search. Target projects (road-runner, stock-ranker) have LSP support installed.
+- `check-references.py` acts as a reference **extractor** (symbol names + file paths from markdown). The agent handles semantic verification via LSP.
 
 ### Cross-Doc Consistency (VFY-02)
 - Terms used match glossary definitions
