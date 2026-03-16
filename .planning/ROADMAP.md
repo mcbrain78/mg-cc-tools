@@ -65,11 +65,11 @@ Plans:
   2. On a project with existing docs, the scan detects stale sections via code-reference checks (dead file paths, missing symbols) and git-based freshness (source files changed since section generated)
   3. On a project with `.planning/` directory, the scan loads GSD context (phase summaries, requirements traceability, verification gaps) into the scan output
   4. Pending notes in `notes-inbox.json` are classified with audience, document, section, and confidence level in the scan output
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md — Scan-audience subagent template and full create-docs-scan.md command
+- [ ] 03-02-PLAN.md — Install validation, test suite verification, and user smoke test
 
 ### Phase 4: Generate Pipeline
 **Goal**: The generate step creates or updates all audience-segmented documents section-by-section using templates and scan results
