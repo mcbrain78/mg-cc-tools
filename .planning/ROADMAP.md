@@ -33,9 +33,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Foundation files: shared lib, schema, style guide, config, command stubs
-- [ ] 01-02-PLAN.md — Python scripts: add-note, classify-note, merge-scan with tests
-- [ ] 01-03-PLAN.md — Python scripts: check-references, staleness-check with tests
+- [x] 01-01-PLAN.md — Foundation files: shared lib, schema, style guide, config, command stubs
+- [x] 01-02-PLAN.md — Python scripts: add-note, classify-note, merge-scan with tests
+- [x] 01-03-PLAN.md — Python scripts: check-references, staleness-check with tests
 - [ ] 01-04-PLAN.md — install.sh with three-mode support, sed resolution, project scaffolding
 
 ### Phase 2: Templates & Agent Definitions

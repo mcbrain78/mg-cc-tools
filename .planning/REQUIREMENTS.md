@@ -80,10 +80,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Infrastructure
 
-- [ ] **INF-01**: Python script: add-note.py (atomic append to notes-inbox.json)
-- [ ] **INF-02**: Python script: classify-note.py (deterministic heuristics for note classification)
+- [x] **INF-01**: Python script: add-note.py (atomic append to notes-inbox.json)
+- [x] **INF-02**: Python script: classify-note.py (deterministic heuristics for note classification)
 - [x] **INF-03**: Python script: check-references.py (verify file paths and symbol names in docs exist)
-- [ ] **INF-04**: Python script: merge-scan.py (merge per-audience scan results into docs-scan.json)
+- [x] **INF-04**: Python script: merge-scan.py (merge per-audience scan results into docs-scan.json)
 - [x] **INF-05**: Python script: staleness-check.py (git-based section freshness analysis)
 - [x] **INF-06**: Schema definition: docs-scan.json format in references/schema.md
 - [x] **INF-07**: Style guide: cross-audience writing conventions in references/style-guide.md
@@ -172,10 +172,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VFY-05 | Phase 5 | Pending |
 | VFY-06 | Phase 5 | Pending |
 | VFY-07 | Phase 5 | Pending |
-| INF-01 | Phase 1 | Pending |
-| INF-02 | Phase 1 | Pending |
+| INF-01 | Phase 1 | Complete |
+| INF-02 | Phase 1 | Complete |
 | INF-03 | Phase 1 | Complete |
-| INF-04 | Phase 1 | Pending |
+| INF-04 | Phase 1 | Complete |
 | INF-05 | Phase 1 | Complete |
 | INF-06 | Phase 1 | Complete |
 | INF-07 | Phase 1 | Complete |
