@@ -25,16 +25,18 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Depends on**: Nothing (first phase)
 **Requirements**: INF-01, INF-02, INF-03, INF-04, INF-05, INF-06, INF-07, INF-08, INF-09, INF-10
 **Success Criteria** (what must be TRUE):
-  1. Running `install.sh --project` on a test directory creates `.claude/commands/mg/`, `.claude/docs/agents/`, `.claude/docs/scripts/`, `.claude/docs/references/` with correct structure and sed-resolved paths
+  1. Running `install.sh --project` on a test directory creates `.claude/commands/mg/`, `.claude/create-docs/agents/`, `.claude/create-docs/scripts/`, `.claude/create-docs/references/` with correct structure and sed-resolved paths
   2. Running `install.sh --project` scaffolds `.mg/docs/` with default config, empty notes inbox, and scan-logs directory
   3. Each Python script (add-note, classify-note, check-references, merge-scan, staleness-check) can be invoked standalone and produces correct JSON output for valid input
   4. `references/schema.md` defines the complete `docs-scan.json` data contract with all fields documented
   5. `references/style-guide.md` contains cross-audience writing conventions that writer agents can follow
-**Plans**: TBD
+**Plans:** 4 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Foundation files: shared lib, schema, style guide, config, command stubs
+- [ ] 01-02-PLAN.md — Python scripts: add-note, classify-note, merge-scan with tests
+- [ ] 01-03-PLAN.md — Python scripts: check-references, staleness-check with tests
+- [ ] 01-04-PLAN.md — install.sh with three-mode support, sed resolution, project scaffolding
 
 ### Phase 2: Templates & Agent Definitions
 **Goal**: All static content files (templates and agent prompts) are authored so the pipeline can use them for generation
@@ -106,7 +108,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Infrastructure | 0/2 | Not started | - |
+| 1. Foundation & Infrastructure | 0/4 | Planning complete | - |
 | 2. Templates & Agent Definitions | 0/2 | Not started | - |
 | 3. Scan Pipeline | 0/2 | Not started | - |
 | 4. Generate Pipeline | 0/3 | Not started | - |
