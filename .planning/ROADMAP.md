@@ -12,7 +12,7 @@ Build a documentation lifecycle tool that scans a project and generates audience
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Infrastructure** - Python scripts, schema, config, install.sh, style guide, project scaffolding
+- [x] **Phase 1: Foundation & Infrastructure** - Python scripts, schema, config, install.sh, style guide, project scaffolding
 - [ ] **Phase 2: Templates & Agent Definitions** - Three-layer template architecture, ~13 templates, 7 agent definitions, parallel execution setup
 - [ ] **Phase 3: Scan Pipeline** - Project orientation, source material index, staleness detection, notes classification, gap analysis, scan command
 - [ ] **Phase 4: Generate Pipeline** - Section-by-section generation, update mode, notes integration, all 13 document types, generate command
@@ -36,7 +36,7 @@ Plans:
 - [x] 01-01-PLAN.md — Foundation files: shared lib, schema, style guide, config, command stubs
 - [x] 01-02-PLAN.md — Python scripts: add-note, classify-note, merge-scan with tests
 - [x] 01-03-PLAN.md — Python scripts: check-references, staleness-check with tests
-- [ ] 01-04-PLAN.md — install.sh with three-mode support, sed resolution, project scaffolding
+- [x] 01-04-PLAN.md — install.sh with three-mode support, sed resolution, project scaffolding
 
 ### Phase 2: Templates & Agent Definitions
 **Goal**: All static content files (templates and agent prompts) are authored so the pipeline can use them for generation
@@ -108,7 +108,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Infrastructure | 3/4 | In Progress | - |
+| 1. Foundation & Infrastructure | 4/4 | Complete | 2026-03-16 |
 | 2. Templates & Agent Definitions | 0/2 | Not started | - |
 | 3. Scan Pipeline | 0/2 | Not started | - |
 | 4. Generate Pipeline | 0/3 | Not started | - |

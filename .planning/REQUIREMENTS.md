@@ -87,8 +87,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INF-05**: Python script: staleness-check.py (git-based section freshness analysis)
 - [x] **INF-06**: Schema definition: docs-scan.json format in references/schema.md
 - [x] **INF-07**: Style guide: cross-audience writing conventions in references/style-guide.md
-- [ ] **INF-08**: install.sh with --project, --global, --target modes and sed path resolution
-- [ ] **INF-09**: Project scaffolding: .mg/docs/ with config, empty inbox, scan-logs directory
+- [x] **INF-08**: install.sh with --project, --global, --target modes and sed path resolution
+- [x] **INF-09**: Project scaffolding: .mg/docs/ with config, empty inbox, scan-logs directory
 - [x] **INF-10**: Config: .docs.config.json with audience enable/disable, custom documents, docs_dir override
 
 ## v2 Requirements
@@ -179,8 +179,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INF-05 | Phase 1 | Complete |
 | INF-06 | Phase 1 | Complete |
 | INF-07 | Phase 1 | Complete |
-| INF-08 | Phase 1 | Pending |
-| INF-09 | Phase 1 | Pending |
+| INF-08 | Phase 1 | Complete |
+| INF-09 | Phase 1 | Complete |
 | INF-10 | Phase 1 | Complete |
 
 **Coverage:**
