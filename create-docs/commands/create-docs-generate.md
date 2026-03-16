@@ -54,7 +54,95 @@ This tells you the JSON format of `docs-scan.json` -- the input produced by the 
 
 If mode is `"initial"`, skip this step entirely and proceed to Step 3.
 
-<!-- UPDATE APPROVAL FLOW: Added by Task 2 -->
+#### 2a. Parse Staleness Data
+
+1. Read the `staleness_report` array from `docs-scan.json`. Group entries by `document` name. For each document, count sections per severity level (`high`, `medium`, `low`).
+
+2. Read the `note_classifications` array from `docs-scan.json`. Filter for pending notes only -- notes whose `note_id` does NOT already have `"status": "integrated"` in `.mg/docs/notes-inbox.json`. Count pending notes.
+
+3. If both the staleness report is empty AND there are no pending notes, print:
+   ```
+   No stale sections or pending notes found. Nothing to update.
+   ```
+   Then exit gracefully (no generation needed).
+
+#### 2b. Present Level 1 Overview
+
+Use AskUserQuestion to present a document-level summary:
+
+```
+Documentation Update Report:
+
+Staleness:
+  ARCHITECTURE.md:    3 stale sections (2 high, 1 medium)
+  DEVELOPER_GUIDE.md: 1 stale section (1 low)
+  SYSTEM_MAP.md:      2 stale sections (2 high)
+
+Inbox notes: 2 pending (1 for ARCHITECTURE, 1 for USER_GUIDE)
+
+How would you like to proceed?
+  1. Approve all -- update all stale sections and integrate all notes
+  2. Select by document -- choose which documents to update
+  3. Select by severity -- approve by minimum severity level
+  4. Cancel -- exit without changes
+```
+
+#### 2c. Handle User Selection
+
+- **If "Cancel" (option 4):** Exit with message: `"No sections approved for update. Run again when ready."`
+
+- **If "Approve all" (option 1):** Approve all stale sections from the staleness report plus all pending notes. Build the `approved_sections` dict from the full staleness report.
+
+- **If "Select by document" (option 2):** For each document that has stale sections, use AskUserQuestion to show section details and ask which to approve:
+
+  ```
+  ARCHITECTURE.md -- 3 stale sections:
+    1. system-overview -- src/app.ts changed (2026-03-15) [high]
+    2. data-model -- schema.prisma changed (2026-03-14) [high]
+    3. component-map -- lib/utils.py changed (2026-03-10) [medium]
+
+  Approve: all / none / specific numbers (e.g., "1,3")
+  ```
+
+- **If "Select by severity" (option 3):** Use AskUserQuestion to ask for the minimum severity level:
+
+  ```
+  Approve by severity:
+    1. High only ({N} sections)
+    2. High + Medium ({N} sections)
+    3. All severities ({N} sections)
+  ```
+  Approve all sections at or above the selected severity level.
+
+#### 2d. Notes Approval
+
+After staleness approval is complete, present pending inbox notes as a **separate group**:
+
+```
+Pending inbox notes:
+  NOTE-003: "Add auth flow documentation" -> ARCHITECTURE/auth-flow [confidence: 0.85]
+  NOTE-005: "Document the new CLI flags" -> USER_GUIDE/getting-started [confidence: 0.72]
+
+Approve: all / none / specific IDs (e.g., "NOTE-003")
+```
+
+Use AskUserQuestion for this approval. Approved notes will be expanded into their classified document/section during generation by the relevant writer agent.
+
+#### 2e. Build Approved Sections Dict
+
+Combine staleness approvals and note approvals into a single `approved_sections` dict:
+
+```json
+{
+  "developers": ["system-overview", "data-model"],
+  "agents": ["tool-registry"],
+  "end-users": ["getting-started"]
+}
+```
+
+**Normalize section identifiers to slug format:** Template headings use Title Case (e.g., "System Overview"), but `source_material_index` and `staleness_report` use lowercased-hyphenated slugs (e.g., `system-overview`). Always convert to slug format when building `approved_sections`. Writer agents match by slug.
+
+For notes: add the note's classified `section` slug to the appropriate audience's list in `approved_sections` (so the writer agent regenerates that section and includes the note's expanded content).
 
 ### Step 3: Prepare Workspace
 
@@ -223,4 +311,154 @@ Generate OVERVIEW.md **inline** (not via subagent). The orchestrator already has
 
 5. **Write to** `{docs_dir_abs}/OVERVIEW.md`.
 
-<!-- REMAINING SECTIONS (Step 4: Notes Integration, Step 5: Summary) added by Task 2 -->
+### Step 4: Notes Integration
+
+After all generation stages complete, update the notes inbox to mark integrated notes.
+
+**Only run this step if** notes were approved during Step 2 (update mode) AND writer agents integrated them during generation.
+
+1. **Read the notes inbox:**
+   ```
+   Read {project_root}/.mg/docs/notes-inbox.json
+   ```
+
+2. **For each approved and integrated note,** update its entry in the `notes` array:
+   - Set `"status": "integrated"`
+   - Add `"integrated_date": "YYYY-MM-DD"` (today's date)
+   - Preserve all other fields (`note_id`, `text`, `classified`, `audience`, `document`, `section`, `confidence`, `expansion_outline`)
+
+3. **Write the full updated inbox** back as a single atomic write:
+   ```
+   Write the complete notes-inbox.json with all notes (integrated and non-integrated)
+   to: {project_root}/.mg/docs/notes-inbox.json
+   ```
+   Do NOT write notes one at a time. Read the full file, update all integrated notes in memory, and write the complete file once. This prevents partial-update corruption.
+
+### Step 5: Summary and Next Steps
+
+After all generation and notes integration is complete, present a generation report.
+
+1. **Collect stats for each generated or updated file.** For every `.md` file in `{docs_dir_abs}` (including subdirectories):
+   - Count sections (`## ` headings)
+   - Count words (approximate: split by whitespace, excluding HTML comments and frontmatter)
+   - Determine status:
+     - `Generated` -- file was created in this run (initial mode, or new file in update mode)
+     - `Updated` -- file existed before and was modified in this run (update mode)
+     - `Unchanged` -- file existed before and was not modified (update mode, no approved sections)
+
+2. **Present the summary table:**
+
+   ```
+   Generation Summary:
+
+   | File                              | Sections | Words  | Status    |
+   |-----------------------------------|----------|--------|-----------|
+   | GLOSSARY.md                       | 5        | 820    | Generated |
+   | end-users/USER_GUIDE.md           | 6        | 1,450  | Generated |
+   | developers/ARCHITECTURE.md        | 7        | 2,100  | Generated |
+   | developers/DEVELOPER_GUIDE.md     | 5        | 1,800  | Generated |
+   | developers/QUICK_REFERENCE.md     | 4        | 650    | Generated |
+   | agents/SYSTEM_MAP.md              | 6        | 1,200  | Generated |
+   | agents/CONVENTIONS.md             | 4        | 900    | Generated |
+   | agents/GOTCHAS.md                 | 3        | 500    | Generated |
+   | agents/TESTING.md                 | 4        | 700    | Generated |
+   | devops/OPERATIONS.md              | 5        | 1,100  | Generated |
+   | devops/TROUBLESHOOTING.md         | 4        | 800    | Generated |
+   | OVERVIEW.md                       | 4        | 450    | Generated |
+
+   Total: 12 files, 57 sections, ~12,470 words
+   ```
+
+3. **Show additional stats** (if applicable):
+   - If notes were integrated: `"Notes integrated: {count} ({note_id list})"`
+   - If glossary reconciliation added terms: `"New glossary terms: {count} added during reconciliation"` (read from `.mg/docs/scan-logs/glossary-reconciliation.log` if it exists)
+
+4. **Suggest next step:**
+   ```
+   Next step: Run /mg:create-docs-verify to check reference integrity and consistency.
+   ```
+
+## Key Formats Reference
+
+### File Ownership Header
+
+Every generated file MUST start with this header at the very top, before any other content:
+
+```
+<!-- This file is auto-generated by /mg:create-docs. To add content, use /mg:add-docs. Manual edits may be overwritten. -->
+```
+
+This goes BEFORE the `<!-- DIATAXIS: ... -->` and `<!-- AUDIENCE: ... -->` comments and before the H1 heading:
+
+```markdown
+<!-- This file is auto-generated by /mg:create-docs. To add content, use /mg:add-docs. Manual edits may be overwritten. -->
+<!-- DIATAXIS: explanation + reference -->
+<!-- AUDIENCE: developers -->
+
+# Architecture
+```
+
+### docs-meta HTML Comment
+
+After each `## ` section heading, include a metadata comment for staleness tracking:
+
+```markdown
+## System Overview
+<!-- docs-meta: last-updated: 2026-03-16, sources: [src/app.ts, src/routes/index.ts] -->
+```
+
+Format: `<!-- docs-meta: last-updated: {YYYY-MM-DD}, sources: [{comma-separated source file paths}] -->`
+
+The staleness-check.py script in the scan step parses these comments to detect when source files have changed since the section was last generated.
+
+### Output Directory Layout
+
+```
+docs/auto-doc/
+  OVERVIEW.md          # Shared -- generated last (Stage 4)
+  GLOSSARY.md          # Shared -- generated first + reconciled (Stages 1, 3)
+  end-users/
+    USER_GUIDE.md
+  developers/
+    ARCHITECTURE.md
+    DEVELOPER_GUIDE.md
+    QUICK_REFERENCE.md
+  agents/
+    SYSTEM_MAP.md
+    CONVENTIONS.md
+    GOTCHAS.md
+    TESTING.md
+  devops/
+    OPERATIONS.md
+    TROUBLESHOOTING.md
+```
+
+### Source Material Index Key Format
+
+Keys in the `source_material_index` from scan data follow the format `{DOCUMENT_NAME}/{section-slug}`:
+- `DOCUMENT_NAME` matches config entries exactly (uppercase, e.g., `"ARCHITECTURE"`)
+- `section-slug` is the template heading lowercased with spaces replaced by hyphens (e.g., `"system-overview"`)
+
+Examples: `ARCHITECTURE/system-overview`, `USER_GUIDE/getting-started`, `OPERATIONS/deployment-pipeline`
+
+## Important Principles
+
+- **Agents receive file paths only; they read files themselves.** Do not paste source material, templates, or scan data content into subagent prompts. Pass paths as strings. The locked decision says: "Agents receive file paths only, read files themselves." This prevents context limit blowouts on large projects.
+
+- **Agent instructions ARE pasted into Task prompts.** While agents receive file paths for data, the agent definition file itself (e.g., `agents/developer-writer.md`) IS pasted into the Task prompt. This is required because subagents cannot read the agent definition file via relative path. This follows the codebase-health pattern.
+
+- **Create all output directories before spawning writers.** Writer agents assume their target directories exist. Create the full tree in Step 3 before any Stage runs. Failure to do this causes FileNotFoundError in subagents.
+
+- **Clean terms-*.json before each generation run.** Stale term proposal files from prior runs cause the glossary reconciliation to re-add already-reconciled terms. Always delete them in Step 3.
+
+- **OVERVIEW.md is always generated last.** It needs accurate knowledge of what each audience directory contains to build the routing table. Generating it before writers complete produces an inaccurate Audience Guide.
+
+- **Glossary runs first even in update mode.** Even if GLOSSARY.md exists from a prior run, the glossary agent re-runs its initial pass to catch new terms from updated scan data. Skipping it risks terminology drift.
+
+- **Only spawn writer agents for audiences with approved sections in update mode.** If a user only approves developer doc updates, do not spawn end-user, agent, or devops writers. This saves subagent cost and avoids unnecessary work.
+
+- **File ownership header goes at the very TOP.** Before DIATAXIS comments, before AUDIENCE comments, before the H1 heading. This is the first thing in every generated file. It tells users and tools that the file is machine-owned.
+
+- **No memory of rejections between runs.** If a user rejects a stale section during the approval flow, it reappears on the next update run. The generate command does not track rejection history. This is intentional -- the user may change their mind, and the staleness data may change.
+
+- **Normalize section identifiers to slug format.** Template headings use Title Case ("System Overview"), but source_material_index and staleness_report use lowercased-hyphenated slugs ("system-overview"). Always convert to slug format when matching sections.
