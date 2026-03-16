@@ -48,11 +48,13 @@ Plans:
   3. Each of the 4 audience writer agents (end-user, developer, agent, devops) contains audience-specific format conventions, Diataxis guidance, and instructions for section-by-section generation
   4. Glossary writer, staleness scanner, and verifier agent definitions contain complete operational instructions for their specialized roles
   5. Agent definitions include instructions for parallel execution (one writer per audience + glossary concurrently)
-**Plans**: TBD
+**Plans:** 4 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Shared agent pattern (TEMPLATE.md), glossary writer, shared + end-user templates
+- [ ] 02-02-PLAN.md — Developer, agent, and devops audience templates (9 templates)
+- [ ] 02-03-PLAN.md — Four audience-specific writer agent definitions
+- [ ] 02-04-PLAN.md — Staleness scanner, verifier agents, and install.sh templates patch
 
 ### Phase 3: Scan Pipeline
 **Goal**: The scan step analyzes a project and produces a complete docs-scan.json that downstream generation can consume
@@ -109,7 +111,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Infrastructure | 4/4 | Complete | 2026-03-16 |
-| 2. Templates & Agent Definitions | 0/2 | Not started | - |
+| 2. Templates & Agent Definitions | 0/4 | Not started | - |
 | 3. Scan Pipeline | 0/2 | Not started | - |
 | 4. Generate Pipeline | 0/3 | Not started | - |
 | 5. Verify, Notes Command & Router | 0/2 | Not started | - |
