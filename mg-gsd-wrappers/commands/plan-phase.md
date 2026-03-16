@@ -1,8 +1,8 @@
-# Plan Phase (Deviation-Aware)
+# /mg:plan-phase — GSD Deviation-Aware Phase Planner
 
 ---
 name: mg:plan-phase
-description: Deviation-aware wrapper for gsd:plan-phase — checks for conflicts before planning
+description: Invoke only via /mg:plan-phase <number> — wraps gsd:plan-phase with pre-flight deviation conflict checks
 argument-hint: "<phase-number> [--flags]"
 allowed-tools:
   - Read

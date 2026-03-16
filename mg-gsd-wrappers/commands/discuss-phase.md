@@ -1,8 +1,8 @@
-# Discuss Phase (Deviation-Aware)
+# /mg:discuss-phase — GSD Deviation-Aware Phase Discussion
 
 ---
 name: mg:discuss-phase
-description: Deviation-aware wrapper for gsd:discuss-phase — surfaces implementation findings before discussion
+description: Invoke only via /mg:discuss-phase <number> — wraps gsd:discuss-phase with prior-phase deviation context
 argument-hint: "<phase-number>"
 allowed-tools:
   - Read

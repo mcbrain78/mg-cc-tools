@@ -1,8 +1,8 @@
-# Execute Phase (Deviation Flagging)
+# /mg:execute-phase — GSD Phase Executor with Deviation Flagging
 
 ---
 name: mg:execute-phase
-description: Wrapper for gsd:execute-phase — flags downstream deviation impact after execution
+description: Invoke only via /mg:execute-phase <number> — wraps gsd:execute-phase with post-execution deviation impact analysis
 argument-hint: "<phase-number> [--flags]"
 allowed-tools:
   - Read

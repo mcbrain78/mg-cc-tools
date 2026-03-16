@@ -1,8 +1,8 @@
-# Discuss Milestone
+# /mg:discuss-milestone — GSD Batch Milestone Discussion
 
 ---
 name: mg:discuss-milestone
-description: Batch all phase discussions in one session — cross-cutting themes first, then per-phase details
+description: Invoke only via /mg:discuss-milestone — batches all phase discussions with cross-cutting themes first
 argument-hint: "[milestone-name]"
 allowed-tools:
   - Read
