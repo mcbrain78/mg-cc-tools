@@ -12,8 +12,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CMD-01**: `/mg:create-docs` router detects pipeline state (no docs, existing docs, partial scan) and routes to correct step
 - [x] **CMD-02**: `/mg:create-docs-scan` analyzes project and builds source material index mapping code files to document sections
 - [x] **CMD-03**: `/mg:create-docs-generate` creates or updates documents section-by-section using templates and source material
-- [ ] **CMD-04**: `/mg:create-docs-verify` checks reference integrity, cross-doc consistency, Diataxis mixing, and completeness
-- [ ] **CMD-05**: `/mg:add-docs` captures a note to inbox with auto-classification (audience, document, section, confidence)
+- [x] **CMD-04**: `/mg:create-docs-verify` checks reference integrity, cross-doc consistency, Diataxis mixing, and completeness
+- [x] **CMD-05**: `/mg:add-docs` captures a note to inbox with auto-classification (audience, document, section, confidence)
 
 ### Documents
 
@@ -70,13 +70,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Verify
 
-- [ ] **VFY-01**: Reference integrity: file paths, symbol names, commands in docs verified against codebase
-- [ ] **VFY-02**: Cross-doc consistency: terms match glossary, descriptions match across audiences
-- [ ] **VFY-03**: Diataxis mixing detection: flag tutorial content in reference docs, explanation in how-to
-- [ ] **VFY-04**: Completeness: major code components have documentation for each relevant audience
-- [ ] **VFY-05**: Example validity: code examples are syntactically valid
-- [ ] **VFY-06**: Link integrity: internal markdown links between docs resolve
-- [ ] **VFY-07**: Output as docs-verify-report.md with issues by severity
+- [x] **VFY-01**: Reference integrity: file paths, symbol names, commands in docs verified against codebase
+- [x] **VFY-02**: Cross-doc consistency: terms match glossary, descriptions match across audiences
+- [x] **VFY-03**: Diataxis mixing detection: flag tutorial content in reference docs, explanation in how-to
+- [x] **VFY-04**: Completeness: major code components have documentation for each relevant audience
+- [x] **VFY-05**: Example validity: code examples are syntactically valid
+- [x] **VFY-06**: Link integrity: internal markdown links between docs resolve
+- [x] **VFY-07**: Output as docs-verify-report.md with issues by severity
 
 ### Infrastructure
 
@@ -125,8 +125,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CMD-01 | Phase 5 | Pending |
 | CMD-02 | Phase 3 | Complete |
 | CMD-03 | Phase 4 | Complete |
-| CMD-04 | Phase 5 | Pending |
-| CMD-05 | Phase 5 | Pending |
+| CMD-04 | Phase 5 | Complete |
+| CMD-05 | Phase 5 | Complete |
 | DOC-01 | Phase 4 | Complete |
 | DOC-02 | Phase 4 | Complete |
 | DOC-03 | Phase 4 | Complete |
@@ -165,13 +165,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GEN-04 | Phase 4 | Complete |
 | GEN-05 | Phase 4 | Complete |
 | GEN-06 | Phase 4 | Complete |
-| VFY-01 | Phase 5 | Pending |
-| VFY-02 | Phase 5 | Pending |
-| VFY-03 | Phase 5 | Pending |
-| VFY-04 | Phase 5 | Pending |
-| VFY-05 | Phase 5 | Pending |
-| VFY-06 | Phase 5 | Pending |
-| VFY-07 | Phase 5 | Pending |
+| VFY-01 | Phase 5 | Complete |
+| VFY-02 | Phase 5 | Complete |
+| VFY-03 | Phase 5 | Complete |
+| VFY-04 | Phase 5 | Complete |
+| VFY-05 | Phase 5 | Complete |
+| VFY-06 | Phase 5 | Complete |
+| VFY-07 | Phase 5 | Complete |
 | INF-01 | Phase 1 | Complete |
 | INF-02 | Phase 1 | Complete |
 | INF-03 | Phase 1 | Complete |
