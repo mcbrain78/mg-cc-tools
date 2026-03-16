@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation & Infrastructure** - Python scripts, schema, config, install.sh, style guide, project scaffolding
 - [x] **Phase 2: Templates & Agent Definitions** - Three-layer template architecture, ~13 templates, 7 agent definitions, parallel execution setup
 - [x] **Phase 3: Scan Pipeline** - Project orientation, source material index, staleness detection, notes classification, gap analysis, scan command
-- [ ] **Phase 4: Generate Pipeline** - Section-by-section generation, update mode, notes integration, all 13 document types, generate command
+- [x] **Phase 4: Generate Pipeline** - Section-by-section generation, update mode, notes integration, all 13 document types, generate command
 - [ ] **Phase 5: Verify, Notes Command & Router** - Reference integrity, cross-doc consistency, Diataxis checks, completeness, add-docs command, router command
 
 ## Phase Details
@@ -96,11 +96,11 @@ Plans:
   2. Running `/mg:add-docs "some note"` appends the note to `notes-inbox.json` with auto-classification (audience, document, section, confidence) and displays the classification for user correction
   3. Running `/mg:create-docs` detects pipeline state (no docs = initial creation, existing docs = update mode, partial scan = resume) and routes to the correct step automatically
   4. The complete pipeline (scan, generate, verify) can be run end-to-end via `/mg:create-docs` on a real project (road-runner) producing usable documentation
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Verify command and add-docs command: orchestrate verifier agent, standalone note capture
+- [ ] 05-02-PLAN.md — Router command and end-to-end pipeline validation on road-runner
 
 ## Progress
 
