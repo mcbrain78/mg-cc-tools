@@ -10,7 +10,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Commands
 
 - [ ] **CMD-01**: `/mg:create-docs` router detects pipeline state (no docs, existing docs, partial scan) and routes to correct step
-- [ ] **CMD-02**: `/mg:create-docs-scan` analyzes project and builds source material index mapping code files to document sections
+- [x] **CMD-02**: `/mg:create-docs-scan` analyzes project and builds source material index mapping code files to document sections
 - [ ] **CMD-03**: `/mg:create-docs-generate` creates or updates documents section-by-section using templates and source material
 - [ ] **CMD-04**: `/mg:create-docs-verify` checks reference integrity, cross-doc consistency, Diataxis mixing, and completeness
 - [ ] **CMD-05**: `/mg:add-docs` captures a note to inbox with auto-classification (audience, document, section, confidence)
@@ -50,14 +50,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Scan
 
-- [ ] **SCN-01**: Project orientation: code structure, tech stack, entry points, deployment artifacts, existing docs
-- [ ] **SCN-02**: Source material index mapping code files to document sections
-- [ ] **SCN-03**: GSD context loading: phase SUMMARYs, REQUIREMENTS.md traceability, VERIFICATION.md gaps
-- [ ] **SCN-04**: Staleness detection: code-reference checks (file paths, symbol names exist in codebase)
-- [ ] **SCN-05**: Staleness detection: git-based section freshness (source files changed since section generated)
-- [ ] **SCN-06**: Notes inbox classification: pending notes assigned to audience, document, section
-- [ ] **SCN-07**: Gap analysis: code components without documentation for each audience
-- [ ] **SCN-08**: Output as docs-scan.json shared data contract
+- [x] **SCN-01**: Project orientation: code structure, tech stack, entry points, deployment artifacts, existing docs
+- [x] **SCN-02**: Source material index mapping code files to document sections
+- [x] **SCN-03**: GSD context loading: phase SUMMARYs, REQUIREMENTS.md traceability, VERIFICATION.md gaps
+- [x] **SCN-04**: Staleness detection: code-reference checks (file paths, symbol names exist in codebase)
+- [x] **SCN-05**: Staleness detection: git-based section freshness (source files changed since section generated)
+- [x] **SCN-06**: Notes inbox classification: pending notes assigned to audience, document, section
+- [x] **SCN-07**: Gap analysis: code components without documentation for each audience
+- [x] **SCN-08**: Output as docs-scan.json shared data contract
 
 ### Generate
 
@@ -123,7 +123,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | CMD-01 | Phase 5 | Pending |
-| CMD-02 | Phase 3 | Pending |
+| CMD-02 | Phase 3 | Complete |
 | CMD-03 | Phase 4 | Pending |
 | CMD-04 | Phase 5 | Pending |
 | CMD-05 | Phase 5 | Pending |
@@ -151,14 +151,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AGT-06 | Phase 2 | Complete |
 | AGT-07 | Phase 2 | Complete |
 | AGT-08 | Phase 2 | Complete |
-| SCN-01 | Phase 3 | Pending |
-| SCN-02 | Phase 3 | Pending |
-| SCN-03 | Phase 3 | Pending |
-| SCN-04 | Phase 3 | Pending |
-| SCN-05 | Phase 3 | Pending |
-| SCN-06 | Phase 3 | Pending |
-| SCN-07 | Phase 3 | Pending |
-| SCN-08 | Phase 3 | Pending |
+| SCN-01 | Phase 3 | Complete |
+| SCN-02 | Phase 3 | Complete |
+| SCN-03 | Phase 3 | Complete |
+| SCN-04 | Phase 3 | Complete |
+| SCN-05 | Phase 3 | Complete |
+| SCN-06 | Phase 3 | Complete |
+| SCN-07 | Phase 3 | Complete |
+| SCN-08 | Phase 3 | Complete |
 | GEN-01 | Phase 4 | Pending |
 | GEN-02 | Phase 4 | Pending |
 | GEN-03 | Phase 4 | Pending |
