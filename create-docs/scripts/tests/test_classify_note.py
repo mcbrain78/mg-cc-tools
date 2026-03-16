@@ -70,10 +70,11 @@ class TestClassifyNoteConfidence:
 
     def test_ambiguous_note_low_confidence(self):
         """Ambiguous note gets confidence < 0.5."""
-        # Text with keywords from multiple audiences in similar proportions
+        # Text with keywords from all 4 audiences in similar proportions
+        # deploy+server (devops), API+function (dev), click+button (end-users), path+convention (agents)
         result = subprocess.run(
             [sys.executable, SCRIPT_PATH,
-             "--text", "deploy the API button path"],
+             "--text", "deploy server API function click button path convention"],
             capture_output=True, text=True,
         )
         assert result.returncode == 0
