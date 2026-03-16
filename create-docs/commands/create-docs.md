@@ -4,4 +4,124 @@ description: Documentation lifecycle router -- detects pipeline state and routes
 allowed-tools: Bash, Read, Write, Glob, Grep
 ---
 
-<!-- Content added in Phase 5 -->
+# Documentation Pipeline Router
+
+You are the **entry point** for a 3-step documentation pipeline. Your job is to assess the current state and guide the user to the right next step.
+
+## How the Pipeline Works
+
+```
+  SCAN ---------> GENERATE ---------> VERIFY
+  (read-only)     (writes docs)       (read-only)
+  analyzes code   creates/updates     checks quality
+```
+
+Three commands, always run in order:
+1. `/mg:create-docs-scan` -- Scans the codebase and builds source material index. Read-only.
+2. `/mg:create-docs-generate` -- Creates or updates audience-segmented documents section-by-section. The only step that writes documentation files.
+3. `/mg:create-docs-verify` -- Checks reference integrity, cross-doc consistency, Diataxis compliance, completeness. Read-only.
+
+Plus a companion command:
+- `/mg:add-docs` -- Capture documentation notes to the inbox (standalone, runs independently of the pipeline).
+
+## Your Task: Detect State and Route
+
+Check the project state and determine pipeline position. Load config first.
+
+### Step 0: Load Configuration
+
+Read `.mg/docs/.docs.config.json` from the project root. If not found, read defaults from `{GLOBAL_CONFIG}`. Extract `docs_dir` (default: `docs/auto-doc`).
+
+### State Detection
+
+Run these checks IN ORDER:
+
+1. **Does `.mg/docs/` directory exist?**
+   - NO -> Route A (fresh start)
+
+2. **Does `.mg/docs/docs-scan.json` exist?**
+   - NO -> Check if docs exist in `{docs_dir}/`. If docs exist but no scan data, this is "update mode needing a scan" -- suggest `/mg:create-docs-scan` (which will detect existing docs as update mode). If no docs either, Route A.
+
+3. **Partial scan detection.** If `docs-scan.json` exists, read it and check for required top-level fields: `project_model`, `source_material_index`, `gap_analysis`. If any are missing, treat as incomplete scan and suggest re-running `/mg:create-docs-scan`.
+
+4. **Does `{docs_dir}/` contain any `.md` files?**
+   (Use Glob to check for `.md` files in the docs directory)
+   - NO -> Route B (scan done, generation needed)
+
+5. **Does `.mg/docs/docs-verify-report.md` exist?**
+   - NO -> Route C (generation done, verification needed)
+
+6. **All exist** -> Route D (pipeline complete)
+
+### Route A: No scan yet (or fresh start)
+
+Present the pipeline overview:
+
+```
+This project hasn't been scanned for documentation yet.
+
+The documentation pipeline creates audience-segmented docs in 3 steps:
+  1. Scan    -- analyze code structure, tech stack, components
+  2. Generate -- create docs for end-users, developers, agents, devops
+  3. Verify   -- check references, consistency, completeness
+
+All steps are guided. You review results between each step.
+
+Ready to scan? Run:  /mg:create-docs-scan
+```
+
+### Route B: Scan complete, needs generation
+
+Read `docs-scan.json` and show a brief summary:
+
+```
+Scan complete -- ready to generate documentation.
+
+  Tech stack:  {tech_stack items from project_model}
+  Components:  {count from project_model.components}
+  Entry points: {count from project_model.entry_points}
+  Source material entries: {count from source_material_index}
+
+Review the scan data: .mg/docs/docs-scan.json
+
+When ready, generate documentation:
+  /mg:create-docs-generate
+```
+
+### Route C: Generation complete, needs verification
+
+Show docs summary:
+
+```
+Documentation generated -- ready for verification.
+
+  Documents: {count .md files in docs_dir}
+  Audiences: {list enabled audiences from config}
+
+When ready, verify documentation quality:
+  /mg:create-docs-verify
+```
+
+### Route D: Pipeline complete
+
+Read `docs-verify-report.md` and show a brief summary:
+
+```
+Pipeline complete -- last verification results:
+
+  {severity summary from report: N critical, N high, N medium, N low, N info}
+
+Review the verification report: .mg/docs/docs-verify-report.md
+
+Options:
+  - Re-scan:   /mg:create-docs-scan      (re-analyze codebase for changes)
+  - Re-verify: /mg:create-docs-verify     (re-check documentation quality)
+  - Add notes: /mg:add-docs "your note"   (capture documentation notes)
+```
+
+## Important
+
+- **Never run a pipeline step yourself.** Your job is to detect state, show a summary, and tell the user what command to run next. The user invokes each step explicitly.
+- **Always read the reports** when they exist. Don't just check for file existence -- pull out the key numbers so the user gets a useful snapshot without having to open the files.
+- **Be concise.** This is a routing command, not an analysis. Show the status, show the next step, done.
+- **When docs exist but no scan data,** suggest scan (not generate) -- the scan step handles update mode detection.
