@@ -151,6 +151,11 @@ if [[ ! -f "${SCRIPT_DIR}/references/.docs.config.json" ]]; then
   exit 1
 fi
 
+if [[ ! -d "${SCRIPT_DIR}/references/templates" ]]; then
+  echo "Error: missing references/templates/ directory in ${SCRIPT_DIR}"
+  exit 1
+fi
+
 # -- Check for python3 ---------------------------------------------------------
 
 if command -v python3 &>/dev/null; then
@@ -202,6 +207,10 @@ done
 cp "${SCRIPT_DIR}/references/schema.md" "${SUPPORT_DIR}/references/"
 cp "${SCRIPT_DIR}/references/style-guide.md" "${SUPPORT_DIR}/references/"
 cp "${SCRIPT_DIR}/references/.docs.config.json" "${SUPPORT_DIR}/references/"
+
+# Copy templates (recursive -- preserves audience subdirectory structure)
+echo "  Templates  -> ${SUPPORT_DIR}/references/templates/"
+cp -r "${SCRIPT_DIR}/references/templates" "${SUPPORT_DIR}/references/"
 
 # Copy agents (if any exist -- Phase 2 adds them)
 if ls "${SCRIPT_DIR}"/agents/*.md &>/dev/null 2>&1; then
@@ -309,6 +318,8 @@ fi
 
 CMD_COUNT="${#COMMANDS[@]}"
 SCRIPT_COUNT=$(find "${SUPPORT_DIR}/scripts" -maxdepth 1 -name "*.py" -type f | wc -l)
+TEMPLATE_COUNT=$(find "${SUPPORT_DIR}/references/templates" -name "*.template.md" -type f 2>/dev/null | wc -l)
+AGENT_COUNT=$(find "${SUPPORT_DIR}/agents" -name "*.md" -type f 2>/dev/null | wc -l)
 
 echo ""
 echo "Done. Installed create-docs to ${TARGET_DIR}/"
@@ -316,6 +327,8 @@ echo ""
 echo "  Commands:    ${CMD_COUNT} command files -> .claude/commands/mg/"
 echo "  Scripts:     ${SCRIPT_COUNT} scripts -> .claude/create-docs/scripts/"
 echo "  References:  schema.md, style-guide.md, .docs.config.json -> .claude/create-docs/references/"
+echo "  Templates:   ${TEMPLATE_COUNT} templates -> .claude/create-docs/references/templates/"
+echo "  Agents:      ${AGENT_COUNT} agent definitions -> .claude/create-docs/agents/"
 if [[ -n "$PROJECT_ROOT" ]]; then
   if [[ -d "${PROJECT_ROOT}/.mg/docs" ]]; then
     echo "  Scaffolded:  .mg/docs/ (config, inbox, scan-logs)"
