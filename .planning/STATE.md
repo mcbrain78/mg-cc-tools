@@ -124,7 +124,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+1. Fix shell metacharacter escaping in add-finding CLI args (area: codebase-health) — `.planning/todos/pending/2026-03-17-fix-shell-metacharacter-escaping-in-add-finding-cli-args.md`
 
 ### Blockers/Concerns
 
