@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-17T18:42:16.349Z"
-last_activity: 2026-03-17 -- Plan 05-02 complete (router command + end-to-end validation)
+status: executing
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-17T19:37:00.583Z"
+last_activity: "2026-03-17 -- Plan 06-02 complete (agent rewrites: verifier two-step workflow, scan-audience output, schema update)"
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 14
-  completed_plans: 14
-  percent: 100
+  total_plans: 18
+  completed_plans: 16
+  percent: 83
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Automate the creation and maintenance of audience-specific documentation so it stays current as code evolves
-**Current focus:** Milestone v1.0 Complete
+**Current focus:** Phase 6 - Fix Verify Feedback Loop & Scan Output
 
 ## Current Position
 
-Phase: 5 of 5 (Verify, Notes Command & Router)
-Plan: 2 of 2 in current phase
-Status: Milestone Complete
-Last activity: 2026-03-17 -- Plan 05-02 complete (router command + end-to-end validation)
+Phase: 6 of 6 (Fix Verify Feedback Loop & Scan Output)
+Plan: 2 of 4 in current phase
+Status: In Progress
+Last activity: 2026-03-17 -- Plan 06-02 complete (agent rewrites: verifier two-step workflow, scan-audience output, schema update)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -64,6 +64,8 @@ Progress: [██████████] 100%
 | Phase 04 P02 | 2min | 2 tasks | 0 files |
 | Phase 05 P01 | 3min | 2 tasks | 2 files |
 | Phase 05 P02 | 5min | 2 tasks | 4 files |
+| Phase 06 P01 | 3min | 2 tasks | 6 files |
+| Phase 06 P02 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -121,6 +123,12 @@ Recent decisions affecting current work:
 - [Phase 05-02]: check-references.py index-based lookup replaces O(symbols x files) per-symbol os.walk to prevent timeouts on real projects
 - [Phase 05-02]: --skip-symbol-check flag delegates symbol verification to LSP via verifier agent (faster and more accurate)
 - [Phase 05-02]: Verify-generate feedback loop deferred as future work item (not in v1 scope)
+- [Phase 06-01]: File-based I/O pattern (--input/--output files) replaces CLI args for structured data to avoid shell metacharacter escaping
+- [Phase 06-01]: Rank-based severity filtering: --severity high returns high AND critical via index comparison on SEVERITY_ORDER
+- [Phase 06-01]: Rejected input saved to .rejected file for debugging without corrupting pipeline
+- [Phase 06-02]: Used {SCRIPTS_DIR} placeholders in agent definitions for consistency with existing install.sh sed resolution pattern
+- [Phase 06-02]: Baked LSP symbol verification into Check 1 and glossary reconciliation into Check 2 to eliminate all Task prompt overrides
+- [Phase 06-02]: Verify findings schema uses flat array with 7 required fields -- aggregation into systemic patterns happens at presentation layer
 
 ### Pending Todos
 
@@ -136,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T18:42:16.347Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-fix-verify-feedback-loop-and-scan-output/06-CONTEXT.md
+Last session: 2026-03-17T19:37:00.580Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: None
