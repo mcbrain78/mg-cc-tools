@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 COMMANDS=(
   create-context
+  prepare-context
 )
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
@@ -92,6 +93,12 @@ if [[ ! -f "${SCRIPT_DIR}/commands/${SNAPSHOT_FILE}" ]]; then
   exit 1
 fi
 
+# ── Check for python3 ──────────────────────────────────────────────────────
+if ! command -v python3 &>/dev/null; then
+  echo "Error: python3 is required. Install it and re-run."
+  exit 1
+fi
+
 # ── Install ──────────────────────────────────────────────────────────────────
 
 COMMANDS_DIR="${TARGET_DIR}/commands/mg"
@@ -130,5 +137,6 @@ echo "    ${SNAPSHOT_ABSOLUTE}"
 echo ""
 echo "Invoke with:"
 echo "  /mg:create-context <phase-number> <source-file-path>"
+echo "  /mg:prepare-context <start>-<end> <source-file-path>"
 echo ""
 echo "Prerequisite: GSD must be installed (uses .claude/get-shit-done/templates/context.md)"

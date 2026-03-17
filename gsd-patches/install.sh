@@ -92,6 +92,12 @@ if [[ ! -d "${SCRIPT_DIR}/patches" ]]; then
   exit 1
 fi
 
+# ── Check for python3 ──────────────────────────────────────────────────────
+if ! command -v python3 &>/dev/null; then
+  echo "Error: python3 is required. Install it and re-run."
+  exit 1
+fi
+
 # ── Install ──────────────────────────────────────────────────────────────────
 
 COMMANDS_DIR="${TARGET_DIR}/commands/mg"
