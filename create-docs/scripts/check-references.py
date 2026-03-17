@@ -148,45 +148,64 @@ def _extract_symbols_from_code_block(lines, start_line):
     return symbols
 
 
-def _symbol_exists_in_project(symbol, project_root):
+def _symbol_exists_in_project(symbol, project_root, _index={}):
     """Check if a symbol name exists in any Python source file.
 
     Performs a simple text search -- not full AST analysis.
     Looks for class or function definitions matching the symbol.
+    Uses a cached index to avoid re-walking the project for each symbol.
     """
-    # Split "ClassName.method" into parts
+    # Build index on first call (or when project_root changes)
+    if _index.get("_root") != project_root:
+        _index.clear()
+        _index["_root"] = project_root
+        _index["_classes"] = set()
+        _index["_functions"] = set()
+        _index["_methods"] = {}  # class_name -> set of method names
+
+        for dirpath, _dirnames, filenames in os.walk(project_root):
+            basename = os.path.basename(dirpath)
+            if basename.startswith(".") or basename in ("__pycache__", "node_modules", ".git"):
+                continue
+            for fname in filenames:
+                if not fname.endswith((".py", ".ts", ".js")):
+                    continue
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    content = open(fpath, "r", encoding="utf-8", errors="replace").read()
+                except (OSError, IOError):
+                    continue
+                for m in re.finditer(r"\bclass\s+(\w+)\b", content):
+                    _index["_classes"].add(m.group(1))
+                for m in re.finditer(r"\bdef\s+(\w+)\b", content):
+                    _index["_functions"].add(m.group(1))
+                # Map methods to their classes (simple heuristic)
+                current_class = None
+                for line in content.splitlines():
+                    cls_match = re.match(r"class\s+(\w+)", line)
+                    if cls_match:
+                        current_class = cls_match.group(1)
+                        if current_class not in _index["_methods"]:
+                            _index["_methods"][current_class] = set()
+                    elif current_class and re.match(r"\s+def\s+(\w+)", line):
+                        method_match = re.match(r"\s+def\s+(\w+)", line)
+                        if method_match:
+                            _index["_methods"][current_class].add(method_match.group(1))
+    # Look up symbol in the cached index
     parts = symbol.split(".")
     class_name = parts[0]
 
-    # Search Python files for the class/function definition
-    for dirpath, _dirnames, filenames in os.walk(project_root):
-        # Skip hidden dirs, __pycache__, node_modules, etc.
-        basename = os.path.basename(dirpath)
-        if basename.startswith(".") or basename in ("__pycache__", "node_modules", ".git"):
-            continue
+    # Check for class
+    if class_name in _index["_classes"]:
+        if len(parts) > 1:
+            method_name = parts[1]
+            methods = _index["_methods"].get(class_name, set())
+            return method_name in methods
+        return True
 
-        for fname in filenames:
-            if not fname.endswith((".py", ".ts", ".js")):
-                continue
-            fpath = os.path.join(dirpath, fname)
-            try:
-                content = open(fpath, "r", encoding="utf-8", errors="replace").read()
-            except (OSError, IOError):
-                continue
-
-            # Check for class definition
-            if re.search(rf"\bclass\s+{re.escape(class_name)}\b", content):
-                # If we have a method part, check for that too
-                if len(parts) > 1:
-                    method_name = parts[1]
-                    if re.search(rf"\bdef\s+{re.escape(method_name)}\b", content):
-                        return True
-                else:
-                    return True
-
-            # Also check for standalone function
-            if re.search(rf"\bdef\s+{re.escape(class_name)}\b", content):
-                return True
+    # Check for standalone function
+    if class_name in _index["_functions"]:
+        return True
 
     return False
 
@@ -194,16 +213,19 @@ def _symbol_exists_in_project(symbol, project_root):
 # ── Main Check Logic ─────────────────────────────────────────────────────────
 
 
-def check_docs(docs_dir, project_root):
+def check_docs(docs_dir, project_root, skip_symbol_check=False):
     """Check all markdown docs in docs_dir for broken references.
 
     Args:
         docs_dir: Directory containing markdown documentation files.
         project_root: Project root directory for resolving file paths.
+        skip_symbol_check: If True, extract symbols but mark as "unchecked"
+            instead of walking the project tree. Useful when symbol
+            verification is delegated to LSP.
 
     Returns:
         List of issue dicts, each with: file, line, reference, type,
-        status ("broken" or "valid"), message.
+        status ("broken", "valid", or "unchecked"), message.
     """
     issues = []
 
@@ -215,13 +237,13 @@ def check_docs(docs_dir, project_root):
             if not fname.endswith(".md"):
                 continue
             fpath = os.path.join(dirpath, fname)
-            file_issues = _check_file(fpath, project_root)
+            file_issues = _check_file(fpath, project_root, skip_symbol_check)
             issues.extend(file_issues)
 
     return issues
 
 
-def _check_file(fpath, project_root):
+def _check_file(fpath, project_root, skip_symbol_check=False):
     """Check a single markdown file for broken references."""
     issues = []
 
@@ -246,19 +268,29 @@ def _check_file(fpath, project_root):
                     code_block_lines, code_block_start
                 )
                 for symbol, sym_line in symbols:
-                    exists = _symbol_exists_in_project(symbol, project_root)
-                    issues.append({
-                        "file": fpath,
-                        "line": sym_line,
-                        "reference": symbol,
-                        "type": "symbol",
-                        "status": "valid" if exists else "broken",
-                        "message": (
-                            f"Symbol '{symbol}' found in project"
-                            if exists
-                            else f"Symbol '{symbol}' not found in any source file"
-                        ),
-                    })
+                    if skip_symbol_check:
+                        issues.append({
+                            "file": fpath,
+                            "line": sym_line,
+                            "reference": symbol,
+                            "type": "symbol",
+                            "status": "unchecked",
+                            "message": f"Symbol '{symbol}' extracted (verification skipped)",
+                        })
+                    else:
+                        exists = _symbol_exists_in_project(symbol, project_root)
+                        issues.append({
+                            "file": fpath,
+                            "line": sym_line,
+                            "reference": symbol,
+                            "type": "symbol",
+                            "status": "valid" if exists else "broken",
+                            "message": (
+                                f"Symbol '{symbol}' found in project"
+                                if exists
+                                else f"Symbol '{symbol}' not found in any source file"
+                            ),
+                        })
                 code_block_lines = []
                 in_code_block = False
             else:
@@ -328,12 +360,19 @@ def main():
         "--output",
         help="Path to write JSON results. If omitted, prints to stdout.",
     )
+    parser.add_argument(
+        "--skip-symbol-check",
+        action="store_true",
+        help="Extract symbols but skip verification (mark as 'unchecked'). "
+             "Use when symbol verification is delegated to LSP.",
+    )
 
     args = parser.parse_args()
 
     issues = check_docs(
         docs_dir=args.docs_dir,
         project_root=args.project_root,
+        skip_symbol_check=args.skip_symbol_check,
     )
 
     # Write output

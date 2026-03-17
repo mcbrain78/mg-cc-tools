@@ -212,6 +212,27 @@ class TestSymbolDetection:
         refs = [i["reference"] for i in broken_symbols]
         assert any("NonExistentClass" in r for r in refs)
 
+    def test_skip_symbol_check_marks_unchecked(self, project_dir, docs_dir):
+        """With skip_symbol_check=True, symbols should be extracted but status='unchecked'."""
+        doc = docs_dir / "api.md"
+        doc.write_text(
+            "```python\n"
+            "obj = MyClass()\n"
+            "bad = NonExistentClass()\n"
+            "```\n"
+        )
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+            skip_symbol_check=True,
+        )
+        symbol_issues = [i for i in issues if i["type"] == "symbol"]
+        assert len(symbol_issues) >= 2
+        # All symbols should be "unchecked", not "valid" or "broken"
+        for issue in symbol_issues:
+            assert issue["status"] == "unchecked"
+
 
 # ── Output format tests ─────────────────────────────────────────────────────
 

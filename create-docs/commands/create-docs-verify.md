@@ -74,10 +74,13 @@ Run `check-references.py` ONCE for the entire docs directory to extract all file
 python3 {SCRIPTS_DIR}/check-references.py \
   --docs-dir <docs_dir_abs> \
   --project-root <project_root> \
+  --skip-symbol-check \
   --output <project_root>/.mg/docs/scan-logs/verify-refs.json
 ```
 
 **IMPORTANT:** Use `--docs-dir` (directory-level), NOT `--doc-file`. The script iterates all `.md` files in the directory internally.
+
+**IMPORTANT:** Use `--skip-symbol-check` so the script extracts symbols without walking the project tree for each one. Symbol verification is delegated to the verifier agent via LSP (much faster and more accurate).
 
 Save the output path (`verify-refs.json`) -- the verifier agent will read this file for Check 1.
 
