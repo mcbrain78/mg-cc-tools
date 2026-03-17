@@ -117,7 +117,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Generate Pipeline | 2/2 | Complete | 2026-03-16 |
 | 5. Verify, Notes Command & Router | 2/2 | Complete | 2026-03-17 |
 | 6. Fix Verify Feedback Loop & Scan Output | 3/4 | In Progress | - |
-| 7. Install Command | 0/5 | Planned | - |
+| 7. Install Command | 4/5 | In Progress|  |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -150,7 +150,7 @@ Plans:
   4. Running `/mg:install` on a target project presents an interactive 8-step flow (target, status, action, preflight, probe, install, validate, summary)
   5. All 11 existing install.sh scripts call `mg-install-lib.py update-manifest` after every install -- no silent failures, no `|| true`
   6. Migration/adopt flow detects pre-manifest installations and builds manifest entries from current source checksums
-**Plans:** 5 plans
+**Plans:** 4/5 plans executed
 
 Plans:
 - [ ] 07-01-PLAN.md — Core Python script: mg-install-lib.py with 5 subcommands and full pytest suite (TDD)
