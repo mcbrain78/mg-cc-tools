@@ -9,7 +9,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Commands
 
-- [ ] **CMD-01**: `/mg:create-docs` router detects pipeline state (no docs, existing docs, partial scan) and routes to correct step
+- [x] **CMD-01**: `/mg:create-docs` router detects pipeline state (no docs, existing docs, partial scan) and routes to correct step
 - [x] **CMD-02**: `/mg:create-docs-scan` analyzes project and builds source material index mapping code files to document sections
 - [x] **CMD-03**: `/mg:create-docs-generate` creates or updates documents section-by-section using templates and source material
 - [x] **CMD-04**: `/mg:create-docs-verify` checks reference integrity, cross-doc consistency, Diataxis mixing, and completeness
@@ -122,7 +122,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CMD-01 | Phase 5 | Pending |
+| CMD-01 | Phase 5 | Complete |
 | CMD-02 | Phase 3 | Complete |
 | CMD-03 | Phase 4 | Complete |
 | CMD-04 | Phase 5 | Complete |

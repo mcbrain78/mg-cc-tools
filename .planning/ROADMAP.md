@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Templates & Agent Definitions** - Three-layer template architecture, ~13 templates, 7 agent definitions, parallel execution setup
 - [x] **Phase 3: Scan Pipeline** - Project orientation, source material index, staleness detection, notes classification, gap analysis, scan command
 - [x] **Phase 4: Generate Pipeline** - Section-by-section generation, update mode, notes integration, all 13 document types, generate command
-- [ ] **Phase 5: Verify, Notes Command & Router** - Reference integrity, cross-doc consistency, Diataxis checks, completeness, add-docs command, router command
+- [x] **Phase 5: Verify, Notes Command & Router** - Reference integrity, cross-doc consistency, Diataxis checks, completeness, add-docs command, router command
 
 ## Phase Details
 
@@ -99,8 +99,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Verify command and add-docs command: orchestrate verifier agent, standalone note capture
-- [ ] 05-02-PLAN.md — Router command and end-to-end pipeline validation on road-runner
+- [x] 05-01-PLAN.md — Verify command and add-docs command: orchestrate verifier agent, standalone note capture
+- [x] 05-02-PLAN.md — Router command and end-to-end pipeline validation on road-runner
 
 ## Progress
 
@@ -113,4 +113,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Templates & Agent Definitions | 4/4 | Complete | 2026-03-16 |
 | 3. Scan Pipeline | 2/2 | Complete | 2026-03-16 |
 | 4. Generate Pipeline | 2/2 | Complete | 2026-03-16 |
-| 5. Verify, Notes Command & Router | 0/2 | Not started | - |
+| 5. Verify, Notes Command & Router | 2/2 | Complete | 2026-03-17 |
