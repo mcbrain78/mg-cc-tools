@@ -60,9 +60,18 @@ If mode is `"initial"`, skip this step entirely and proceed to Step 3.
 
 2. Read the `note_classifications` array from `docs-scan.json`. Filter for pending notes only -- notes whose `note_id` does NOT already have `"status": "integrated"` in `.mg/docs/notes-inbox.json`. Count pending notes.
 
-3. If both the staleness report is empty AND there are no pending notes, print:
+3. Load verify findings. Run:
+   ```bash
+   python3 {SCRIPTS_DIR}/list-verify-findings.py \
+     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
+     --summary \
+     --output /tmp/findings-summary.json
    ```
-   No stale sections or pending notes found. Nothing to update.
+   Read the output file. Extract total findings count and per-document/per-severity breakdowns. If the findings file does not exist or is empty, treat as zero findings.
+
+4. If the staleness report is empty AND there are no pending notes AND there are no verify findings, print:
+   ```
+   No stale sections, verify findings, or pending notes found. Nothing to update.
    ```
    Then exit gracefully (no generation needed).
 
@@ -78,41 +87,71 @@ Staleness:
   DEVELOPER_GUIDE.md: 1 stale section (1 low)
   SYSTEM_MAP.md:      2 stale sections (2 high)
 
+Verify findings:
+  OPERATIONS.md:      2 issues (1 high, 1 medium)
+  ARCHITECTURE.md:    1 issue (1 medium)
+  Total: 3 findings from last verification run
+
 Inbox notes: 2 pending (1 for ARCHITECTURE, 1 for USER_GUIDE)
 
 How would you like to proceed?
-  1. Approve all -- update all stale sections and integrate all notes
+  1. Approve all -- update all stale sections, address all findings, and integrate all notes
   2. Select by document -- choose which documents to update
   3. Select by severity -- approve by minimum severity level
   4. Cancel -- exit without changes
 ```
 
+If any tier has zero items, omit that tier's section from the overview (but always show at least the tiers that have items). The 4 approval options are uniform across all 3 tiers -- the same options regardless of which tiers are present.
+
 #### 2c. Handle User Selection
 
 - **If "Cancel" (option 4):** Exit with message: `"No sections approved for update. Run again when ready."`
 
-- **If "Approve all" (option 1):** Approve all stale sections from the staleness report plus all pending notes. Build the `approved_sections` dict from the full staleness report.
+- **If "Approve all" (option 1):** Approve all stale sections from the staleness report, all verify findings, and all pending notes. Build the `approved_sections` dict from the full staleness report and all verify findings.
 
-- **If "Select by document" (option 2):** For each document that has stale sections, use AskUserQuestion to show section details and ask which to approve:
+- **If "Select by document" (option 2):** For each document that has stale sections OR verify findings (or both), use AskUserQuestion to show section details and verify findings **merged per document** with unified numbering. One approval per document covers both staleness and findings:
 
   ```
-  ARCHITECTURE.md -- 3 stale sections:
-    1. system-overview -- src/app.ts changed (2026-03-15) [high]
-    2. data-model -- schema.prisma changed (2026-03-14) [high]
-    3. component-map -- lib/utils.py changed (2026-03-10) [medium]
+  OPERATIONS.md -- 0 stale sections, 2 verify findings:
+    Verify findings:
+      1. deployment-pipeline -- broken file reference (high)
+      2. monitoring-setup -- Diataxis mixing (medium)
 
-  Approve: all / none / specific numbers (e.g., "1,3")
+  Approve: all / none / specific numbers (e.g., "1,2")
   ```
+
+  ```
+  ARCHITECTURE.md -- 3 stale sections, 1 verify finding:
+    Stale sections:
+      1. system-overview -- src/app.ts changed (2026-03-15) [high]
+      2. data-model -- schema.prisma changed (2026-03-14) [high]
+      3. component-map -- lib/utils.py changed (2026-03-10) [medium]
+    Verify findings:
+      4. data-model -- Diataxis mixing (medium)
+
+  Approve: all / none / specific numbers (e.g., "1,2,4")
+  ```
+
+  Group by document name first, then list staleness sections and findings together under each document with unified numbering (staleness items numbered first, then findings continue the sequence). One approval per document covers both staleness and findings.
+
+  To get per-document findings for the drill-in, run:
+  ```bash
+  python3 {SCRIPTS_DIR}/list-verify-findings.py \
+    --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
+    --document {DOCUMENT} \
+    --output /tmp/findings-{DOCUMENT}.json
+  ```
+  Read the output file to get findings for that document.
 
 - **If "Select by severity" (option 3):** Use AskUserQuestion to ask for the minimum severity level:
 
   ```
   Approve by severity:
-    1. High only ({N} sections)
-    2. High + Medium ({N} sections)
-    3. All severities ({N} sections)
+    1. High only ({N} sections + findings)
+    2. High + Medium ({N} sections + findings)
+    3. All severities ({N} sections + findings)
   ```
-  Approve all sections at or above the selected severity level.
+  Approve all staleness sections AND verify findings at or above the selected severity level. The severity filter applies uniformly to both staleness sections and verify findings.
 
 #### 2d. Notes Approval
 
@@ -130,17 +169,39 @@ Use AskUserQuestion for this approval. Approved notes will be expanded into thei
 
 #### 2e. Build Approved Sections Dict
 
-Combine staleness approvals and note approvals into a single `approved_sections` dict:
+Combine staleness approvals, findings approvals, and note approvals into a single `approved_sections` dict:
 
 ```json
 {
   "developers": ["system-overview", "data-model"],
   "agents": ["tool-registry"],
-  "end-users": ["getting-started"]
+  "end-users": ["getting-started"],
+  "devops": ["deployment-pipeline", "monitoring-setup"]
 }
 ```
 
 **Normalize section identifiers to slug format:** Template headings use Title Case (e.g., "System Overview"), but `source_material_index` and `staleness_report` use lowercased-hyphenated slugs (e.g., `system-overview`). Always convert to slug format when building `approved_sections`. Writer agents match by slug.
+
+For approved verify findings: add the finding's `section` slug to the appropriate audience's list in `approved_sections`. A finding's `audience` field determines which audience list it belongs to.
+
+For approved findings, also build a separate `approved_findings` structure so writer agents receive the specific finding details (not just section names):
+```json
+{
+  "devops": {
+    "deployment-pipeline": [
+      {"check": "reference-integrity", "severity": "high", "description": "...", "suggestion": "..."}
+    ],
+    "monitoring-setup": [
+      {"check": "diataxis", "severity": "medium", "description": "...", "suggestion": "..."}
+    ]
+  },
+  "developers": {
+    "data-model": [
+      {"check": "diataxis", "severity": "medium", "description": "...", "suggestion": "..."}
+    ]
+  }
+}
+```
 
 For notes: add the note's classified `section` slug to the appropriate audience's list in `approved_sections` (so the writer agent regenerates that section and includes the note's expanded content).
 
@@ -217,6 +278,18 @@ Print progress: `"Stage 2/4: Writing audience documents (4 agents in parallel)..
 
 3. **Spawn one Task call per enabled audience in a SINGLE message** (parallel execution). For each audience:
 
+   **In update mode, before spawning each writer:** If the audience has approved findings (entries in the `approved_findings` dict from Step 2e), load the relevant findings for that audience. For each document that the audience will update, run:
+   ```bash
+   python3 {SCRIPTS_DIR}/list-verify-findings.py \
+     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
+     --document {DOCUMENT} \
+     --audience {audience} \
+     --output /tmp/findings-{audience}-{DOCUMENT}.json
+   ```
+   Read the output file to get findings for that audience/document combination.
+
+   Then spawn the Task:
+
    ```
    Task(
      description="Generate {audience} documentation ({mode} mode)",
@@ -232,9 +305,14 @@ Print progress: `"Stage 2/4: Writing audience documents (4 agents in parallel)..
    Glossary path: {docs_dir_abs}/GLOSSARY.md
    Documents: {document_list from config}
    Mode: {mode}
-   Update sections: {approved_sections_for_audience or empty list}"
+   Update sections: {approved_sections_for_audience or empty list}
+
+   Verify findings for your sections (fix these issues from the previous version):
+   [paste findings from the output files -- each has description and suggestion]"
    )
    ```
+
+   Only include findings for sections that were approved. If a finding's section was not approved, omit it. If the audience has no approved findings, omit the "Verify findings" block from the prompt entirely.
 
    The `{audience}` in the templates dir path uses the CONFIG KEY (e.g., `developers/`, `end-users/`, `agents/`, `devops/`).
 
@@ -370,6 +448,7 @@ After all generation and notes integration is complete, present a generation rep
    ```
 
 3. **Show additional stats** (if applicable):
+   - If verify findings were addressed: `"Verify findings addressed: {count} ({severity breakdown, e.g., 1 high, 2 medium})"`
    - If notes were integrated: `"Notes integrated: {count} ({note_id list})"`
    - If glossary reconciliation added terms: `"New glossary terms: {count} added during reconciliation"` (read from `.mg/docs/scan-logs/glossary-reconciliation.log` if it exists)
 
@@ -462,3 +541,7 @@ Examples: `ARCHITECTURE/system-overview`, `USER_GUIDE/getting-started`, `OPERATI
 - **No memory of rejections between runs.** If a user rejects a stale section during the approval flow, it reappears on the next update run. The generate command does not track rejection history. This is intentional -- the user may change their mind, and the staleness data may change.
 
 - **Normalize section identifiers to slug format.** Template headings use Title Case ("System Overview"), but source_material_index and staleness_report use lowercased-hyphenated slugs ("system-overview"). Always convert to slug format when matching sections.
+
+- **Generate reads verify findings but NEVER clears docs-verify-findings.json.** Only the verify command clears findings (at the start of each verify run). Findings the user skips in the approval flow reappear on the next verify run -- this is correct behavior, not a bug.
+
+- **Tier ordering is staleness -> verify findings -> notes.** This follows logical severity ordering: code changes first, quality issues second, user knowledge third.
