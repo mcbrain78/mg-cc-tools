@@ -123,6 +123,14 @@ fi
 echo "  Commands → ${COMMANDS_DIR}/"
 echo "  Snapshot → ${SNAPSHOT_ABSOLUTE}"
 
+# ── Update manifest ──────────────────────────────────────────────────────────
+TOOL_SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
+python3 "${TOOL_SOURCE_DIR}/../install/scripts/mg-install-lib.py" \
+  update-manifest \
+  --target "$TARGET_DIR" \
+  --tool "$(basename "$TOOL_SOURCE_DIR")" \
+  --source "$TOOL_SOURCE_DIR"
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 echo ""
