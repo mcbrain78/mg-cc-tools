@@ -51,7 +51,10 @@ Run these checks IN ORDER:
 5. **Does `.mg/docs/docs-verify-report.md` exist?**
    - NO -> Route C (generation done, verification needed)
 
-6. **All exist** -> Route D (pipeline complete)
+6. **Are there unresolved verify findings?**
+   Check if `.mg/docs/docs-verify-findings.json` exists. If it does, read it and check if the array is non-empty.
+   - YES (findings exist and array is non-empty) -> Route E (findings need resolution)
+   - NO (file missing, empty, or empty array) -> Route D (pipeline complete)
 
 ### Route A: No scan yet (or fresh start)
 
@@ -102,7 +105,7 @@ When ready, verify documentation quality:
   /mg:create-docs-verify
 ```
 
-### Route D: Pipeline complete
+### Route D: Pipeline complete (no outstanding findings)
 
 Read `docs-verify-report.md` and show a brief summary:
 
@@ -111,12 +114,29 @@ Pipeline complete -- last verification results:
 
   {severity summary from report: N critical, N high, N medium, N low, N info}
 
+No outstanding verify findings.
+
 Review the verification report: .mg/docs/docs-verify-report.md
 
 Options:
   - Re-scan:   /mg:create-docs-scan      (re-analyze codebase for changes)
   - Re-verify: /mg:create-docs-verify     (re-check documentation quality)
   - Add notes: /mg:add-docs "your note"   (capture documentation notes)
+```
+
+### Route E: Verify found issues -- needs re-generation
+
+Read `docs-verify-findings.json` and count findings by severity:
+
+```
+Verify found quality issues in the documentation.
+
+  {N} critical, {N} high, {N} medium, {N} low, {N} info
+
+Run /mg:create-docs-generate to address verify findings.
+The generator will present findings as an approval tier alongside staleness and notes.
+
+Or re-verify first:  /mg:create-docs-verify  (re-check after manual fixes)
 ```
 
 ## Important

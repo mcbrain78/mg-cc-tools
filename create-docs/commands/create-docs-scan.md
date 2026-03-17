@@ -259,7 +259,8 @@ For each enabled audience in the config, spawn a scan subagent via the Task tool
    Your audience: {audience}
    Your documents: {document_list}
    Templates directory: {TEMPLATES_DIR}
-   Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json"
+   Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json
+   Scripts directory: {SCRIPTS_DIR}"
    )
    ```
 
@@ -268,6 +269,8 @@ For each enabled audience in the config, spawn a scan subagent via the Task tool
    Check: <project_root>/.mg/docs/scan-logs/scan-{audience}.json
    ```
    If a subagent failed to produce output, log a warning and continue. The merge handles partial results gracefully.
+
+   The scan-audience agent writes its output to a temp file first, then validates it via `write-scan-output.py` before writing to the output path. If validation fails, the agent retries once. If it fails again, the merge handles missing audience data gracefully.
 
 ### Step 6: Merge and Present
 
