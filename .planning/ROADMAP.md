@@ -17,6 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Scan Pipeline** - Project orientation, source material index, staleness detection, notes classification, gap analysis, scan command
 - [x] **Phase 4: Generate Pipeline** - Section-by-section generation, update mode, notes integration, all 13 document types, generate command
 - [x] **Phase 5: Verify, Notes Command & Router** - Reference integrity, cross-doc consistency, Diataxis checks, completeness, add-docs command, router command
+- [ ] **Phase 6: Fix Verify Feedback Loop & Scan Output** - Close verify-generate feedback loop, validate scan agent JSON output, file-based I/O pattern
 
 ## Phase Details
 
@@ -105,7 +106,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -114,3 +115,23 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Scan Pipeline | 2/2 | Complete | 2026-03-16 |
 | 4. Generate Pipeline | 2/2 | Complete | 2026-03-16 |
 | 5. Verify, Notes Command & Router | 2/2 | Complete | 2026-03-17 |
+| 6. Fix Verify Feedback Loop & Scan Output | 0/4 | Planned | - |
+
+### Phase 6: Fix Verify Feedback Loop & Scan Output
+
+**Goal:** Close the broken verify-generate feedback loop so verify findings flow back into generate as a 3rd approval tier, and replace direct LLM JSON writes in scan agents with a validation script
+**Depends on:** Phase 5
+**Requirements**: FIX-A1, FIX-A2, FIX-A3, FIX-A4, FIX-A5, FIX-A6, FIX-B1, FIX-B2, FIX-B3
+**Success Criteria** (what must be TRUE):
+  1. Verifier agent produces per-finding structured JSON entries via `add-verify-finding.py` and generates report from accumulated findings via `list-verify-findings.py`
+  2. Generate command in update mode presents verify findings as 3rd approval tier (staleness -> findings -> notes) with unified 4-option approval and merged drill-in per document
+  3. Router detects `docs-verify-findings.json` and routes user to re-run generate when findings are non-empty
+  4. Scan agents use `write-scan-output.py` to validate output before writing to scan-logs
+  5. All data flows through files (`--input`/`--output`), never through shell boundaries
+**Plans:** 4 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Python scripts: add-verify-finding, list-verify-findings, write-scan-output with tests
+- [ ] 06-02-PLAN.md — Agent rewrites: verifier.md two-step workflow, scan-audience.md output validation, schema.md update
+- [ ] 06-03-PLAN.md — Command updates: verify simplification, router findings-aware state, scan script-path passing
+- [ ] 06-04-PLAN.md — Generate command: 3rd approval tier with merged drill-in and findings context for writers
