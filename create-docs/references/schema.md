@@ -324,6 +324,73 @@ A minimal valid `docs-scan.json` for an initial scan of a small project:
 }
 ```
 
+## Verify Findings: docs-verify-findings.json
+
+A flat array of verification findings produced by the verifier agent during the verify pipeline step. Each finding represents a single quality issue in a specific document section.
+
+**Location:** `.mg/docs/docs-verify-findings.json`
+
+**Lifecycle:**
+- Created/cleared by `create-docs-verify.md` before each verify run
+- Populated by the verifier agent via `add-verify-finding.py` (one call per finding)
+- Read by `create-docs-generate.md` via `list-verify-findings.py` for the 3rd approval tier
+- Cleared again on the next verify run (findings from skipped approvals reappear naturally)
+
+### Structure
+
+```json
+[
+  {
+    "document": "string -- document name matching config (e.g., OPERATIONS)",
+    "section": "string -- section slug (e.g., deployment-pipeline)",
+    "audience": "string -- audience key (e.g., devops)",
+    "severity": "string -- critical | high | medium | low | info",
+    "check": "string -- which check found this (reference-integrity | cross-doc | diataxis | completeness | example-validity | link-integrity)",
+    "description": "string -- what is wrong",
+    "suggestion": "string -- how to fix it"
+  }
+]
+```
+
+### Required Fields
+
+All 7 fields are required per finding. The `add-verify-finding.py` script validates these before appending.
+
+| Field | Type | Valid Values | Description |
+|-------|------|-------------|-------------|
+| `document` | `string` | Any document name from config | Document where the issue was found |
+| `section` | `string` | Section slug | Section within the document |
+| `audience` | `string` | Audience key | Target audience for the document |
+| `severity` | `string` | `critical`, `high`, `medium`, `low`, `info` | Impact level of the issue |
+| `check` | `string` | `reference-integrity`, `cross-doc`, `diataxis`, `completeness`, `example-validity`, `link-integrity` | Which verification check found this |
+| `description` | `string` | Free text | What is wrong |
+| `suggestion` | `string` | Free text | How to fix it |
+
+### Example
+
+```json
+[
+  {
+    "document": "OPERATIONS",
+    "section": "deployment-pipeline",
+    "audience": "devops",
+    "severity": "high",
+    "check": "reference-integrity",
+    "description": "File path src/deploy/old-pipeline.sh referenced in section does not exist",
+    "suggestion": "Update reference to src/deploy/pipeline.sh (renamed in commit abc1234)"
+  },
+  {
+    "document": "ARCHITECTURE",
+    "section": "data-model",
+    "audience": "developers",
+    "severity": "medium",
+    "check": "diataxis",
+    "description": "Reference section contains step-by-step tutorial instructions (lines 45-62)",
+    "suggestion": "Move procedural content to DEVELOPER_GUIDE/database-setup how-to section"
+  }
+]
+```
+
 ## File Location Convention
 
 The scan output and related pipeline files live in the project workspace:
@@ -334,7 +401,8 @@ The scan output and related pipeline files live in the project workspace:
 │   └── docs/
 │       ├── .docs.config.json        -- project config overrides
 │       ├── notes-inbox.json          -- captured documentation notes
-│       ├── docs-scan.json            -- THIS FILE (the shared contract)
+│       ├── docs-scan.json            -- the shared scan contract
+│       ├── docs-verify-findings.json -- structured verify findings (flat array)
 │       ├── docs-update-report.md     -- generation report
 │       ├── docs-verify-report.md     -- verification report
 │       └── scan-logs/                -- per-audience scan intermediates

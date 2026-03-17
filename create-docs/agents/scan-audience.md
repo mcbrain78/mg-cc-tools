@@ -40,11 +40,23 @@ You are a specialized scan subagent for a **specific audience**. You analyze a p
    - `agents`: system map, conventions, gotchas, tool registry
    - `devops`: deployment, monitoring, backup, incident response
 
-5. **Write output.** Write the partial scan JSON to `output_path`.
+5. **Write output.** Write the complete scan output JSON to a temp file, then call the validation script to write it atomically to `output_path`:
+
+   a. Write the JSON to a temp file via the Write tool (e.g., `/tmp/scan-{audience}.json`). The JSON structure is the same as the Output Format below.
+
+   b. Call the validation script:
+      ```bash
+      python3 {SCRIPTS_DIR}/write-scan-output.py \
+        --input /tmp/scan-{audience}.json \
+        --output {output_path} \
+        --audience {audience}
+      ```
+
+   c. If the script exits non-zero (validation failed), review the error message, fix the output data in the temp file, and retry once. If it fails again, log the error -- the merge step handles missing audience data gracefully.
 
 ## Output Format
 
-Write a JSON file matching this structure:
+The temp file written in step 5 must match this structure:
 
 ```json
 {
@@ -62,6 +74,8 @@ Write a JSON file matching this structure:
   }
 }
 ```
+
+**Note:** Write this JSON to the temp file first. The `write-scan-output.py` script validates the structure (required fields, key format) and writes it atomically to `output_path`. Do NOT write directly to `output_path`.
 
 **Key format:** `{DOCUMENT_NAME}/{section-slug}` -- document name MUST match the config entry exactly (e.g., `"ARCHITECTURE"` not `"architecture"`). Section slug is derived from the template heading.
 
