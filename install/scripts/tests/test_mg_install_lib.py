@@ -209,7 +209,13 @@ class TestScanStatus:
             _make_tool(source, "my-tool")
             _make_pyproject(source)
 
-            # First, update manifest to record current checksums
+            # Simulate install: place command files in target
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
+
+            # Update manifest to record current checksums
             result = _run([
                 "update-manifest",
                 "--target", target,
@@ -236,6 +242,12 @@ class TestScanStatus:
 
             _make_tool(source, "my-tool")
             _make_pyproject(source, version="0.1.0")
+
+            # Place command file in target so it's not corrupt
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
 
             # Record with old version
             _make_manifest(target, tools={
@@ -266,6 +278,12 @@ class TestScanStatus:
 
             _make_tool(source, "my-tool")
             _make_pyproject(source, version="0.1.0")
+
+            # Place command file in target so it's not corrupt
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
 
             # Record with matching version but wrong checksums
             _make_manifest(target, tools={
