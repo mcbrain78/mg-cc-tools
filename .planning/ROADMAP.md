@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Generate Pipeline** - Section-by-section generation, update mode, notes integration, all 13 document types, generate command
 - [x] **Phase 5: Verify, Notes Command & Router** - Reference integrity, cross-doc consistency, Diataxis checks, completeness, add-docs command, router command
 - [ ] **Phase 6: Fix Verify Feedback Loop & Scan Output** - Close verify-generate feedback loop, validate scan agent JSON output, file-based I/O pattern
+- [ ] **Phase 7: Install Command** - Unified /mg:install tool management with discovery, status tracking, preflight, manifest, and interactive flow
 
 ## Phase Details
 
@@ -48,7 +49,7 @@ Plans:
   2. Optional sections are explicitly marked with `<!-- OPTIONAL -->` comments in every template where applicable
   3. Each of the 4 audience writer agents (end-user, developer, agent, devops) contains audience-specific format conventions, Diataxis guidance, and instructions for section-by-section generation
   4. Glossary writer, staleness scanner, and verifier agent definitions contain complete operational instructions for their specialized roles
-  5. Agent definitions include instructions for parallel execution (one writer per audience + glossary concurrently)
+  5. Agent definitions include instructions for parallel execution (one per audience + glossary concurrently)
 **Plans:** 4/4 plans executed
 
 Plans:
@@ -106,7 +107,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -116,6 +117,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 4. Generate Pipeline | 2/2 | Complete | 2026-03-16 |
 | 5. Verify, Notes Command & Router | 2/2 | Complete | 2026-03-17 |
 | 6. Fix Verify Feedback Loop & Scan Output | 3/4 | In Progress | - |
+| 7. Install Command | 0/5 | Planned | - |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -135,3 +137,24 @@ Plans:
 - [x] 06-02-PLAN.md — Agent rewrites: verifier.md two-step workflow, scan-audience.md output validation, schema.md update
 - [x] 06-03-PLAN.md — Command updates: verify simplification, router findings-aware state, scan script-path passing
 - [ ] 06-04-PLAN.md — Generate command: 3rd approval tier with merged drill-in and findings context for writers
+
+### Phase 7: Install Command
+
+**Goal:** Build /mg:install -- a unified Claude Code slash command that installs, updates, and manages mg-cc-tools in target projects with dynamic tool discovery, staleness detection, preflight checks, LSP capability probing, manifest tracking, and migration support
+**Depends on:** Phase 6
+**Requirements**: INST-01, INST-02, INST-03, INST-04, INST-05, INST-06, INST-07, INST-08, INST-09, INST-10, INST-11, INST-12
+**Success Criteria** (what must be TRUE):
+  1. Running `mg-install-lib.py scan-status` discovers tools via tool.toml + install.sh scanning and reports 5 staleness states (Current, Update, Modified, Corrupt, Available)
+  2. Running `mg-install-lib.py update-manifest` atomically writes tool entry with source checksums, commands, and version to the central manifest
+  3. Running `mg-install-lib.py preflight` validates required/optional dependencies with fix instructions per platform
+  4. Running `/mg:install` on a target project presents an interactive 8-step flow (target, status, action, preflight, probe, install, validate, summary)
+  5. All 11 existing install.sh scripts call `mg-install-lib.py update-manifest` after every install -- no silent failures, no `|| true`
+  6. Migration/adopt flow detects pre-manifest installations and builds manifest entries from current source checksums
+**Plans:** 5 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Core Python script: mg-install-lib.py with 5 subcommands and full pytest suite (TDD)
+- [ ] 07-02-PLAN.md — Tool metadata: tool.toml files for all 12 tool directories
+- [ ] 07-03-PLAN.md — Slash command: install.md interactive flow and bootstrap install.sh
+- [ ] 07-04-PLAN.md — Install.sh modifications: manifest update calls and python3 checks for all 11 scripts
+- [ ] 07-05-PLAN.md — Integration validation: automated tests, bootstrap, and road-runner checkpoint
