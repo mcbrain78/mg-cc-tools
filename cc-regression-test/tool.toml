@@ -1,0 +1,6 @@
+[tool]
+description = "Claude Code regression test harness (internal)"
+exclude = true
+
+[preflight]
+required = ["python3"]

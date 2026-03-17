@@ -1,7 +1,7 @@
 [project]
 name = "mg-cc-tools"
 version = "0.1.0"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]

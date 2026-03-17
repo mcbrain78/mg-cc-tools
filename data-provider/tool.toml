@@ -1,0 +1,5 @@
+[tool]
+description = "Research and map external data field sources"
+
+[preflight]
+required = ["python3"]

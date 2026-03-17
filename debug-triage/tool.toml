@@ -1,0 +1,5 @@
+[tool]
+description = "GSD debug workflow with structured triage"
+
+[preflight]
+required = ["gsd"]

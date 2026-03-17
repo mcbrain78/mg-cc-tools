@@ -1,0 +1,6 @@
+[tool]
+description = "Documentation pipeline (scan, generate, verify)"
+
+[preflight]
+required = ["python3"]
+optional = ["lsp"]

@@ -1,0 +1,6 @@
+[tool]
+description = "mg-cc-tools installer (internal)"
+exclude = true
+
+[preflight]
+required = ["python3"]

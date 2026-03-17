@@ -1,0 +1,5 @@
+[tool]
+description = "Claude Code permission guard hooks"
+
+[preflight]
+required = ["python3"]

@@ -1,0 +1,5 @@
+[tool]
+description = "GSD workflow wrappers (plan, execute, discuss)"
+
+[preflight]
+required = ["gsd"]

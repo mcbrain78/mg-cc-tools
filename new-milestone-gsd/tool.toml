@@ -1,0 +1,5 @@
+[tool]
+description = "Create new GSD milestone with backlog review"
+
+[preflight]
+required = ["gsd"]
