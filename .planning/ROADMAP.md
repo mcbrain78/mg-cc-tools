@@ -115,7 +115,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Scan Pipeline | 2/2 | Complete | 2026-03-16 |
 | 4. Generate Pipeline | 2/2 | Complete | 2026-03-16 |
 | 5. Verify, Notes Command & Router | 2/2 | Complete | 2026-03-17 |
-| 6. Fix Verify Feedback Loop & Scan Output | 0/4 | Planned | - |
+| 6. Fix Verify Feedback Loop & Scan Output | 3/4 | In Progress | - |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -131,7 +131,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 **Plans:** 4 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Python scripts: add-verify-finding, list-verify-findings, write-scan-output with tests
-- [ ] 06-02-PLAN.md — Agent rewrites: verifier.md two-step workflow, scan-audience.md output validation, schema.md update
-- [ ] 06-03-PLAN.md — Command updates: verify simplification, router findings-aware state, scan script-path passing
+- [x] 06-01-PLAN.md — Python scripts: add-verify-finding, list-verify-findings, write-scan-output with tests
+- [x] 06-02-PLAN.md — Agent rewrites: verifier.md two-step workflow, scan-audience.md output validation, schema.md update
+- [x] 06-03-PLAN.md — Command updates: verify simplification, router findings-aware state, scan script-path passing
 - [ ] 06-04-PLAN.md — Generate command: 3rd approval tier with merged drill-in and findings context for writers
