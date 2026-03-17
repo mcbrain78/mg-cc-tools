@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-17T22:37:16.209Z"
-last_activity: 2026-03-17 -- Plan 07-02 complete (tool.toml metadata for all 12 tools with preflight declarations)
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-18T00:05:00.000Z"
+last_activity: 2026-03-18 -- Plan 07-01 complete (mg-install-lib.py with 5 subcommands and 38-test TDD suite)
 progress:
   total_phases: 7
   completed_phases: 6
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 Phase: 7 of 7 (Install Command)
 Plan: 2 of 5 in current phase
 Status: In Progress
-Last activity: 2026-03-17 -- Plan 07-02 complete (tool.toml metadata for all 12 tools with preflight declarations)
+Last activity: 2026-03-18 -- Plan 07-01 complete (mg-install-lib.py with 5 subcommands and 38-test TDD suite)
 
 Progress: [████████░░] 83%
 
@@ -68,6 +68,7 @@ Progress: [████████░░] 83%
 | Phase 06 P02 | 3min | 2 tasks | 3 files |
 | Phase 06 P03 | 2min | 2 tasks | 3 files |
 | Phase 06 P04 | 3min | 1 tasks | 1 files |
+| Phase 07 P01 | 30min | 1 tasks | 3 files |
 | Phase 07 P02 | 1min | 1 tasks | 13 files |
 
 ## Accumulated Context
@@ -137,6 +138,9 @@ Recent decisions affecting current work:
 - [Phase 06]: [Phase 06-04]: 3-tier approval flow: staleness -> verify findings -> notes, with merged drill-in and findings lifecycle (generate reads, never clears)
 - [Phase 07]: Set requires-python to >=3.11 (tomllib floor) rather than >=3.13 per Pitfall 4 analysis
 - [Phase 07]: Omit exclude field for non-excluded tools (false is the default); omit optional key when array would be empty
+- [Phase 07-01]: Used commands/* (all files) in checksum scope to match install.sh behavior, ensuring non-.md files trigger Modified status
+- [Phase 07-01]: Corrupt status check runs before version/checksum comparison since missing commands is more severe than version drift
+- [Phase 07-01]: WORKSPACE_DIRS maps tool names to expected scaffold directories for validate subcommand
 
 ### Pending Todos
 
@@ -153,6 +157,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T22:37:16.206Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-03-18T00:05:00.000Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None
