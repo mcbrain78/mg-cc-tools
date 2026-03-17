@@ -60,11 +60,18 @@ If either prerequisite fails, abort with the corresponding message and do not pr
    - `glossary_path` = `{docs_dir_abs}/GLOSSARY.md`
    - `verify_refs_path` = `{project_root}/.mg/docs/scan-logs/verify-refs.json`
    - `output_report_path` = `{project_root}/.mg/docs/docs-verify-report.md`
+   - `findings_file` = `{project_root}/.mg/docs/docs-verify-findings.json`
 
 4. **Ensure scan-logs directory exists:**
    ```bash
    mkdir -p {project_root}/.mg/docs/scan-logs
    ```
+
+5. **Clear prior findings.** Clear findings from prior verify runs to start fresh:
+   ```bash
+   rm -f {project_root}/.mg/docs/docs-verify-findings.json
+   ```
+   This ensures each verify run produces findings reflecting the current documentation state. Generate reads findings but never clears them -- only verify clears (per finding lifecycle convention).
 
 ### Step 2: Reference Extraction (deterministic)
 
@@ -106,14 +113,8 @@ Parameters:
 - glossary_path: {docs_dir_abs}/GLOSSARY.md
 - style_guide_path: references/style-guide.md
 - output_report_path: {project_root}/.mg/docs/docs-verify-report.md
-
-Pre-extracted references: {project_root}/.mg/docs/scan-logs/verify-refs.json
-
-OVERRIDE for Check 1 (Reference Integrity):
-Read the pre-extracted references from {project_root}/.mg/docs/scan-logs/verify-refs.json instead of running check-references.py yourself. For entries with type 'file_path', use the script's status directly (status 'broken' = critical issue, status 'valid' = no issue). For entries with type 'symbol', IGNORE the script's status -- instead use the LSP tool (go-to-definition) to verify each symbol. If LSP resolves it, it is valid. If LSP cannot resolve it, report as severity high.
-
-ADDITIONAL for Check 2 (Cross-Doc Consistency):
-During Check 2, also surface glossary inconsistency flags from the generate pipeline's reconciliation pass if {project_root}/.mg/docs/scan-logs/glossary-reconciliation.log exists. Include any flagged terms as medium-severity cross-doc consistency issues."
+- verify_refs_path: {project_root}/.mg/docs/scan-logs/verify-refs.json
+- findings_file: {project_root}/.mg/docs/docs-verify-findings.json"
 )
 ```
 
@@ -136,7 +137,7 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
 4. **Conditional guidance:**
    - If critical or high issues exist:
      ```
-     To fix documentation issues, re-run /mg:create-docs-generate after a fresh scan.
+     Run /mg:create-docs-generate to address verify findings. The generator will present findings as an approval tier alongside staleness and notes.
      ```
    - If no critical or high issues:
      ```
@@ -169,8 +170,7 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
 - **The agent uses LSP for symbol verification.** DO NOT use check-references.py's symbol status results. The script's regex-based `_symbol_exists_in_project()` misses valid symbols (re-exports, decorators, cross-module imports). The agent uses LSP go-to-definition which resolves semantically.
 - **5-tier severity model:** critical, high, medium, low, info. This matches the verifier agent's definition and the report output format.
 - **Prefer false negatives over false positives.** Same principle as the verifier agent -- only flag issues with high confidence. A noisy report trains users to ignore it.
-- **Do not modify the verifier agent file** (`agents/verifier.md`). Override behavior in the Task prompt only. The agent definition is shared infrastructure from Phase 2.
 - **Do not modify check-references.py.** It is used as-is for reference extraction.
-- **Do not modify install.sh.** All commands and sed placeholders are already handled.
+- **Verify clears docs-verify-findings.json before each run.** Generate reads findings but never clears them. This ensures each verify run reflects the current documentation state.
 - **Use `{SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
 - **Use `{GLOBAL_CONFIG}` placeholder for default config path** -- resolved by install.sh at install time.
