@@ -22,7 +22,7 @@ python3 -m pytest codebase-health/scripts/tests/test_merge.py
 ruff check .
 ```
 
-Python scripts require only stdlib (no pip dependencies). The `[dev]` extras install `pytest` and `ruff` for contributors.
+Python scripts may use established 3rd party packages — declare dependencies so the install process can manage them. The `[dev]` extras install `pytest` and `ruff` for contributors.
 
 ## Architecture
 
@@ -54,7 +54,7 @@ A 3-step pipeline: **scan** (read-only) → **verify** (read-only) → **impleme
 Key layers:
 - **Commands** (`commands/*.md`) — orchestrate the pipeline steps, spawn subagents
 - **Agents** (`agents/*.md`) — specialized scanner/implementor subagents spawned via the Task tool. Each agent follows `TEMPLATE.md` and records findings via Python scripts
-- **Scripts** (`scripts/*.py`) — deterministic Python helpers for JSON I/O (add-finding, merge-findings, verify-finding, update-findings, split-findings) and analysis (circular-deps, unused-deps). All use only Python stdlib
+- **Scripts** (`scripts/*.py`) — deterministic Python helpers for JSON I/O (add-finding, merge-findings, verify-finding, update-findings, split-findings) and analysis (circular-deps, unused-deps)
 - **Schema** (`references/schema.md`) — shared data contract between all three pipeline steps
 
 ### GSD extension tools

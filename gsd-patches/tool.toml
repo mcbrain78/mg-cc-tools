@@ -1,5 +1,6 @@
 [tool]
 description = "Apply GSD methodology patches"
+exclude = true
 
 [preflight]
 required = ["gsd"]

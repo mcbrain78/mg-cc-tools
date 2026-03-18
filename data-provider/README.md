@@ -76,7 +76,7 @@ manually in each project.
 ### Dependencies
 
 - **Required:** `python3` 3.10+ (for the script type hints)
-- **No pip dependencies.** Scripts use only the standard library.
+- Scripts may use established 3rd party packages — declare dependencies so the install process can manage them.
 
 ---
 

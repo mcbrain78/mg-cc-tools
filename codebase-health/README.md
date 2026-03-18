@@ -80,7 +80,7 @@ This installs into `~/.claude/`.
 
 - **Required:** `git` (for the implementor's commit-per-finding workflow)
 - **Recommended:** `python3` 3.8+ (for fast, deterministic circular-deps and unused-deps scanning). Without Python, these scanners fall back to LLM-only analysis, which is slower and may exhaust context on large codebases.
-- **No pip dependencies.** The Python scripts use only the standard library (`ast`, `fnmatch`, `json`, `pathlib`, `sys`). A `pyproject.toml` at the repo root defines optional dev dependencies (`pytest`, `ruff`) for contributors. Create a `.venv` if needed: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
+- **Python 3.8+** required. Scripts may use established 3rd party packages — declare dependencies so the install process can manage them. A `pyproject.toml` at the repo root defines dev dependencies (`pytest`, `ruff`). Create a `.venv` if needed: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
 
 ---
 

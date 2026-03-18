@@ -17,7 +17,7 @@ Automate the creation and maintenance of audience-specific documentation so it s
 - ✓ Self-contained tool pattern with install.sh, commands/, agents/, scripts/, references/ — existing
 - ✓ 3-step pipeline architecture (scan → process → verify) with shared JSON contract — existing (codebase-health)
 - ✓ Parallel subagent spawning via Task tool — existing (codebase-health scanners)
-- ✓ Python stdlib-only scripts for deterministic operations — existing
+- ✓ Python scripts for deterministic operations (may use established 3rd party packages) — existing
 - ✓ Install-time path resolution via sed placeholders — existing
 - ✓ Config layering (global defaults + project overrides) — existing (codebase-health)
 - ✓ GSD integration (reading .planning/ state) — existing (update-backlog, debug-triage)
@@ -67,7 +67,7 @@ Automate the creation and maintenance of audience-specific documentation so it s
 
 ## Constraints
 
-- **Python stdlib only**: All Python scripts must use stdlib only (zero pip dependencies) — existing convention
+- **Declare dependencies**: Python scripts may use established 3rd party packages — declare them so the install process can manage them
 - **Self-contained**: No cross-tool dependencies within mg-cc-tools — existing convention
 - **Install modes**: Must support --project, --global, --target install modes — existing convention
 - **Path resolution**: All resource references must use sed-replaceable placeholders — existing convention

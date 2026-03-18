@@ -116,6 +116,41 @@ FILE_MODIFYING_CMDS = re.compile(
 )
 WRITE_REDIRECT = re.compile(r">{1,2}")
 
+# Heredoc body stripping — removes content between heredoc markers
+# so that data inside heredocs is not mistaken for shell arguments.
+_HEREDOC_RE = re.compile(
+    r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n"  # start: <<'DELIM'...\n
+    r".*?"                                 # body (non-greedy, crosses lines)
+    r"^\1\s*$",                            # terminator: DELIM on its own line
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _strip_heredocs(command):
+    """Remove heredoc bodies so their content is not parsed as shell arguments."""
+    return _HEREDOC_RE.sub("", command)
+
+
+# Paths where recursive rm is considered safe (temp/test cleanup)
+SAFE_RM_PATH_PREFIXES = ("temp/", "./temp/", "/tmp/")
+
+
+def _is_safe_rm(command):
+    """Return True if command is a simple rm targeting only temp directories."""
+    # Reject compound commands — they need full checking
+    if re.search(r'[;&|]', command):
+        return False
+    if not re.match(r'^\s*rm\s', command):
+        return False
+    tokens = command.split()
+    paths = [t.strip("'\"") for t in tokens[1:] if not t.startswith('-')]
+    if not paths:
+        return False
+    return all(
+        any(p.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES)
+        for p in paths
+    )
+
 # ── Sensitive file patterns (for Read/Edit/Write tool guards) ───────────────
 # Each is (compiled_regex, description). Matched against the file_path.
 
@@ -139,6 +174,7 @@ def check_command(command):
 
     Returns (description, category, matched_text) or None.
     """
+    command = _strip_heredocs(command)
     for compiled_re, description, category in RULES:
         match = compiled_re.search(command)
         if match:
@@ -165,6 +201,7 @@ def check_sensitive_in_command(command):
 
     Returns (description, matched_path) or None.
     """
+    command = _strip_heredocs(command)
     tokens = re.split(r'[\s;|&]+', command)
     for token in tokens:
         token = token.strip(_TOKEN_STRIP_CHARS)
@@ -224,6 +261,9 @@ def check_outside_project(command, project_root):
     """
     if not project_root:
         return None
+
+    # Strip heredoc bodies so their content isn't parsed as paths
+    command = _strip_heredocs(command)
 
     # Normalize project root (remove trailing slash)
     project_root = project_root.rstrip("/")
@@ -333,6 +373,10 @@ def main():
 
     command = tool_input.get("command", "")
     if not command:
+        return
+
+    # 0. Allow rm targeting only temp directories
+    if _is_safe_rm(command):
         return
 
     # 1. Category rules

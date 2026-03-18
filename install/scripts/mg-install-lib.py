@@ -168,6 +168,7 @@ def read_tool_toml(tool_dir):
     return {
         "description": tool_section.get("description", ""),
         "exclude": tool_section.get("exclude", False),
+        "standard": tool_section.get("standard", True),
         "required": preflight_section.get("required", []),
         "optional": preflight_section.get("optional", []),
     }
@@ -360,6 +361,13 @@ def scan_status(source_dir, target_dir):
 
                 status = "modified" if changed_files else "current"
 
+        # Resolve standard flag: manifest overrides > tool.toml default
+        effective_standard = toml_data["standard"]
+        if manifest:
+            overrides = manifest.get("standard_overrides", {})
+            if tool_name in overrides:
+                effective_standard = overrides[tool_name]
+
         tool_info = {
             "name": tool_name,
             "description": toml_data["description"],
@@ -369,6 +377,7 @@ def scan_status(source_dir, target_dir):
             "changed_files": changed_files,
             "commands": commands,
             "excluded": toml_data["exclude"],
+            "standard": effective_standard,
         }
         tools_result.append(tool_info)
 

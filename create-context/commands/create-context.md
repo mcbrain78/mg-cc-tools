@@ -120,14 +120,22 @@ Use Glob to find the phase directory:
 .planning/phases/{padded}-*/
 ```
 
-If no match:
+If no match, create the directory using the phase name from ROADMAP.md:
+
+1. Read `.planning/ROADMAP.md` and find the phase entry (e.g., `### Phase 3: Scan Pipeline`)
+2. Derive the slug from the phase name (lowercase, replace non-alphanumeric with hyphens, trim)
+3. Create the directory:
+```bash
+mkdir -p ".planning/phases/${padded}-${slug}"
 ```
-ERROR: Phase {N} directory not found at .planning/phases/{padded}-*/
-Create the phase first with: /gsd:add-phase <description>
+
+If ROADMAP.md doesn't contain this phase either:
+```
+ERROR: Phase {N} not found in ROADMAP.md or .planning/phases/
 ```
 Exit.
 
-Extract from the directory name:
+Extract from the directory name (whether found or created):
 - `phase_dir` — the full relative path (e.g., `.planning/phases/86-flow-chain-completion`)
 - `padded_phase` — the zero-padded number (e.g., "86")
 - `phase_slug` — the slug portion after the number

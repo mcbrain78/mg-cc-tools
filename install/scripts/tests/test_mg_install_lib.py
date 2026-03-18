@@ -28,7 +28,7 @@ def _run(args, **kwargs):
 
 
 def _make_tool(parent, name, description="Test tool", exclude=False,
-               required=None, optional=None, commands=None):
+               standard=None, required=None, optional=None, commands=None):
     """Create a mock tool directory with tool.toml and install.sh.
 
     Args:
@@ -36,6 +36,7 @@ def _make_tool(parent, name, description="Test tool", exclude=False,
         name: Tool directory name.
         description: Tool description for tool.toml.
         exclude: Whether tool is excluded from bulk ops.
+        standard: Whether tool is in standard install (None = omit, uses default true).
         required: List of required preflight check IDs.
         optional: List of optional preflight check IDs.
         commands: List of command filenames to create (default: ["{name}.md"]).
@@ -50,6 +51,8 @@ def _make_tool(parent, name, description="Test tool", exclude=False,
     toml_lines = ['[tool]', f'description = "{description}"']
     if exclude:
         toml_lines.append("exclude = true")
+    if standard is not None:
+        toml_lines.append(f"standard = {'true' if standard else 'false'}")
     if required or optional:
         toml_lines.append("")
         toml_lines.append("[preflight]")
@@ -355,6 +358,86 @@ class TestScanStatus:
             tools_by_name = {t["name"]: t for t in data["tools"]}
             assert tools_by_name["normal-tool"]["excluded"] is False
             assert tools_by_name["excluded-tool"]["excluded"] is True
+
+    def test_standard_defaults_true(self):
+        """Tools without standard field default to standard=true."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            _make_tool(source, "normal-tool")
+            _make_pyproject(source)
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["tools"][0]["standard"] is True
+
+    def test_standard_false_in_toml(self):
+        """Tools with standard=false are marked in output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            _make_tool(source, "optional-tool", standard=False)
+            _make_tool(source, "standard-tool")
+            _make_pyproject(source)
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            tools_by_name = {t["name"]: t for t in data["tools"]}
+            assert tools_by_name["optional-tool"]["standard"] is False
+            assert tools_by_name["standard-tool"]["standard"] is True
+
+    def test_standard_overrides_from_manifest(self):
+        """Manifest standard_overrides take precedence over tool.toml."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            _make_tool(source, "optional-tool", standard=False)
+            _make_tool(source, "demoted-tool")
+            _make_pyproject(source)
+
+            # Create manifest with standard_overrides
+            manifest_path = os.path.join(
+                target, ".claude", "mg-cc-tools.manifest.json"
+            )
+            manifest = {
+                "mg_cc_tools_version": "0.1.0",
+                "source_path": source,
+                "last_updated": "2026-01-01T00:00:00+00:00",
+                "tools": {},
+                "capabilities": {},
+                "standard_overrides": {
+                    "optional-tool": True,
+                    "demoted-tool": False,
+                },
+            }
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f)
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            tools_by_name = {t["name"]: t for t in data["tools"]}
+            # optional-tool promoted to standard via override
+            assert tools_by_name["optional-tool"]["standard"] is True
+            # demoted-tool demoted from standard via override
+            assert tools_by_name["demoted-tool"]["standard"] is False
 
     def test_output_has_required_top_level_fields(self):
         """Output JSON has mg_cc_tools_version, target, manifest_exists, tools, summary."""
