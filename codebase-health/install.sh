@@ -256,7 +256,7 @@ fi
 TOOL_SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 python3 "${TOOL_SOURCE_DIR}/../install/scripts/mg-install-lib.py" \
   update-manifest \
-  --target "$TARGET_DIR" \
+  --target "$(dirname "$TARGET_DIR")" \
   --tool "$(basename "$TOOL_SOURCE_DIR")" \
   --source "$TOOL_SOURCE_DIR"
 
