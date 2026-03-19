@@ -853,29 +853,74 @@ class TestPreflight:
             assert gsd_check is not None
             assert gsd_check["passed"] is True
 
-    def test_skips_claude_probe_checks(self):
-        """claude_probe type checks (lsp) are skipped."""
+    def test_lsp_settings_scan_no_plugin(self):
+        """LSP check fails when no LSP plugin in settings."""
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "source")
             target = os.path.join(tmp, "target")
+            fake_home = os.path.join(tmp, "fakehome")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+            os.makedirs(fake_home)
+
+            _make_tool(source, "my-tool", optional=["lsp"])
+            _make_pyproject(source)
+
+            # Isolate from real ~/.claude/settings.json
+            result = _run([
+                "preflight",
+                "--source", source,
+                "--target", target,
+                "--tools", "my-tool",
+            ], env={**os.environ, "HOME": fake_home})
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            lsp_check = None
+            for check in data["checks"]:
+                if check["id"] == "lsp":
+                    lsp_check = check
+                    break
+            assert lsp_check is not None
+            assert lsp_check["type"] == "settings_scan"
+            assert lsp_check["passed"] is False
+            assert data["all_passed"] is True
+
+    def test_lsp_settings_scan_finds_plugin(self):
+        """LSP check passes when LSP plugin found in settings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            fake_home = os.path.join(tmp, "fakehome")
             os.makedirs(source)
             os.makedirs(os.path.join(target, ".claude"))
 
             _make_tool(source, "my-tool", optional=["lsp"])
             _make_pyproject(source)
 
+            # Create fake global settings with LSP plugin
+            global_claude = os.path.join(fake_home, ".claude")
+            os.makedirs(global_claude)
+            with open(os.path.join(global_claude, "settings.json"), "w") as f:
+                json.dump({"enabledPlugins": {"pyright-lsp@test": True}}, f)
+
             result = _run([
                 "preflight",
                 "--source", source,
                 "--target", target,
                 "--tools", "my-tool",
-            ])
+            ], env={**os.environ, "HOME": fake_home})
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
 
-            # lsp should be skipped, not in checks list
-            check_ids = [c["id"] for c in data["checks"]]
-            assert "lsp" not in check_ids
+            lsp_check = None
+            for check in data["checks"]:
+                if check["id"] == "lsp":
+                    lsp_check = check
+                    break
+            assert lsp_check is not None
+            assert lsp_check["passed"] is True
+            assert "pyright-lsp" in lsp_check["version"]
 
     def test_aggregates_checks_from_multiple_tools(self):
         """Checks from multiple tools are aggregated (deduplicated)."""
@@ -1099,6 +1144,159 @@ class TestValidate:
             assert "line" in issue
             assert issue["line"] == 2
 
+    def test_valid_field_present(self):
+        """Output includes valid boolean."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            with open(os.path.join(cmd_dir, "clean.md"), "w") as f:
+                f.write("No issues here.\n")
+
+            result = _run(["validate", "--target", target])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["valid"] is True
+            assert data["issue_count"] == 0
+
+    def test_valid_false_when_issues(self):
+        """valid is false when issues exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            with open(os.path.join(cmd_dir, "bad.md"), "w") as f:
+                f.write("Use {SCRIPTS_DIR}/foo.py\n")
+
+            result = _run(["validate", "--target", target])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["valid"] is False
+            assert data["issue_count"] > 0
+
+    def test_ignores_short_template_vars(self):
+        """Short template vars like {N}, {M}, {X} are not flagged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            with open(os.path.join(cmd_dir, "template.md"), "w") as f:
+                f.write("Phase {N} has {M} tasks and {X} files.\n")
+                f.write("Also {XX} and {NN} are fine.\n")
+
+            result = _run(["validate", "--target", target])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["valid"] is True
+            assert data["issue_count"] == 0
+
+    def test_tools_scoping(self):
+        """--tools flag scopes validation to specified tool's files only."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            # Create two tools in source
+            _make_tool(source, "clean-tool")
+            _make_tool(source, "bad-tool")
+            _make_pyproject(source)
+
+            # Install both in target, but bad-tool has issues
+            with open(os.path.join(cmd_dir, "clean-tool.md"), "w") as f:
+                f.write("No issues.\n")
+            with open(os.path.join(cmd_dir, "bad-tool.md"), "w") as f:
+                f.write("Use {SCRIPTS_DIR}/foo.py\n")
+
+            # Validate only clean-tool — should find no issues
+            result = _run([
+                "validate", "--target", target,
+                "--tools", "clean-tool", "--source", source,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["valid"] is True
+
+            # Validate only bad-tool — should find issues
+            result = _run([
+                "validate", "--target", target,
+                "--tools", "bad-tool", "--source", source,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["valid"] is False
+
+    def test_output_flag_writes_file(self):
+        """--output writes full details to file, compact summary to stdout."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+            output_file = os.path.join(tmp, "validate.json")
+
+            with open(os.path.join(cmd_dir, "bad.md"), "w") as f:
+                f.write("Use {SCRIPTS_DIR}/foo.py\n")
+
+            result = _run([
+                "validate", "--target", target,
+                "--output", output_file,
+            ])
+            assert result.returncode == 0, result.stderr
+
+            # Stdout has compact summary
+            stdout_data = json.loads(result.stdout)
+            assert "valid" in stdout_data
+            assert "issue_count" in stdout_data
+            assert "details" in stdout_data
+            assert "issues" not in stdout_data  # Full issues NOT in stdout
+
+            # File has full details
+            with open(output_file) as f:
+                file_data = json.load(f)
+            assert "issues" in file_data
+            assert len(file_data["issues"]) > 0
+
+
+class TestScanStatusOutput:
+    """Tests for scan-status --output flag."""
+
+    def test_output_flag_writes_file_compact_stdout(self):
+        """--output writes full details to file, compact summary to stdout."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+            output_file = os.path.join(tmp, "scan.json")
+
+            _make_tool(source, "my-tool")
+            _make_pyproject(source)
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+                "--output", output_file,
+            ])
+            assert result.returncode == 0, result.stderr
+
+            # Stdout compact: no source_checksums, no changed_files
+            stdout_data = json.loads(result.stdout)
+            assert "details" in stdout_data
+            tool = stdout_data["tools"][0]
+            assert "source_checksums" not in tool
+            assert "changed_files" not in tool
+            assert "name" in tool
+            assert "status" in tool
+
+            # File has full details
+            with open(output_file) as f:
+                file_data = json.load(f)
+            assert "tools" in file_data
+
 
 # ============================================================
 # adopt subcommand
@@ -1135,8 +1333,8 @@ class TestAdopt:
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
 
-            assert len(data["adopted"]) == 1
-            assert data["adopted"][0]["name"] == "my-tool"
+            assert data["count"] == 1
+            assert "my-tool" in data["adopted"]
 
     def test_ignores_partial_installs(self):
         """Tool is NOT detected if only some commands exist in target."""
@@ -1165,8 +1363,8 @@ class TestAdopt:
 
             assert len(data["adopted"]) == 0
 
-    def test_builds_manifest_entries_with_current_checksums(self):
-        """Adopted tools have manifest entries with current source checksums."""
+    def test_writes_manifest_with_checksums(self):
+        """Adopt writes manifest directly with tool entries and checksums."""
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "source")
             target = os.path.join(tmp, "target")
@@ -1189,10 +1387,19 @@ class TestAdopt:
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
 
-            assert len(data["adopted"]) == 1
-            entry = data["adopted"][0]["manifest_entry"]
+            assert data["count"] == 1
+            assert "my-tool" in data["adopted"]
+
+            # Verify manifest was written
+            manifest_path = os.path.join(
+                target, ".claude", "mg-cc-tools.manifest.json"
+            )
+            assert os.path.isfile(manifest_path)
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+            assert "my-tool" in manifest["tools"]
+            entry = manifest["tools"]["my-tool"]
             assert entry["version"] == "0.5.0"
-            assert "source_checksums" in entry
             assert len(entry["source_checksums"]) > 0
             for val in entry["source_checksums"].values():
                 assert val.startswith("sha256:")

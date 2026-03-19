@@ -71,13 +71,13 @@ Store `TARGET_PATH` for all subsequent steps.
 
 ## Step 2: Status Scan
 
-Run the status scan to discover tools and their installation state:
+Run the status scan. Use `--output` to write full details to a file and keep stdout compact:
 
 ```bash
-python3 "$MG_INSTALL_LIB" scan-status --source ./ --target "$TARGET_PATH"
+python3 "$MG_INSTALL_LIB" scan-status --source ./ --target "$TARGET_PATH" --output /tmp/mg-scan-status.json
 ```
 
-This returns JSON with: `mg_cc_tools_version`, `target`, `manifest_exists`, `tools` array, and `summary` object.
+This returns a compact JSON summary to stdout (tool names, statuses, descriptions — no checksums). Full details are in the output file. Use the summary to build the status table — do NOT read the output file unless you need checksum details.
 
 **Format the output as a status table.** For the "Updated" column, get the last git commit time for each tool directory:
 ```bash
@@ -138,10 +138,12 @@ No manifest found, but existing mg-cc-tools commands detected in the target.
 Running migration to adopt existing installations...
 ```
 
-Run the adopt subcommand:
+Run the adopt subcommand (writes manifest directly):
 ```bash
 python3 "$MG_INSTALL_LIB" adopt --source ./ --target "$TARGET_PATH"
 ```
+
+This returns a compact JSON with just the adopted tool names (e.g., `{"adopted": ["codebase-health", "create-docs"], "count": 2}`). The manifest is written automatically — no extra step needed.
 
 Show which tools were adopted, then re-run scan-status and display the updated table.
 
@@ -291,34 +293,26 @@ Optional tools missing -- some features will be degraded. Continuing with instal
 
 ---
 
-## Step 5: Capability Probe
+## Step 5: Capability Check
 
-Run the LSP capability probe from the **target project directory** (not from mg-cc-tools). Uses haiku for speed and cost:
+LSP availability is detected during preflight (Step 4) by scanning Claude Code settings files for LSP plugins. Only show capabilities if the `lsp` check was actually run (i.e., one of the selected tools declared it in preflight).
 
-```bash
-cd "$TARGET_PATH" && timeout 60 claude -p --model haiku --output-format json "Use ToolSearch to fetch the LSP tool schema. Report ONLY: {\"lsp_available\": true/false}" 2>/dev/null; cd -
-```
-
-**Handle outcomes:**
-- **`lsp_available: true`**: LSP is configured and available in the target project
-- **`lsp_available: false`**: LSP not available
-- **Timeout / error / non-JSON**: Treat as LSP not available
-- **Command not found (claude CLI missing)**: Treat as LSP not available
-
-**Display result:**
+**If the `lsp` check was run and passed:**
 ```
 Capabilities:
-  LSP: available
+  LSP: available (pyright-lsp@claude-plugins-official)
 ```
 
-Or:
+**If the `lsp` check was run and failed:**
 ```
 Capabilities:
-  LSP: not available
+  LSP: not configured
   Note: create-docs-verify symbol verification will use extraction only
 ```
 
-**LSP unavailability is never blocking.** It is informational only. Continue to Step 6 regardless of the probe result.
+**If no selected tool requested the `lsp` check:** Skip the capabilities section entirely — do not display it.
+
+**LSP unavailability is never blocking.** It is informational only. Continue to Step 6 regardless.
 
 ---
 
@@ -354,23 +348,29 @@ Each tool's `install.sh` handles all file copying, sed placeholder resolution, w
 
 ## Step 7: Post-Install Validation
 
-Run validation on the target:
+Run validation scoped to only the tools that were just installed. Use `--output` to keep context small:
 
 ```bash
-python3 "$MG_INSTALL_LIB" validate --target "$TARGET_PATH"
+python3 "$MG_INSTALL_LIB" validate --target "$TARGET_PATH" --tools "tool1,tool2" --source ./ --output /tmp/mg-validate.json
 ```
 
-This returns JSON with: `issues` array and `valid` boolean.
+This returns a compact summary to stdout: `{"valid": true/false, "issue_count": N, "details": "/tmp/mg-validate.json"}`.
 
 **Display results:**
 
-If valid:
+If valid (issue_count == 0):
 ```
 Post-install validation:
   All checks passed -- no unresolved placeholders, all paths valid
 ```
 
-If issues found:
+If issues found (issue_count > 0), read the details file to show them:
+```bash
+# Only read if issues were found
+cat /tmp/mg-validate.json
+```
+
+Then display:
 ```
 Post-install validation:
 
@@ -381,7 +381,7 @@ Post-install validation:
   but affected tools may not function correctly until issues are resolved.
 ```
 
-Validation issues are **warnings** (the install already happened). Display them so the user is aware.
+**Run validation exactly once.** Do not retry or re-run. Validation issues are warnings — display them and move on.
 
 ---
 

@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """mg-install-lib.py -- unified installer library for mg-cc-tools.
 
-Provides 5 subcommands for tool management, all outputting JSON to stdout:
+Provides 5 subcommands for tool management:
   scan-status      Discover tools, compute checksums, compare with manifest
   update-manifest  Update manifest entry for one tool after install
   preflight        Run preflight checks for given tools
   validate         Validate installed files for placeholder and path issues
   adopt            Detect and adopt pre-manifest installations
+
+Context-efficient: scan-status, validate, and adopt support --output to write
+full details to a file while returning only a compact summary to stdout.
+This prevents large JSON blobs from accumulating in LLM conversation context.
 
 Zero pip dependencies -- all stdlib.
 """
@@ -58,8 +62,10 @@ WORKSPACE_DIRS = {
     "data-provider": ".mg/data-provider",
 }
 
-# Placeholder detection regex: {UPPER_CASE_NAME}
-PLACEHOLDER_RE = re.compile(r"\{[A-Z][A-Z_]*\}")
+# Placeholder detection regex: {UPPER_CASE_NAME} with 3+ chars to avoid
+# false positives on template variables like {N}, {M}, {X}, {XX} used in
+# GSD agent files and LLM prompts.
+PLACEHOLDER_RE = re.compile(r"\{[A-Z][A-Z_]{2,}\}")
 
 # Absolute path detection: lines containing paths like /home/... or /usr/...
 # We look for paths that were meant to be sed-resolved
@@ -98,9 +104,9 @@ CHECKS = {
         },
     },
     "lsp": {
-        "type": "claude_probe",
+        "type": "settings_scan",
         "fix": {
-            "general": "LSP is auto-detected by Claude Code at runtime",
+            "general": "Enable an LSP plugin in Claude Code settings (e.g., pyright-lsp)",
         },
     },
     "ruff": {
@@ -490,12 +496,20 @@ def run_preflight(source_dir, target_dir, tool_names):
             continue
 
         check_type = check_def["type"]
-
-        # Skip claude_probe checks -- handled by LLM in install.md
-        if check_type == "claude_probe":
-            continue
-
         is_required = cid in required_ids
+
+        if check_type == "settings_scan":
+            passed, detail = _check_lsp_settings(target_dir)
+            checks_result.append({
+                "id": cid,
+                "type": "settings_scan",
+                "passed": passed,
+                "required": is_required,
+                "version": detail if passed else None,
+                "error": None if passed else "No LSP plugin found in Claude Code settings",
+                "fix": check_def.get("fix", {}) if not passed else {},
+            })
+            continue
 
         if check_type == "command":
             passed, version_str, error = _run_command_check(check_def)
@@ -563,14 +577,71 @@ def _run_command_check(check_def):
         return False, None, f"Command timed out: {command}"
 
 
+def _check_lsp_settings(target_dir):
+    """Check if LSP is mentioned in Claude Code settings.
+
+    Scans both project-level and global settings.json for any mention of
+    'lsp' in enabledPlugins keys, env vars, or other config fields.
+
+    Returns (passed, detail_string).
+    """
+    lsp_plugins = []
+
+    settings_paths = [
+        os.path.join(target_dir, ".claude", "settings.json"),
+        os.path.join(os.path.expanduser("~"), ".claude", "settings.json"),
+    ]
+
+    for settings_path in settings_paths:
+        if not os.path.isfile(settings_path):
+            continue
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                settings = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        # Check enabledPlugins for any key containing 'lsp'
+        plugins = settings.get("enabledPlugins", {})
+        for plugin_name, enabled in plugins.items():
+            if "lsp" in plugin_name.lower() and enabled:
+                lsp_plugins.append(plugin_name)
+
+    if lsp_plugins:
+        return True, ", ".join(lsp_plugins)
+    return False, None
+
+
 # ============================================================
 # Subcommand: validate
 # ============================================================
 
 
-def validate_install(target_dir):
-    """Validate installed files for placeholder and path issues."""
+def validate_install(target_dir, tool_names=None, source_dir=None):
+    """Validate installed files for placeholder and path issues.
+
+    Args:
+        target_dir: Target project directory.
+        tool_names: If provided, only validate files belonging to these tools.
+                    Uses command-to-tool mapping to scope the scan.
+        source_dir: Source mg-cc-tools directory (needed for tool_names scoping).
+    """
     issues = []
+
+    # Build set of filenames to scope validation when tool_names specified
+    scoped_filenames = None
+    if tool_names and source_dir:
+        scoped_filenames = set()
+        for tool_name in tool_names:
+            tool_dir = os.path.join(source_dir, tool_name)
+            for cmd in get_tool_commands(tool_dir):
+                scoped_filenames.add(cmd)
+            # Also include agent files
+            agents_dir = os.path.join(tool_dir, "agents")
+            if os.path.isdir(agents_dir):
+                for f in os.listdir(agents_dir):
+                    if f.endswith(".md"):
+                        scoped_filenames.add(f)
 
     # Scan command and agent files for placeholders and bad paths
     scan_dirs = [
@@ -583,15 +654,18 @@ def validate_install(target_dir):
             continue
         for root, _dirs, files in os.walk(scan_dir):
             for fname in sorted(files):
+                if scoped_filenames is not None and fname not in scoped_filenames:
+                    continue
                 fpath = os.path.join(root, fname)
                 _check_file_for_issues(fpath, issues)
 
     # Check workspace directories for tools that scaffold them
+    check_tools = tool_names or list(WORKSPACE_DIRS.keys())
     manifest = read_manifest(target_dir)
     if manifest:
         manifest_tools = manifest.get("tools", {})
         for tool_name, workspace_subdir in WORKSPACE_DIRS.items():
-            if tool_name in manifest_tools:
+            if tool_name in check_tools and tool_name in manifest_tools:
                 workspace_path = os.path.join(target_dir, workspace_subdir)
                 if not os.path.isdir(workspace_path):
                     issues.append({
@@ -602,7 +676,7 @@ def validate_install(target_dir):
                         "message": f"Workspace directory missing for {tool_name}: {workspace_subdir}",
                     })
 
-    return {"issues": issues}
+    return {"valid": len(issues) == 0, "issue_count": len(issues), "issues": issues}
 
 
 def _check_file_for_issues(fpath, issues):
@@ -653,13 +727,26 @@ def adopt_tools(source_dir, target_dir):
     Scans source tools' commands/ dirs to build command-to-tool mapping.
     Checks which commands exist in target's .claude/commands/mg/.
     A tool is 'detected' if ALL its .md command files are present.
+
+    Writes adopted tools directly into the manifest.
+    Returns a compact summary (tool names only) to stdout.
     """
     version = read_pyproject_version(source_dir)
     manifest = read_manifest(target_dir)
-    manifest_tools = manifest.get("tools", {}) if manifest else {}
+    if manifest is None:
+        manifest = {
+            "mg_cc_tools_version": version,
+            "source_path": os.path.abspath(source_dir),
+            "last_updated": datetime.datetime.now(
+                datetime.timezone.utc
+            ).isoformat(),
+            "tools": {},
+            "capabilities": {},
+        }
+    manifest_tools = manifest.get("tools", {})
 
     cmd_dir = os.path.join(target_dir, ".claude", "commands", "mg")
-    adopted = []
+    adopted_names = []
 
     for tool_name, tool_dir in discover_tools(source_dir):
         # Skip tools already in manifest
@@ -678,20 +765,30 @@ def adopt_tools(source_dir, target_dir):
 
         if all_present:
             checksums = compute_tool_checksums(tool_dir)
-            adopted.append({
-                "name": tool_name,
+            manifest_tools[tool_name] = {
+                "version": version,
+                "installed_at": datetime.datetime.now(
+                    datetime.timezone.utc
+                ).isoformat(),
                 "commands": commands,
-                "manifest_entry": {
-                    "version": version,
-                    "installed_at": datetime.datetime.now(
-                        datetime.timezone.utc
-                    ).isoformat(),
-                    "commands": commands,
-                    "source_checksums": checksums,
-                },
-            })
+                "source_checksums": checksums,
+            }
+            adopted_names.append(tool_name)
 
-    return {"adopted": adopted}
+    # Write manifest if any tools were adopted
+    if adopted_names:
+        manifest["tools"] = manifest_tools
+        manifest["mg_cc_tools_version"] = version
+        manifest["source_path"] = os.path.abspath(source_dir)
+        manifest["last_updated"] = datetime.datetime.now(
+            datetime.timezone.utc
+        ).isoformat()
+        manifest_path = os.path.join(
+            target_dir, ".claude", MANIFEST_FILENAME
+        )
+        write_manifest_atomic(manifest_path, manifest)
+
+    return {"adopted": adopted_names, "count": len(adopted_names)}
 
 
 # ============================================================
@@ -702,8 +799,35 @@ def adopt_tools(source_dir, target_dir):
 def cmd_scan_status(args):
     """CLI handler for scan-status."""
     result = scan_status(args.source, args.target)
-    json.dump(result, sys.stdout, indent=2)
-    sys.stdout.write("\n")
+
+    if args.output:
+        # Write full details to file, compact summary to stdout
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+            f.write("\n")
+        # Compact summary: tool list without checksums/changed_files
+        compact_tools = []
+        for t in result["tools"]:
+            compact_tools.append({
+                "name": t["name"],
+                "description": t["description"],
+                "status": t["status"],
+                "excluded": t["excluded"],
+                "standard": t["standard"],
+            })
+        summary = {
+            "mg_cc_tools_version": result["mg_cc_tools_version"],
+            "target": result["target"],
+            "manifest_exists": result["manifest_exists"],
+            "tools": compact_tools,
+            "summary": result["summary"],
+            "details": args.output,
+        }
+        json.dump(summary, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        json.dump(result, sys.stdout, indent=2)
+        sys.stdout.write("\n")
 
 
 def cmd_update_manifest(args):
@@ -721,9 +845,27 @@ def cmd_preflight(args):
 
 def cmd_validate(args):
     """CLI handler for validate."""
-    result = validate_install(args.target)
-    json.dump(result, sys.stdout, indent=2)
-    sys.stdout.write("\n")
+    tool_names = None
+    if args.tools:
+        tool_names = [t.strip() for t in args.tools.split(",")]
+    result = validate_install(args.target, tool_names=tool_names,
+                              source_dir=args.source)
+
+    if args.output:
+        # Write full details to file, compact summary to stdout
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+            f.write("\n")
+        summary = {
+            "valid": result["valid"],
+            "issue_count": result["issue_count"],
+            "details": args.output,
+        }
+        json.dump(summary, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        json.dump(result, sys.stdout, indent=2)
+        sys.stdout.write("\n")
 
 
 def cmd_adopt(args):
@@ -748,6 +890,8 @@ def main():
                         help="Path to mg-cc-tools source directory")
     p_scan.add_argument("--target", required=True,
                         help="Path to target project directory")
+    p_scan.add_argument("--output",
+                        help="Write full details to file, compact summary to stdout")
     p_scan.set_defaults(func=cmd_scan_status)
 
     # update-manifest
@@ -783,6 +927,12 @@ def main():
     )
     p_val.add_argument("--target", required=True,
                        help="Path to target project directory")
+    p_val.add_argument("--tools",
+                       help="Comma-separated tool names to scope validation")
+    p_val.add_argument("--source",
+                       help="Path to mg-cc-tools source (needed with --tools)")
+    p_val.add_argument("--output",
+                       help="Write full details to file, compact summary to stdout")
     p_val.set_defaults(func=cmd_validate)
 
     # adopt
