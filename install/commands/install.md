@@ -293,22 +293,22 @@ Optional tools missing -- some features will be degraded. Continuing with instal
 
 ## Step 5: Capability Probe
 
-Run the LSP capability probe from the **target project directory** (not from mg-cc-tools):
+Run the LSP capability probe from the **target project directory** (not from mg-cc-tools). Uses haiku for speed and cost:
 
 ```bash
-cd "$TARGET_PATH" && timeout 60 claude -p --output-format json "Try to use the LSP tool to look up any symbol definition in this project. Report ONLY a JSON object: {\"lsp_functional\": true/false, \"languages\": [...]}" 2>/dev/null; cd -
+cd "$TARGET_PATH" && timeout 60 claude -p --model haiku --output-format json "Use ToolSearch to fetch the LSP tool schema. Report ONLY: {\"lsp_available\": true/false}" 2>/dev/null; cd -
 ```
 
 **Handle outcomes:**
-- **Success with JSON response**: Parse `lsp_functional` and `languages` from the response
-- **Timeout (60 seconds)**: Treat as LSP not available
-- **Parse error or non-JSON response**: Treat as LSP not available
-- **Command not found (claude not available)**: Treat as LSP not available
+- **`lsp_available: true`**: LSP is configured and available in the target project
+- **`lsp_available: false`**: LSP not available
+- **Timeout / error / non-JSON**: Treat as LSP not available
+- **Command not found (claude CLI missing)**: Treat as LSP not available
 
 **Display result:**
 ```
 Capabilities:
-  LSP: functional (python, javascript)
+  LSP: available
 ```
 
 Or:
