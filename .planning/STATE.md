@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08-04-PLAN.md
-last_updated: "2026-03-19T18:27:38.373Z"
-last_activity: 2026-03-19 -- Plan 08-04 complete (gsd-patches post-install.md + install.sh deletion)
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-03-19T18:28:59.641Z"
+last_activity: "2026-03-19 -- Plan 08-03 complete (4 tools: post-install.md + snapshot relocation + stale cleanup)"
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 28
-  completed_plans: 25
-  percent: 89
+  completed_plans: 26
+  percent: 93
 ---
 
 # Project State
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 Phase: 8 of 9 (Install Tool Improvements)
 Plan: 5 of 5 in current phase
 Status: In Progress
-Last activity: 2026-03-19 -- Plan 08-04 complete (gsd-patches post-install.md + install.sh deletion)
+Last activity: 2026-03-19 -- Plan 08-03 complete (4 tools: post-install.md + snapshot relocation + stale cleanup)
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Progress: [█████████░] 89%
 | Phase 08 P01 | 5min | 2 tasks | 2 files |
 | Phase 08 P02 | 2min | 2 tasks | 12 files |
 | Phase 08 P04 | 2min | 2 tasks | 1 files |
+| Phase 08 P03 | 5min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,9 @@ Recent decisions affecting current work:
 - [Phase 08-02]: gsd-patches changed from exclude=true to standard=false (not adoptable, no [detect])
 - [Phase 08-02]: Template uses natural language path references, no shell variable placeholders
 - [Phase 08]: gsd-patches install.sh deleted; execute-only tool uses post-install.md for all work from source
+- [Phase 08]: permission-hooks post-install.md preserves all 5 steps from original command, adapted to subagent prompt prefix path references
+- [Phase 08]: cc-regression-test post-install.md consolidates settings.json merge into single inline Python script with edge case handling
+- [Phase 08]: Snapshot files relocated to .claude/<tool-name>/references/ to prevent skill list pollution
 
 ### Pending Todos
 
@@ -173,6 +177,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-19T18:27:38.371Z
-Stopped at: Completed 08-04-PLAN.md
+Last session: 2026-03-19T18:28:59.638Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None
