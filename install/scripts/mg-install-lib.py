@@ -46,6 +46,7 @@ CHECKSUM_INCLUDE = [
     "scripts/lib/*.py",
     "agents/*.md",
     "references/**/*",
+    "patches/**/*.md",
 ]
 
 CHECKSUM_EXCLUDE_PATTERNS = [
@@ -162,7 +163,8 @@ def read_pyproject_version(source_dir):
 def read_tool_toml(tool_dir):
     """Read and parse tool.toml from a tool directory.
 
-    Returns dict with keys: description, exclude, required, optional.
+    Returns dict with keys: description, exclude, standard, required, optional,
+    post_install_script, detect_paths.
     """
     toml_path = os.path.join(tool_dir, "tool.toml")
     with open(toml_path, "rb") as f:
@@ -170,6 +172,8 @@ def read_tool_toml(tool_dir):
 
     tool_section = data.get("tool", {})
     preflight_section = data.get("preflight", {})
+    post_install_section = data.get("post_install", {})
+    detect_section = data.get("detect", {})
 
     return {
         "description": tool_section.get("description", ""),
@@ -177,13 +181,16 @@ def read_tool_toml(tool_dir):
         "standard": tool_section.get("standard", True),
         "required": preflight_section.get("required", []),
         "optional": preflight_section.get("optional", []),
+        "post_install_script": post_install_section.get("script"),
+        "detect_paths": detect_section.get("paths", []),
     }
 
 
 def discover_tools(source_dir):
-    """Discover tools by scanning for tool.toml + install.sh pairs.
+    """Discover tools by scanning for tool.toml.
 
     Returns list of (tool_name, tool_dir) tuples, sorted by name.
+    Install pattern derived from which files exist alongside tool.toml.
     """
     tools = []
     if not os.path.isdir(source_dir):
@@ -194,8 +201,7 @@ def discover_tools(source_dir):
         if not os.path.isdir(tool_dir):
             continue
         toml_path = os.path.join(tool_dir, "tool.toml")
-        install_path = os.path.join(tool_dir, "install.sh")
-        if os.path.isfile(toml_path) and os.path.isfile(install_path):
+        if os.path.isfile(toml_path):
             tools.append((entry, tool_dir))
 
     return tools
@@ -224,17 +230,18 @@ def compute_tool_checksums(tool_dir):
     """Compute SHA256 checksums for all source files in scope.
 
     Include patterns: commands/*, scripts/*.py, scripts/lib/*.py,
-                      agents/*.md, references/**/*
-    Also always includes install.sh at root.
+                      agents/*.md, references/**/*, patches/**/*.md
+    Also always includes install.sh and post-install.md at root.
     Exclude: tool.toml, tests/, __pycache__/, .pyc, .pytest_cache/
     """
     checksums = {}
     tool_path = Path(tool_dir)
 
-    # Include install.sh at root
-    install_sh = tool_path / "install.sh"
-    if install_sh.is_file():
-        checksums["install.sh"] = sha256_file(str(install_sh))
+    # Include hardcoded root files
+    for root_file in ["install.sh", "post-install.md"]:
+        path = tool_path / root_file
+        if path.is_file():
+            checksums[root_file] = sha256_file(str(path))
 
     # Glob each include pattern
     for pattern in CHECKSUM_INCLUDE:
@@ -384,6 +391,10 @@ def scan_status(source_dir, target_dir):
             "commands": commands,
             "excluded": toml_data["exclude"],
             "standard": effective_standard,
+            "has_install_sh": os.path.isfile(
+                os.path.join(tool_dir, "install.sh")
+            ),
+            "post_install": toml_data.get("post_install_script"),
         }
         tools_result.append(tool_info)
 
@@ -754,26 +765,36 @@ def adopt_tools(source_dir, target_dir):
             continue
 
         commands = get_tool_commands(tool_dir)
-        if not commands:
-            continue
+        toml_data = read_tool_toml(tool_dir)
+        detect_paths = toml_data.get("detect_paths", [])
 
-        # Check if ALL commands exist in target
-        all_present = all(
-            os.path.isfile(os.path.join(cmd_dir, cmd))
-            for cmd in commands
+        # Detection: (has commands AND all present) OR
+        #            (has detect paths AND all exist in target)
+        commands_detected = (
+            bool(commands) and
+            all(os.path.isfile(os.path.join(cmd_dir, cmd))
+                for cmd in commands)
+        )
+        detect_detected = (
+            bool(detect_paths) and
+            all(os.path.exists(os.path.join(target_dir, p))
+                for p in detect_paths)
         )
 
-        if all_present:
-            checksums = compute_tool_checksums(tool_dir)
-            manifest_tools[tool_name] = {
-                "version": version,
-                "installed_at": datetime.datetime.now(
-                    datetime.timezone.utc
-                ).isoformat(),
-                "commands": commands,
-                "source_checksums": checksums,
-            }
-            adopted_names.append(tool_name)
+        if not commands_detected and not detect_detected:
+            continue
+
+        # Tool is detected -- adopt it
+        checksums = compute_tool_checksums(tool_dir)
+        manifest_tools[tool_name] = {
+            "version": version,
+            "installed_at": datetime.datetime.now(
+                datetime.timezone.utc
+            ).isoformat(),
+            "commands": commands,
+            "source_checksums": checksums,
+        }
+        adopted_names.append(tool_name)
 
     # Write manifest if any tools were adopted
     if adopted_names:
@@ -814,6 +835,8 @@ def cmd_scan_status(args):
                 "status": t["status"],
                 "excluded": t["excluded"],
                 "standard": t["standard"],
+                "has_install_sh": t["has_install_sh"],
+                "post_install": t["post_install"],
             })
         summary = {
             "mg_cc_tools_version": result["mg_cc_tools_version"],
