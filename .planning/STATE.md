@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-19T18:28:59.641Z"
-last_activity: "2026-03-19 -- Plan 08-03 complete (4 tools: post-install.md + snapshot relocation + stale cleanup)"
+status: completed
+stopped_at: Completed 08-05-PLAN.md
+last_updated: "2026-03-19T18:34:01.742Z"
+last_activity: 2026-03-19 -- Plan 08-05 complete (install.md rewrite with three install patterns and subagent orchestration)
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 28
-  completed_plans: 26
-  percent: 93
+  completed_plans: 27
+  percent: 96
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 8 of 9 (Install Tool Improvements)
-Plan: 5 of 5 in current phase
-Status: In Progress
-Last activity: 2026-03-19 -- Plan 08-03 complete (4 tools: post-install.md + snapshot relocation + stale cleanup)
+Plan: 5 of 5 in current phase (COMPLETE)
+Status: Phase 8 Complete
+Last activity: 2026-03-19 -- Plan 08-05 complete (install.md rewrite with three install patterns and subagent orchestration)
 
-Progress: [█████████░] 93%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [█████████░] 93%
 | Phase 08 P02 | 2min | 2 tasks | 12 files |
 | Phase 08 P04 | 2min | 2 tasks | 1 files |
 | Phase 08 P03 | 5min | 3 tasks | 6 files |
+| Phase 08 P05 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -159,6 +160,7 @@ Recent decisions affecting current work:
 - [Phase 08]: permission-hooks post-install.md preserves all 5 steps from original command, adapted to subagent prompt prefix path references
 - [Phase 08]: cc-regression-test post-install.md consolidates settings.json merge into single inline Python script with edge case handling
 - [Phase 08]: Snapshot files relocated to .claude/<tool-name>/references/ to prevent skill list pollution
+- [Phase 08]: Step 6 uses per-tool sequential with stop-on-error and three install patterns (copy-only, copy+configure, execute-only)
 
 ### Pending Todos
 
@@ -177,6 +179,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-19T18:28:59.638Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-03-19T18:34:01.739Z
+Stopped at: Completed 08-05-PLAN.md
 Resume file: None
