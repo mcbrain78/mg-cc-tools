@@ -70,8 +70,8 @@ class TestFlowCommand:
         data = {"session": {}, "metrics": {}, "messages": messages, "processes": []}
         args = argparse.Namespace(offset=0, limit=20, all=True)
         result = mod.cmd_flow(data, "test.json", args)
-        lines = [l for l in result.strip().split("\n") if l.strip() and not l.startswith("---")]
-        assert len(lines) == 0
+        # Should produce "No flow lines generated." or equivalent empty indicator
+        assert "No flow lines" in result or result.strip() == ""
 
     def test_flow_skips_thinking_only(self):
         """Assistant messages with only thinking blocks produce no flow lines."""
@@ -85,8 +85,8 @@ class TestFlowCommand:
         data = {"session": {}, "metrics": {}, "messages": messages, "processes": []}
         args = argparse.Namespace(offset=0, limit=20, all=True)
         result = mod.cmd_flow(data, "test.json", args)
-        lines = [l for l in result.strip().split("\n") if l.strip() and not l.startswith("---")]
-        assert len(lines) == 0
+        # Should produce "No flow lines generated." or equivalent empty indicator
+        assert "No flow lines" in result or result.strip() == ""
 
     def test_flow_pagination(self, sample_1mb_path, sample_1mb_data):
         """Flow with --limit 5 shows footer."""

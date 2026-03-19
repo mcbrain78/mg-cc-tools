@@ -596,15 +596,324 @@ def _classify_agent_status(messages: list) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Stub commands (implemented in plans 02-04)
+# Errors command
 # ---------------------------------------------------------------------------
 
+def _detect_errors_detailed(messages: list) -> list:
+    """Like detect_errors but returns full text and error type classification.
+
+    Returns list of dicts: {msg_index, error_type, context, full_text}.
+    """
+    errors = []
+
+    for i, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("role") != "user":
+            continue
+
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "tool_result":
+                continue
+
+            text = extract_text(block.get("content", ""))
+            error_type = None
+
+            if block.get("is_error"):
+                if _is_noise(text):
+                    continue
+                # Determine specific type
+                if "Traceback (most recent call last)" in text:
+                    error_type = "Python traceback"
+                elif EXIT_CODE_RE.search(text):
+                    error_type = "Bash exit code"
+                else:
+                    error_type = "is_error flag"
+            else:
+                if not text or _is_noise(text):
+                    continue
+                if "Traceback (most recent call last)" in text:
+                    error_type = "Python traceback"
+                elif EXIT_CODE_RE.search(text):
+                    error_type = "Bash exit code"
+
+            if error_type:
+                context = _find_context(messages, i)
+                errors.append({
+                    "msg_index": i,
+                    "error_type": error_type,
+                    "context": context,
+                    "full_text": text,
+                })
+
+    return errors
+
+
 def cmd_errors(data, session_file, args):
-    print("Not yet implemented: errors")
+    """Show all errors with full context, paginated."""
+    messages = data.get("messages", [])
+    session_dir = Path(session_file).parent
+    errors = _detect_errors_detailed(messages)
+
+    if not errors:
+        return "No errors detected."
+
+    # Build display entries
+    entries = []
+    for err in errors:
+        lines = []
+        lines.append(f"[msg[{err['msg_index']}]] {err['error_type']}")
+        if err["context"]:
+            lines.append(f"Prompt: {err['context']}")
+
+        # Full error text -- recover persisted if needed (SAN-24)
+        full_text = recover_persisted(err["full_text"], session_dir)
+        text_lines = full_text.split("\n")
+        if len(text_lines) > 40:
+            remaining = len(text_lines) - 40
+            text_lines = text_lines[:40]
+            text_lines.append(f"... ({remaining} more lines)")
+        lines.append("\n".join(text_lines))
+
+        entries.append("\n".join(lines))
+
+    # Apply pagination to the entry list
+    sf = session_file
+    page, footer = paginate(entries, args, f"{sf} errors")
+
+    output_lines = []
+    for entry in page:
+        output_lines.append(entry)
+        output_lines.append("")  # blank separator
+
+    output_lines.append(footer)
+    return "\n".join(output_lines)
+
+
+# ---------------------------------------------------------------------------
+# Flow command
+# ---------------------------------------------------------------------------
+
+def _format_timestamp(msg: dict) -> str:
+    """Extract HH:MM:SS from message timestamp, or --:--:-- if absent."""
+    ts = msg.get("timestamp", "")
+    if not ts:
+        return "--:--:--"
+    # Timestamp format: 2026-03-18T12:06:14.653Z
+    # Extract HH:MM:SS
+    if "T" in ts:
+        time_part = ts.split("T")[1]
+        # Remove Z and fractional seconds
+        time_part = time_part.replace("Z", "")
+        if "." in time_part:
+            time_part = time_part.split(".")[0]
+        return time_part
+    return "--:--:--"
+
+
+def _input_summary(tool_input, max_len: int = 60) -> str:
+    """Create a summary of tool input for flow display."""
+    if isinstance(tool_input, dict):
+        # Common patterns
+        if "command" in tool_input:
+            s = str(tool_input["command"])
+        elif "file_path" in tool_input:
+            s = str(tool_input["file_path"])
+        elif "pattern" in tool_input:
+            s = str(tool_input["pattern"])
+        elif "content" in tool_input:
+            s = str(tool_input["content"])[:max_len]
+        else:
+            # Use first value
+            vals = list(tool_input.values())
+            s = str(vals[0]) if vals else ""
+    elif isinstance(tool_input, str):
+        s = tool_input
+    else:
+        s = str(tool_input)
+
+    s = s.replace("\n", " ").strip()
+    if len(s) > max_len:
+        s = s[: max_len - 3] + "..."
+    return s
 
 
 def cmd_flow(data, session_file, args):
-    print("Not yet implemented: flow")
+    """Show orchestrator decision trace, one line per action."""
+    messages = data.get("messages", [])
+    linkage = link_orchestrator_to_agents(data)
+    agent_map = build_agent_map(data)
+
+    flow_lines = []
+
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+
+        role = msg.get("role")
+        mtype = msg.get("type")
+
+        # Skip system messages and messages with no role
+        if not role or mtype == "system":
+            continue
+
+        ts = _format_timestamp(msg)
+        content = msg.get("content")
+
+        if role == "user":
+            # Check for content blocks
+            if isinstance(content, list):
+                has_tool_result = any(
+                    isinstance(b, dict) and b.get("type") == "tool_result"
+                    for b in content
+                )
+                if has_tool_result:
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get("type") != "tool_result":
+                            continue
+                        tool_use_id = block.get("tool_use_id", "")
+                        # Check if Agent return
+                        if tool_use_id in linkage:
+                            process_id = linkage[tool_use_id]
+                            proc = agent_map.get(process_id, {})
+                            # Derive status from result
+                            result_text = extract_text(block.get("content", ""))
+                            result_text = strip_usage(result_text).strip()
+                            if block.get("is_error"):
+                                status = "error"
+                            elif any(kw in result_text[:200].upper() for kw in ("FAILED", "ERROR", "PLAN FAILED")):
+                                status = "failed"
+                            else:
+                                status = "ok"
+                            pid_prefix = process_id[:8] if process_id else "????????"
+                            flow_lines.append(f"{ts} agent-return {pid_prefix}: {status}")
+                        else:
+                            # Non-agent tool_result -- skip unless error
+                            if block.get("is_error"):
+                                err_text = extract_text(block.get("content", ""))
+                                if not _is_noise(err_text):
+                                    err_short = err_text.replace("\n", " ")[:60]
+                                    flow_lines.append(f"{ts} tool-error: {err_short}")
+                else:
+                    # Text content
+                    text = extract_text(content) if isinstance(content, list) else ""
+                    if not text and isinstance(content, list):
+                        # Try string blocks
+                        for b in content:
+                            if isinstance(b, dict) and b.get("type") == "text":
+                                text = b.get("text", "")
+                                break
+                    if text:
+                        text = text.replace("\n", " ").strip()
+                        if len(text) > 80:
+                            text = text[:77] + "..."
+                        flow_lines.append(f"{ts} user: {text}")
+            elif isinstance(content, str):
+                text = content.replace("\n", " ").strip()
+                if len(text) > 80:
+                    text = text[:77] + "..."
+                flow_lines.append(f"{ts} user: {text}")
+
+        elif role == "assistant":
+            if not isinstance(content, list):
+                continue
+
+            block_types = {
+                b.get("type") for b in content if isinstance(b, dict)
+            }
+
+            # Check for tool_use blocks
+            if "tool_use" in block_types:
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") != "tool_use":
+                        continue
+                    tool_name = block.get("name", "unknown")
+                    tool_input = block.get("input", {})
+                    tool_id = block.get("id", "")
+
+                    if tool_name == "Agent":
+                        # Agent call -- show prompt and linked process_id
+                        prompt = ""
+                        if isinstance(tool_input, dict):
+                            prompt = str(tool_input.get("prompt", ""))
+                        prompt_short = prompt.replace("\n", " ")[:60]
+
+                        # Find linked process_id
+                        pid_prefix = ""
+                        for tid, pid in linkage.items():
+                            # We need to find which tool_use_id maps to this tool_use
+                            # The linkage maps tool_use_id -> process_id
+                            # This tool_use block has id == tool_id
+                            pass
+
+                        # Check if this tool_use id is in linkage
+                        if tool_id in linkage:
+                            pid = linkage[tool_id]
+                            pid_prefix = pid[:8]
+                            proc = agent_map.get(pid, {})
+                            dur_ms = proc.get("durationMs", 0)
+                            dur_str = _format_duration(dur_ms)
+                            flow_lines.append(
+                                f"{ts} -> Agent({prompt_short}) [{pid_prefix} {dur_str}]"
+                            )
+                        else:
+                            flow_lines.append(f"{ts} -> Agent({prompt_short})")
+                    else:
+                        summary = _input_summary(tool_input)
+                        flow_lines.append(f"{ts} -> {tool_name}({summary})")
+
+            elif "text" in block_types:
+                # Text-only (no tool_use) -- skip if also has thinking only
+                has_text = False
+                text_content = ""
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        has_text = True
+                        text_content = block.get("text", "")
+                        break
+                if has_text and text_content.strip():
+                    text_content = text_content.replace("\n", " ").strip()
+                    if len(text_content) > 80:
+                        text_content = text_content[:77] + "..."
+                    flow_lines.append(f"{ts} asst: {text_content}")
+
+            elif block_types == {"thinking"}:
+                # Thinking-only -- skip
+                continue
+
+    if not flow_lines:
+        return "No flow lines generated."
+
+    sf = session_file
+    page, footer = paginate(flow_lines, args, f"{sf} flow")
+
+    output = "\n".join(page)
+    output += "\n" + footer
+    return output
+
+
+def _format_duration(ms: int) -> str:
+    """Format milliseconds as human-readable duration."""
+    if ms <= 0:
+        return "0ms"
+    if ms < 1000:
+        return f"{ms}ms"
+    s = ms / 1000
+    if s < 60:
+        return f"{s:.0f}s"
+    m = s / 60
+    remaining_s = s % 60
+    return f"{m:.0f}m {remaining_s:.0f}s"
 
 
 def cmd_agent(data, session_file, args):
