@@ -170,14 +170,16 @@ Analyze the CONTEXT.md `<decisions>` section and generate requirement IDs follow
 
 3. Update the `**Coverage:**` counts at the bottom of the Traceability section.
 
-4. Update ROADMAP.md — replace `Requirements: TBD` (or add a `**Requirements**:` line) with the comma-separated list of generated IDs.
+4. Update the `*Last updated:*` footer in REQUIREMENTS.md with today's date and trigger (e.g., `*Last updated: 2026-03-19 after Phase 8 requirement generation*`).
 
-5. Commit:
+5. Update ROADMAP.md — replace `Requirements: TBD` (or add a `**Requirements**:` line) with the comma-separated list of generated IDs.
+
+6. Commit:
 ```bash
 node "./.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs(phase-{N}): generate requirement IDs from context decisions" --files .planning/REQUIREMENTS.md .planning/ROADMAP.md
 ```
 
-6. Print the generated requirements to console:
+7. Print the generated requirements to console:
 ```
 Requirements generated for Phase {N}: {count} IDs ({first_id}..{last_id})
 
