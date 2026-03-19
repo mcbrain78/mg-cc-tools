@@ -1229,8 +1229,127 @@ def cmd_msg(data, session_file, args):
     return "\n".join(lines)
 
 
+def _search_messages(messages: list, pattern, session_dir: Path, location: str) -> list:
+    """Search a list of messages for pattern matches.
+
+    Returns list of result entry strings.
+    """
+    results = []
+
+    for idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+
+        content = msg.get("content")
+        searchable_parts = []
+
+        if isinstance(content, str):
+            searchable_parts.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "text":
+                    searchable_parts.append(block.get("text", ""))
+                elif btype == "tool_use":
+                    tool_input = block.get("input", {})
+                    searchable_parts.append(json.dumps(tool_input, indent=2))
+                elif btype == "tool_result":
+                    text = extract_text(block.get("content", ""))
+                    # Content command: recover persisted before matching (SAN-15)
+                    text = recover_persisted(text, session_dir)
+                    searchable_parts.append(text)
+
+        # Search all parts
+        full_text = "\n".join(searchable_parts)
+        text_lines = full_text.split("\n")
+
+        matched_lines = []
+        for line_idx, line in enumerate(text_lines):
+            if pattern.search(line):
+                # Gather context: 1 line above and below
+                ctx_start = max(0, line_idx - 1)
+                ctx_end = min(len(text_lines) - 1, line_idx + 1)
+                ctx = []
+                for ci in range(ctx_start, ctx_end + 1):
+                    if ci == line_idx:
+                        ctx.append(f">>> {text_lines[ci]}")
+                    else:
+                        ctx.append(f"    {text_lines[ci]}")
+                matched_lines.append("\n".join(ctx))
+
+        if matched_lines:
+            header = f"[{location}] msg[{idx}]"
+            entry = header + "\n" + "\n".join(matched_lines)
+            results.append(entry)
+
+    return results
+
+
 def cmd_search(data, session_file, args):
-    print("Not yet implemented: search")
+    """Search tool inputs, results, and assistant text with scope filtering."""
+    session_dir = Path(session_file).parent
+
+    # Compile regex
+    try:
+        pattern = re.compile(args.pattern, re.IGNORECASE)
+    except re.error as e:
+        print(f"Invalid regex pattern: {e}")
+        sys.exit(1)
+
+    # Determine scope
+    scope = getattr(args, "scope", None)
+    results = []
+
+    if scope is None:
+        # Default: search everything
+        results.extend(
+            _search_messages(data.get("messages", []), pattern, session_dir, "orch")
+        )
+        for proc in data.get("processes", []):
+            if not isinstance(proc, dict):
+                continue
+            pid = proc.get("id", "????????")
+            results.extend(
+                _search_messages(
+                    proc.get("messages", []), pattern, session_dir, f"agent:{pid[:8]}"
+                )
+            )
+    elif scope == "orchestrator":
+        results.extend(
+            _search_messages(data.get("messages", []), pattern, session_dir, "orch")
+        )
+    elif scope == "agents":
+        for proc in data.get("processes", []):
+            if not isinstance(proc, dict):
+                continue
+            pid = proc.get("id", "????????")
+            results.extend(
+                _search_messages(
+                    proc.get("messages", []), pattern, session_dir, f"agent:{pid[:8]}"
+                )
+            )
+    elif scope.startswith("agent:"):
+        prefix = scope[6:]
+        proc, pid = resolve_agent_prefix(data, prefix)
+        results.extend(
+            _search_messages(
+                proc.get("messages", []), pattern, session_dir, f"agent:{pid[:8]}"
+            )
+        )
+    else:
+        print(f"Unknown scope: {scope}. Use: orchestrator, agents, agent:<prefix>")
+        sys.exit(1)
+
+    if not results:
+        return "No matches found."
+
+    sf = session_file
+    page, footer = paginate(results, args, f"{sf} search \"{args.pattern}\"")
+
+    output = "\n\n".join(page) + "\n\n" + footer
+    return output
 
 
 def cmd_export(data, session_file, args):
