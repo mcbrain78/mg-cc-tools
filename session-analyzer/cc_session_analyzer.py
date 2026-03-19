@@ -916,8 +916,152 @@ def _format_duration(ms: int) -> str:
     return f"{m:.0f}m {remaining_s:.0f}s"
 
 
+def resolve_agent_prefix(data: dict, prefix: str) -> tuple:
+    """Resolve an agent ID prefix to a single (process_entry, process_id).
+
+    Exits with error if zero or multiple matches (SAN-16).
+    """
+    matches = []
+    for proc in data.get("processes", []):
+        if not isinstance(proc, dict):
+            continue
+        pid = proc.get("id", "")
+        if pid.startswith(prefix):
+            matches.append((proc, pid))
+
+    if len(matches) == 0:
+        print(f"No agent matching prefix '{prefix}'")
+        sys.exit(1)
+    elif len(matches) > 1:
+        ids = ", ".join(pid[:8] for _, pid in matches[:10])
+        if len(matches) > 10:
+            ids += f", ... ({len(matches)} total)"
+        print(f"Ambiguous prefix '{prefix}' -- matches {ids}. Use a longer prefix.")
+        sys.exit(1)
+
+    return matches[0]
+
+
 def cmd_agent(data, session_file, args):
-    print("Not yet implemented: agent")
+    """Show single agent deep dive with interleaved tool calls and reasoning."""
+    proc, pid = resolve_agent_prefix(data, args.prefix)
+    messages = proc.get("messages", [])
+    msg_count = len(messages)
+
+    # Status
+    if proc.get("isOngoing"):
+        status = "active"
+    else:
+        status = _classify_agent_status(messages)
+
+    # Duration
+    dur_ms = proc.get("durationMs", 0)
+    dur_str = _format_duration(dur_ms)
+
+    lines = []
+    lines.append(f"Agent {pid[:8]} -- {status} -- {dur_str} -- {msg_count} messages")
+
+    # Prompt: first user message content
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("role") == "user":
+            text = extract_text(msg.get("content", ""))
+            text = strip_usage(text).strip()
+            if text:
+                lines.append("")
+                lines.append("Prompt:")
+                lines.append(text)
+            break
+
+    lines.append("")
+
+    # Build interleaved display entries
+    entries = []
+    # Track tool_use_id -> tool_name for matching results
+    pending_tools = {}
+
+    for idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+
+        role = msg.get("role")
+        content = msg.get("content")
+
+        if role == "assistant":
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "text":
+                    text = strip_usage(block.get("text", "")).strip()
+                    if not text:
+                        continue
+                    text_lines = text.split("\n")
+                    if len(text_lines) > 20:
+                        remaining = len(text_lines) - 20
+                        display = "\n".join(text_lines[:20])
+                        display += f"\n... ({remaining} more lines, use msg {pid[:8]} {idx} for full)"
+                    else:
+                        display = text
+                    entries.append(f"msg[{idx}] asst: {display}")
+                elif btype == "tool_use":
+                    tool_name = block.get("name", "unknown")
+                    tool_input = block.get("input", {})
+                    summary = _input_summary(tool_input, 80)
+                    tool_id = block.get("id", "")
+                    if tool_id:
+                        pending_tools[tool_id] = tool_name
+                    entries.append(f"msg[{idx}] -> {tool_name}({summary})")
+
+        elif role == "user":
+            if not isinstance(content, list):
+                # Plain text user message
+                text = extract_text(content) if content else ""
+                if text:
+                    text_short = text.replace("\n", " ").strip()
+                    if len(text_short) > 80:
+                        text_short = text_short[:77] + "..."
+                    entries.append(f"msg[{idx}] user: {text_short}")
+                continue
+
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "tool_result":
+                    tool_use_id = block.get("tool_use_id", "")
+                    tool_name = pending_tools.pop(tool_use_id, "unknown")
+                    text = extract_text(block.get("content", ""))
+
+                    if block.get("is_error"):
+                        # Show first 3 lines of error
+                        err_lines = text.strip().split("\n")[:3]
+                        err_display = "\n".join(err_lines)
+                        entries.append(f"msg[{idx}] <- {tool_name}: error\n{err_display}")
+                    elif "<persisted-output>" in text:
+                        # Extract size hint
+                        size_match = re.search(r"Output too large \(([^)]+)\)", text)
+                        size_str = size_match.group(1) if size_match else "unknown"
+                        entries.append(f"msg[{idx}] <- {tool_name}: persisted ({size_str})")
+                    else:
+                        entries.append(f"msg[{idx}] <- {tool_name}: ok")
+                elif btype == "text":
+                    text = block.get("text", "").strip()
+                    if text:
+                        text_short = text.replace("\n", " ")
+                        if len(text_short) > 80:
+                            text_short = text_short[:77] + "..."
+                        entries.append(f"msg[{idx}] user: {text_short}")
+
+    if not entries:
+        return "No messages in this agent."
+
+    sf = session_file
+    page, footer = paginate(entries, args, f"{sf} agent {pid[:8]}")
+
+    output = "\n".join(lines) + "\n" + "\n".join(page) + "\n" + footer
+    return output
 
 
 def cmd_agent_list(data, session_file, args):
@@ -999,7 +1143,90 @@ def cmd_agent_list(data, session_file, args):
 
 
 def cmd_msg(data, session_file, args):
-    print("Not yet implemented: msg")
+    """Show single message with +/-2 context, full content (content command)."""
+    session_dir = Path(session_file).parent
+
+    # Determine message list
+    agent_prefix = getattr(args, "agent", None)
+    if agent_prefix:
+        proc, pid = resolve_agent_prefix(data, agent_prefix)
+        messages = proc.get("messages", [])
+        location = f"agent:{pid[:8]}"
+    else:
+        messages = data.get("messages", [])
+        location = "orchestrator"
+
+    idx = args.index
+    max_idx = len(messages) - 1
+    if idx < 0 or idx > max_idx:
+        print(f"Message index {idx} out of range (0-{max_idx})")
+        sys.exit(1)
+
+    # Context range: N-2 to N+2
+    start = max(0, idx - 2)
+    end = min(max_idx, idx + 2)
+
+    lines = []
+    lines.append(f"Messages from {location} [{start}-{end}]:")
+    lines.append("")
+
+    for i in range(start, end + 1):
+        msg = messages[i]
+        if not isinstance(msg, dict):
+            continue
+
+        role = msg.get("role", "unknown")
+        ts = msg.get("timestamp", "")
+        marker = " ***" if i == idx else ""
+        lines.append(f"--- msg[{i}] {role} {ts}{marker} ---")
+
+        content = msg.get("content")
+
+        if isinstance(content, str):
+            text = strip_usage(content).strip()
+            lines.append(text)
+        elif isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+
+                if btype == "text":
+                    text = strip_usage(block.get("text", "")).strip()
+                    if text:
+                        lines.append(text)
+
+                elif btype == "thinking":
+                    # Skip thinking blocks in display
+                    continue
+
+                elif btype == "tool_use":
+                    tool_name = block.get("name", "unknown")
+                    tool_input = block.get("input", {})
+                    lines.append(f"[tool_use] {tool_name}")
+                    input_str = json.dumps(tool_input, indent=2)
+                    input_lines = input_str.split("\n")
+                    if len(input_lines) > 100:
+                        lines.extend(input_lines[:100])
+                        lines.append(f"... ({len(input_lines) - 100} more lines)")
+                    else:
+                        lines.extend(input_lines)
+
+                elif btype == "tool_result":
+                    tool_use_id = block.get("tool_use_id", "")
+                    is_error = block.get("is_error", False)
+                    status_str = " (error)" if is_error else ""
+                    lines.append(f"[tool_result]{status_str}")
+                    text = extract_text(block.get("content", ""))
+                    # Content command: recover persisted outputs (SAN-15)
+                    text = recover_persisted(text, session_dir)
+                    text = strip_usage(text).strip()
+                    if text:
+                        lines.append(text)
+
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def cmd_search(data, session_file, args):
@@ -1056,7 +1283,7 @@ def build_parser() -> argparse.ArgumentParser:
     # msg (not paginated)
     sub = subparsers.add_parser("msg", help="Single message with context")
     sub.add_argument("index", type=int, help="Message index")
-    sub.add_argument("agent_prefix", nargs="?", default=None, help="Optional agent ID prefix")
+    sub.add_argument("--agent", default=None, help="Agent ID prefix to view agent process message")
 
     # search (paginated)
     sub = subparsers.add_parser("search", help="Search tool I/O and text")
