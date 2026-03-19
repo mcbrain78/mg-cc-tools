@@ -1,7 +1,7 @@
 ---
 name: mg:install
 description: Install, update, and manage mg-cc-tools in target projects
-allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion
+allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, Agent
 ---
 
 # mg:install -- Unified Tool Installer & Manager
@@ -166,7 +166,7 @@ What would you like to do?
 Type a number, or tool names separated by commas:
 ```
 
-**Scenario B: Some outdated or modified (summary.outdated > 0 or summary.modified > 0)**
+**Scenario B: Some outdated or modified (summary.update > 0 or summary.modified > 0)**
 ```
 What would you like to do?
 
@@ -179,7 +179,7 @@ What would you like to do?
 Type a number, tool names, or 'all':
 ```
 
-**Scenario C: All current (summary.installed > 0 and summary.outdated == 0 and summary.modified == 0)**
+**Scenario C: All current (summary.installed > 0 and summary.update == 0 and summary.modified == 0)**
 ```
 What would you like to do?
 
@@ -247,10 +247,10 @@ If the user selects "Edit standard install list":
 Run preflight checks for the selected tools:
 
 ```bash
-python3 "$MG_INSTALL_LIB" preflight --source ./ --target "$TARGET_PATH" --tools tool1 tool2 tool3
+python3 "$MG_INSTALL_LIB" preflight --source ./ --target "$TARGET_PATH" --tools "tool1,tool2,tool3"
 ```
 
-This returns JSON with: `checks` array (each with `name`, `status`, `version`, `required_by`, `fix` info) and `all_required_passed` boolean.
+This returns JSON with: `checks` array (each with `id`, `type`, `passed`, `required`, `version`, `error`, `fix`) and `all_passed` boolean.
 
 **Display results:**
 ```
@@ -266,7 +266,7 @@ Preflight checks:
   Optional: 0/2 (degraded features noted)
 ```
 
-**If `all_required_passed` is false (required check failed):**
+**If `all_passed` is false (required check failed):**
 
 Hard abort. Show the failing check's fix instructions:
 ```
@@ -339,8 +339,8 @@ Installing tools:
 **Error handling:** If a tool's install.sh fails (non-zero exit code):
 - Report the error: `create-docs...  FAILED (exit code 1)`
 - Capture and display stderr
-- Continue with remaining tools (do not abort the entire install)
-- Track failed tools for the summary
+- STOP immediately — do not continue with remaining tools
+- Report which tools were installed successfully and which tool failed
 
 Each tool's `install.sh` handles all file copying, sed placeholder resolution, workspace scaffolding, and manifest update internally.
 
@@ -427,9 +427,9 @@ mg-cc-tools -- INSTALL COMPLETE
 1. **Always runs from mg-cc-tools directory** -- source is always `./`
 2. **mg-install-lib.py is at `./install/scripts/mg-install-lib.py`** -- no sed resolution needed since this command always runs from the source directory
 3. **AskUserQuestion is ONLY for target selection** (Step 1) -- action selection (Step 3) uses numbered text prompts parsed by the LLM
-4. **claude -p probe runs from the TARGET directory** -- LSP availability is project-specific
-5. **Excluded tools** (install, cc-regression-test, gsd-patches) are shown in status but excluded from bulk operations; they can be installed explicitly by name
+4. **LSP detected via settings.json scan** -- checks global and project settings for LSP plugins
+5. **Excluded tools** (install, cc-regression-test) are shown in status but excluded from bulk operations; they can be installed explicitly by name
 9. **Standard vs optional tools** -- bulk "install all" only includes tools where `standard: true` (resolved from tool.toml default + manifest `standard_overrides`). Optional tools can be installed by name or promoted via "Edit standard install list"
-6. **Each tool's install.sh handles its own manifest update** -- this command does NOT call update-manifest directly
+6. **Each tool's install.sh handles its own manifest update** -- this command does NOT call update-manifest directly, except for execute-only tools (no install.sh) where it calls update-manifest after post-install completes
 7. **Preflight required check failure is a hard abort** -- do not proceed to installation
 8. **LSP probe failure is never blocking** -- note it and continue
