@@ -36,7 +36,7 @@ key-decisions:
 patterns-established:
   - "Execute-only pattern: tool with no install.sh uses post-install.md for all work"
 
-requirements-completed: [POSTINSTALL-GSDPATCHES, EXECUTEONLY]
+requirements-completed: [INST-23, INST-24]
 
 # Metrics
 duration: 2min

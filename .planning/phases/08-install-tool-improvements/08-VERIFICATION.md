@@ -7,7 +7,7 @@ re_verification: false
 gaps:
   - truth: "Phase 8 requirement IDs are recorded in REQUIREMENTS.md with traceability to Phase 8"
     status: resolved
-    reason: "REQUIREMENTS.md covers only phases 1-7 (60 requirements). All 22 Phase 8 requirement IDs (LIB-DISCOVER, LIB-TOML, LIB-CHECKSUMS, LIB-ADOPT, LIB-SCANSTATUS, TEMPLATE, DETECT, TIERS, POSTINSTALL-PERMHOOKS, POSTINSTALL-CCREGTEST, POSTINSTALL-GSDPATCHES, EXECUTEONLY, SNAPSHOT-MGWRAPPERS, SNAPSHOT-CREATECTX, STALE-CLEANUP, INSTALL-SEQUENTIAL, INSTALL-STOPONERROR, INSTALL-SUBAGENT, INSTALL-STATUSMARKER, INSTALL-EXECUTEONLY, INSTALL-ADOPT, INSTALL-TIERS) appear in ROADMAP.md and PLAN frontmatter but are absent from REQUIREMENTS.md."
+    reason: "REQUIREMENTS.md covers only phases 1-7 (60 requirements). All 22 Phase 8 requirement IDs (INST-13, INST-14, INST-15, INST-16, INST-17, INST-18, INST-19, INST-20, INST-21, INST-22, INST-23, INST-24, INST-25, INST-26, INST-27, INST-28, INST-29, INST-30, INST-31, INST-32, INST-33, INST-34) appear in ROADMAP.md and PLAN frontmatter but are absent from REQUIREMENTS.md."
     artifacts:
       - path: ".planning/REQUIREMENTS.md"
         issue: "Stops at Phase 7 (INST-01..INST-12). No Phase 8 section, no traceability rows for Phase 8 IDs."
@@ -98,28 +98,28 @@ gaps:
 
 | Requirement | Source Plan | Status | Evidence |
 |-------------|-------------|--------|---------|
-| LIB-DISCOVER | 08-01 | SATISFIED | `discover_tools()` requires only tool.toml (line 204). |
-| LIB-TOML | 08-01 | SATISFIED | `read_tool_toml()` returns `post_install_script` and `detect_paths`. |
-| LIB-CHECKSUMS | 08-01 | SATISFIED | `patches/**/*.md` in CHECKSUM_INCLUDE; `post-install.md` in root file loop. |
-| LIB-ADOPT | 08-01 | SATISFIED | Dual detection in `adopt_tools()`: commands OR detect paths. |
-| LIB-SCANSTATUS | 08-01 | SATISFIED | `has_install_sh` and `post_install` in scan-status output. |
-| TEMPLATE | 08-02 | SATISFIED | `install/TEMPLATE-post-install.md` with mandated status markers exists. |
-| DETECT | 08-02 | SATISFIED | 9 tools have `[detect]` sections (6 mechanical + 3 with tier changes). |
-| TIERS | 08-02 | SATISFIED | permission-hooks, gsd-patches, mg-gsd-wrappers set `standard=false`; cc-regression-test keeps `exclude=true`. |
-| POSTINSTALL-PERMHOOKS | 08-03 | SATISFIED | `permission-hooks/post-install.md` self-contained, no placeholders, status markers. |
-| POSTINSTALL-CCREGTEST | 08-03 | SATISFIED | `cc-regression-test/post-install.md` settings.json merge, idempotent, status markers. |
-| POSTINSTALL-GSDPATCHES | 08-04 | SATISFIED | `gsd-patches/post-install.md` complete patch application, 233 lines, status markers. |
-| EXECUTEONLY | 08-04 | SATISFIED | gsd-patches has no install.sh, only tool.toml + post-install.md. Still discovered. |
-| SNAPSHOT-MGWRAPPERS | 08-03 | SATISFIED | mg-gsd-wrappers snapshot copied to `.claude/mg-gsd-wrappers/references/`. |
-| SNAPSHOT-CREATECTX | 08-03 | SATISFIED | create-context snapshot copied to `.claude/create-context/references/`. |
-| STALE-CLEANUP | 08-03 | SATISFIED | Stale cleanup in permission-hooks, mg-gsd-wrappers, create-context install.sh; gsd-patches post-install.md Step 0. |
-| INSTALL-SEQUENTIAL | 08-05 | SATISFIED | Step 6: "execute the install in sequence." |
-| INSTALL-STOPONERROR | 08-05 | SATISFIED | Step 6: "Stop immediately if any tool fails." |
-| INSTALL-SUBAGENT | 08-05 | SATISFIED | Step 6 Pattern B and C: Agent invocation with prompt prefix. |
-| INSTALL-STATUSMARKER | 08-05 | SATISFIED | Step 6: `POST-INSTALL: SUCCESS`/`FAILED` parsing with stop-on-error for missing marker. |
-| INSTALL-EXECUTEONLY | 08-05 | SATISFIED | Pattern C calls `update-manifest` directly after post-install (no install.sh). |
-| INSTALL-ADOPT | 08-05 | SATISFIED | Step 2b mentions `[detect]` paths in adopt detection. |
-| INSTALL-TIERS | 08-05 | SATISFIED | Status table shows gsd-patches as optional; Key Constraint #5 excludes only install and cc-regression-test. |
+| INST-13 | 08-01 | SATISFIED | `discover_tools()` requires only tool.toml (line 204). |
+| INST-14 | 08-01 | SATISFIED | `read_tool_toml()` returns `post_install_script` and `detect_paths`. |
+| INST-15 | 08-01 | SATISFIED | `patches/**/*.md` in CHECKSUM_INCLUDE; `post-install.md` in root file loop. |
+| INST-16 | 08-01 | SATISFIED | Dual detection in `adopt_tools()`: commands OR detect paths. |
+| INST-17 | 08-01 | SATISFIED | `has_install_sh` and `post_install` in scan-status output. |
+| INST-18 | 08-02 | SATISFIED | `install/TEMPLATE-post-install.md` with mandated status markers exists. |
+| INST-19 | 08-02 | SATISFIED | 9 tools have `[detect]` sections (6 mechanical + 3 with tier changes). |
+| INST-20 | 08-02 | SATISFIED | permission-hooks, gsd-patches, mg-gsd-wrappers set `standard=false`; cc-regression-test keeps `exclude=true`. |
+| INST-21 | 08-03 | SATISFIED | `permission-hooks/post-install.md` self-contained, no placeholders, status markers. |
+| INST-22 | 08-03 | SATISFIED | `cc-regression-test/post-install.md` settings.json merge, idempotent, status markers. |
+| INST-23 | 08-04 | SATISFIED | `gsd-patches/post-install.md` complete patch application, 233 lines, status markers. |
+| INST-24 | 08-04 | SATISFIED | gsd-patches has no install.sh, only tool.toml + post-install.md. Still discovered. |
+| INST-25 | 08-03 | SATISFIED | mg-gsd-wrappers snapshot copied to `.claude/mg-gsd-wrappers/references/`. |
+| INST-26 | 08-03 | SATISFIED | create-context snapshot copied to `.claude/create-context/references/`. |
+| INST-27 | 08-03 | SATISFIED | Stale cleanup in permission-hooks, mg-gsd-wrappers, create-context install.sh; gsd-patches post-install.md Step 0. |
+| INST-28 | 08-05 | SATISFIED | Step 6: "execute the install in sequence." |
+| INST-29 | 08-05 | SATISFIED | Step 6: "Stop immediately if any tool fails." |
+| INST-30 | 08-05 | SATISFIED | Step 6 Pattern B and C: Agent invocation with prompt prefix. |
+| INST-31 | 08-05 | SATISFIED | Step 6: `POST-INSTALL: SUCCESS`/`FAILED` parsing with stop-on-error for missing marker. |
+| INST-32 | 08-05 | SATISFIED | Pattern C calls `update-manifest` directly after post-install (no install.sh). |
+| INST-33 | 08-05 | SATISFIED | Step 2b mentions `[detect]` paths in adopt detection. |
+| INST-34 | 08-05 | SATISFIED | Status table shows gsd-patches as optional; Key Constraint #5 excludes only install and cc-regression-test. |
 
 **ORPHANED requirements (in ROADMAP.md but absent from REQUIREMENTS.md):** All 22 Phase 8 IDs listed above. They exist in PLAN frontmatter and are satisfied by the implementation, but REQUIREMENTS.md was never updated to include them.
 
@@ -159,7 +159,7 @@ No blocking or warning-level anti-patterns found across any modified files.
 
 ## Gaps Summary
 
-One gap found: the Phase 8 requirement IDs were never added to REQUIREMENTS.md. All 22 requirement IDs (LIB-DISCOVER through INSTALL-TIERS) are referenced in ROADMAP.md phase details and in the `requirements:` frontmatter of the 5 PLAN files, but REQUIREMENTS.md was last updated 2026-03-15 (Phase 1 creation) and covers only phases 1-7.
+One gap found: the Phase 8 requirement IDs were never added to REQUIREMENTS.md. All 22 requirement IDs (INST-13 through INST-34) are referenced in ROADMAP.md phase details and in the `requirements:` frontmatter of the 5 PLAN files, but REQUIREMENTS.md was last updated 2026-03-15 (Phase 1 creation) and covers only phases 1-7.
 
 This is a documentation/traceability gap, not an implementation gap. Every requirement is fully satisfied in the codebase — the gap is that the traceability record is incomplete.
 

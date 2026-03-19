@@ -36,7 +36,7 @@ patterns-established:
   - "Root file checksums via loop over hardcoded list: for root_file in ['install.sh', 'post-install.md']"
   - "Dual adopt detection: commands_detected OR detect_detected, skip when both empty"
 
-requirements-completed: [LIB-DISCOVER, LIB-TOML, LIB-CHECKSUMS, LIB-ADOPT, LIB-SCANSTATUS]
+requirements-completed: [INST-13, INST-14, INST-15, INST-16, INST-17]
 
 # Metrics
 duration: 5min

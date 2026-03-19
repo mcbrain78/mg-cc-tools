@@ -166,7 +166,7 @@ Plans:
 
 **Goal:** Add two-stage install support to /mg:install: each tool can have an optional post-install.md that runs as a subagent after install.sh completes, enabling tools that need Claude Code intelligence for configuration (settings.json merges, interactive patch application) to be installed through the unified installer
 **Depends on:** Phase 7
-**Requirements**: LIB-DISCOVER, LIB-TOML, LIB-CHECKSUMS, LIB-ADOPT, LIB-SCANSTATUS, TEMPLATE, DETECT, TIERS, POSTINSTALL-PERMHOOKS, POSTINSTALL-CCREGTEST, POSTINSTALL-GSDPATCHES, EXECUTEONLY, SNAPSHOT-MGWRAPPERS, SNAPSHOT-CREATECTX, STALE-CLEANUP, INSTALL-SEQUENTIAL, INSTALL-STOPONERROR, INSTALL-SUBAGENT, INSTALL-STATUSMARKER, INSTALL-EXECUTEONLY, INSTALL-ADOPT, INSTALL-TIERS
+**Requirements**: INST-13, INST-14, INST-15, INST-16, INST-17, INST-18, INST-19, INST-20, INST-21, INST-22, INST-23, INST-24, INST-25, INST-26, INST-27, INST-28, INST-29, INST-30, INST-31, INST-32, INST-33, INST-34
 **Success Criteria** (what must be TRUE):
   1. discover_tools() requires only tool.toml -- no install.sh needed for execute-only tools like gsd-patches
   2. scan-status output includes post_install and has_install_sh fields so install.md knows which pattern to use

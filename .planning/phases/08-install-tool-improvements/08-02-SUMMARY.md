@@ -47,7 +47,7 @@ patterns-established:
   - "[post_install] script field names the post-install.md file"
   - "POST-INSTALL: SUCCESS/FAILED as mandatory status markers"
 
-requirements-completed: [TEMPLATE, DETECT, TIERS]
+requirements-completed: [INST-18, INST-19, INST-20]
 
 # Metrics
 duration: 2min

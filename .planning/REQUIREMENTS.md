@@ -93,28 +93,28 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Install Tool Improvements
 
-- [x] **LIB-DISCOVER**: discover_tools() requires only tool.toml — no install.sh needed for tool discovery
-- [x] **LIB-TOML**: read_tool_toml() parses [post_install] and [detect] sections from tool.toml
-- [x] **LIB-CHECKSUMS**: compute_tool_checksums() includes post-install.md and patches/**/*.md in checksum scope
-- [x] **LIB-ADOPT**: adopt_tools() detects pre-manifest installations via [detect].paths in addition to command presence
-- [x] **LIB-SCANSTATUS**: scan_status() reports post_install and has_install_sh fields for install pattern determination
-- [x] **TEMPLATE**: TEMPLATE-post-install.md defines mandatory POST-INSTALL: SUCCESS/FAILED status marker pattern
-- [x] **DETECT**: Six tools have [detect] sections in tool.toml for adopt detection paths
-- [x] **TIERS**: Tool tier changes: permission-hooks, gsd-patches, mg-gsd-wrappers set to standard = false
-- [x] **POSTINSTALL-PERMHOOKS**: permission-hooks has self-contained post-install.md for settings.json hook configuration
-- [x] **POSTINSTALL-CCREGTEST**: cc-regression-test has self-contained post-install.md for settings.json hook merge
-- [x] **POSTINSTALL-GSDPATCHES**: gsd-patches has execute-only post-install.md for GSD patch application from source
-- [x] **EXECUTEONLY**: gsd-patches operates as execute-only tool (no install.sh, post-install.md only)
-- [x] **SNAPSHOT-MGWRAPPERS**: mg-gsd-wrappers snapshot moved from commands/mg/ to references/ directory
-- [x] **SNAPSHOT-CREATECTX**: create-context snapshot moved from commands/mg/ to references/ directory
-- [x] **STALE-CLEANUP**: Stale file cleanup in install.sh/post-install.md for permission-hooks and gsd-patches
-- [x] **INSTALL-SEQUENTIAL**: install.md runs per-tool sequential (replaces batch execution)
-- [x] **INSTALL-STOPONERROR**: install.md stops on first failure (replaces continue-on-error)
-- [x] **INSTALL-SUBAGENT**: install.md spawns Agent subagents for post-install.md execution
-- [x] **INSTALL-STATUSMARKER**: install.md parses POST-INSTALL: SUCCESS/FAILED from subagent return text
-- [x] **INSTALL-EXECUTEONLY**: install.md handles execute-only pattern (skip install.sh, call update-manifest directly)
-- [x] **INSTALL-ADOPT**: install.md adopt checks [detect].paths and skips execute-only tools
-- [x] **INSTALL-TIERS**: install.md status table reflects updated tier settings (gsd-patches optional, not excluded)
+- [x] **INST-13**: discover_tools() requires only tool.toml — no install.sh needed for tool discovery
+- [x] **INST-14**: read_tool_toml() parses [post_install] and [detect] sections from tool.toml
+- [x] **INST-15**: compute_tool_checksums() includes post-install.md and patches/**/*.md in checksum scope
+- [x] **INST-16**: adopt_tools() detects pre-manifest installations via [detect].paths in addition to command presence
+- [x] **INST-17**: scan_status() reports post_install and has_install_sh fields for install pattern determination
+- [x] **INST-18**: TEMPLATE-post-install.md defines mandatory POST-INSTALL: SUCCESS/FAILED status marker pattern
+- [x] **INST-19**: Six tools have [detect] sections in tool.toml for adopt detection paths
+- [x] **INST-20**: Tool tier changes: permission-hooks, gsd-patches, mg-gsd-wrappers set to standard = false
+- [x] **INST-21**: permission-hooks has self-contained post-install.md for settings.json hook configuration
+- [x] **INST-22**: cc-regression-test has self-contained post-install.md for settings.json hook merge
+- [x] **INST-23**: gsd-patches has execute-only post-install.md for GSD patch application from source
+- [x] **INST-24**: gsd-patches operates as execute-only tool (no install.sh, post-install.md only)
+- [x] **INST-25**: mg-gsd-wrappers snapshot moved from commands/mg/ to references/ directory
+- [x] **INST-26**: create-context snapshot moved from commands/mg/ to references/ directory
+- [x] **INST-27**: Stale file cleanup in install.sh/post-install.md for permission-hooks and gsd-patches
+- [x] **INST-28**: install.md runs per-tool sequential (replaces batch execution)
+- [x] **INST-29**: install.md stops on first failure (replaces continue-on-error)
+- [x] **INST-30**: install.md spawns Agent subagents for post-install.md execution
+- [x] **INST-31**: install.md parses POST-INSTALL: SUCCESS/FAILED from subagent return text
+- [x] **INST-32**: install.md handles execute-only pattern (skip install.sh, call update-manifest directly)
+- [x] **INST-33**: install.md adopt checks [detect].paths and skips execute-only tools
+- [x] **INST-34**: install.md status table reflects updated tier settings (gsd-patches optional, not excluded)
 
 ## v2 Requirements
 
@@ -207,28 +207,28 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INF-08 | Phase 1 | Complete |
 | INF-09 | Phase 1 | Complete |
 | INF-10 | Phase 1 | Complete |
-| LIB-DISCOVER | Phase 8 | Complete |
-| LIB-TOML | Phase 8 | Complete |
-| LIB-CHECKSUMS | Phase 8 | Complete |
-| LIB-ADOPT | Phase 8 | Complete |
-| LIB-SCANSTATUS | Phase 8 | Complete |
-| TEMPLATE | Phase 8 | Complete |
-| DETECT | Phase 8 | Complete |
-| TIERS | Phase 8 | Complete |
-| POSTINSTALL-PERMHOOKS | Phase 8 | Complete |
-| POSTINSTALL-CCREGTEST | Phase 8 | Complete |
-| POSTINSTALL-GSDPATCHES | Phase 8 | Complete |
-| EXECUTEONLY | Phase 8 | Complete |
-| SNAPSHOT-MGWRAPPERS | Phase 8 | Complete |
-| SNAPSHOT-CREATECTX | Phase 8 | Complete |
-| STALE-CLEANUP | Phase 8 | Complete |
-| INSTALL-SEQUENTIAL | Phase 8 | Complete |
-| INSTALL-STOPONERROR | Phase 8 | Complete |
-| INSTALL-SUBAGENT | Phase 8 | Complete |
-| INSTALL-STATUSMARKER | Phase 8 | Complete |
-| INSTALL-EXECUTEONLY | Phase 8 | Complete |
-| INSTALL-ADOPT | Phase 8 | Complete |
-| INSTALL-TIERS | Phase 8 | Complete |
+| INST-13 | Phase 8 | Complete |
+| INST-14 | Phase 8 | Complete |
+| INST-15 | Phase 8 | Complete |
+| INST-16 | Phase 8 | Complete |
+| INST-17 | Phase 8 | Complete |
+| INST-18 | Phase 8 | Complete |
+| INST-19 | Phase 8 | Complete |
+| INST-20 | Phase 8 | Complete |
+| INST-21 | Phase 8 | Complete |
+| INST-22 | Phase 8 | Complete |
+| INST-23 | Phase 8 | Complete |
+| INST-24 | Phase 8 | Complete |
+| INST-25 | Phase 8 | Complete |
+| INST-26 | Phase 8 | Complete |
+| INST-27 | Phase 8 | Complete |
+| INST-28 | Phase 8 | Complete |
+| INST-29 | Phase 8 | Complete |
+| INST-30 | Phase 8 | Complete |
+| INST-31 | Phase 8 | Complete |
+| INST-32 | Phase 8 | Complete |
+| INST-33 | Phase 8 | Complete |
+| INST-34 | Phase 8 | Complete |
 
 **Coverage:**
 - v1 requirements: 82 total

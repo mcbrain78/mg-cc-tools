@@ -46,7 +46,7 @@ patterns-established:
   - "Three install patterns: copy-only (A), copy+configure (B), execute-only (C)"
   - "Status marker protocol: POST-INSTALL: SUCCESS or POST-INSTALL: FAILED: <reason>"
 
-requirements-completed: [INSTALL-SEQUENTIAL, INSTALL-STOPONERROR, INSTALL-SUBAGENT, INSTALL-STATUSMARKER, INSTALL-EXECUTEONLY, INSTALL-ADOPT, INSTALL-TIERS]
+requirements-completed: [INST-28, INST-29, INST-30, INST-31, INST-32, INST-33, INST-34]
 
 # Metrics
 duration: 2min

@@ -42,7 +42,7 @@ patterns-established:
   - "Post-install subagent docs follow TEMPLATE-post-install.md with natural language path references"
   - "Stale file cleanup runs after install but before manifest update"
 
-requirements-completed: [POSTINSTALL-PERMHOOKS, POSTINSTALL-CCREGTEST, SNAPSHOT-MGWRAPPERS, SNAPSHOT-CREATECTX, STALE-CLEANUP]
+requirements-completed: [INST-21, INST-22, INST-25, INST-26, INST-27]
 
 # Metrics
 duration: 5min
