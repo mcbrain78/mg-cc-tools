@@ -16,6 +16,7 @@ Usage:
     python3 cc_session_analyzer.py SESSION.json export           # delegate to compactor
 """
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -1352,8 +1353,69 @@ def cmd_search(data, session_file, args):
     return output
 
 
+def _import_compactor():
+    """Import the compactor module from the same directory."""
+    compactor_path = Path(__file__).parent / "cc_session_compactor.py"
+    if not compactor_path.exists():
+        print(f"Error: compactor not found at {compactor_path}", file=sys.stderr)
+        sys.exit(1)
+    spec = importlib.util.spec_from_file_location("cc_session_compactor", compactor_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format byte count as human-readable string."""
+    if size_bytes >= 1_048_576:
+        return f"{size_bytes / 1_048_576:.1f}MB"
+    if size_bytes >= 1024:
+        return f"{size_bytes / 1024:.0f}KB"
+    return f"{size_bytes}B"
+
+
 def cmd_export(data, session_file, args):
-    print("Not yet implemented: export")
+    """Export session via compactor with --level support."""
+    compactor = _import_compactor()
+
+    # Parse the level value (string from argparse)
+    level_str = args.level
+    if level_str == "l2-compact":
+        level = "l2-compact"
+    else:
+        try:
+            level = int(level_str)
+            if level not in range(6):
+                print(f"Error: invalid level {level} (expected 0-5 or 'l2-compact')", file=sys.stderr)
+                sys.exit(1)
+        except ValueError:
+            print(f"Error: invalid level '{level_str}' (expected 0-5 or 'l2-compact')", file=sys.stderr)
+            sys.exit(1)
+
+    # Reload full JSON -- compactor needs original structure for its reduction logic
+    session_path = Path(session_file)
+    with open(session_path) as f:
+        full_data = json.load(f)
+
+    compactor.validate_schema(full_data)
+    original_size = session_path.stat().st_size
+
+    # Apply compactor reduction
+    reduced = compactor.slim(full_data, level)
+
+    # Determine output filename using compactor's convention
+    if level == "l2-compact":
+        output_path = session_path.with_suffix(".l2c.json")
+    else:
+        output_path = session_path.with_suffix(f".l{level}.json")
+
+    with open(output_path, "w") as f:
+        json.dump(reduced, f, indent=2)
+
+    new_size = output_path.stat().st_size
+    reduction = (1 - new_size / original_size) * 100 if original_size > 0 else 0
+
+    print(f"Exported to: {output_path} ({_format_size(new_size)}, {reduction:.0f}% reduction)")
 
 
 # ---------------------------------------------------------------------------
