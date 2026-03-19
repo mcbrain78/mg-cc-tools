@@ -91,6 +91,31 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INF-09**: Project scaffolding: .mg/docs/ with config, empty inbox, scan-logs directory
 - [x] **INF-10**: Config: .docs.config.json with audience enable/disable, custom documents, docs_dir override
 
+### Install Tool Improvements
+
+- [x] **LIB-DISCOVER**: discover_tools() requires only tool.toml — no install.sh needed for tool discovery
+- [x] **LIB-TOML**: read_tool_toml() parses [post_install] and [detect] sections from tool.toml
+- [x] **LIB-CHECKSUMS**: compute_tool_checksums() includes post-install.md and patches/**/*.md in checksum scope
+- [x] **LIB-ADOPT**: adopt_tools() detects pre-manifest installations via [detect].paths in addition to command presence
+- [x] **LIB-SCANSTATUS**: scan_status() reports post_install and has_install_sh fields for install pattern determination
+- [x] **TEMPLATE**: TEMPLATE-post-install.md defines mandatory POST-INSTALL: SUCCESS/FAILED status marker pattern
+- [x] **DETECT**: Six tools have [detect] sections in tool.toml for adopt detection paths
+- [x] **TIERS**: Tool tier changes: permission-hooks, gsd-patches, mg-gsd-wrappers set to standard = false
+- [x] **POSTINSTALL-PERMHOOKS**: permission-hooks has self-contained post-install.md for settings.json hook configuration
+- [x] **POSTINSTALL-CCREGTEST**: cc-regression-test has self-contained post-install.md for settings.json hook merge
+- [x] **POSTINSTALL-GSDPATCHES**: gsd-patches has execute-only post-install.md for GSD patch application from source
+- [x] **EXECUTEONLY**: gsd-patches operates as execute-only tool (no install.sh, post-install.md only)
+- [x] **SNAPSHOT-MGWRAPPERS**: mg-gsd-wrappers snapshot moved from commands/mg/ to references/ directory
+- [x] **SNAPSHOT-CREATECTX**: create-context snapshot moved from commands/mg/ to references/ directory
+- [x] **STALE-CLEANUP**: Stale file cleanup in install.sh/post-install.md for permission-hooks and gsd-patches
+- [x] **INSTALL-SEQUENTIAL**: install.md runs per-tool sequential (replaces batch execution)
+- [x] **INSTALL-STOPONERROR**: install.md stops on first failure (replaces continue-on-error)
+- [x] **INSTALL-SUBAGENT**: install.md spawns Agent subagents for post-install.md execution
+- [x] **INSTALL-STATUSMARKER**: install.md parses POST-INSTALL: SUCCESS/FAILED from subagent return text
+- [x] **INSTALL-EXECUTEONLY**: install.md handles execute-only pattern (skip install.sh, call update-manifest directly)
+- [x] **INSTALL-ADOPT**: install.md adopt checks [detect].paths and skips execute-only tools
+- [x] **INSTALL-TIERS**: install.md status table reflects updated tier settings (gsd-patches optional, not excluded)
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -182,12 +207,34 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INF-08 | Phase 1 | Complete |
 | INF-09 | Phase 1 | Complete |
 | INF-10 | Phase 1 | Complete |
+| LIB-DISCOVER | Phase 8 | Complete |
+| LIB-TOML | Phase 8 | Complete |
+| LIB-CHECKSUMS | Phase 8 | Complete |
+| LIB-ADOPT | Phase 8 | Complete |
+| LIB-SCANSTATUS | Phase 8 | Complete |
+| TEMPLATE | Phase 8 | Complete |
+| DETECT | Phase 8 | Complete |
+| TIERS | Phase 8 | Complete |
+| POSTINSTALL-PERMHOOKS | Phase 8 | Complete |
+| POSTINSTALL-CCREGTEST | Phase 8 | Complete |
+| POSTINSTALL-GSDPATCHES | Phase 8 | Complete |
+| EXECUTEONLY | Phase 8 | Complete |
+| SNAPSHOT-MGWRAPPERS | Phase 8 | Complete |
+| SNAPSHOT-CREATECTX | Phase 8 | Complete |
+| STALE-CLEANUP | Phase 8 | Complete |
+| INSTALL-SEQUENTIAL | Phase 8 | Complete |
+| INSTALL-STOPONERROR | Phase 8 | Complete |
+| INSTALL-SUBAGENT | Phase 8 | Complete |
+| INSTALL-STATUSMARKER | Phase 8 | Complete |
+| INSTALL-EXECUTEONLY | Phase 8 | Complete |
+| INSTALL-ADOPT | Phase 8 | Complete |
+| INSTALL-TIERS | Phase 8 | Complete |
 
 **Coverage:**
-- v1 requirements: 60 total
-- Mapped to phases: 60
+- v1 requirements: 82 total
+- Mapped to phases: 82
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-15 after roadmap creation (traceability added)*
+*Last updated: 2026-03-19 after Phase 8 completion (install tool improvements traceability added)*
