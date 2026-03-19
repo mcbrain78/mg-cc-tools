@@ -34,3 +34,8 @@ Thumbs.db
 *.swo
 
 temp/
+
+# ============================================
+# TEST FIXTURES (large session exports)
+# ============================================
+**/samples/
