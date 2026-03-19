@@ -187,7 +187,7 @@ Plans:
 ### Phase 9: session analyzer
 
 **Goal:** [To be planned]
-**Requirements**: TBD
+**Requirements**: SAN-01, SAN-02, SAN-03, SAN-04, SAN-05, SAN-06, SAN-07, SAN-08, SAN-09, SAN-10, SAN-11, SAN-12, SAN-13, SAN-14, SAN-15, SAN-16, SAN-17, SAN-18, SAN-19, SAN-20, SAN-21, SAN-22, SAN-23, SAN-24
 **Depends on:** Phase 8
 **Plans:** 0 plans
 

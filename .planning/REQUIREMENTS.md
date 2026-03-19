@@ -116,6 +116,33 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INST-33**: install.md adopt checks [detect].paths and skips execute-only tools
 - [x] **INST-34**: install.md status table reflects updated tier settings (gsd-patches optional, not excluded)
 
+### Session Analyzer
+
+- [ ] **SAN-01**: `cc_session_compactor.py` renamed from `reduce_cc_session_export.py` with all existing functionality preserved (levels 0-5, l2-compact)
+- [ ] **SAN-02**: `cc_session_analyzer.py` loads session JSON via `json.load()` and drops `chunks` data before processing
+- [ ] **SAN-03**: Default command (`overview`) produces session summary with metadata, timeline, orchestrator stats, agent stats, error list, heaviest agents, persisted outputs, and contextual next-step commands
+- [ ] **SAN-04**: `errors` command shows all detected errors with context (agent prompt snippet, failing tool call, surrounding text), paginated
+- [ ] **SAN-05**: `flow` command produces orchestrator decision trace with one line per message using mechanical classification rules and timestamps, paginated
+- [ ] **SAN-06**: `agent <id-prefix>` command shows single agent deep dive with tool calls and reasoning interleaved in execution order, paginated
+- [ ] **SAN-07**: `agent-list` command shows one line per agent (ID, status, duration, tools, size, prompt summary), paginated
+- [ ] **SAN-08**: `msg` command shows single message with ±2 context messages and full content, supports both `msg <N>` and `msg <agent-prefix> <N>` forms
+- [ ] **SAN-09**: `search <pattern>` command searches tool inputs, results (with persisted file recovery), and assistant text, paginated
+- [ ] **SAN-10**: `export` command delegates to compactor after dropping chunks, supports `--level` flag
+- [ ] **SAN-11**: Pagination with `--offset N`, `--limit N`, `--all` flags and footer showing item count and exact copy-paste next command
+- [ ] **SAN-12**: Error detection uses curated high-confidence patterns: `is_error` flag, Python tracebacks, bash exit codes, and agent result status patterns
+- [ ] **SAN-13**: Error detection filters noise patterns (`exceeds maximum allowed tokens`, `File has not been read yet`, `File does not exist`) from error counts
+- [ ] **SAN-14**: Agent-to-process linkage parses `agentId` from tool_result messages to connect orchestrator Agent calls to process entries with duration
+- [ ] **SAN-15**: Content commands (`msg`, `errors`, `search`) recover persisted output files from extracted paths, falling back to preview text when file is missing
+- [ ] **SAN-16**: Ambiguous agent prefix lists matching agents and exits with guidance to use a longer prefix
+- [ ] **SAN-17**: Search scope filters: `--scope orchestrator`, `--scope agents`, `--scope agent:<prefix>`, default searches everything
+- [ ] **SAN-18**: All output is plain text — no ANSI color codes
+- [ ] **SAN-19**: `/mg:analyze-session` slash command with tool.toml and install.sh following mg-cc-tools conventions
+- [ ] **SAN-20**: Slash command dual mode: goal-directed investigation when user provides a question, autonomous analysis when no goal given
+- [ ] **SAN-21**: Pytest suite with 1MB sample tests (default) and 75MB sample tests (`@pytest.mark.slow`, `--slow` flag)
+- [ ] **SAN-22**: Analyzer imports `cc_session_compactor` for export command but implements independent error detection
+- [ ] **SAN-23**: Overview contextual commands section omits irrelevant commands based on session content (e.g., no `agent-list` if no agents)
+- [ ] **SAN-24**: Summary commands (`overview`, `flow`, `agent`, `agent-list`) show metadata only; content commands (`msg`, `errors`, `search`) show full content with persisted recovery
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -229,12 +256,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-32 | Phase 8 | Complete |
 | INST-33 | Phase 8 | Complete |
 | INST-34 | Phase 8 | Complete |
+| SAN-01 | Phase 9 | Pending |
+| SAN-02 | Phase 9 | Pending |
+| SAN-03 | Phase 9 | Pending |
+| SAN-04 | Phase 9 | Pending |
+| SAN-05 | Phase 9 | Pending |
+| SAN-06 | Phase 9 | Pending |
+| SAN-07 | Phase 9 | Pending |
+| SAN-08 | Phase 9 | Pending |
+| SAN-09 | Phase 9 | Pending |
+| SAN-10 | Phase 9 | Pending |
+| SAN-11 | Phase 9 | Pending |
+| SAN-12 | Phase 9 | Pending |
+| SAN-13 | Phase 9 | Pending |
+| SAN-14 | Phase 9 | Pending |
+| SAN-15 | Phase 9 | Pending |
+| SAN-16 | Phase 9 | Pending |
+| SAN-17 | Phase 9 | Pending |
+| SAN-18 | Phase 9 | Pending |
+| SAN-19 | Phase 9 | Pending |
+| SAN-20 | Phase 9 | Pending |
+| SAN-21 | Phase 9 | Pending |
+| SAN-22 | Phase 9 | Pending |
+| SAN-23 | Phase 9 | Pending |
+| SAN-24 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 82 total
-- Mapped to phases: 82
+- v1 requirements: 106 total
+- Mapped to phases: 106
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-19 after Phase 8 completion (install tool improvements traceability added)*
+*Last updated: 2026-03-19 after Phase 9 requirement generation*
