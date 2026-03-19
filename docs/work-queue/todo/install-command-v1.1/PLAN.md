@@ -57,12 +57,14 @@ Per-tool sequential. If either stage fails, stop immediately.
 
 ### Constraints
 
+- **Path definitions.** `TARGET_PATH` = the target project root (e.g., `/home/user/projects/road-runner`). `SOURCE_PATH` = the mg-cc-tools repo root (e.g., `/home/user/mg_projects/mg-cc-tools`), NOT the individual tool subdirectory. Post-install.md files use `SOURCE_PATH/<tool-name>/...` for tool-specific resources (e.g., `SOURCE_PATH/gsd-patches/patches/`). Note: these are conceptual names for values passed as plain text in the subagent prompt, not shell variables.
 - **Post-install scripts run from the mg-cc-tools source directory.** /mg:install reads post-install.md from source at install time — it is never copied to the target. Re-applying (e.g., gsd-patches after a GSD update) means running `/mg:install` from mg-cc-tools and selecting the tool again.
 - **Post-install executes as a subagent.** install.md spawns a subagent (via Agent tool) for each post-install.md. This isolates post-install execution from the parent install flow — no context bleed from prior steps, clear success/failure result back to the parent. The invocation pattern:
   1. install.md reads the post-install.md file from source (e.g., `./permission-hooks/post-install.md`) using the Read tool
-  2. install.md passes the file content as the Agent tool prompt, prefixed with context: `"Target project: $TARGET_PATH\nSource directory: $SOURCE_PATH\n\n" + file_content`
+  2. install.md spawns a general-purpose Agent with prompt: `"Target project: $TARGET_PATH\nSource directory: $SOURCE_PATH\n\n" + file_content`. The subagent inherits all tools available to the parent (Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion).
   3. The subagent executes the instructions and returns a result
   4. install.md checks the result — if the subagent reports failure, STOP
+- **Post-install.md references paths as provided context**, not as shell variables. The first two lines of the subagent prompt provide `Target project: <path>` and `Source directory: <path>`. Post-install.md instructions reference these as "the target project" and "the source directory" in natural language.
 - **Post-install.md is self-contained.** No command frontmatter (it's not a registered skill). Written as a complete instruction document since the subagent has no prior context. Must not assume any variables or state beyond what is passed in the prompt prefix (target path, source path).
 - **install.md must include `Agent` in `allowed-tools`** (already added).
 - **No partial state tracking.** If post-install.md fails after install.sh succeeded, the manifest already has the tool entry and scan-status will show "✓ Current." The user fixes the issue and selects the tool again — install always runs both stages for any selected tool, there is no skip logic.
@@ -99,6 +101,8 @@ A tool is any directory containing a `tool.toml`. What it *does* is determined b
 
 `discover_tools()` requires only `tool.toml` — no stub install.sh files needed.
 
+**Implementation ordering:** `discover_tools()` must be updated BEFORE any tool's `install.sh` is removed. Otherwise, execute-only tools (like gsd-patches after removing its install.sh) will silently disappear from discovery.
+
 ### Three-Tier Model
 
 | Tier | `standard` | `exclude` | Bulk install | Table position |
@@ -113,8 +117,8 @@ A tool is any directory containing a `tool.toml`. What it *does* is determined b
 - **tool.toml**: add `standard = false`, add `[post_install] script = "post-install.md"`, add `[detect]`
 - **Create `post-install.md`** from `commands/install-permission-hooks.md` (not a simple move — content rewrite required):
   - Strip YAML frontmatter (`name:`, `description:`, `allowed-tools:`) — not a registered command
-  - Replace `$ARGUMENTS` target path references with `$TARGET_PATH` (passed via subagent prompt prefix)
-  - Remove `{SOURCE_DIR}` placeholder usage — the file is read directly from source, not sed-resolved at install time. Use relative paths from `$SOURCE_PATH` instead.
+  - Replace `$ARGUMENTS` target path references — post-install.md should reference the target path provided in the subagent prompt prefix
+  - Remove `{SOURCE_DIR}` placeholder usage — the file is read directly from source, not sed-resolved at install time. Reference the source path from the subagent prompt prefix instead.
   - Rewrite as self-contained instructions that assume no prior context (subagent has a clean slate)
 - **install.sh**: remove the line that copies install-permission-hooks.md to commands/mg/. Add cleanup: remove stale `install-permission-hooks.md` from target's `commands/mg/` if present (from pre-v1.1 installs).
 - **Result**: no longer appears as `/mg:install-permission-hooks` in target skill list
@@ -129,11 +133,12 @@ gsd-patches is a tool that runs **from mg-cc-tools** and modifies GSD workflow f
 - **tool.toml**: change `exclude = true` → `standard = false`, add `[post_install] script = "post-install.md"`
 - **Create `post-install.md`** from `commands/apply-gsd-patches.md` (not a simple move — content rewrite required):
   - Strip YAML frontmatter — not a registered command
-  - Remove `{PATCHES_DIR}` / `{SOURCE_PATCHES_DIR}` placeholders — no longer sed-resolved. Replace with `$SOURCE_PATH/gsd-patches/patches/` (source path passed via subagent prompt prefix)
+  - Remove `{PATCHES_DIR}` / `{SOURCE_PATCHES_DIR}` placeholders — no longer sed-resolved. Reference `<source directory>/gsd-patches/patches/` using the source path from the subagent prompt prefix.
   - Remove Step 0 (sync check) entirely — there is no installed copy vs source copy distinction anymore, always reading from source
-  - Replace `$ARGUMENTS` target resolution with `$TARGET_PATH` from subagent prompt prefix
+  - Replace `$ARGUMENTS` target resolution — reference the target path from the subagent prompt prefix
   - Rewrite as self-contained instructions for a subagent with no prior context
 - **install.sh**: remove entirely. Nothing needs to be copied anywhere — not to the target, not to mg-cc-tools' own .claude/.
+- **Stale file cleanup**: post-install.md removes pre-v1.1 artifacts from the target as its first step: `commands/mg/apply-gsd-patches.md` and `.claude/gsd-patches/` directory (the old installed patches copy).
 - **No `[detect]`**: nothing is installed to the target, so nothing to detect for adopt.
 - **Manifest**: /mg:install writes a manifest entry (version, timestamp) in the target after post-install completes. scan-status compares version against source to show "Update available."
 - **Re-apply after GSD updates**: user runs `/mg:install` and selects gsd-patches. post-install.md re-runs against the target. No separate command needed.
@@ -146,11 +151,11 @@ gsd-patches is a tool that runs **from mg-cc-tools** and modifies GSD workflow f
 - **No post-install needed** — pure file copy, just dependency ordering concern
 
 #### cc-regression-test
-- **tool.toml**: add `[post_install] script = "post-install.md"`, add `[detect]`
+- **tool.toml**: add `[post_install] script = "post-install.md"`, add `[detect]`. Remains `exclude = true` — post-install only fires when the user explicitly names this tool.
 - **Create `post-install.md`** (new file — extract and rewrite settings.json merge from install.sh):
   - Extract the inline Python settings.json merge logic from install.sh (adds `PreToolUse` hook for Bash matcher)
   - Rewrite as self-contained subagent instructions: read target settings.json, merge hook entry, write back
-  - Use `$TARGET_PATH` from subagent prompt prefix, not shell variables
+  - Reference the target path from the subagent prompt prefix, not shell variables
   - Handle edge cases: settings.json doesn't exist, hooks array doesn't exist, entry already present (idempotent)
 - **install.sh**: simplified — just file copies and sed placeholder resolution, no settings.json manipulation
 
@@ -181,11 +186,11 @@ gsd-patches is a tool that runs **from mg-cc-tools** and modifies GSD workflow f
 
 ### mg-install-lib.py Changes
 
-1. **`read_tool_toml()`**: parse `[post_install]` and `[detect]` sections
+1. **`read_tool_toml()`**: parse `[post_install]` and `[detect]` sections. Return `post_install_script` (string or None, e.g., `"post-install.md"`) and `detect_paths` (list of strings or empty list). These flow into scan-status per-tool output as: `"post_install": "post-install.md"` (or `null`), `"has_install_sh": true/false`.
 2. **`discover_tools()`**: require only `tool.toml` for discovery. Derive install pattern from which files exist (install.sh, post-install.md, both, neither).
-3. **`adopt_tools()`**: check `[detect].paths` existence in addition to command file presence. A tool is detected if (all commands present) OR (all detect paths exist). Skip tools with no detect paths and no commands (execute-only tools like gsd-patches).
-4. **`scan-status` output**: include `post_install` and `has_install_sh` fields per tool (so install.md knows the install pattern)
-5. **`compute_tool_checksums()`**: add `post-install.md` to scope (root file, like install.sh). Add `patches/**/*.md` to `CHECKSUM_INCLUDE`. For gsd-patches, this checksums post-install.md + patches/*.md — so scan-status shows "Update available" when patch templates change.
+3. **`adopt_tools()`**: check `[detect].paths` existence in addition to command file presence. A tool is detected if (has commands AND all commands present) OR (has detect paths AND all detect paths exist). Both conditions require a non-empty set — a tool with no commands and no detect paths (execute-only tools like gsd-patches) is skipped entirely.
+4. **`scan-status` output**: include `post_install` and `has_install_sh` fields per tool (so install.md knows the install pattern). Corrupt detection rule: only check command-presence on disk when `manifest_entry.commands` is non-empty. Execute-only tools write `commands: []` in the manifest, so they are never flagged as corrupt. This also handles v1.0→v1.1 migration: when `update-manifest` runs for a tool that no longer has commands, it writes `commands: []`, clearing any stale v1.0 command list.
+5. **`compute_tool_checksums()`**: add `post-install.md` as a hardcoded root file check alongside `install.sh` (not via CHECKSUM_INCLUDE — same pattern as install.sh). Add `patches/**/*.md` to `CHECKSUM_INCLUDE`. For gsd-patches, this checksums post-install.md + patches/*.md — so scan-status shows "Update available" when patch templates change.
 
 ### install.md Changes
 
@@ -206,7 +211,7 @@ gsd-patches is a tool that runs **from mg-cc-tools** and modifies GSD workflow f
    Three install patterns:
    - **Copy only** (most tools): install.sh runs, no post-install. install.sh calls `update-manifest`.
    - **Copy + configure** (permission-hooks, cc-regression-test): install.sh then post-install.md subagent. install.sh calls `update-manifest`.
-   - **Execute only** (gsd-patches): no install.sh, only post-install.md subagent. install.md calls `python3 "$MG_INSTALL_LIB" update-manifest` directly after post-install completes.
+   - **Execute only** (gsd-patches): no install.sh, only post-install.md subagent. install.md calls `python3 "$MG_INSTALL_LIB" update-manifest --target "$TARGET_PATH" --tool "<tool-name>" --source "$SOURCE_PATH/<tool-name>"` directly after post-install completes. Note: `--source` takes the tool subdirectory (e.g., `./gsd-patches`), not `$SOURCE_PATH` alone.
 2. **Step 2b (Migration)**: adopt checks `[detect].paths` in addition to command presence. Execute-only tools (no detect paths, no commands) are skipped.
 3. **Step 6 error handling**: change from continue-on-error to stop-on-error.
 4. **Status table**: show dependency notes for single-install tools. Update example to reflect new tiers (gsd-patches and permission-hooks as optional `*`, not excluded).
@@ -242,7 +247,9 @@ If install.sh or post-install.md fails for a tool, stop immediately. Do not cont
 Requires interactive settings.json configuration via post-install.md. Should not fire during "Install all standard tools" — user selects it explicitly.
 
 ### 9. Stale file cleanup
-install.sh should remove stale files from pre-v1.1 installs (e.g., `install-permission-hooks.md` from target's `commands/mg/`).
+Each tool handles its own stale file removal from pre-v1.1 installs:
+- **permission-hooks**: install.sh removes `commands/mg/install-permission-hooks.md` from target (has install.sh, so cleanup goes there).
+- **gsd-patches**: post-install.md removes `commands/mg/apply-gsd-patches.md` and `.claude/gsd-patches/` directory from target as its first step (no install.sh, so cleanup goes in post-install).
 
 ### 10. Post-install executes as subagent
 Post-install.md runs in a spawned subagent (Agent tool), not inline. Clean context, no bleed from prior install steps. Post-install.md is self-contained with no command frontmatter — parameters passed via subagent prompt.
@@ -263,7 +270,8 @@ Post-install.md runs in a spawned subagent (Agent tool), not inline. Clean conte
 ## Scope
 
 - **5 tools with real changes**: permission-hooks, gsd-patches, mg-gsd-wrappers, cc-regression-test, create-context
-- **6 tools with mechanical changes**: add `[detect]` to tool.toml
+- **6 tools with mechanical changes**: add `[detect]` to tool.toml (codebase-health, create-docs, data-provider, debug-triage, new-milestone-gsd, update-backlog)
+- **1 tool with no tool.toml changes**: install (already excluded, not adoptable). Note: install.md and mg-install-lib.py are the biggest deliverables in this plan — the tool itself just doesn't need toml/detect changes.
 - **mg-install-lib.py**: update discover_tools, read_tool_toml, adopt_tools, compute_tool_checksums, scan-status output
 - **install.md**: per-tool sequential flow with post-install step, `update-manifest` call for execute-only tools
 - **Tests**: update adopt tests, add post-install detection tests

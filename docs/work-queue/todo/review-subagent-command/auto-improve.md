@@ -35,7 +35,6 @@ Apply all fixes where you are confident in the resolution. For each fix, leave a
 
 After all fixes are applied, run any available validation steps against AUTO_IMPROVE_FILE:
 
-- Lint / type-check / build (if applicable)
 - Re-read the file to verify internal consistency
 - Confirm no new issues were introduced by the fixes
 
@@ -48,6 +47,16 @@ Provide a summary structured as:
 1. **Resolved issues** — what was found, what was changed, and why.
 2. **Unresolved issues** — what was found but could not be fixed without user input. For each, state clearly what decision or information is needed.
 3. **False positives** — any reviewer flags that turned out to be non-issues after research, with a brief explanation.
+
+End the report with a **scorecard** so progress is trackable across rounds:
+
+```
+Reviewer flagged:        <total>
+False positives:        -<count>
+Fixed this round:       -<count>
+Blocked (need user input): -<count>
+Remaining solvable:      =<total minus above>
+```
 
 Then ask the user to `approve`, request changes, or `reject`.
 
