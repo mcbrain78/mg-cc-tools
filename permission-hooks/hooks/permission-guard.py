@@ -334,16 +334,45 @@ def check_outside_project(command, project_root):
     return None
 
 
-def _ask(reason):
-    """Print a permissionDecision: ask response and exit."""
+# ── Exit code masking detection ─────────────────────────────────────────────
+# Piping pytest output to tail/head/grep etc. masks the exit code.
+_PYTEST_PIPE_RE = re.compile(r"\bpytest\b.*\|")
+
+
+def check_exit_code_masking(command):
+    """Check if command pipes pytest output, masking exit codes.
+
+    Returns a reason string or None.
+    """
+    command = _strip_heredocs(command)
+    if _PYTEST_PIPE_RE.search(command):
+        return (
+            "Exit code masking — use instead: "
+            "pytest --tb=short -q --no-header"
+        )
+    return None
+
+
+def _decide(reason, decision="ask"):
+    """Print a permissionDecision response and exit."""
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
+            "permissionDecision": decision,
             "permissionDecisionReason": reason,
         }
     }
     print(json.dumps(output))
+
+
+def _ask(reason):
+    """Print a permissionDecision: ask response and exit."""
+    _decide(reason, "ask")
+
+
+def _deny(reason):
+    """Print a permissionDecision: deny response and exit (no user prompt)."""
+    _decide(reason, "deny")
 
 
 def main():
@@ -383,6 +412,12 @@ def main():
 
     # 0. Allow rm targeting only temp directories
     if _is_safe_rm(command):
+        return
+
+    # 0b. Block exit code masking (pytest piped to tail/head/grep etc.)
+    reason = check_exit_code_masking(command)
+    if reason:
+        _deny(f"[permission-guard] {reason}")
         return
 
     # 1. Category rules

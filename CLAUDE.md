@@ -69,6 +69,10 @@ Key layers:
 - Install scripts always validate that source files exist before copying
 - Command .md files include YAML-style frontmatter (`name:`, `description:`, `allowed-tools:`)
 
+## Testing
+
+- Never pipe pytest output (e.g. `pytest | tail -20`) — this masks the exit code. Use `pytest --tb=short -q --no-header` instead.
+
 ## Git Workflow
 
 - Don't check out new branches, always stay on the current branch.

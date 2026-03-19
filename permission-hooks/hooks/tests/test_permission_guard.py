@@ -17,6 +17,7 @@ check_file_outside_project = guard.check_file_outside_project
 check_outside_project = guard.check_outside_project
 _is_safe_rm = guard._is_safe_rm
 _strip_heredocs = guard._strip_heredocs
+check_exit_code_masking = guard.check_exit_code_masking
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1025,4 +1026,56 @@ class TestHeredocStripping:
         """Category rule patterns inside heredoc should not trigger."""
         cmd = "cat << 'EOF'\ngit push --force origin main\nEOF"
         result = check_command(cmd)
+        assert result is None
+
+
+# ── Exit code masking (pytest pipe) ──────────────────────────────────────────
+
+class TestExitCodeMasking:
+
+    def test_block_pytest_pipe_tail(self):
+        result = check_exit_code_masking("pytest | tail -20")
+        assert result is not None
+        assert "Exit code masking" in result
+
+    def test_block_pytest_pipe_head(self):
+        result = check_exit_code_masking("pytest | head -50")
+        assert result is not None
+
+    def test_block_pytest_pipe_grep(self):
+        result = check_exit_code_masking("pytest | grep FAILED")
+        assert result is not None
+
+    def test_block_pytest_with_args_pipe(self):
+        result = check_exit_code_masking("pytest tests/test_foo.py -v | tail -20")
+        assert result is not None
+
+    def test_block_python_m_pytest_pipe(self):
+        result = check_exit_code_masking("python3 -m pytest tests/ | tail -20")
+        assert result is not None
+
+    def test_block_pytest_pipe_with_flags(self):
+        result = check_exit_code_masking("pytest --tb=short -q | head -30")
+        assert result is not None
+
+    def test_allow_pytest_no_pipe(self):
+        result = check_exit_code_masking("pytest --tb=short -q --no-header")
+        assert result is None
+
+    def test_allow_pytest_with_path(self):
+        result = check_exit_code_masking("pytest tests/test_foo.py -v")
+        assert result is None
+
+    def test_allow_python_m_pytest_no_pipe(self):
+        result = check_exit_code_masking("python3 -m pytest tests/")
+        assert result is None
+
+    def test_suggestion_in_message(self):
+        result = check_exit_code_masking("pytest | tail -20")
+        assert "pytest --tb=short -q --no-header" in result
+
+    def test_allow_pytest_pipe_in_heredoc(self):
+        """Mentions of pytest piping inside heredocs should not trigger."""
+        cmd = "git commit -m \"$(cat <<'EOF'\npytest | tail -20\nEOF\n)\""
+        result = check_exit_code_masking(cmd)
         assert result is None
