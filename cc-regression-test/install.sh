@@ -10,7 +10,7 @@ set -euo pipefail
 #   1. Copies command file to <target>/commands/mg/
 #   2. Copies hooks/ and scripts/ to <target>/cc-regression-test/
 #   3. Resolves path placeholders in the command file
-#   4. Merges PreToolUse hook entry into settings.json
+#   Post-install.md handles settings.json merge via subagent.
 #
 # Usage:
 #   ./install.sh --project [<dir>]  Install into project's .claude/ (default: cwd)
@@ -148,55 +148,6 @@ for cmd in "${COMMANDS[@]}"; do
   sed -i "s|{SOURCE_DIR}|${SOURCE_ABSOLUTE}|g" "$cmd_file"
 done
 
-# ── Merge hook into settings.json ────────────────────────────────────────────
-
-SETTINGS_FILE="${TARGET_DIR}/settings.json"
-HOOK_CMD="python3 ${HOOKS_ABSOLUTE}/intercept-trigger.py"
-
-echo "  Merging hook config into ${SETTINGS_FILE} ..."
-
-python3 - "$SETTINGS_FILE" "$HOOK_CMD" <<'PYEOF'
-import json
-import sys
-
-settings_path = sys.argv[1]
-hook_cmd = sys.argv[2]
-
-try:
-    with open(settings_path) as f:
-        settings = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    settings = {}
-
-hooks = settings.setdefault("hooks", {})
-pre_tool = hooks.setdefault("PreToolUse", [])
-
-# Hook format: {"matcher": "Bash", "hooks": [{"type": "command", "command": "..."}]}
-new_entry = {
-    "matcher": "Bash",
-    "hooks": [{"type": "command", "command": hook_cmd}]
-}
-
-# Check if already present (check inside hooks[].command)
-already = any(
-    isinstance(h, dict)
-    and any(
-        isinstance(hk, dict) and hk.get("command") == hook_cmd
-        for hk in h.get("hooks", [])
-    )
-    for h in pre_tool
-)
-
-if not already:
-    pre_tool.append(new_entry)
-    with open(settings_path, "w") as f:
-        json.dump(settings, f, indent=2)
-        f.write("\n")
-    print("    Hook entry added.")
-else:
-    print("    Hook entry already present.")
-PYEOF
-
 # ── Update manifest ──────────────────────────────────────────────────────────
 TOOL_SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 python3 "${TOOL_SOURCE_DIR}/../install/scripts/mg-install-lib.py" \
@@ -219,12 +170,8 @@ echo "  Supporting files:"
 echo "    ${SUPPORT_DIR}/hooks/intercept-trigger.py"
 echo "    ${SUPPORT_DIR}/scripts/trigger.py"
 echo ""
-echo "  Hook config:"
-echo "    ${SETTINGS_FILE}"
-echo "    Matcher: Bash"
-echo "    Command: ${HOOK_CMD}"
-echo ""
 echo "Invoke with:"
 echo "  /mg:cc-regression-test"
 echo ""
-echo "Note: If this is a fresh install, restart Claude Code for the hook to take effect."
+echo "Next step:"
+echo "  Post-install subagent will merge hook entry into settings.json"
