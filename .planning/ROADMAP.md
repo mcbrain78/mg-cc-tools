@@ -120,6 +120,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. Fix Verify Feedback Loop & Scan Output | 3/4 | In Progress | - |
 | 7. Install Command | 4/5 | In Progress|  |
 | 8. Install Tool Improvements | 0/5 | Planned | - |
+| 8. Install Tool Improvements | 0/5 | Planned | - |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
