@@ -20,6 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 6: Fix Verify Feedback Loop & Scan Output** - Close verify-generate feedback loop, validate scan agent JSON output, file-based I/O pattern
 - [ ] **Phase 7: Install Command** - Unified /mg:install tool management with discovery, status tracking, preflight, manifest, and interactive flow
 - [ ] **Phase 8: Install Tool Improvements** - Two-stage install (install.sh + post-install.md subagent), tool discovery without install.sh, adopt via detect paths, execute-only tools
+- [ ] **Phase 9: Session Analyzer** - CLI query tool for navigating large CC session exports, stateless paginated commands, slash command with autonomous investigation
 
 ## Phase Details
 
@@ -108,7 +109,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -120,7 +121,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. Fix Verify Feedback Loop & Scan Output | 3/4 | In Progress | - |
 | 7. Install Command | 4/5 | In Progress|  |
 | 8. Install Tool Improvements | 0/5 | Planned | - |
-| 8. Install Tool Improvements | 0/5 | Planned | - |
+| 9. Session Analyzer | 0/4 | Planned | - |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -184,12 +185,23 @@ Plans:
 - [ ] 08-04-PLAN.md — gsd-patches execute-only migration: post-install.md creation + install.sh deletion
 - [ ] 08-05-PLAN.md — install.md rewrite: per-tool sequential, three patterns, subagent orchestration
 
-### Phase 9: session analyzer
+### Phase 9: Session Analyzer
 
-**Goal:** [To be planned]
-**Requirements**: SAN-01, SAN-02, SAN-03, SAN-04, SAN-05, SAN-06, SAN-07, SAN-08, SAN-09, SAN-10, SAN-11, SAN-12, SAN-13, SAN-14, SAN-15, SAN-16, SAN-17, SAN-18, SAN-19, SAN-20, SAN-21, SAN-22, SAN-23, SAN-24
+**Goal:** Build a stateless CLI query tool (cc_session_analyzer.py) that gives Claude selective access to CC session exports (up to 90MB+) through iterative paginated commands, paired with a /mg:analyze-session slash command that drives autonomous investigation
 **Depends on:** Phase 8
-**Plans:** 0 plans
+**Requirements**: SAN-01, SAN-02, SAN-03, SAN-04, SAN-05, SAN-06, SAN-07, SAN-08, SAN-09, SAN-10, SAN-11, SAN-12, SAN-13, SAN-14, SAN-15, SAN-16, SAN-17, SAN-18, SAN-19, SAN-20, SAN-21, SAN-22, SAN-23, SAN-24
+**Success Criteria** (what must be TRUE):
+  1. Running `cc_session_analyzer.py <session.json>` produces a complete overview with metadata, timeline, orchestrator stats, agent stats, error list, heaviest agents, persisted outputs, and contextual commands
+  2. All 8 commands work (overview, errors, flow, agent, agent-list, msg, search, export) with correct pagination and content display modes
+  3. Error detection uses curated high-confidence patterns (is_error flag, tracebacks, exit codes) and filters noise patterns
+  4. Agent-to-process linkage correctly maps orchestrator Agent calls to process entries via agentId
+  5. Content commands (msg, errors, search) recover persisted output files, falling back to preview text when file is missing
+  6. `/mg:analyze-session` slash command drives Claude through iterative analysis with dual mode (goal-directed and autonomous)
+  7. Pytest suite passes with 1MB sample (default) and 75MB sample (--slow flag)
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 9 to break down)
+- [ ] 09-01-PLAN.md — Test infrastructure, core data layer, error detection, pagination, and overview command
+- [ ] 09-02-PLAN.md — Errors, flow, and agent-list commands with tests
+- [ ] 09-03-PLAN.md — Agent deep dive, msg, and search commands with persisted recovery
+- [ ] 09-04-PLAN.md — Export command, slash command, install.sh, and tool.toml delivery
