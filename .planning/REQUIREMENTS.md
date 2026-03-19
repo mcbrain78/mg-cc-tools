@@ -123,18 +123,18 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SAN-03**: Default command (`overview`) produces session summary with metadata, timeline, orchestrator stats, agent stats, error list, heaviest agents, persisted outputs, and contextual next-step commands
 - [x] **SAN-04**: `errors` command shows all detected errors with context (agent prompt snippet, failing tool call, surrounding text), paginated
 - [x] **SAN-05**: `flow` command produces orchestrator decision trace with one line per message using mechanical classification rules and timestamps, paginated
-- [ ] **SAN-06**: `agent <id-prefix>` command shows single agent deep dive with tool calls and reasoning interleaved in execution order, paginated
+- [x] **SAN-06**: `agent <id-prefix>` command shows single agent deep dive with tool calls and reasoning interleaved in execution order, paginated
 - [x] **SAN-07**: `agent-list` command shows one line per agent (ID, status, duration, tools, size, prompt summary), paginated
-- [ ] **SAN-08**: `msg` command shows single message with ±2 context messages and full content, supports both `msg <N>` and `msg <agent-prefix> <N>` forms
-- [ ] **SAN-09**: `search <pattern>` command searches tool inputs, results (with persisted file recovery), and assistant text, paginated
+- [x] **SAN-08**: `msg` command shows single message with ±2 context messages and full content, supports both `msg <N>` and `msg <agent-prefix> <N>` forms
+- [x] **SAN-09**: `search <pattern>` command searches tool inputs, results (with persisted file recovery), and assistant text, paginated
 - [ ] **SAN-10**: `export` command delegates to compactor after dropping chunks, supports `--level` flag
 - [x] **SAN-11**: Pagination with `--offset N`, `--limit N`, `--all` flags and footer showing item count and exact copy-paste next command
 - [x] **SAN-12**: Error detection uses curated high-confidence patterns: `is_error` flag, Python tracebacks, bash exit codes, and agent result status patterns
 - [x] **SAN-13**: Error detection filters noise patterns (`exceeds maximum allowed tokens`, `File has not been read yet`, `File does not exist`) from error counts
 - [x] **SAN-14**: Agent-to-process linkage parses `agentId` from tool_result messages to connect orchestrator Agent calls to process entries with duration
-- [ ] **SAN-15**: Content commands (`msg`, `errors`, `search`) recover persisted output files from extracted paths, falling back to preview text when file is missing
-- [ ] **SAN-16**: Ambiguous agent prefix lists matching agents and exits with guidance to use a longer prefix
-- [ ] **SAN-17**: Search scope filters: `--scope orchestrator`, `--scope agents`, `--scope agent:<prefix>`, default searches everything
+- [x] **SAN-15**: Content commands (`msg`, `errors`, `search`) recover persisted output files from extracted paths, falling back to preview text when file is missing
+- [x] **SAN-16**: Ambiguous agent prefix lists matching agents and exits with guidance to use a longer prefix
+- [x] **SAN-17**: Search scope filters: `--scope orchestrator`, `--scope agents`, `--scope agent:<prefix>`, default searches everything
 - [x] **SAN-18**: All output is plain text — no ANSI color codes
 - [ ] **SAN-19**: `/mg:analyze-session` slash command with tool.toml and install.sh following mg-cc-tools conventions
 - [ ] **SAN-20**: Slash command dual mode: goal-directed investigation when user provides a question, autonomous analysis when no goal given
@@ -261,18 +261,18 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAN-03 | Phase 9 | Complete |
 | SAN-04 | Phase 9 | Complete |
 | SAN-05 | Phase 9 | Complete |
-| SAN-06 | Phase 9 | Pending |
+| SAN-06 | Phase 9 | Complete |
 | SAN-07 | Phase 9 | Complete |
-| SAN-08 | Phase 9 | Pending |
-| SAN-09 | Phase 9 | Pending |
+| SAN-08 | Phase 9 | Complete |
+| SAN-09 | Phase 9 | Complete |
 | SAN-10 | Phase 9 | Pending |
 | SAN-11 | Phase 9 | Complete |
 | SAN-12 | Phase 9 | Complete |
 | SAN-13 | Phase 9 | Complete |
 | SAN-14 | Phase 9 | Complete |
-| SAN-15 | Phase 9 | Pending |
-| SAN-16 | Phase 9 | Pending |
-| SAN-17 | Phase 9 | Pending |
+| SAN-15 | Phase 9 | Complete |
+| SAN-16 | Phase 9 | Complete |
+| SAN-17 | Phase 9 | Complete |
 | SAN-18 | Phase 9 | Complete |
 | SAN-19 | Phase 9 | Pending |
 | SAN-20 | Phase 9 | Pending |
