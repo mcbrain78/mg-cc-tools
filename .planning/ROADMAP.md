@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Verify, Notes Command & Router** - Reference integrity, cross-doc consistency, Diataxis checks, completeness, add-docs command, router command
 - [ ] **Phase 6: Fix Verify Feedback Loop & Scan Output** - Close verify-generate feedback loop, validate scan agent JSON output, file-based I/O pattern
 - [ ] **Phase 7: Install Command** - Unified /mg:install tool management with discovery, status tracking, preflight, manifest, and interactive flow
+- [ ] **Phase 8: Install Tool Improvements** - Two-stage install (install.sh + post-install.md subagent), tool discovery without install.sh, adopt via detect paths, execute-only tools
 
 ## Phase Details
 
@@ -107,7 +108,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -118,6 +119,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Verify, Notes Command & Router | 2/2 | Complete | 2026-03-17 |
 | 6. Fix Verify Feedback Loop & Scan Output | 3/4 | In Progress | - |
 | 7. Install Command | 4/5 | In Progress|  |
+| 8. Install Tool Improvements | 0/5 | Planned | - |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -158,3 +160,35 @@ Plans:
 - [ ] 07-03-PLAN.md — Slash command: install.md interactive flow and bootstrap install.sh
 - [ ] 07-04-PLAN.md — Install.sh modifications: manifest update calls and python3 checks for all 11 scripts
 - [ ] 07-05-PLAN.md — Integration validation: automated tests, bootstrap, and road-runner checkpoint
+
+### Phase 8: Install Tool Improvements
+
+**Goal:** Add two-stage install support to /mg:install: each tool can have an optional post-install.md that runs as a subagent after install.sh completes, enabling tools that need Claude Code intelligence for configuration (settings.json merges, interactive patch application) to be installed through the unified installer
+**Depends on:** Phase 7
+**Requirements**: LIB-DISCOVER, LIB-TOML, LIB-CHECKSUMS, LIB-ADOPT, LIB-SCANSTATUS, TEMPLATE, DETECT, TIERS, POSTINSTALL-PERMHOOKS, POSTINSTALL-CCREGTEST, POSTINSTALL-GSDPATCHES, EXECUTEONLY, SNAPSHOT-MGWRAPPERS, SNAPSHOT-CREATECTX, STALE-CLEANUP, INSTALL-SEQUENTIAL, INSTALL-STOPONERROR, INSTALL-SUBAGENT, INSTALL-STATUSMARKER, INSTALL-EXECUTEONLY, INSTALL-ADOPT, INSTALL-TIERS
+**Success Criteria** (what must be TRUE):
+  1. discover_tools() requires only tool.toml -- no install.sh needed for execute-only tools like gsd-patches
+  2. scan-status output includes post_install and has_install_sh fields so install.md knows which pattern to use
+  3. adopt_tools() detects pre-manifest installations via [detect].paths in addition to command presence
+  4. /mg:install runs per-tool sequential with stop-on-error, spawning Agent subagents for post-install.md steps
+  5. Three install patterns (copy-only, copy+configure, execute-only) work end-to-end through the unified installer
+  6. permission-hooks, cc-regression-test, and gsd-patches each have self-contained post-install.md with status markers
+  7. Snapshot files (.snapshot) no longer appear in Claude Code skill list (moved to tool-specific references/ directories)
+**Plans:** 5 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — mg-install-lib.py TDD: discover_tools, read_tool_toml, checksums, adopt, scan-status updates
+- [ ] 08-02-PLAN.md — TEMPLATE-post-install.md + tool.toml updates for all 12 tools ([detect], [post_install], tiers)
+- [ ] 08-03-PLAN.md — Per-tool changes: permission-hooks, cc-regression-test post-install.md + snapshot moves
+- [ ] 08-04-PLAN.md — gsd-patches execute-only migration: post-install.md creation + install.sh deletion
+- [ ] 08-05-PLAN.md — install.md rewrite: per-tool sequential, three patterns, subagent orchestration
+
+### Phase 9: session analyzer
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 8
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 9 to break down)
