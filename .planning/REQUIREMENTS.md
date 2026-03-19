@@ -121,10 +121,10 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SAN-01**: `cc_session_compactor.py` renamed from `reduce_cc_session_export.py` with all existing functionality preserved (levels 0-5, l2-compact)
 - [x] **SAN-02**: `cc_session_analyzer.py` loads session JSON via `json.load()` and drops `chunks` data before processing
 - [x] **SAN-03**: Default command (`overview`) produces session summary with metadata, timeline, orchestrator stats, agent stats, error list, heaviest agents, persisted outputs, and contextual next-step commands
-- [ ] **SAN-04**: `errors` command shows all detected errors with context (agent prompt snippet, failing tool call, surrounding text), paginated
-- [ ] **SAN-05**: `flow` command produces orchestrator decision trace with one line per message using mechanical classification rules and timestamps, paginated
+- [x] **SAN-04**: `errors` command shows all detected errors with context (agent prompt snippet, failing tool call, surrounding text), paginated
+- [x] **SAN-05**: `flow` command produces orchestrator decision trace with one line per message using mechanical classification rules and timestamps, paginated
 - [ ] **SAN-06**: `agent <id-prefix>` command shows single agent deep dive with tool calls and reasoning interleaved in execution order, paginated
-- [ ] **SAN-07**: `agent-list` command shows one line per agent (ID, status, duration, tools, size, prompt summary), paginated
+- [x] **SAN-07**: `agent-list` command shows one line per agent (ID, status, duration, tools, size, prompt summary), paginated
 - [ ] **SAN-08**: `msg` command shows single message with ±2 context messages and full content, supports both `msg <N>` and `msg <agent-prefix> <N>` forms
 - [ ] **SAN-09**: `search <pattern>` command searches tool inputs, results (with persisted file recovery), and assistant text, paginated
 - [ ] **SAN-10**: `export` command delegates to compactor after dropping chunks, supports `--level` flag
@@ -259,10 +259,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAN-01 | Phase 9 | Complete |
 | SAN-02 | Phase 9 | Complete |
 | SAN-03 | Phase 9 | Complete |
-| SAN-04 | Phase 9 | Pending |
-| SAN-05 | Phase 9 | Pending |
+| SAN-04 | Phase 9 | Complete |
+| SAN-05 | Phase 9 | Complete |
 | SAN-06 | Phase 9 | Pending |
-| SAN-07 | Phase 9 | Pending |
+| SAN-07 | Phase 9 | Complete |
 | SAN-08 | Phase 9 | Pending |
 | SAN-09 | Phase 9 | Pending |
 | SAN-10 | Phase 9 | Pending |
