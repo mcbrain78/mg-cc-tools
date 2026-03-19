@@ -28,8 +28,10 @@ def _run(args, **kwargs):
 
 
 def _make_tool(parent, name, description="Test tool", exclude=False,
-               standard=None, required=None, optional=None, commands=None):
-    """Create a mock tool directory with tool.toml and install.sh.
+               standard=None, required=None, optional=None, commands=None,
+               has_install_sh=True, post_install_script=None,
+               detect_paths=None):
+    """Create a mock tool directory with tool.toml and optionally install.sh.
 
     Args:
         parent: Parent directory to create the tool in.
@@ -40,6 +42,9 @@ def _make_tool(parent, name, description="Test tool", exclude=False,
         required: List of required preflight check IDs.
         optional: List of optional preflight check IDs.
         commands: List of command filenames to create (default: ["{name}.md"]).
+        has_install_sh: Whether to create install.sh (default True).
+        post_install_script: If set, add [post_install] section and create the file.
+        detect_paths: If set, add [detect] section with these paths.
 
     Returns:
         Path to the created tool directory.
@@ -62,15 +67,30 @@ def _make_tool(parent, name, description="Test tool", exclude=False,
         if optional:
             arr = ", ".join(f'"{o}"' for o in optional)
             toml_lines.append(f"optional = [{arr}]")
+    if post_install_script:
+        toml_lines.append("")
+        toml_lines.append("[post_install]")
+        toml_lines.append(f'script = "{post_install_script}"')
+    if detect_paths:
+        toml_lines.append("")
+        toml_lines.append("[detect]")
+        arr = ", ".join(f'"{p}"' for p in detect_paths)
+        toml_lines.append(f"paths = [{arr}]")
     with open(os.path.join(tool_dir, "tool.toml"), "w") as f:
         f.write("\n".join(toml_lines) + "\n")
 
-    # install.sh (minimal)
-    with open(os.path.join(tool_dir, "install.sh"), "w") as f:
-        f.write("#!/bin/bash\necho installed\n")
+    # install.sh (minimal) -- only if requested
+    if has_install_sh:
+        with open(os.path.join(tool_dir, "install.sh"), "w") as f:
+            f.write("#!/bin/bash\necho installed\n")
 
-    # command files
-    cmd_names = commands or [f"{name}.md"]
+    # post-install.md -- create if specified
+    if post_install_script:
+        with open(os.path.join(tool_dir, post_install_script), "w") as f:
+            f.write("# Post-install instructions\nPOST-INSTALL: SUCCESS\n")
+
+    # command files (commands=[] means no commands; commands=None means default)
+    cmd_names = commands if commands is not None else [f"{name}.md"]
     for cmd in cmd_names:
         with open(os.path.join(tool_dir, "commands", cmd), "w") as f:
             f.write(f"---\nname: mg:{name}\n---\nTest command\n")
@@ -109,8 +129,8 @@ def _make_manifest(target, tools=None, version="0.1.0", source_path="/src"):
 class TestScanStatus:
     """scan-status subcommand tests."""
 
-    def test_discovers_tools_with_toml_and_install_sh(self):
-        """Only directories with both tool.toml and install.sh are discovered."""
+    def test_discovers_tools_with_toml_only(self):
+        """Directories with tool.toml are discovered even without install.sh."""
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "source")
             target = os.path.join(tmp, "target")
@@ -119,11 +139,10 @@ class TestScanStatus:
 
             _make_tool(source, "real-tool")
 
-            # Missing install.sh -- should be ignored
-            incomplete = os.path.join(source, "incomplete")
-            os.makedirs(incomplete)
-            with open(os.path.join(incomplete, "tool.toml"), "w") as f:
-                f.write('[tool]\ndescription = "Incomplete"\n')
+            # Tool with only tool.toml (no install.sh) -- should now be discovered
+            toml_only = _make_tool(source, "toml-only-tool",
+                                   has_install_sh=False,
+                                   post_install_script="post-install.md")
 
             _make_pyproject(source)
 
@@ -136,7 +155,7 @@ class TestScanStatus:
             data = json.loads(result.stdout)
             tool_names = [t["name"] for t in data["tools"]]
             assert "real-tool" in tool_names
-            assert "incomplete" not in tool_names
+            assert "toml-only-tool" in tool_names
 
     def test_ignores_dirs_with_only_install_sh(self):
         """Directories with install.sh but no tool.toml are ignored."""
@@ -501,6 +520,113 @@ class TestScanStatus:
             data = json.loads(result.stdout)
             assert data["mg_cc_tools_version"] == "1.2.3"
 
+    def test_reads_post_install_and_detect(self):
+        """read_tool_toml() returns post_install_script and detect_paths."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            # Tool with [post_install] and [detect] sections
+            _make_tool(source, "configured-tool",
+                       post_install_script="post-install.md",
+                       detect_paths=[".claude/configured-tool/"])
+            # Tool without those sections (defaults)
+            _make_tool(source, "plain-tool")
+            _make_pyproject(source)
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            tools_by_name = {t["name"]: t for t in data["tools"]}
+
+            # configured-tool should have post_install and has_install_sh
+            configured = tools_by_name["configured-tool"]
+            assert configured.get("post_install") == "post-install.md"
+
+            # plain-tool should have None/null for post_install
+            plain = tools_by_name["plain-tool"]
+            assert plain.get("post_install") is None
+
+    def test_scan_status_includes_install_pattern(self):
+        """scan-status output includes post_install and has_install_sh fields."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            # Tool with install.sh only (no post-install)
+            _make_tool(source, "copy-only")
+            # Tool with both install.sh and post-install.md
+            _make_tool(source, "copy-configure",
+                       post_install_script="post-install.md")
+            # Tool with only post-install.md (no install.sh) -- execute-only
+            _make_tool(source, "exec-only",
+                       has_install_sh=False,
+                       post_install_script="post-install.md")
+            _make_pyproject(source)
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            tools_by_name = {t["name"]: t for t in data["tools"]}
+
+            # copy-only: has_install_sh=true, post_install=null
+            copy_only = tools_by_name["copy-only"]
+            assert copy_only["has_install_sh"] is True
+            assert copy_only["post_install"] is None
+
+            # copy-configure: has_install_sh=true, post_install="post-install.md"
+            copy_cfg = tools_by_name["copy-configure"]
+            assert copy_cfg["has_install_sh"] is True
+            assert copy_cfg["post_install"] == "post-install.md"
+
+            # exec-only: has_install_sh=false, post_install="post-install.md"
+            exec_only = tools_by_name["exec-only"]
+            assert exec_only["has_install_sh"] is False
+            assert exec_only["post_install"] == "post-install.md"
+
+    def test_no_corrupt_for_empty_commands(self):
+        """scan-status does not report corrupt for tools with empty commands list."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude", "commands", "mg"),
+                        exist_ok=True)
+
+            # Execute-only tool: has post-install but no commands
+            _make_tool(source, "exec-tool",
+                       has_install_sh=False,
+                       post_install_script="post-install.md",
+                       commands=[])
+            _make_pyproject(source, version="0.1.0")
+
+            # Manifest entry with commands=[] (execute-only pattern)
+            _make_manifest(target, tools={
+                "exec-tool": {
+                    "version": "0.1.0",
+                    "installed_at": "2026-01-01T00:00:00+00:00",
+                    "commands": [],
+                    "source_checksums": {},
+                }
+            })
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            tool = [t for t in data["tools"] if t["name"] == "exec-tool"][0]
+            # Should NOT be corrupt -- empty commands list is valid for execute-only
+            assert tool["status"] != "corrupt"
+
     def test_checksum_excludes_test_dirs(self):
         """Checksums exclude tests/ and __pycache__/ directories."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -728,6 +854,66 @@ class TestUpdateManifest:
                 # Keys should be relative, not absolute
                 assert not key.startswith("/")
                 assert not key.startswith(tmp)
+
+    def test_checksums_include_post_install(self):
+        """compute_tool_checksums() includes post-install.md at root."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+
+            # Tool with post-install.md
+            tool_dir = _make_tool(source, "my-tool",
+                                  post_install_script="post-install.md")
+            _make_pyproject(source)
+
+            result = _run([
+                "update-manifest",
+                "--target", target,
+                "--tool", "my-tool",
+                "--source", tool_dir,
+            ])
+            assert result.returncode == 0, result.stderr
+
+            manifest_path = os.path.join(target, ".claude", "mg-cc-tools.manifest.json")
+            with open(manifest_path) as f:
+                data = json.load(f)
+
+            checksums = data["tools"]["my-tool"]["source_checksums"]
+            assert "post-install.md" in checksums
+            assert checksums["post-install.md"].startswith("sha256:")
+
+    def test_checksums_include_patches(self):
+        """compute_tool_checksums() includes patches/**/*.md files."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+
+            tool_dir = _make_tool(source, "my-tool")
+            _make_pyproject(source)
+
+            # Create patches directory with .md files
+            patches_dir = os.path.join(tool_dir, "patches")
+            os.makedirs(patches_dir, exist_ok=True)
+            with open(os.path.join(patches_dir, "foo.md"), "w") as f:
+                f.write("# Patch content\n")
+
+            result = _run([
+                "update-manifest",
+                "--target", target,
+                "--tool", "my-tool",
+                "--source", tool_dir,
+            ])
+            assert result.returncode == 0, result.stderr
+
+            manifest_path = os.path.join(target, ".claude", "mg-cc-tools.manifest.json")
+            with open(manifest_path) as f:
+                data = json.load(f)
+
+            checksums = data["tools"]["my-tool"]["source_checksums"]
+            assert "patches/foo.md" in checksums
+            assert checksums["patches/foo.md"].startswith("sha256:")
 
 
 # ============================================================
@@ -1450,6 +1636,57 @@ class TestAdopt:
                     "source_checksums": {},
                 }
             })
+
+            result = _run([
+                "adopt",
+                "--source", source,
+                "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert len(data["adopted"]) == 0
+
+    def test_detects_by_detect_paths(self):
+        """adopt detects a tool via [detect].paths even when it has no commands."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+
+            # Tool with detect paths but no commands in commands/
+            _make_tool(source, "hooks-tool",
+                       commands=[],
+                       detect_paths=[".claude/hooks-tool/hooks/"])
+            _make_pyproject(source)
+
+            # Create the detect path in target
+            hooks_dir = os.path.join(target, ".claude", "hooks-tool", "hooks")
+            os.makedirs(hooks_dir, exist_ok=True)
+
+            result = _run([
+                "adopt",
+                "--source", source,
+                "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "hooks-tool" in data["adopted"]
+
+    def test_skips_execute_only_tools(self):
+        """adopt skips tools with no commands AND no detect paths."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude", "commands", "mg"),
+                        exist_ok=True)
+
+            # Execute-only tool: no commands, no detect paths
+            _make_tool(source, "exec-only-tool",
+                       has_install_sh=False,
+                       post_install_script="post-install.md",
+                       commands=[])
+            _make_pyproject(source)
 
             result = _run([
                 "adopt",
