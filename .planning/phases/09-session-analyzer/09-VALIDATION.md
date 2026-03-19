@@ -18,7 +18,7 @@ created: 2026-03-19
 | Property | Value |
 |----------|-------|
 | **Framework** | pytest (from pyproject.toml dev deps) |
-| **Config file** | None — Wave 0 creates conftest.py for --slow flag |
+| **Config file** | None — Wave 1 Task 1 creates conftest.py for --slow flag |
 | **Quick run command** | `python3 -m pytest session-analyzer/tests/ -x -q` |
 | **Full suite command** | `python3 -m pytest session-analyzer/tests/ --slow -x -q` |
 | **Estimated runtime** | ~5 seconds (quick), ~30 seconds (full with 75MB sample) |
@@ -36,34 +36,37 @@ created: 2026-03-19
 
 ## Per-Task Verification Map
 
+> Wave numbers match plan frontmatter (`wave:` field). Plans: 01=Wave 1, 02=Wave 2, 03=Wave 3, 04=Wave 4.
+
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 09-01-01 | 01 | 0 | SAN-21 | unit | `python3 -m pytest session-analyzer/tests/ -x -q` | ❌ W0 | ⬜ pending |
-| 09-02-01 | 02 | 1 | SAN-01 | unit | `python3 -m pytest session-analyzer/tests/test_compactor_rename.py -x` | ❌ W0 | ⬜ pending |
-| 09-02-02 | 02 | 1 | SAN-02 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py::test_load_drops_chunks -x` | ❌ W0 | ⬜ pending |
-| 09-02-03 | 02 | 1 | SAN-03 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py -x` | ❌ W0 | ⬜ pending |
-| 09-02-04 | 02 | 1 | SAN-12 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_errors.py::TestErrorDetection -x` | ❌ W0 | ⬜ pending |
-| 09-02-05 | 02 | 1 | SAN-13 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_errors.py::TestNoiseFiltering -x` | ❌ W0 | ⬜ pending |
-| 09-02-06 | 02 | 1 | SAN-11 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_pagination.py -x` | ❌ W0 | ⬜ pending |
-| 09-02-07 | 02 | 1 | SAN-14 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_flow.py::TestAgentLinkage -x` | ❌ W0 | ⬜ pending |
-| 09-02-08 | 02 | 1 | SAN-15 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_msg.py::TestPersistedRecovery -x` | ❌ W0 | ⬜ pending |
-| 09-02-09 | 02 | 1 | SAN-18 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py::test_no_ansi -x` | ❌ W0 | ⬜ pending |
-| 09-03-01 | 03 | 1 | SAN-04 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_errors.py -x` | ❌ W0 | ⬜ pending |
-| 09-03-02 | 03 | 1 | SAN-05 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_flow.py -x` | ❌ W0 | ⬜ pending |
-| 09-03-03 | 03 | 1 | SAN-06 | unit+slow | `python3 -m pytest session-analyzer/tests/test_analyzer_agent.py -x` | ❌ W0 | ⬜ pending |
-| 09-03-04 | 03 | 1 | SAN-07 | unit+slow | `python3 -m pytest session-analyzer/tests/test_analyzer_agent.py::TestAgentList -x` | ❌ W0 | ⬜ pending |
-| 09-03-05 | 03 | 1 | SAN-08 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_msg.py -x` | ❌ W0 | ⬜ pending |
-| 09-03-06 | 03 | 1 | SAN-09 | unit+slow | `python3 -m pytest session-analyzer/tests/test_analyzer_search.py -x` | ❌ W0 | ⬜ pending |
-| 09-03-07 | 03 | 1 | SAN-10 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_export.py -x` | ❌ W0 | ⬜ pending |
-| 09-03-08 | 03 | 1 | SAN-16 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_agent.py::TestAmbiguousPrefix -x` | ❌ W0 | ⬜ pending |
-| 09-03-09 | 03 | 1 | SAN-17 | unit+slow | `python3 -m pytest session-analyzer/tests/test_analyzer_search.py::TestSearchScope -x` | ❌ W0 | ⬜ pending |
-| 09-03-10 | 03 | 1 | SAN-23 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py::TestContextualCommands -x` | ❌ W0 | ⬜ pending |
-| 09-03-11 | 03 | 1 | SAN-24 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_msg.py::TestDisplayModes -x` | ❌ W0 | ⬜ pending |
-| 09-04-01 | 04 | 2 | SAN-19 | manual | Verify install.sh, tool.toml, command file exist and install correctly | N/A | ⬜ pending |
-| 09-04-02 | 04 | 2 | SAN-20 | manual | Run command with and without goal argument | N/A | ⬜ pending |
-| 09-04-03 | 04 | 2 | SAN-22 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_errors.py::TestIndependentDetection -x` | ❌ W0 | ⬜ pending |
+| 09-01-T1 | 01 | 1 | SAN-21 | unit | `python3 -m pytest session-analyzer/tests/test_compactor_rename.py -x -q` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-01 | unit | `python3 -m pytest session-analyzer/tests/test_compactor_rename.py -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-02 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py::test_load_drops_chunks -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-03 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-12 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_errors.py::TestErrorDetection -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-13 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_errors.py::TestNoiseFiltering -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-11 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_pagination.py -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-14 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_flow.py::TestAgentLinkage -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-18 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py::test_no_ansi -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-22 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_errors.py::TestIndependentDetection -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-23 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py::test_overview_no_agents_omits_agent_commands -x` | W1 | pending |
+| 09-01-T2 | 01 | 1 | SAN-24 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_overview.py::test_summary_vs_content_mode -x` | W1 | pending |
+| 09-02-T1 | 02 | 2 | SAN-04 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_errors.py -x` | W1 | pending |
+| 09-02-T1 | 02 | 2 | SAN-05 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_flow.py -x` | W1 | pending |
+| 09-02-T2 | 02 | 2 | SAN-07 | unit+slow | `python3 -m pytest session-analyzer/tests/test_analyzer_agent.py::TestAgentList -x` | W2 | pending |
+| 09-03-T1 | 03 | 3 | SAN-06 | unit+slow | `python3 -m pytest session-analyzer/tests/test_analyzer_agent.py::TestAgentDeepDive -x` | W2 | pending |
+| 09-03-T1 | 03 | 3 | SAN-16 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_agent.py::TestAmbiguousPrefix -x` | W2 | pending |
+| 09-03-T1 | 03 | 3 | SAN-08 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_msg.py -x` | W3 | pending |
+| 09-03-T1 | 03 | 3 | SAN-15 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_msg.py::TestPersistedRecovery -x` | W3 | pending |
+| 09-03-T1 | 03 | 3 | SAN-24 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_msg.py::TestDisplayModes -x` | W3 | pending |
+| 09-03-T2 | 03 | 3 | SAN-09 | unit+slow | `python3 -m pytest session-analyzer/tests/test_analyzer_search.py -x` | W3 | pending |
+| 09-03-T2 | 03 | 3 | SAN-17 | unit+slow | `python3 -m pytest session-analyzer/tests/test_analyzer_search.py::TestSearchScope -x` | W3 | pending |
+| 09-04-T1 | 04 | 4 | SAN-10 | unit | `python3 -m pytest session-analyzer/tests/test_analyzer_export.py -x -q` | W4 | pending |
+| 09-04-T2 | 04 | 4 | SAN-19 | manual | Verify install.sh, tool.toml, command file exist and install correctly | N/A | pending |
+| 09-04-T2 | 04 | 4 | SAN-20 | manual | Run command with and without goal argument | N/A | pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: pending / green / red / flaky*
 
 ---
 
@@ -74,7 +77,7 @@ created: 2026-03-19
 - [ ] All test stub files for Wave 1 plans
 - [ ] pyproject.toml update: add `[tool.pytest.ini_options]` with `markers = ["slow: marks tests requiring large sample files"]`
 
-*Note: Wave 0 is embedded in Plan 01 (test infrastructure setup).*
+*Note: Wave 0 is embedded in Plan 01 Task 1 (test infrastructure setup).*
 
 ---
 
