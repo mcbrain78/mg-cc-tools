@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-03-19T18:20:40.716Z"
-last_activity: 2026-03-19 -- Plan 08-02 complete (TEMPLATE-post-install.md + 11 tool.toml updates)
+stopped_at: Completed 08-04-PLAN.md
+last_updated: "2026-03-19T18:27:38.373Z"
+last_activity: 2026-03-19 -- Plan 08-04 complete (gsd-patches post-install.md + install.sh deletion)
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 28
-  completed_plans: 24
-  percent: 87
+  completed_plans: 25
+  percent: 89
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 8 of 9 (Install Tool Improvements)
-Plan: 3 of 5 in current phase
+Plan: 5 of 5 in current phase
 Status: In Progress
-Last activity: 2026-03-19 -- Plan 08-02 complete (TEMPLATE-post-install.md + 11 tool.toml updates)
+Last activity: 2026-03-19 -- Plan 08-04 complete (gsd-patches post-install.md + install.sh deletion)
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [█████████░] 86%
 | Phase 07 P03 | 4min | 2 tasks | 2 files |
 | Phase 08 P01 | 5min | 2 tasks | 2 files |
 | Phase 08 P02 | 2min | 2 tasks | 12 files |
+| Phase 08 P04 | 2min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,7 @@ Recent decisions affecting current work:
 - [Phase 08]: discover_tools() requires only tool.toml -- no stub install.sh files needed for execute-only tools
 - [Phase 08-02]: gsd-patches changed from exclude=true to standard=false (not adoptable, no [detect])
 - [Phase 08-02]: Template uses natural language path references, no shell variable placeholders
+- [Phase 08]: gsd-patches install.sh deleted; execute-only tool uses post-install.md for all work from source
 
 ### Pending Todos
 
@@ -171,6 +173,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-19T18:19:48Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-03-19T18:27:38.371Z
+Stopped at: Completed 08-04-PLAN.md
 Resume file: None
