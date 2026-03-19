@@ -3,9 +3,9 @@ set -euo pipefail
 
 # ── Permission Hooks — Installer ────────────────────────────────────────────
 #
-# Installs the permission-guard hook and management command into a Claude Code
-# configuration. Copies files only — does NOT edit settings.json.
-# Run /mg:install-permission-hooks after install to register the hook.
+# Installs the permission-guard hook into a Claude Code configuration.
+# Copies files only — does NOT edit settings.json.
+# Post-install.md handles settings.json registration via subagent.
 #
 # Usage:
 #   ./install.sh --project [<dir>]  Install into project's .claude/ (default: cwd)
@@ -15,9 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-COMMANDS=(
-  install-permission-hooks
-)
+COMMANDS=()
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
 
@@ -85,13 +83,6 @@ esac
 
 # ── Validate source ─────────────────────────────────────────────────────────
 
-for cmd in "${COMMANDS[@]}"; do
-  if [[ ! -f "${SCRIPT_DIR}/commands/${cmd}.md" ]]; then
-    echo "Error: missing commands/${cmd}.md in source directory (${SCRIPT_DIR})"
-    exit 1
-  fi
-done
-
 if [[ ! -f "${SCRIPT_DIR}/hooks/permission-guard.py" ]]; then
   echo "Error: missing hooks/permission-guard.py"
   exit 1
@@ -111,13 +102,6 @@ SUPPORT_DIR="${TARGET_DIR}/permission-hooks"
 
 echo "Installing permission-hooks to: ${TARGET_DIR}"
 
-# Commands
-mkdir -p "$COMMANDS_DIR"
-for cmd in "${COMMANDS[@]}"; do
-  cp "${SCRIPT_DIR}/commands/${cmd}.md" "${COMMANDS_DIR}/${cmd}.md"
-done
-echo "  Commands → ${COMMANDS_DIR}/"
-
 # Hook file
 mkdir -p "${SUPPORT_DIR}/hooks"
 cp "${SCRIPT_DIR}/hooks/permission-guard.py" "${SUPPORT_DIR}/hooks/"
@@ -126,21 +110,20 @@ echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 
-HOOKS_ABSOLUTE="${SUPPORT_DIR}/hooks"
-SOURCE_ABSOLUTE="${SCRIPT_DIR}"
-
 echo "  Resolving placeholders ..."
-
-# Command file: {HOOKS_DIR} and {SOURCE_DIR}
-for cmd in "${COMMANDS[@]}"; do
-  cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  sed -i "s|{HOOKS_DIR}|${HOOKS_ABSOLUTE}|g" "$cmd_file"
-  sed -i "s|{SOURCE_DIR}|${SOURCE_ABSOLUTE}|g" "$cmd_file"
-done
 
 # Hook file: {PROJECT_ROOT}
 hook_file="${SUPPORT_DIR}/hooks/permission-guard.py"
 sed -i "s|{PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
+
+# ── Clean up stale files ───────────────────────────────────────────────────
+
+# Clean up stale command from v1.0
+STALE_CMD="${COMMANDS_DIR}/install-permission-hooks.md"
+if [[ -f "$STALE_CMD" ]]; then
+  rm "$STALE_CMD"
+  echo "  Removed stale: install-permission-hooks.md"
+fi
 
 # ── Update manifest ──────────────────────────────────────────────────────────
 TOOL_SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -155,11 +138,6 @@ python3 "${TOOL_SOURCE_DIR}/../install/scripts/mg-install-lib.py" \
 echo ""
 echo "Done. Installed:"
 echo ""
-echo "  Commands:"
-for cmd in "${COMMANDS[@]}"; do
-  echo "    ${COMMANDS_DIR}/${cmd}.md"
-done
-echo ""
 echo "  Hook:"
 echo "    ${SUPPORT_DIR}/hooks/permission-guard.py"
 if [[ -n "$PROJECT_ROOT" ]]; then
@@ -169,7 +147,4 @@ else
 fi
 echo ""
 echo "Next step:"
-echo "  Run /mg:install-permission-hooks to register the hook in settings.json"
-echo ""
-echo "Invoke with:"
-echo "  /mg:install-permission-hooks"
+echo "  Post-install subagent will register the hook in settings.json"
