@@ -124,10 +124,18 @@ for cmd in "${COMMANDS[@]}"; do
 done
 echo "  Commands → ${COMMANDS_DIR}/"
 
-# Copy methodology snapshot alongside commands
-cp "${SCRIPT_DIR}/references/${SNAPSHOT_FILE}" "${COMMANDS_DIR}/${SNAPSHOT_FILE}"
-SNAPSHOT_ABSOLUTE="${COMMANDS_DIR}/${SNAPSHOT_FILE}"
+# Copy methodology snapshot to tool-specific references directory
+mkdir -p "${TARGET_DIR}/mg-gsd-wrappers/references"
+cp "${SCRIPT_DIR}/references/${SNAPSHOT_FILE}" "${TARGET_DIR}/mg-gsd-wrappers/references/${SNAPSHOT_FILE}"
+SNAPSHOT_ABSOLUTE="${TARGET_DIR}/mg-gsd-wrappers/references/${SNAPSHOT_FILE}"
 echo "  Snapshot → ${SNAPSHOT_ABSOLUTE}"
+
+# Clean up stale snapshot from commands/mg/ (v1.0 location)
+STALE_SNAPSHOT="${COMMANDS_DIR}/${SNAPSHOT_FILE}"
+if [[ -f "$STALE_SNAPSHOT" ]]; then
+  rm "$STALE_SNAPSHOT"
+  echo "  Removed stale: ${SNAPSHOT_FILE} from commands/mg/"
+fi
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 

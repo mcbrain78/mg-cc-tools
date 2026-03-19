@@ -110,14 +110,22 @@ for cmd in "${COMMANDS[@]}"; do
   cp "${SCRIPT_DIR}/commands/${cmd}.md" "${COMMANDS_DIR}/${cmd}.md"
 done
 
-# Copy template snapshot alongside command
-cp "${SCRIPT_DIR}/commands/${SNAPSHOT_FILE}" "${COMMANDS_DIR}/${SNAPSHOT_FILE}"
+# Copy template snapshot to tool-specific references directory
+mkdir -p "${TARGET_DIR}/create-context/references"
+cp "${SCRIPT_DIR}/commands/${SNAPSHOT_FILE}" "${TARGET_DIR}/create-context/references/${SNAPSHOT_FILE}"
 
 # Resolve {TEMPLATE_SNAPSHOT} placeholder in command file
-SNAPSHOT_ABSOLUTE="${COMMANDS_DIR}/${SNAPSHOT_FILE}"
+SNAPSHOT_ABSOLUTE="${TARGET_DIR}/create-context/references/${SNAPSHOT_FILE}"
 cmd_file="${COMMANDS_DIR}/create-context.md"
 if grep -q '{TEMPLATE_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
   sed -i "s|{TEMPLATE_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
+fi
+
+# Clean up stale snapshot from commands/mg/ (v1.0 location)
+STALE_SNAPSHOT="${COMMANDS_DIR}/${SNAPSHOT_FILE}"
+if [[ -f "$STALE_SNAPSHOT" ]]; then
+  rm "$STALE_SNAPSHOT"
+  echo "  Removed stale: ${SNAPSHOT_FILE} from commands/mg/"
 fi
 
 echo "  Commands → ${COMMANDS_DIR}/"
