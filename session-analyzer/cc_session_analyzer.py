@@ -921,7 +921,81 @@ def cmd_agent(data, session_file, args):
 
 
 def cmd_agent_list(data, session_file, args):
-    print("Not yet implemented: agent-list")
+    """Show one line per agent with key metrics, paginated."""
+    processes = data.get("processes", [])
+
+    if not processes:
+        return "No agents in this session."
+
+    entries = []
+    for proc in processes:
+        if not isinstance(proc, dict):
+            continue
+
+        pid = proc.get("id", "????????")
+        pid_short = pid[:8]
+
+        # Status
+        if proc.get("isOngoing"):
+            status = "active"
+        else:
+            proc_messages = proc.get("messages", [])
+            status = _classify_agent_status(proc_messages)
+
+        # Duration
+        dur_ms = proc.get("durationMs", 0)
+        dur_str = _format_duration(dur_ms)
+
+        # Message count
+        msg_count = len(proc.get("messages", []))
+
+        # Tool count -- count tool_use blocks across all assistant messages
+        tool_count = 0
+        for m in proc.get("messages", []):
+            if not isinstance(m, dict):
+                continue
+            if m.get("role") != "assistant":
+                continue
+            content = m.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    tool_count += 1
+
+        # Tokens
+        metrics = proc.get("metrics", {})
+        total_tokens = metrics.get("totalTokens", 0)
+
+        # Prompt summary -- first 60 chars of first user message text
+        prompt_summary = ""
+        for m in proc.get("messages", []):
+            if not isinstance(m, dict):
+                continue
+            if m.get("role") != "user":
+                continue
+            text = extract_text(m.get("content", ""))
+            text = text.replace("\n", " ").strip()
+            if text:
+                if len(text) > 60:
+                    prompt_summary = text[:57] + "..."
+                else:
+                    prompt_summary = text
+                break
+
+        entry = (
+            f"{pid_short}  {status:6}  {dur_str:>8}  "
+            f"{msg_count:>4} msgs  {tool_count:>4} tools  "
+            f"{total_tokens:>8,} tok  {prompt_summary}"
+        )
+        entries.append(entry)
+
+    sf = session_file
+    page, footer = paginate(entries, args, f"{sf} agent-list")
+
+    output = "\n".join(page)
+    output += "\n" + footer
+    return output
 
 
 def cmd_msg(data, session_file, args):
