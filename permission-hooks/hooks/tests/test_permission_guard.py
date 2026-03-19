@@ -287,6 +287,14 @@ class TestDestructiveFilesystem:
     def test_block_dd(self):
         assert_blocked("dd if=/dev/zero of=file bs=1M", self.CAT)
 
+    def test_block_dd_after_shell_operator(self):
+        assert_blocked("echo done && dd if=/dev/zero of=file", self.CAT)
+        assert_blocked("echo done; dd if=/dev/zero of=file", self.CAT)
+
+    def test_allow_dd_as_variable(self):
+        assert_allowed('python3 -c "dd = json.load(fh)"')
+        assert_allowed("dd_count = 5")
+
 
 # ── Category 7: Secrets & Credentials ───────────────────────────────────────
 
@@ -517,6 +525,37 @@ class TestOutsideProject:
             "cp file.txt other.txt", self.PROJECT
         )
         assert result is None
+
+    def test_allow_fd_redirect_with_tilde_path(self):
+        """ls ~/project/dir 2>/dev/null should not trigger — 2> is an fd redirect, not a file write."""
+        import os
+        home = os.path.expanduser("~")
+        project = home + "/myproject"
+        result = check_outside_project(
+            f"ls {home}/myproject/subdir/ 2>/dev/null", project
+        )
+        assert result is None
+
+    def test_allow_tilde_path_inside_project(self):
+        """cp to ~/myproject/out.txt should be allowed when project root matches."""
+        import os
+        home = os.path.expanduser("~")
+        project = home + "/myproject"
+        result = check_outside_project(
+            f"cp file.txt ~/myproject/out.txt", project
+        )
+        assert result is None
+
+    def test_block_tilde_path_outside_project(self):
+        """cp to ~/Documents/ should still be blocked."""
+        import os
+        home = os.path.expanduser("~")
+        project = home + "/myproject"
+        result = check_outside_project(
+            "cp file.txt ~/Documents/", project
+        )
+        assert result is not None
+        assert "~/Documents/" in result[1]
 
     def test_allow_non_modifying_command(self):
         result = check_outside_project(
@@ -759,6 +798,23 @@ class TestFileOutsideProject:
             "/home/user/other-project/file.txt", self.PROJECT
         )
         assert result is None
+
+    def test_allow_tilde_path_inside_project(self):
+        """~/myproject/file.txt should be allowed when project root matches."""
+        import os
+        home = os.path.expanduser("~")
+        project = home + "/myproject"
+        result = check_file_outside_project("~/myproject/file.txt", project)
+        assert result is None
+
+    def test_block_tilde_path_outside_project(self):
+        """~/Documents/file.txt should still be blocked."""
+        import os
+        home = os.path.expanduser("~")
+        project = home + "/myproject"
+        result = check_file_outside_project("~/Documents/file.txt", project)
+        assert result is not None
+        assert "home directory" in result
 
     def test_block_home_directory_listing(self):
         result = check_file_outside_project("/home/user", self.PROJECT)

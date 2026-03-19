@@ -66,7 +66,7 @@ CATEGORIES = {
         (r"\b(chmod|chown)\b", "permission/ownership change"),
         (r"(?:^|[;&|]\s*)ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
-        (r"\bdd\s", "raw disk operations"),
+        (r"(?:^|[;&|]\s*)dd\s", "raw disk operations"),
     ],
     "Secrets & Credentials": [
         (r">\s*\S*\.env\b", "writing .env file"),
@@ -114,7 +114,7 @@ _TOKEN_STRIP_CHARS = "'\"`(),[]{}"
 FILE_MODIFYING_CMDS = re.compile(
     r"\b(rm|mv|cp|mkdir|touch|tee)\b"
 )
-WRITE_REDIRECT = re.compile(r">{1,2}")
+WRITE_REDIRECT = re.compile(r"(?<!\d)>{1,2}")
 
 # Heredoc body stripping — removes content between heredoc markers
 # so that data inside heredocs is not mistaken for shell arguments.
@@ -227,8 +227,11 @@ def check_file_outside_project(file_path, project_root):
     if _is_claude_internal(file_path):
         return None
 
-    # Expand ~ to detect home directory paths
+    # Expand ~ and check whether it resolves inside the project
     if file_path.startswith("~/") or file_path == "~":
+        resolved = os.path.expanduser(file_path)
+        if resolved.startswith(project_root + "/") or resolved == project_root:
+            return None  # resolves inside the project
         return f"home directory path: {file_path}"
 
     # Parent traversal — resolve to absolute and check against project root
@@ -308,8 +311,11 @@ def check_outside_project(command, project_root):
                     token,
                 )
 
-        # Check home directory paths
+        # Check home directory paths — resolve first to allow in-project tilde paths
         if token.startswith("~/"):
+            resolved = os.path.expanduser(token)
+            if resolved.startswith(project_root + "/") or resolved == project_root:
+                continue  # resolves inside the project
             return (
                 f"home directory path: {token}",
                 token,
