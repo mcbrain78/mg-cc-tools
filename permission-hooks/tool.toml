@@ -1,5 +1,12 @@
 [tool]
 description = "Claude Code permission guard hooks"
+standard = false
 
 [preflight]
 required = ["python3"]
+
+[post_install]
+script = "post-install.md"
+
+[detect]
+paths = [".claude/permission-hooks/hooks/"]

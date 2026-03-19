@@ -4,3 +4,9 @@ exclude = true
 
 [preflight]
 required = ["python3"]
+
+[post_install]
+script = "post-install.md"
+
+[detect]
+paths = [".claude/cc-regression-test/hooks/"]

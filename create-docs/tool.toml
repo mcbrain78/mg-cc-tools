@@ -4,3 +4,6 @@ description = "Documentation pipeline (scan, generate, verify)"
 [preflight]
 required = ["python3"]
 optional = ["lsp"]
+
+[detect]
+paths = [".claude/create-docs/scripts/"]

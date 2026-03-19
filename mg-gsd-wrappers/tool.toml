@@ -1,5 +1,9 @@
 [tool]
 description = "GSD workflow wrappers (plan, execute, discuss)"
+standard = false
 
 [preflight]
 required = ["gsd"]
+
+[detect]
+paths = [".claude/commands/mg/discuss-phase.md"]

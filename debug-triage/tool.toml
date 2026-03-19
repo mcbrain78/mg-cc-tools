@@ -3,3 +3,6 @@ description = "GSD debug workflow with structured triage"
 
 [preflight]
 required = ["gsd"]
+
+[detect]
+paths = [".claude/commands/mg/debug-triage.md"]

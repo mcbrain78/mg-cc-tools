@@ -1,6 +1,9 @@
 [tool]
 description = "Apply GSD methodology patches"
-exclude = true
+standard = false
 
 [preflight]
 required = ["gsd"]
+
+[post_install]
+script = "post-install.md"

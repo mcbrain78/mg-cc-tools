@@ -4,3 +4,6 @@ standard = false
 
 [preflight]
 required = ["python3"]
+
+[detect]
+paths = [".claude/data-provider/scripts/"]

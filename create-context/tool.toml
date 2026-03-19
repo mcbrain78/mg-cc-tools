@@ -3,3 +3,6 @@ description = "Create context snapshots for LLM prompts"
 
 [preflight]
 required = ["gsd"]
+
+[detect]
+paths = [".claude/commands/mg/create-context.md"]

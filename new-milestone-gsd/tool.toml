@@ -3,3 +3,6 @@ description = "Create new GSD milestone with backlog review"
 
 [preflight]
 required = ["gsd"]
+
+[detect]
+paths = [".claude/commands/mg/new-milestone-gsd.md"]
