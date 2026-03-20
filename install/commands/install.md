@@ -126,6 +126,20 @@ What would you like to do?
 Type a number, or tool names separated by commas:
 ```
 
+**If user selects [2] "Select specific tools":**
+
+```bash
+python3 "$MG_INSTALL_LIB" render-tool-picker --input /tmp/mg-scan-status.json
+```
+
+Display the numbered tool list verbatim. Get the user's response, then resolve it:
+
+```bash
+python3 "$MG_INSTALL_LIB" resolve-tool-selection --input /tmp/mg-scan-status.json --selection "<user_response>"
+```
+
+This returns JSON: `{"tools": ["name1", "name2"]}` on success, or `{"error": "..."}` on invalid input. If error, show the error and re-prompt.
+
 **Scenario B: Some outdated or modified (summary.update > 0 or summary.modified > 0)**
 ```
 What would you like to do?
@@ -156,6 +170,14 @@ Type a number, tool names, or 'all':
 - Tool names ("create-docs, codebase-health") -- install/update those specific tools
 - "all" -- install/update all non-excluded tools
 - Free text ("just the GSD tools", "pipeline tools") -- interpret and select matching tools
+
+**If the user types tool names or numbers instead of a menu option**, use the tool picker and resolver to interpret their selection:
+
+```bash
+python3 "$MG_INSTALL_LIB" resolve-tool-selection --input /tmp/mg-scan-status.json --selection "<user_response>"
+```
+
+Use the returned tool list. If the resolver returns an error, show `render-tool-picker` output for reference and ask the user to try again.
 
 **Build the final tool list** based on the user's selection. Exclude tools with `excluded: true` from bulk operations (but allow them if the user names them explicitly). Bulk "standard" operations only include tools where `standard: true` in the scan-status output.
 
