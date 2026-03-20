@@ -116,6 +116,17 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INST-33**: install.md adopt checks [detect].paths and skips execute-only tools
 - [x] **INST-34**: install.md status table reflects updated tier settings (gsd-patches optional, not excluded)
 
+### Install Rendering
+
+- [ ] **INST-35**: Running `mg-install-lib.py render-status-table` with scan-status JSON produces a formatted three-tier status table on stdout
+- [ ] **INST-36**: Running `mg-install-lib.py render-tool-picker` with scan-status JSON produces a numbered tool list on stdout with section headers
+- [ ] **INST-37**: Running `mg-install-lib.py resolve-tool-selection` with scan-status JSON and user text produces a JSON list of resolved tool names
+- [ ] **INST-38**: render-tool-picker and resolve-tool-selection share a single internal ordering function (standard-first, then optional, excluding excluded)
+- [ ] **INST-39**: install.md Step 2 calls render-status-table and displays output verbatim, replacing the inline template
+- [ ] **INST-40**: install.md Step 3 uses render-tool-picker and resolve-tool-selection for the "Select specific tools" sub-flow
+- [ ] **INST-41**: Scenario A/B/C top-level action menus remain LLM-rendered (not moved to Python)
+- [ ] **INST-42**: Pytest tests cover all three new subcommands (render-status-table, render-tool-picker, resolve-tool-selection)
+
 ### Session Analyzer
 
 - [x] **SAN-01**: `cc_session_compactor.py` renamed from `reduce_cc_session_export.py` with all existing functionality preserved (levels 0-5, l2-compact)
@@ -256,6 +267,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-32 | Phase 8 | Complete |
 | INST-33 | Phase 8 | Complete |
 | INST-34 | Phase 8 | Complete |
+| INST-35 | Phase 10 | Pending |
+| INST-36 | Phase 10 | Pending |
+| INST-37 | Phase 10 | Pending |
+| INST-38 | Phase 10 | Pending |
+| INST-39 | Phase 10 | Pending |
+| INST-40 | Phase 10 | Pending |
+| INST-41 | Phase 10 | Pending |
+| INST-42 | Phase 10 | Pending |
 | SAN-01 | Phase 9 | Complete |
 | SAN-02 | Phase 9 | Complete |
 | SAN-03 | Phase 9 | Complete |
@@ -282,10 +301,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAN-24 | Phase 9 | Complete |
 
 **Coverage:**
-- v1 requirements: 106 total
-- Mapped to phases: 106
+- v1 requirements: 114 total
+- Mapped to phases: 114
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-19 after Phase 9 requirement generation*
+*Last updated: 2026-03-20 after Phase 10 requirement generation*

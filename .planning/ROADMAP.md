@@ -205,3 +205,13 @@ Plans:
 - [ ] 09-02-PLAN.md — Errors, flow, and agent-list commands with tests
 - [ ] 09-03-PLAN.md — Agent deep dive, msg, and search commands with persisted recovery
 - [ ] 09-04-PLAN.md — Export command, slash command, install.sh, and tool.toml delivery
+
+### Phase 10: create a renderer for the install command
+
+**Goal:** [To be planned]
+**Requirements**: INST-35, INST-36, INST-37, INST-38, INST-39, INST-40, INST-41, INST-42
+**Depends on:** Phase 9
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 10 to break down)
