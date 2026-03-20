@@ -20,7 +20,7 @@ MG_INSTALL_LIB="./install/scripts/mg-install-lib.py"
 
 ## Display Rule
 
-All `render-*` subcommand output is user-facing. Echo COMPLETE stdout verbatim as a fenced code block (Bash output is collapsed in the UI). Never drop, truncate, or summarize any line. All other subcommand output is machine-readable JSON -- do NOT echo to the user. Parse it for the next step.
+**CRITICAL INSTRUCTION:** All `render-*` subcommands wrap their output in `<verbatim>` tags. You MUST reproduce EVERY line between `<verbatim>` and `</verbatim>` exactly as-is in your response text. Do not drop, truncate, reformat, or summarize ANY line — this includes legends, footnotes, and separators. Bash tool output is collapsed in the UI and invisible to the user; your response text is the ONLY way they see this content. All other subcommand output is machine-readable JSON — do NOT echo to the user. Parse it for the next step.
 
 ---
 

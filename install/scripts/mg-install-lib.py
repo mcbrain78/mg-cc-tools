@@ -877,7 +877,9 @@ def render_status_table(scan_data):
 
     Prints a three-tier table (standard, optional, excluded) with
     aligned columns, summary counts, and status legend to stdout.
+    Wrapped in <verbatim> tags for faithful LLM reproduction.
     """
+    print("<verbatim>")
     version = scan_data.get("mg_cc_tools_version", "?.?.?")
     target = scan_data.get("target", "?")
     tools = scan_data.get("tools", [])
@@ -963,6 +965,7 @@ def render_status_table(scan_data):
     print()
     print('  *  = optional tool (not included in "Install all standard")')
     print("     Edit the standard list with option [N] below")
+    print("</verbatim>")
 
 
 # ============================================================
@@ -990,6 +993,7 @@ def render_tool_picker(scan_data):
     # Separator width
     sep_width = num_width + 2 + max_name + 6 + 40  # generous
 
+    print("<verbatim>")
     print("Select tools to install:")
     print()
 
@@ -1019,6 +1023,7 @@ def render_tool_picker(scan_data):
 
     print()
     print("Type numbers, names, or 'all':")
+    print("</verbatim>")
 
 
 # ============================================================
@@ -1133,6 +1138,7 @@ def _determine_scenario(scan_data):
 
 def render_action_menu(scan_data):
     """Render scenario-appropriate action menu to stdout."""
+    print("<verbatim>")
     scenario = _determine_scenario(scan_data)
     tools = scan_data.get("tools", [])
     summary = scan_data.get("summary", {})
@@ -1152,26 +1158,29 @@ def render_action_menu(scan_data):
     print()
 
     if scenario == "A":
-        print(f"  [1] Install all standard tools ({standard_total} tools) (recommended)")
-        print("  [2] Select specific tools")
+        print("  [1] Select specific tools")
+        print(f"  [2] Install all standard tools ({standard_total} tools)")
         print("  [3] Edit standard install list")
         print()
         print("Type a number, or tool names separated by commas:")
     elif scenario == "B":
-        print(f"  [1] Fix/update {attention_count} tools needing attention (recommended)")
-        print("  [2] Fix/update + install all missing standard")
-        print(f"  [3] Install missing standard only ({standard_available} tools)")
+        print("  [1] Select specific tools")
+        print(f"  [2] Fix/update {attention_count} tools needing attention")
+        print("  [3] Fix/update + install all missing standard")
+        print(f"  [4] Install missing standard only ({standard_available} tools)")
+        print("  [5] Edit standard install list")
+        print("  [6] Check capabilities only")
+        print()
+        print("Type a number, tool names, or 'all':")
+    elif scenario == "C":
+        print("  [1] Select specific tools")
+        print(f"  [2] Install remaining {standard_available} standard tools")
+        print("  [3] Reinstall all")
         print("  [4] Edit standard install list")
         print("  [5] Check capabilities only")
         print()
         print("Type a number, tool names, or 'all':")
-    elif scenario == "C":
-        print(f"  [1] Install remaining {standard_available} standard tools")
-        print("  [2] Reinstall all")
-        print("  [3] Edit standard install list")
-        print("  [4] Check capabilities only")
-        print()
-        print("Type a number, tool names, or 'all':")
+    print("</verbatim>")
 
 
 # ============================================================
@@ -1204,24 +1213,26 @@ def _resolve_menu_option(scenario, num, tools, summary):
 
     if scenario == "A":
         options = {
-            1: {"action": "install", "tools": standard_tools},
-            2: {"action": "select_specific"},
+            1: {"action": "select_specific"},
+            2: {"action": "install", "tools": standard_tools},
             3: {"action": "edit_standard"},
         }
     elif scenario == "B":
         options = {
-            1: {"action": "install", "tools": attention_tools},
-            2: {"action": "install", "tools": attention_tools + missing_standard},
-            3: {"action": "install", "tools": missing_standard},
-            4: {"action": "edit_standard"},
-            5: {"action": "check_capabilities"},
+            1: {"action": "select_specific"},
+            2: {"action": "install", "tools": attention_tools},
+            3: {"action": "install", "tools": attention_tools + missing_standard},
+            4: {"action": "install", "tools": missing_standard},
+            5: {"action": "edit_standard"},
+            6: {"action": "check_capabilities"},
         }
     elif scenario == "C":
         options = {
-            1: {"action": "install", "tools": missing_standard},
-            2: {"action": "install", "tools": all_non_excluded},
-            3: {"action": "edit_standard"},
-            4: {"action": "check_capabilities"},
+            1: {"action": "select_specific"},
+            2: {"action": "install", "tools": missing_standard},
+            3: {"action": "install", "tools": all_non_excluded},
+            4: {"action": "edit_standard"},
+            5: {"action": "check_capabilities"},
         }
     else:
         return {"error": f"Unknown scenario: {scenario}"}
@@ -1322,7 +1333,9 @@ def render_preflight(preflight_data):
 
     Prints header, per-check lines with [PASS]/[FAIL] markers,
     and summary counts with required/optional grouping.
+    Wrapped in <verbatim> tags for faithful LLM reproduction.
     """
+    print("<verbatim>")
     checks = preflight_data.get("checks", [])
 
     print("Preflight checks:")
@@ -1348,6 +1361,7 @@ def render_preflight(preflight_data):
         opt_passed = sum(1 for c in optional_checks if c["passed"])
         opt_total = len(optional_checks)
         print(f"  Optional: {opt_passed}/{opt_total} passed")
+    print("</verbatim>")
 
 
 def record_result(results_file, tool_name, success, plan_file):
@@ -1394,7 +1408,9 @@ def render_summary(results_data, scan_data, preflight_data=None):
 
     Prints header, target, action counts, tool table with commands,
     and optional capabilities section from preflight data.
+    Wrapped in <verbatim> tags for faithful LLM reproduction.
     """
+    print("<verbatim>")
     target = scan_data.get("target", "")
 
     # Compute action counts
@@ -1456,6 +1472,7 @@ def render_summary(results_data, scan_data, preflight_data=None):
         if missing_optional:
             names = ", ".join(c["id"] for c in missing_optional)
             print(f"    Missing optional tools: {names}")
+    print("</verbatim>")
 
 
 def render_validation(validate_data):
@@ -1463,11 +1480,14 @@ def render_validation(validate_data):
 
     For clean validation (0 issues): prints success message.
     For issues: prints WARNING lines with messages.
+    Wrapped in <verbatim> tags for faithful LLM reproduction.
     """
+    print("<verbatim>")
     print("Post-install validation:")
 
     if validate_data.get("issue_count", 0) == 0:
         print("  All checks passed -- no unresolved placeholders, all paths valid")
+        print("</verbatim>")
         return
 
     for issue in validate_data.get("issues", []):
@@ -1475,6 +1495,7 @@ def render_validation(validate_data):
 
     count = validate_data["issue_count"]
     print(f"  {count} issue{'s' if count != 1 else ''} found")
+    print("</verbatim>")
 
 
 # ============================================================

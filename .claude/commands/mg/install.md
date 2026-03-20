@@ -6,190 +6,104 @@ allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, Agent
 
 # mg:install -- Unified Tool Installer & Manager
 
-You are the **mg-cc-tools installer**. You install, update, and manage mg-cc-tools slash commands in target projects through an interactive 8-step flow.
-
-**You always run from the mg-cc-tools directory.** The source is always `./` (the current working directory). The target is a separate project.
+You are the **mg-cc-tools installer**. You run an interactive 8-step flow: scan, select, preflight, install, validate, summarize. You always run from the mg-cc-tools directory.
 
 ## Prerequisites
-
-Before starting, verify you are in the mg-cc-tools directory:
 
 ```bash
 test -f ./pyproject.toml && test -d ./install/scripts || echo "ERROR: Must run from mg-cc-tools directory"
 ```
 
-Set the script path for all subsequent calls:
-
 ```bash
 MG_INSTALL_LIB="./install/scripts/mg-install-lib.py"
 ```
+
+## Display Rule
+
+**CRITICAL INSTRUCTION:** All `render-*` subcommands wrap their output in `<verbatim>` tags. You MUST reproduce EVERY line between `<verbatim>` and `</verbatim>` exactly as-is in your response text. Do not drop, truncate, reformat, or summarize ANY line — this includes legends, footnotes, and separators. Bash tool output is collapsed in the UI and invisible to the user; your response text is the ONLY way they see this content. All other subcommand output is machine-readable JSON — do NOT echo to the user. Parse it for the next step.
 
 ---
 
 ## Step 1: Target Selection
 
-Determine the target project.
-
-**If `$ARGUMENTS` contains a path**, use it directly. Validate it exists:
-
+**If `$ARGUMENTS` contains a path**, use it directly:
 ```bash
 test -d "$TARGET_PATH" || echo "ERROR: Directory does not exist: $TARGET_PATH"
 ```
 
-**Otherwise**, scan sibling directories and ask the user:
+**Otherwise**, scan sibling directories (`../*/`) and present them via AskUserQuestion (header: "Target Project", multiSelect: false) with sibling paths (alphabetical) plus "Enter path manually". If no siblings found, offer only "Enter path manually". If user selects manual entry, ask for the path via a follow-up AskUserQuestion.
 
-1. List directories adjacent to the mg-cc-tools source directory (i.e., `../*/`). These are the likely target projects.
-
-2. Present discovered siblings via AskUserQuestion:
-   ```
-   AskUserQuestion (header: "Target Project", multiSelect: false)
-     Q: "Which project do you want to manage tools for?"
-     Options: (sibling directories, alphabetical)
-       - "/home/user/mg_projects/road-runner"
-       - "/home/user/mg_projects/other-project"
-       - "Enter path manually"
-   ```
-
-   If no siblings found, ask:
-   ```
-   AskUserQuestion (header: "Target Project", multiSelect: false)
-     Q: "Enter the path to the project you want to manage tools for:"
-     Options:
-       - "Enter path manually"
-   ```
-
-3. If the user selects "Enter path manually", ask for the path via a follow-up AskUserQuestion.
-
-4. Validate the target path exists. If it does not have a `.claude/` directory, offer to create one:
+Validate the target path exists. If it does not have a `.claude/` directory:
    ```bash
    mkdir -p "$TARGET_PATH/.claude/commands/mg"
    ```
 
-Store `TARGET_PATH` for all subsequent steps.
+Store `TARGET_PATH`. Set the per-target temp directory:
+```bash
+MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")"
+```
 
 ---
 
 ## Step 2: Status Scan
 
-Run the status scan. Use `--output` to write full details to a file and keep stdout compact:
+```bash
+python3 "$MG_INSTALL_LIB" scan-status --source ./ --target "$TARGET_PATH" --output "$TMP/scan-status.json" --auto-adopt
+```
+
+If the compact stdout JSON contains a non-empty `auto_adopted` list, mention which tools were adopted before showing the table.
 
 ```bash
-python3 "$MG_INSTALL_LIB" scan-status --source ./ --target "$TARGET_PATH" --output /tmp/mg-scan-status.json
+python3 "$MG_INSTALL_LIB" render-status-table --input "$TMP/scan-status.json"
 ```
 
-This returns a compact JSON summary to stdout (tool names, statuses, descriptions — no checksums). Full details are in the output file.
-
-**Render and display the status table:**
-
-```bash
-python3 "$MG_INSTALL_LIB" render-status-table --input /tmp/mg-scan-status.json
-```
-
-**IMPORTANT:** Bash tool output is collapsed in the UI — the user cannot see it. You MUST copy the COMPLETE stdout (every line, including the legend at the bottom) and output it as a fenced code block in your response text. Do not drop, truncate, or omit ANY lines. The output typically has: header, table rows, separator, summary line, legend block, and footnote — ALL of these must appear in your response.
-
-### Step 2b: Migration (if manifest missing but commands found)
-
-If `manifest_exists` is `false` in the scan-status output, check if any tools show commands already present in the target. If so, suggest migration:
-
-```
-No manifest found, but existing mg-cc-tools commands detected in the target.
-Running migration to adopt existing installations...
-```
-
-Run the adopt subcommand (writes manifest directly):
-```bash
-python3 "$MG_INSTALL_LIB" adopt --source ./ --target "$TARGET_PATH"
-```
-
-This returns a compact JSON with just the adopted tool names (e.g., `{"adopted": ["codebase-health", "create-docs"], "count": 2}`). The manifest is written automatically — no extra step needed.
-
-The adopt command detects tools via command files in `.claude/commands/mg/` AND via `[detect]` paths configured in each tool's `tool.toml`. Execute-only tools (no commands, no detect paths) are skipped.
-
-Show which tools were adopted, then re-run scan-status and display the updated table.
+Echo the table output per display rule.
 
 ---
 
 ## Step 3: Action Selection
 
-Present numbered options as a **plain text prompt** (NOT AskUserQuestion). The options adapt based on scan results.
-
-Parse the `summary` from the scan-status output to determine the scenario.
-
-**Scenario A: Nothing installed (summary.installed_total == 0)**
-```
-What would you like to do?
-
-  [1] Install all standard tools (recommended)
-  [2] Select specific tools
-  [3] Edit standard install list
-
-Type a number, or tool names separated by commas:
+```bash
+python3 "$MG_INSTALL_LIB" render-action-menu --input "$TMP/scan-status.json"
 ```
 
-**If user selects [2] "Select specific tools":**
+Echo the menu output per display rule. Get the user's response, then resolve it:
 
 ```bash
-python3 "$MG_INSTALL_LIB" render-tool-picker --input /tmp/mg-scan-status.json
+python3 "$MG_INSTALL_LIB" resolve-action --input "$TMP/scan-status.json" --selection "<user_response>"
 ```
 
-**IMPORTANT:** Copy the command's stdout and output it as a fenced code block in your response text (Bash tool output is collapsed in the UI). Then get the user's response and resolve it:
+Handle the returned JSON:
+
+- `"action": "install"` with `"tools"` list -- proceed to Step 4 with that list
+- `"action": "select_specific"` -- run tool picker sub-flow (below)
+- `"action": "edit_standard"` -- run Edit Standard Install List sub-flow (below)
+- `"action": "check_capabilities"` -- skip to Step 5, then Step 8
+- `"error"` -- try `resolve-tool-selection` as fallback for free text input:
+  ```bash
+  python3 "$MG_INSTALL_LIB" resolve-tool-selection --input "$TMP/scan-status.json" --selection "<user_response>"
+  ```
+  If that also returns an error, show render-tool-picker output and re-prompt.
+
+### Tool Picker Sub-flow
 
 ```bash
-python3 "$MG_INSTALL_LIB" resolve-tool-selection --input /tmp/mg-scan-status.json --selection "<user_response>"
+python3 "$MG_INSTALL_LIB" render-tool-picker --input "$TMP/scan-status.json"
 ```
 
-This returns JSON: `{"tools": ["name1", "name2"]}` on success, or `{"error": "..."}` on invalid input. If error, show the error and re-prompt.
-
-**Scenario B: Some outdated or modified (summary.update > 0 or summary.modified > 0)**
-```
-What would you like to do?
-
-  [1] Update N outdated tools (recommended)
-  [2] Update outdated + install all missing standard
-  [3] Install missing standard only (N tools)
-  [4] Edit standard install list
-  [5] Check capabilities only
-
-Type a number, tool names, or 'all':
-```
-
-**Scenario C: All current (summary.installed_total > 0 and summary.update == 0 and summary.modified == 0)**
-```
-What would you like to do?
-
-  [1] Install remaining N standard tools
-  [2] Reinstall all
-  [3] Edit standard install list
-  [4] Check capabilities only
-
-Type a number, tool names, or 'all':
-```
-
-**Parse the user's response:**
-- A number (1, 2, 3, 4) -- map to the corresponding action
-- Tool names ("create-docs, codebase-health") -- install/update those specific tools
-- "all" -- install/update all non-excluded tools
-- Free text ("just the GSD tools", "pipeline tools") -- interpret and select matching tools
-
-**If the user types tool names or numbers instead of a menu option**, use the tool picker and resolver to interpret their selection:
+Echo per display rule. Get the user's response:
 
 ```bash
-python3 "$MG_INSTALL_LIB" resolve-tool-selection --input /tmp/mg-scan-status.json --selection "<user_response>"
+python3 "$MG_INSTALL_LIB" resolve-tool-selection --input "$TMP/scan-status.json" --selection "<user_response>"
 ```
 
-Use the returned tool list. If the resolver returns an error, show `render-tool-picker` output for reference and ask the user to try again.
-
-**Build the final tool list** based on the user's selection. Exclude tools with `excluded: true` from bulk operations (but allow them if the user names them explicitly). Bulk "standard" operations only include tools where `standard: true` in the scan-status output.
-
-If the user selects "Check capabilities only", skip to Step 5 (Capability Probe), then Step 8 (Summary).
+If `"tools"` returned, proceed to Step 4. If `"error"`, show it and re-prompt.
 
 ### Edit Standard Install List
 
-If the user selects "Edit standard install list":
-
 1. Show all non-excluded tools with their current standard status:
    ```
-   Standard install list for /home/user/projects/road-runner:
+   Standard install list for $TARGET_PATH:
 
      [x] create-docs          Documentation pipeline (scan, generate, verify)
      [x] codebase-health      Scan, verify, and fix code health issues
@@ -200,11 +114,10 @@ If the user selects "Edit standard install list":
    Type tool names to toggle, or 'done' to save:
    ```
 
-2. The user types tool names (comma-separated) to toggle on/off. Repeat until the user types "done".
+2. The user types tool names (comma-separated) to toggle on/off. Repeat until "done".
 
-3. Save changes to the manifest's `standard_overrides` section. Only store overrides that differ from the tool.toml default:
+3. Save changes to the manifest's `standard_overrides` section (only overrides differing from tool.toml default):
    ```bash
-   # Read current manifest, update standard_overrides, write back
    python3 -c "
    import json, os
    manifest_path = os.path.join('$TARGET_PATH', '.claude', 'mg-cc-tools.manifest.json')
@@ -220,256 +133,112 @@ If the user selects "Edit standard install list":
    "
    ```
 
-4. After saving, return to the action selection prompt (Step 3) with the updated standard list.
+4. After saving, re-run scan-status (to pick up new standard flags) and return to Step 3.
 
 ---
 
 ## Step 4: Preflight Checks
 
-Run preflight checks for the selected tools:
+```bash
+python3 "$MG_INSTALL_LIB" preflight --source ./ --target "$TARGET_PATH" --tools "tool1,tool2" --output "$TMP/preflight.json"
+```
+
+Check `all_passed` from compact stdout JSON. If false: STOP. Show the failing required check's fix instructions and tell the user to re-run `/mg:install` after fixing.
+
+If true (or only optional checks failed):
 
 ```bash
-python3 "$MG_INSTALL_LIB" preflight --source ./ --target "$TARGET_PATH" --tools "tool1,tool2,tool3"
+python3 "$MG_INSTALL_LIB" render-preflight --input "$TMP/preflight.json"
 ```
 
-This returns JSON with: `checks` array (each with `id`, `type`, `passed`, `required`, `version`, `error`, `fix`) and `all_passed` boolean.
-
-**Display results:**
-```
-Preflight checks:
-
-  [PASS] python3    3.13.1    (required by: create-docs, codebase-health, data-provider, permission-hooks)
-  [PASS] git        2.43.0    (used by: create-docs staleness detection)
-  [PASS] gsd        found     (required by: debug-triage, mg-gsd-wrappers, update-backlog, new-milestone-gsd)
-  [FAIL] ruff       missing   (optional: codebase-health scan degraded)
-  [FAIL] vulture    missing   (optional: codebase-health dead code detection unavailable)
-
-  Required: 3/3 passed
-  Optional: 0/2 (degraded features noted)
-```
-
-**If `all_passed` is false (required check failed):**
-
-Hard abort. Show the failing check's fix instructions:
-```
-PREFLIGHT FAILED
-
-  python3 is required but not found.
-
-  To fix:
-    Ubuntu/Debian:  sudo apt install python3
-    macOS:          brew install python3
-    Other:          https://python.org/downloads
-
-  After fixing, re-run /mg:install
-```
-
-Do NOT proceed to installation. Stop here.
-
-**If only optional checks fail:**
-
-Warn the user, note the degraded features, and continue:
-```
-Optional tools missing -- some features will be degraded. Continuing with install.
-```
+Echo per display rule. If optional checks failed, note degraded features and continue.
 
 ---
 
 ## Step 5: Capability Check
 
-LSP availability is detected during preflight (Step 4) by scanning Claude Code settings files for LSP plugins. Only show capabilities if the `lsp` check was actually run (i.e., one of the selected tools declared it in preflight).
+Only show this section if the preflight JSON contains an `lsp` check entry.
 
-**If the `lsp` check was run and passed:**
-```
-Capabilities:
-  LSP: available (pyright-lsp@claude-plugins-official)
-```
+- If `lsp` check passed: show `Capabilities: LSP: available (<plugin name>)`
+- If `lsp` check failed: show `Capabilities: LSP: not configured` with a note about extraction-only symbol verification.
 
-**If the `lsp` check was run and failed:**
-```
-Capabilities:
-  LSP: not configured
-  Note: create-docs-verify symbol verification will use extraction only
-```
-
-**If no selected tool requested the `lsp` check:** Skip the capabilities section entirely — do not display it.
-
-**LSP unavailability is never blocking.** It is informational only. Continue to Step 6 regardless.
+LSP unavailability is never blocking. Continue regardless.
 
 ---
 
 ## Step 6: Execute Installs
 
-For each tool in the final tool list, execute the install in sequence. **Stop immediately if any tool fails -- do not continue with remaining tools.**
-
-For each tool, read its `post_install` and `has_install_sh` fields from the scan-status output to determine the install pattern.
-
-### Pattern A: Copy only (has_install_sh=true, post_install=null)
+Get the install plan:
 
 ```bash
-bash ./<tool-name>/install.sh --target "$TARGET_PATH/.claude"
+python3 "$MG_INSTALL_LIB" get-install-plan --input "$TMP/scan-status.json" --tools "tool1,tool2" --output "$TMP/install-plan.json"
 ```
 
-If exit code != 0: STOP. Report "`<tool-name>` install FAILED" with stderr.
+The compact stdout JSON contains an array of `{tool, pattern, post_install}` entries. For each tool in order:
 
-### Pattern B: Copy + configure (has_install_sh=true, post_install is not null)
-
-1. Run install.sh:
+**copy_only pattern** (has install.sh, no post-install):
 ```bash
-bash ./<tool-name>/install.sh --target "$TARGET_PATH/.claude"
+bash ./<tool>/install.sh --target "$TARGET_PATH/.claude"
 ```
 If exit code != 0: STOP.
 
-2. Read the post-install script from source:
+**copy_configure pattern** (has install.sh + post-install):
+1. Run install.sh (same as copy_only). If exit code != 0: STOP.
+2. Read the post-install file: `cat ./<tool>/<post_install>`
+3. Spawn Agent with prompt: `"Target project: $TARGET_PATH\nSource directory: ./\n\n<post-install.md contents>"`
+4. Check Agent output for markers:
+   - Contains "POST-INSTALL: SUCCESS" -- continue
+   - Contains "POST-INSTALL: FAILED:" -- STOP. Show reason + full Agent output.
+   - Neither marker -- STOP. Show "no status marker" + full output.
+
+**execute_only pattern** (no install.sh, only post-install):
+1. Read and spawn Agent (same as copy_configure steps 2-4).
+2. If successful, update manifest:
+   ```bash
+   python3 "$MG_INSTALL_LIB" update-manifest --target "$TARGET_PATH" --tool "<tool>" --source "./<tool>"
+   ```
+
+After each tool completes (success or failure), record the result:
 ```bash
-cat ./<tool-name>/<post_install_script>
+python3 "$MG_INSTALL_LIB" record-result --file "$TMP/install-results.json" --tool "<tool>" --success --plan "$TMP/install-plan.json"
 ```
+(Use `--failed` instead of `--success` if the tool failed.)
 
-3. Spawn Agent with the post-install content:
-```
-Agent prompt:
-"Target project: $TARGET_PATH
-Source directory: $SOURCE_PATH
-
-<contents of post-install.md file>"
-```
-
-4. Check the Agent's returned text for the status marker:
-   - If text contains "POST-INSTALL: SUCCESS" -> continue
-   - If text contains "POST-INSTALL: FAILED:" -> STOP. Show: "`<tool-name>` post-install FAILED: `<reason from marker>`". Then show the full Agent output below for debugging.
-   - If neither marker found -> STOP. Show: "`<tool-name>` post-install FAILED: no status marker in output". Show full output.
-
-### Pattern C: Execute only (has_install_sh=false, post_install is not null)
-
-1. Read and spawn Agent (same as Pattern B steps 2-4)
-
-2. If successful, call update-manifest directly (since no install.sh handled it):
-```bash
-python3 "$MG_INSTALL_LIB" update-manifest \
-  --target "$TARGET_PATH" --tool "<tool-name>" --source "./<tool-name>"
-```
-
-### Progress Display
-
-**IMPORTANT:** The `--target` argument for install.sh points to the `.claude` directory inside the target project.
-
-Display progress for each tool as it completes:
-```
-Installing tools:
-
-  create-docs...          done (copy only)
-  permission-hooks...     done (copy + configure)
-  gsd-patches...          done (execute only)
-  debug-triage...         done (copy only)
-```
-
-If a tool fails:
-```
-Installing tools:
-
-  create-docs...          done (copy only)
-  permission-hooks...     FAILED (post-install)
-
-  permission-hooks post-install FAILED: settings.json merge failed
-
-  --- Full post-install output ---
-  [full Agent output here]
-  ---
-
-  Installed successfully: create-docs
-  Failed: permission-hooks
-  Not attempted: gsd-patches, debug-triage
-```
+Display progress inline as each tool completes. On failure, show succeeded/failed/not-attempted summary.
 
 ---
 
 ## Step 7: Post-Install Validation
 
-Run validation scoped to only the tools that were just installed. Use `--output` to keep context small:
+```bash
+python3 "$MG_INSTALL_LIB" validate --target "$TARGET_PATH" --tools "tool1,tool2" --source ./ --output "$TMP/validate.json"
+```
 
 ```bash
-python3 "$MG_INSTALL_LIB" validate --target "$TARGET_PATH" --tools "tool1,tool2" --source ./ --output /tmp/mg-validate.json
+python3 "$MG_INSTALL_LIB" render-validation --input "$TMP/validate.json"
 ```
 
-This returns a compact summary to stdout: `{"valid": true/false, "issue_count": N, "details": "/tmp/mg-validate.json"}`.
-
-**Display results:**
-
-If valid (issue_count == 0):
-```
-Post-install validation:
-  All checks passed -- no unresolved placeholders, all paths valid
-```
-
-If issues found (issue_count > 0), read the details file to show them:
-```bash
-# Only read if issues were found
-cat /tmp/mg-validate.json
-```
-
-Then display:
-```
-Post-install validation:
-
-  WARNING: Unresolved placeholder in create-docs-verify.md: {SCRIPTS_DIR}
-  WARNING: Missing path referenced in codebase-health.md: /old/path/to/scripts
-
-  2 validation issues found. These are warnings -- the install completed,
-  but affected tools may not function correctly until issues are resolved.
-```
-
-**Run validation exactly once.** Do not retry or re-run. Validation issues are warnings — display them and move on.
+Echo per display rule. Run validation exactly once. Issues are warnings -- display and move on.
 
 ---
 
 ## Step 8: Summary
 
-Format and display the final summary:
-
-```
-mg-cc-tools -- INSTALL COMPLETE
-
-  Target: /home/user/projects/road-runner
-
-  Installed: 3  |  Updated: 2  |  Unchanged: 4  |  Skipped: 2
-
-  Tool                Action       Commands
-  ------------------------------------------------
-  create-docs         Updated      create-docs.md, create-docs-scan.md, create-docs-generate.md, create-docs-verify.md, add-docs.md
-  codebase-health     Installed    codebase-health.md, codebase-health-scan.md, codebase-health-verify.md, codebase-health-implement.md
-  debug-triage        Installed    debug-triage.md
-  update-backlog      Installed    update-backlog.md
-  create-context      Updated      create-context.md, prepare-context.md
-  permission-hooks    Unchanged    --
-  mg-gsd-wrappers     Unchanged    --
-  gsd-patches         Unchanged    --
-
-  Capabilities:
-    LSP: functional (python, javascript)
-    Missing optional tools: ruff, vulture (codebase-health scan degraded)
-
-  Manifest: .claude/mg-cc-tools.manifest.json
+```bash
+python3 "$MG_INSTALL_LIB" render-summary --results "$TMP/install-results.json" --input "$TMP/scan-status.json" --preflight "$TMP/preflight.json"
 ```
 
-**Commands column:** For tools that were Installed, Updated, or Configured this run, list the actual command filenames (from the install.sh output). For Unchanged tools, show `--`.
-
-**Action column values:**
-- `Installed` -- newly installed this run
-- `Updated` -- reinstalled due to version or source changes
-- `Configured` -- ran post-install (Pattern B or C); show "(post-install)" note
-- `Unchanged` -- already current, not reinstalled
-- `Failed` -- install or post-install failed (show error details above)
+Echo per display rule.
 
 ---
 
 ## Key Constraints
 
 1. **Always runs from mg-cc-tools directory** -- source is always `./`
-2. **mg-install-lib.py is at `./install/scripts/mg-install-lib.py`** -- no sed resolution needed since this command always runs from the source directory
-3. **AskUserQuestion is ONLY for target selection** (Step 1) -- action selection (Step 3) uses numbered text prompts parsed by the LLM
-4. **LSP detected via settings.json scan** -- checks global and project settings for LSP plugins
-5. **Excluded tools** (install, cc-regression-test) are shown in status but excluded from bulk operations; they can be installed explicitly by name. Note: gsd-patches is optional (standard=false), not excluded -- it appears in the optional section
-9. **Standard vs optional tools** -- bulk "install all" only includes tools where `standard: true` (resolved from tool.toml default + manifest `standard_overrides`). Optional tools can be installed by name or promoted via "Edit standard install list"
-6. **Each tool's install.sh handles its own manifest update** -- this command does NOT call update-manifest directly. Exception: execute-only tools (no install.sh) -- for these, this command calls update-manifest directly after post-install completes
-7. **Preflight required check failure is a hard abort** -- do not proceed to installation
-8. **LSP probe failure is never blocking** -- note it and continue
+2. **`MG_INSTALL_LIB`** is `./install/scripts/mg-install-lib.py` -- no sed resolution needed
+3. **AskUserQuestion is ONLY for target selection** (Step 1) -- action selection uses numbered text prompts
+4. **Excluded tools** (install, cc-regression-test) are excluded from bulk operations; can be installed explicitly by name
+5. **Standard vs optional** -- bulk operations only include `standard: true` tools. Optional tools can be installed by name or promoted via Edit Standard Install List
+6. **install.sh handles its own manifest update** -- except execute-only tools where this command calls update-manifest
+7. **Preflight required check failure is a hard abort** -- do not proceed
+8. **LSP probe failure is never blocking** -- informational only

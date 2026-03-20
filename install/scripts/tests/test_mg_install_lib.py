@@ -2656,10 +2656,11 @@ class TestRenderActionMenu:
             assert "[5]" not in out
             # Standard count: 2 standard tools (alpha, beta)
             assert "2 tools" in out
+            assert "Select specific tools" in out
             assert "Type a number, or tool names" in out
 
-    def test_scenario_b_five_options(self):
-        """Scenario B prints 5 options with attention count and available count."""
+    def test_scenario_b_six_options(self):
+        """Scenario B prints 6 options with attention count, available count, and select specific."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_b_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
@@ -2672,11 +2673,13 @@ class TestRenderActionMenu:
             assert "[3]" in out
             assert "[4]" in out
             assert "[5]" in out
+            assert "[6]" in out
             assert "needing attention" in out
+            assert "Select specific tools" in out
             assert "Type a number, tool names, or 'all':" in out
 
-    def test_scenario_c_four_options(self):
-        """Scenario C prints 4 options with remaining standard count."""
+    def test_scenario_c_five_options(self):
+        """Scenario C prints 5 options with remaining standard count and select specific."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_c_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
@@ -2688,8 +2691,10 @@ class TestRenderActionMenu:
             assert "[2]" in out
             assert "[3]" in out
             assert "[4]" in out
-            assert "[5]" not in out
+            assert "[5]" in out
+            assert "[6]" not in out
             assert "Reinstall all" in out
+            assert "Select specific tools" in out
             assert "Type a number, tool names, or 'all':" in out
 
     def test_scenario_a_header(self):
@@ -2700,7 +2705,8 @@ class TestRenderActionMenu:
             result = _run(["render-action-menu", "--input", input_file])
             assert result.returncode == 0, result.stderr
             lines = result.stdout.strip().split("\n")
-            assert lines[0].strip() == "What would you like to do?"
+            assert lines[0].strip() == "<verbatim>"
+            assert lines[1].strip() == "What would you like to do?"
 
     def test_cli_requires_input(self):
         """render-action-menu requires --input argument."""
@@ -2716,13 +2722,24 @@ class TestRenderActionMenu:
 class TestResolveAction:
     """resolve-action subcommand tests."""
 
-    def test_scenario_a_option_1_install_standard(self):
-        """Scenario A option 1: install all standard tools."""
+    def test_scenario_a_option_1_select_specific(self):
+        """Scenario A option 1: select specific tools."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_a_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
             result = _run(["resolve-action", "--input", input_file,
                            "--selection", "1"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "select_specific"
+
+    def test_scenario_a_option_2_install_standard(self):
+        """Scenario A option 2: install all standard tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "2"])
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
             assert data["action"] == "install"
@@ -2733,17 +2750,6 @@ class TestResolveAction:
             assert "gamma-tool" not in data["tools"]
             # Should NOT include excluded zeta-excluded
             assert "zeta-excluded" not in data["tools"]
-
-    def test_scenario_a_option_2_select_specific(self):
-        """Scenario A option 2: select specific."""
-        with tempfile.TemporaryDirectory() as tmp:
-            scan_data = _make_scenario_a_fixture()
-            input_file = _write_scan_status_file(tmp, scan_data)
-            result = _run(["resolve-action", "--input", input_file,
-                           "--selection", "2"])
-            assert result.returncode == 0, result.stderr
-            data = json.loads(result.stdout)
-            assert data["action"] == "select_specific"
 
     def test_scenario_a_option_3_edit_standard(self):
         """Scenario A option 3: edit standard."""
@@ -2756,13 +2762,24 @@ class TestResolveAction:
             data = json.loads(result.stdout)
             assert data["action"] == "edit_standard"
 
-    def test_scenario_b_option_1_fix_attention(self):
-        """Scenario B option 1: fix/update tools needing attention."""
+    def test_scenario_b_option_1_select_specific(self):
+        """Scenario B option 1: select specific tools."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_b_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
             result = _run(["resolve-action", "--input", input_file,
                            "--selection", "1"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "select_specific"
+
+    def test_scenario_b_option_2_fix_attention(self):
+        """Scenario B option 2: fix/update tools needing attention."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_b_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "2"])
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
             assert data["action"] == "install"
@@ -2773,13 +2790,13 @@ class TestResolveAction:
             assert "alpha-tool" not in data["tools"]
             assert "gamma-tool" not in data["tools"]
 
-    def test_scenario_b_option_2_attention_plus_missing(self):
-        """Scenario B option 2: fix/update + install missing standard."""
+    def test_scenario_b_option_3_attention_plus_missing(self):
+        """Scenario B option 3: fix/update + install missing standard."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_b_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
             result = _run(["resolve-action", "--input", input_file,
-                           "--selection", "2"])
+                           "--selection", "3"])
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
             assert data["action"] == "install"
@@ -2792,22 +2809,8 @@ class TestResolveAction:
             assert "alpha-tool" not in data["tools"]
             assert "epsilon-optional" not in data["tools"]
 
-    def test_scenario_b_option_3_missing_standard_only(self):
-        """Scenario B option 3: install missing standard only."""
-        with tempfile.TemporaryDirectory() as tmp:
-            scan_data = _make_scenario_b_fixture()
-            input_file = _write_scan_status_file(tmp, scan_data)
-            result = _run(["resolve-action", "--input", input_file,
-                           "--selection", "3"])
-            assert result.returncode == 0, result.stderr
-            data = json.loads(result.stdout)
-            assert data["action"] == "install"
-            # Only missing standard: gamma-tool
-            assert "gamma-tool" in data["tools"]
-            assert len(data["tools"]) == 1
-
-    def test_scenario_b_option_4_edit_standard(self):
-        """Scenario B option 4: edit standard."""
+    def test_scenario_b_option_4_missing_standard_only(self):
+        """Scenario B option 4: install missing standard only."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_b_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
@@ -2815,10 +2818,13 @@ class TestResolveAction:
                            "--selection", "4"])
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
-            assert data["action"] == "edit_standard"
+            assert data["action"] == "install"
+            # Only missing standard: gamma-tool
+            assert "gamma-tool" in data["tools"]
+            assert len(data["tools"]) == 1
 
-    def test_scenario_b_option_5_check_capabilities(self):
-        """Scenario B option 5: check capabilities."""
+    def test_scenario_b_option_5_edit_standard(self):
+        """Scenario B option 5: edit standard."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_b_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
@@ -2826,10 +2832,21 @@ class TestResolveAction:
                            "--selection", "5"])
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
+            assert data["action"] == "edit_standard"
+
+    def test_scenario_b_option_6_check_capabilities(self):
+        """Scenario B option 6: check capabilities."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_b_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "6"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
             assert data["action"] == "check_capabilities"
 
-    def test_scenario_c_option_1_remaining_standard(self):
-        """Scenario C option 1: install remaining available standard."""
+    def test_scenario_c_option_1_select_specific(self):
+        """Scenario C option 1: select specific tools."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_c_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
@@ -2837,18 +2854,29 @@ class TestResolveAction:
                            "--selection", "1"])
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
-            assert data["action"] == "install"
-            # Only gamma-tool is available + standard
-            assert "gamma-tool" in data["tools"]
-            assert "delta-optional" not in data["tools"]
+            assert data["action"] == "select_specific"
 
-    def test_scenario_c_option_2_reinstall_all(self):
-        """Scenario C option 2: reinstall all non-excluded tools."""
+    def test_scenario_c_option_2_remaining_standard(self):
+        """Scenario C option 2: install remaining available standard."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_c_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
             result = _run(["resolve-action", "--input", input_file,
                            "--selection", "2"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "install"
+            # Only gamma-tool is available + standard
+            assert "gamma-tool" in data["tools"]
+            assert "delta-optional" not in data["tools"]
+
+    def test_scenario_c_option_3_reinstall_all(self):
+        """Scenario C option 3: reinstall all non-excluded tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_c_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "3"])
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
             assert data["action"] == "install"
@@ -2858,24 +2886,24 @@ class TestResolveAction:
             assert "gamma-tool" in data["tools"]
             assert "delta-optional" in data["tools"]
 
-    def test_scenario_c_option_3_edit_standard(self):
-        """Scenario C option 3: edit standard."""
-        with tempfile.TemporaryDirectory() as tmp:
-            scan_data = _make_scenario_c_fixture()
-            input_file = _write_scan_status_file(tmp, scan_data)
-            result = _run(["resolve-action", "--input", input_file,
-                           "--selection", "3"])
-            assert result.returncode == 0, result.stderr
-            data = json.loads(result.stdout)
-            assert data["action"] == "edit_standard"
-
-    def test_scenario_c_option_4_check_capabilities(self):
-        """Scenario C option 4: check capabilities."""
+    def test_scenario_c_option_4_edit_standard(self):
+        """Scenario C option 4: edit standard."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_data = _make_scenario_c_fixture()
             input_file = _write_scan_status_file(tmp, scan_data)
             result = _run(["resolve-action", "--input", input_file,
                            "--selection", "4"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "edit_standard"
+
+    def test_scenario_c_option_5_check_capabilities(self):
+        """Scenario C option 5: check capabilities."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_c_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "5"])
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
             assert data["action"] == "check_capabilities"
