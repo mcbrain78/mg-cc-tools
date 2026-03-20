@@ -1,0 +1,8 @@
+[tool]
+description = "Analyze Claude Code session exports with iterative queries"
+
+[preflight]
+required = ["python3"]
+
+[detect]
+paths = [".claude/session-analyzer/"]
