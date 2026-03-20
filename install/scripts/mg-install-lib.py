@@ -150,6 +150,19 @@ CHECKS = {
 # ============================================================
 
 
+def _get_temp_dir(target_path):
+    """Get per-target temp directory for inter-step files.
+
+    Derives basename from target path (e.g. "/home/user/projects/road-runner"
+    -> "road-runner"), returns /tmp/mg-install-{basename}/ (or tempfile.gettempdir()
+    equivalent). Creates the directory if it does not exist.
+    """
+    basename = os.path.basename(os.path.normpath(target_path))
+    temp_dir = os.path.join(tempfile.gettempdir(), f"mg-install-{basename}")
+    os.makedirs(temp_dir, exist_ok=True)
+    return temp_dir
+
+
 def read_pyproject_version(source_dir):
     """Read version from pyproject.toml in source_dir."""
     pyproject_path = os.path.join(source_dir, "pyproject.toml")
@@ -1246,6 +1259,224 @@ def resolve_action(scan_data, selection_text):
 
 
 # ============================================================
+# Subcommands: install plan, result tracking, renderers (Phase 11 Plan 02)
+# ============================================================
+
+
+def get_install_plan(scan_data, tool_names):
+    """Generate install plan for given tools.
+
+    Returns list of install instruction dicts.
+    """
+    target = scan_data.get("target", "")
+    tools_by_name = {t["name"]: t for t in scan_data.get("tools", [])}
+    plan = []
+
+    for name in tool_names:
+        tool = tools_by_name.get(name)
+        if tool is None:
+            continue
+
+        has_sh = tool.get("has_install_sh", False)
+        post_install = tool.get("post_install")
+
+        # Determine pattern
+        if has_sh and not post_install:
+            pattern = "copy_only"
+        elif has_sh and post_install:
+            pattern = "copy_configure"
+        else:
+            pattern = "execute_only"
+
+        # Determine expected action
+        status = tool["status"]
+        if status == "available":
+            action = "installed"
+        elif status in ("update", "modified", "corrupt", "adopted"):
+            action = "updated"
+        else:
+            action = "reinstalled"
+
+        if pattern in ("copy_configure", "execute_only"):
+            action += " (configured)"
+
+        # Build install command
+        install_cmd = None
+        if has_sh:
+            install_cmd = f'bash ./{name}/install.sh --target "{target}/.claude"'
+
+        plan.append({
+            "tool": name,
+            "pattern": pattern,
+            "expected_action": action,
+            "install_cmd": install_cmd,
+            "post_install": f"{name}/{post_install}" if post_install else None,
+            "commands": tool.get("commands", []),
+        })
+
+    return plan
+
+
+def render_preflight(preflight_data):
+    """Render preflight results as human-readable PASS/FAIL output.
+
+    Prints header, per-check lines with [PASS]/[FAIL] markers,
+    and summary counts with required/optional grouping.
+    """
+    checks = preflight_data.get("checks", [])
+
+    print("Preflight checks:")
+    print()
+
+    for check in checks:
+        marker = "[PASS]" if check["passed"] else "[FAIL]"
+        detail = check.get("version") or check.get("error") or ""
+        req_text = "required" if check["required"] else "optional"
+        print(f"  {marker} {check['id']}    {detail}    ({req_text})")
+
+    print()
+
+    # Summary counts
+    required_checks = [c for c in checks if c["required"]]
+    optional_checks = [c for c in checks if not c["required"]]
+
+    req_passed = sum(1 for c in required_checks if c["passed"])
+    req_total = len(required_checks)
+    print(f"  Required: {req_passed}/{req_total} passed")
+
+    if optional_checks:
+        opt_passed = sum(1 for c in optional_checks if c["passed"])
+        opt_total = len(optional_checks)
+        print(f"  Optional: {opt_passed}/{opt_total} passed")
+
+
+def record_result(results_file, tool_name, success, plan_file):
+    """Append install result for one tool to results file.
+
+    Creates the file with [] if it doesn't exist.
+    Reads plan file to look up expected_action and commands.
+    """
+    # Read install plan for tool's metadata
+    with open(plan_file, "r", encoding="utf-8") as f:
+        plan = json.load(f)
+
+    tool_plan = next((p for p in plan if p["tool"] == tool_name), None)
+
+    if success:
+        entry = {
+            "tool": tool_name,
+            "action": tool_plan["expected_action"] if tool_plan else "installed",
+            "commands": tool_plan["commands"] if tool_plan else [],
+        }
+    else:
+        entry = {
+            "tool": tool_name,
+            "action": "failed",
+            "commands": [],
+        }
+
+    # Read existing results or create empty
+    if os.path.isfile(results_file):
+        with open(results_file, "r", encoding="utf-8") as f:
+            results = json.load(f)
+    else:
+        results = []
+
+    results.append(entry)
+
+    with open(results_file, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2)
+        f.write("\n")
+
+
+def render_summary(results_data, scan_data, preflight_data=None):
+    """Render final install summary table from results, scan-status, and optional preflight.
+
+    Prints header, target, action counts, tool table with commands,
+    and optional capabilities section from preflight data.
+    """
+    target = scan_data.get("target", "")
+
+    # Compute action counts
+    installed_count = 0
+    updated_count = 0
+    failed_count = 0
+    for r in results_data:
+        action = r.get("action", "")
+        if action == "failed":
+            failed_count += 1
+        elif "installed" in action:
+            installed_count += 1
+        elif "updated" in action or "reinstalled" in action:
+            updated_count += 1
+
+    print("mg-cc-tools -- INSTALL COMPLETE")
+    print(f"  Target: {target}")
+    print(f"  Installed: {installed_count}  |  Updated: {updated_count}  |  Failed: {failed_count}")
+    print()
+
+    # Tool table
+    # Compute column widths
+    tool_width = max((len(r["tool"]) for r in results_data), default=10) + 2
+    action_width = max((len(r["action"]) for r in results_data), default=10) + 2
+
+    tool_width = max(tool_width, len("Tool") + 2)
+    action_width = max(action_width, len("Action") + 2)
+
+    print(f"  {'Tool':<{tool_width}}{'Action':<{action_width}}Commands")
+    total_width = 2 + tool_width + action_width + 20
+    print(f"  {'\u2500' * (total_width - 2)}")
+
+    for r in results_data:
+        commands = r.get("commands", [])
+        cmd_str = ", ".join(commands) if commands else "--"
+        print(f"  {r['tool']:<{tool_width}}{r['action']:<{action_width}}{cmd_str}")
+
+    # Capabilities section (from preflight data)
+    if preflight_data:
+        checks = preflight_data.get("checks", [])
+
+        print()
+        print("  Capabilities:")
+
+        # LSP status
+        lsp_check = next((c for c in checks if c["id"] == "lsp"), None)
+        if lsp_check:
+            if lsp_check["passed"]:
+                print(f"    LSP: functional ({lsp_check.get('version', 'unknown')})")
+            else:
+                print("    LSP: not configured")
+
+        # Missing optional tools
+        missing_optional = [
+            c for c in checks
+            if not c["required"] and not c["passed"] and c["id"] != "lsp"
+        ]
+        if missing_optional:
+            names = ", ".join(c["id"] for c in missing_optional)
+            print(f"    Missing optional tools: {names}")
+
+
+def render_validation(validate_data):
+    """Render validation results as human-readable PASS/WARNING output.
+
+    For clean validation (0 issues): prints success message.
+    For issues: prints WARNING lines with messages.
+    """
+    print("Post-install validation:")
+
+    if validate_data.get("issue_count", 0) == 0:
+        print("  All checks passed -- no unresolved placeholders, all paths valid")
+        return
+
+    for issue in validate_data.get("issues", []):
+        print(f"  WARNING: {issue['message']}")
+
+    count = validate_data["issue_count"]
+    print(f"  {count} issue{'s' if count != 1 else ''} found")
+
+
+# ============================================================
 # CLI entry point
 # ============================================================
 
@@ -1312,8 +1543,22 @@ def cmd_preflight(args):
     """CLI handler for preflight."""
     tool_names = [t.strip() for t in args.tools.split(",")]
     result = run_preflight(args.source, args.target, tool_names)
-    json.dump(result, sys.stdout, indent=2)
-    sys.stdout.write("\n")
+
+    if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+            f.write("\n")
+        compact = {
+            "all_passed": result["all_passed"],
+            "check_count": len(result["checks"]),
+            "details": args.output,
+        }
+        json.dump(compact, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        json.dump(result, sys.stdout, indent=2)
+        sys.stdout.write("\n")
 
 
 def cmd_validate(args):
@@ -1387,6 +1632,64 @@ def cmd_resolve_action(args):
     sys.stdout.write("\n")
 
 
+def cmd_get_install_plan(args):
+    """CLI handler for get-install-plan."""
+    with open(args.input, "r", encoding="utf-8") as f:
+        scan_data = json.load(f)
+    tool_names = [t.strip() for t in args.tools.split(",")]
+    plan = get_install_plan(scan_data, tool_names)
+
+    if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(plan, f, indent=2)
+            f.write("\n")
+        # Compact summary: tool + pattern + post_install per entry
+        compact = [
+            {"tool": p["tool"], "pattern": p["pattern"],
+             "post_install": p["post_install"]}
+            for p in plan
+        ]
+        json.dump(compact, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        json.dump(plan, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+
+
+def cmd_render_preflight(args):
+    """CLI handler for render-preflight."""
+    with open(args.input, "r", encoding="utf-8") as f:
+        preflight_data = json.load(f)
+    render_preflight(preflight_data)
+
+
+def cmd_record_result(args):
+    """CLI handler for record-result."""
+    success = args.success
+    record_result(args.file, args.tool, success, args.plan)
+
+
+def cmd_render_summary(args):
+    """CLI handler for render-summary."""
+    with open(args.results, "r", encoding="utf-8") as f:
+        results_data = json.load(f)
+    with open(args.input, "r", encoding="utf-8") as f:
+        scan_data = json.load(f)
+    preflight_data = None
+    if args.preflight:
+        with open(args.preflight, "r", encoding="utf-8") as f:
+            preflight_data = json.load(f)
+    render_summary(results_data, scan_data, preflight_data)
+
+
+def cmd_render_validation(args):
+    """CLI handler for render-validation."""
+    with open(args.input, "r", encoding="utf-8") as f:
+        validate_data = json.load(f)
+    render_validation(validate_data)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="mg-cc-tools installer library",
@@ -1432,6 +1735,8 @@ def main():
                        help="Path to target project directory")
     p_pre.add_argument("--tools", required=True,
                        help="Comma-separated tool names")
+    p_pre.add_argument("--output",
+                       help="Write full details to file, compact summary to stdout")
     p_pre.set_defaults(func=cmd_preflight)
 
     # validate
@@ -1508,6 +1813,68 @@ def main():
     p_resolve_action.add_argument("--selection", required=True,
                                   help="User's menu selection text")
     p_resolve_action.set_defaults(func=cmd_resolve_action)
+
+    # get-install-plan
+    p_install_plan = sub.add_parser(
+        "get-install-plan",
+        help="Generate install plan for given tools from scan-status",
+    )
+    p_install_plan.add_argument("--input", required=True,
+                                help="Path to scan-status JSON file")
+    p_install_plan.add_argument("--tools", required=True,
+                                help="Comma-separated tool names")
+    p_install_plan.add_argument("--output",
+                                help="Write full plan to file, compact summary to stdout")
+    p_install_plan.set_defaults(func=cmd_get_install_plan)
+
+    # render-preflight
+    p_render_pre = sub.add_parser(
+        "render-preflight",
+        help="Render preflight results as human-readable output",
+    )
+    p_render_pre.add_argument("--input", required=True,
+                              help="Path to preflight JSON file")
+    p_render_pre.set_defaults(func=cmd_render_preflight)
+
+    # record-result
+    p_record = sub.add_parser(
+        "record-result",
+        help="Append per-tool install result to results file",
+    )
+    p_record.add_argument("--file", required=True,
+                          help="Path to install results JSON file")
+    p_record.add_argument("--tool", required=True,
+                          help="Tool name")
+    p_record.add_argument("--plan", required=True,
+                          help="Path to install plan JSON file")
+    outcome = p_record.add_mutually_exclusive_group(required=True)
+    outcome.add_argument("--success", action="store_true",
+                         help="Record successful install")
+    outcome.add_argument("--failed", action="store_true",
+                         help="Record failed install")
+    p_record.set_defaults(func=cmd_record_result)
+
+    # render-summary
+    p_render_sum = sub.add_parser(
+        "render-summary",
+        help="Render final install summary table",
+    )
+    p_render_sum.add_argument("--results", required=True,
+                              help="Path to install results JSON file")
+    p_render_sum.add_argument("--input", required=True,
+                              help="Path to scan-status JSON file")
+    p_render_sum.add_argument("--preflight",
+                              help="Path to preflight JSON file (optional)")
+    p_render_sum.set_defaults(func=cmd_render_summary)
+
+    # render-validation
+    p_render_val = sub.add_parser(
+        "render-validation",
+        help="Render validation results as human-readable output",
+    )
+    p_render_val.add_argument("--input", required=True,
+                              help="Path to validate JSON file")
+    p_render_val.set_defaults(func=cmd_render_validation)
 
     args = parser.parse_args()
     args.func(args)
