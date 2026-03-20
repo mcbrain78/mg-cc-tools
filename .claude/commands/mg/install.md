@@ -85,7 +85,7 @@ This returns a compact JSON summary to stdout (tool names, statuses, description
 python3 "$MG_INSTALL_LIB" render-status-table --input /tmp/mg-scan-status.json
 ```
 
-Display the output verbatim — do not modify, reformat, or summarize it. The table includes tier grouping, column alignment, summary counts, and status legend.
+**IMPORTANT:** Copy the command's stdout and output it as a fenced code block in your response text. Bash tool output is collapsed in the UI — the user cannot see it without expanding. You MUST echo the table as text so it's visible. Do not modify, reformat, or summarize it.
 
 ### Step 2b: Migration (if manifest missing but commands found)
 
@@ -132,7 +132,7 @@ Type a number, or tool names separated by commas:
 python3 "$MG_INSTALL_LIB" render-tool-picker --input /tmp/mg-scan-status.json
 ```
 
-Display the numbered tool list verbatim. Get the user's response, then resolve it:
+**IMPORTANT:** Copy the command's stdout and output it as a fenced code block in your response text (Bash tool output is collapsed in the UI). Then get the user's response and resolve it:
 
 ```bash
 python3 "$MG_INSTALL_LIB" resolve-tool-selection --input /tmp/mg-scan-status.json --selection "<user_response>"
