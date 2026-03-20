@@ -122,9 +122,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INST-36**: Running `mg-install-lib.py render-tool-picker` with scan-status JSON produces a numbered tool list on stdout with section headers
 - [x] **INST-37**: Running `mg-install-lib.py resolve-tool-selection` with scan-status JSON and user text produces a JSON list of resolved tool names
 - [x] **INST-38**: render-tool-picker and resolve-tool-selection share a single internal ordering function (standard-first, then optional, excluding excluded)
-- [ ] **INST-39**: install.md Step 2 calls render-status-table and displays output verbatim, replacing the inline template
-- [ ] **INST-40**: install.md Step 3 uses render-tool-picker and resolve-tool-selection for the "Select specific tools" sub-flow
-- [ ] **INST-41**: Scenario A/B/C top-level action menus remain LLM-rendered (not moved to Python)
+- [x] **INST-39**: install.md Step 2 calls render-status-table and displays output verbatim, replacing the inline template
+- [x] **INST-40**: install.md Step 3 uses render-tool-picker and resolve-tool-selection for the "Select specific tools" sub-flow
+- [x] **INST-41**: Scenario A/B/C top-level action menus remain LLM-rendered (not moved to Python)
 - [x] **INST-42**: Pytest tests cover all three new subcommands (render-status-table, render-tool-picker, resolve-tool-selection)
 
 ### Session Analyzer
@@ -271,9 +271,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-36 | Phase 10 | Complete |
 | INST-37 | Phase 10 | Complete |
 | INST-38 | Phase 10 | Complete |
-| INST-39 | Phase 10 | Pending |
-| INST-40 | Phase 10 | Pending |
-| INST-41 | Phase 10 | Pending |
+| INST-39 | Phase 10 | Complete |
+| INST-40 | Phase 10 | Complete |
+| INST-41 | Phase 10 | Complete |
 | INST-42 | Phase 10 | Complete |
 | SAN-01 | Phase 9 | Complete |
 | SAN-02 | Phase 9 | Complete |

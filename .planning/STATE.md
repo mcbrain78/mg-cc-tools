@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-03-20T11:24:35Z"
-last_activity: 2026-03-20 -- Plan 10-01 complete (render-status-table, render-tool-picker, resolve-tool-selection TDD)
+status: completed
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-03-20T11:30:54.581Z"
+last_activity: 2026-03-20 -- Plan 10-02 complete (install.md prompt simplification with subcommand calls)
 progress:
   total_phases: 10
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 34
-  completed_plans: 32
-  percent: 94
+  completed_plans: 33
+  percent: 97
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 10 of 10 (Create a Renderer for the Install Command)
-Plan: 1 of 2 in current phase
-Status: Phase 10 In Progress
-Last activity: 2026-03-20 -- Plan 10-01 complete (render-status-table, render-tool-picker, resolve-tool-selection TDD)
+Plan: 2 of 2 in current phase
+Status: Phase 10 Complete
+Last activity: 2026-03-20 -- Plan 10-02 complete (install.md prompt simplification with subcommand calls)
 
-Progress: [█████████▒] 94%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -82,6 +82,7 @@ Progress: [█████████▒] 94%
 | Phase 09 P03 | 5min | 2 tasks | 4 files |
 | Phase 09 P04 | 5min | 2 tasks | 5 files |
 | Phase 10 P01 | 6min | 1 tasks | 2 files |
+| Phase 10 P02 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -177,6 +178,8 @@ Recent decisions affecting current work:
 - [Phase 10]: _get_ordered_tools() is single source of truth for tool numbering shared by picker and resolver
 - [Phase 10]: render_status_table uses its own three-tier filtering (needs excluded tier) not _get_ordered_tools
 - [Phase 10]: Unicode separators match existing install.md visual style; dynamic column widths from data
+- [Phase 10]: Step 2 uses single render-status-table call with verbatim display directive (replacing ~50 lines of template)
+- [Phase 10]: Scenario A/B/C menus remain LLM-rendered; only tool picker and resolver sub-flows use Python subcommands (INST-41)
 
 ### Pending Todos
 
@@ -196,6 +199,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T11:24:35Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-03-20T11:30:54.577Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: None

@@ -122,7 +122,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 7. Install Command | 4/5 | In Progress|  |
 | 8. Install Tool Improvements | 0/5 | Planned | - |
 | 9. Session Analyzer | 3/4 | Complete    | 2026-03-20 |
-| 10. Renderer for Install Command | 1/2 | In Progress | - |
+| 10. Renderer for Install Command | 2/2 | Complete   | 2026-03-20 |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -212,7 +212,7 @@ Plans:
 **Goal:** Move the install command's status table (Step 2) and tool picker (Step 3) rendering from LLM-generated output to deterministic Python subcommands in mg-install-lib.py, eliminating miscounted summaries, misaligned columns, and inconsistent tool picker formatting
 **Requirements**: INST-35, INST-36, INST-37, INST-38, INST-39, INST-40, INST-41, INST-42
 **Depends on:** Phase 9
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 10-01-PLAN.md — TDD: render-status-table, render-tool-picker, resolve-tool-selection subcommands with pytest
