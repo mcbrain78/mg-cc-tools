@@ -1425,7 +1425,8 @@ def render_summary(results_data, scan_data, preflight_data=None):
 
     print(f"  {'Tool':<{tool_width}}{'Action':<{action_width}}Commands")
     total_width = 2 + tool_width + action_width + 20
-    print(f"  {'\u2500' * (total_width - 2)}")
+    sep = "\u2500" * (total_width - 2)
+    print(f"  {sep}")
 
     for r in results_data:
         commands = r.get("commands", [])
