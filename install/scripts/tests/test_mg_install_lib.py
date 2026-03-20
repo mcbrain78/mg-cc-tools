@@ -357,6 +357,39 @@ class TestScanStatus:
             tool = data["tools"][0]
             assert tool["status"] == "corrupt"
 
+    def test_status_adopted_when_manifest_has_adopted_flag(self):
+        """Tool is 'adopted' when manifest entry has adopted=true."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            _make_tool(source, "my-tool")
+            _make_pyproject(source, version="0.1.0")
+
+            # Command file exists on disk
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
+
+            # Manifest has adopted flag (no version or checksums)
+            _make_manifest(target, tools={
+                "my-tool": {
+                    "adopted": True,
+                    "installed_at": "2026-01-01T00:00:00+00:00",
+                    "commands": ["my-tool.md"],
+                }
+            })
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            tool = data["tools"][0]
+            assert tool["status"] == "adopted"
+
     def test_excluded_tools_marked_in_output(self):
         """Excluded tools have excluded=true in output."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -1549,8 +1582,8 @@ class TestAdopt:
 
             assert len(data["adopted"]) == 0
 
-    def test_writes_manifest_with_checksums(self):
-        """Adopt writes manifest directly with tool entries and checksums."""
+    def test_writes_manifest_adopted_entry(self):
+        """Adopt writes manifest with adopted flag, no version or checksums."""
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "source")
             target = os.path.join(tmp, "target")
@@ -1585,10 +1618,11 @@ class TestAdopt:
                 manifest = json.load(f)
             assert "my-tool" in manifest["tools"]
             entry = manifest["tools"]["my-tool"]
-            assert entry["version"] == "0.5.0"
-            assert len(entry["source_checksums"]) > 0
-            for val in entry["source_checksums"].values():
-                assert val.startswith("sha256:")
+            assert entry["adopted"] is True
+            assert "version" not in entry
+            assert "source_checksums" not in entry
+            assert "installed_at" in entry
+            assert entry["commands"] == ["my-tool.md"]
 
     def test_returns_empty_when_nothing_installed(self):
         """Returns empty adopted list when no tools are detected."""

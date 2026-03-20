@@ -328,6 +328,7 @@ def scan_status(source_dir, target_dir):
         "update": 0,
         "modified": 0,
         "corrupt": 0,
+        "adopted": 0,
         "available": 0,
     }
 
@@ -353,7 +354,10 @@ def scan_status(source_dir, target_dir):
                 for cmd in manifest_commands
             ) if manifest_commands else True
 
-            if not commands_present:
+            if manifest_entry.get("adopted"):
+                status = "adopted"
+                changed_files = []
+            elif not commands_present:
                 status = "corrupt"
                 changed_files = []
             elif installed_version != version:
@@ -400,7 +404,7 @@ def scan_status(source_dir, target_dir):
 
         summary["total"] += 1
         summary[status] += 1
-        if status in ("current", "update", "modified", "corrupt"):
+        if status in ("current", "update", "modified", "corrupt", "adopted"):
             summary["installed_total"] += 1
 
     return {
@@ -784,15 +788,14 @@ def adopt_tools(source_dir, target_dir):
         if not commands_detected and not detect_detected:
             continue
 
-        # Tool is detected -- adopt it
-        checksums = compute_tool_checksums(tool_dir)
+        # Tool is detected -- adopt it (no version/checksums since we
+        # can't verify what's actually installed)
         manifest_tools[tool_name] = {
-            "version": version,
+            "adopted": True,
             "installed_at": datetime.datetime.now(
                 datetime.timezone.utc
             ).isoformat(),
             "commands": commands,
-            "source_checksums": checksums,
         }
         adopted_names.append(tool_name)
 
@@ -846,6 +849,8 @@ def _format_status(tool):
         return f"Modified ({n} files)"
     elif status == "corrupt":
         return "Corrupt"
+    elif status == "adopted":
+        return "Adopted"
     elif status == "available":
         return "Available"
     elif status == "excluded":
@@ -939,6 +944,7 @@ def render_status_table(scan_data):
     print("    Update          Installed, but newer version available (old -> new)")
     print("    Modified        Installed, same version, source files changed (N files)")
     print("    Corrupt         In manifest but command files missing from disk")
+    print("    Adopted         Detected on disk, version unknown (reinstall to verify)")
     print("    Available       Not yet installed")
     print("    Excluded        Internal tool, install by name only")
     print()
