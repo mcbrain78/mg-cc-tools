@@ -118,14 +118,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Install Rendering
 
-- [ ] **INST-35**: Running `mg-install-lib.py render-status-table` with scan-status JSON produces a formatted three-tier status table on stdout
-- [ ] **INST-36**: Running `mg-install-lib.py render-tool-picker` with scan-status JSON produces a numbered tool list on stdout with section headers
-- [ ] **INST-37**: Running `mg-install-lib.py resolve-tool-selection` with scan-status JSON and user text produces a JSON list of resolved tool names
-- [ ] **INST-38**: render-tool-picker and resolve-tool-selection share a single internal ordering function (standard-first, then optional, excluding excluded)
+- [x] **INST-35**: Running `mg-install-lib.py render-status-table` with scan-status JSON produces a formatted three-tier status table on stdout
+- [x] **INST-36**: Running `mg-install-lib.py render-tool-picker` with scan-status JSON produces a numbered tool list on stdout with section headers
+- [x] **INST-37**: Running `mg-install-lib.py resolve-tool-selection` with scan-status JSON and user text produces a JSON list of resolved tool names
+- [x] **INST-38**: render-tool-picker and resolve-tool-selection share a single internal ordering function (standard-first, then optional, excluding excluded)
 - [ ] **INST-39**: install.md Step 2 calls render-status-table and displays output verbatim, replacing the inline template
 - [ ] **INST-40**: install.md Step 3 uses render-tool-picker and resolve-tool-selection for the "Select specific tools" sub-flow
 - [ ] **INST-41**: Scenario A/B/C top-level action menus remain LLM-rendered (not moved to Python)
-- [ ] **INST-42**: Pytest tests cover all three new subcommands (render-status-table, render-tool-picker, resolve-tool-selection)
+- [x] **INST-42**: Pytest tests cover all three new subcommands (render-status-table, render-tool-picker, resolve-tool-selection)
 
 ### Session Analyzer
 
@@ -267,14 +267,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-32 | Phase 8 | Complete |
 | INST-33 | Phase 8 | Complete |
 | INST-34 | Phase 8 | Complete |
-| INST-35 | Phase 10 | Pending |
-| INST-36 | Phase 10 | Pending |
-| INST-37 | Phase 10 | Pending |
-| INST-38 | Phase 10 | Pending |
+| INST-35 | Phase 10 | Complete |
+| INST-36 | Phase 10 | Complete |
+| INST-37 | Phase 10 | Complete |
+| INST-38 | Phase 10 | Complete |
 | INST-39 | Phase 10 | Pending |
 | INST-40 | Phase 10 | Pending |
 | INST-41 | Phase 10 | Pending |
-| INST-42 | Phase 10 | Pending |
+| INST-42 | Phase 10 | Complete |
 | SAN-01 | Phase 9 | Complete |
 | SAN-02 | Phase 9 | Complete |
 | SAN-03 | Phase 9 | Complete |

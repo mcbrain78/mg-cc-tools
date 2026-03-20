@@ -122,6 +122,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 7. Install Command | 4/5 | In Progress|  |
 | 8. Install Tool Improvements | 0/5 | Planned | - |
 | 9. Session Analyzer | 3/4 | Complete    | 2026-03-20 |
+| 10. Renderer for Install Command | 1/2 | In Progress | - |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -214,5 +215,5 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 10-01-PLAN.md — TDD: render-status-table, render-tool-picker, resolve-tool-selection subcommands with pytest
+- [x] 10-01-PLAN.md — TDD: render-status-table, render-tool-picker, resolve-tool-selection subcommands with pytest
 - [ ] 10-02-PLAN.md — install.md prompt simplification: replace inline templates with subcommand calls
