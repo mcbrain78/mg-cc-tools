@@ -208,10 +208,11 @@ Plans:
 
 ### Phase 10: create a renderer for the install command
 
-**Goal:** [To be planned]
+**Goal:** Move the install command's status table (Step 2) and tool picker (Step 3) rendering from LLM-generated output to deterministic Python subcommands in mg-install-lib.py, eliminating miscounted summaries, misaligned columns, and inconsistent tool picker formatting
 **Requirements**: INST-35, INST-36, INST-37, INST-38, INST-39, INST-40, INST-41, INST-42
 **Depends on:** Phase 9
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 10 to break down)
+- [ ] 10-01-PLAN.md — TDD: render-status-table, render-tool-picker, resolve-tool-selection subcommands with pytest
+- [ ] 10-02-PLAN.md — install.md prompt simplification: replace inline templates with subcommand calls
