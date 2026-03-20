@@ -40,7 +40,7 @@ Validate the target path exists. If it does not have a `.claude/` directory:
 
 Store `TARGET_PATH`. Set the per-target temp directory:
 ```bash
-TMP="/tmp/mg-install-$(basename "$TARGET_PATH")"
+MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")"
 ```
 
 ---
