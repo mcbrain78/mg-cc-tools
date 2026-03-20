@@ -3026,3 +3026,767 @@ class TestScanStatusAutoAdopt:
                 full = json.load(f)
             assert "auto_adopted" in full
             assert "my-tool" in full["auto_adopted"]
+
+
+# ============================================================
+# Fixtures for Phase 11 Plan 02
+# ============================================================
+
+
+def _make_preflight_fixture(all_passed=True, include_optional=True):
+    """Create a preflight result fixture for renderer tests."""
+    checks = [
+        {
+            "id": "python3",
+            "type": "command",
+            "passed": True,
+            "required": True,
+            "version": "3.11.5",
+            "error": None,
+            "fix": {},
+        },
+        {
+            "id": "git",
+            "type": "command",
+            "passed": True,
+            "required": True,
+            "version": "2.43.0",
+            "error": None,
+            "fix": {},
+        },
+    ]
+    if include_optional:
+        checks.extend([
+            {
+                "id": "lsp",
+                "type": "settings_scan",
+                "passed": True,
+                "required": False,
+                "version": "pyright-lsp",
+                "error": None,
+                "fix": {},
+            },
+            {
+                "id": "ruff",
+                "type": "command",
+                "passed": False,
+                "required": False,
+                "version": None,
+                "error": "Command not found: ruff",
+                "fix": {"general": "pip install ruff"},
+            },
+        ])
+        if not all_passed:
+            checks[1]["passed"] = False
+            checks[1]["version"] = None
+            checks[1]["error"] = "Command not found: git"
+            checks[1]["fix"] = {"general": "Install git"}
+
+    return {
+        "checks": checks,
+        "all_passed": all_passed,
+    }
+
+
+def _make_install_plan_fixture():
+    """Create an install plan fixture for record-result and render-summary tests."""
+    return [
+        {
+            "tool": "alpha-tool",
+            "pattern": "copy_only",
+            "expected_action": "reinstalled",
+            "install_cmd": 'bash ./alpha-tool/install.sh --target "/home/user/projects/road-runner/.claude"',
+            "post_install": None,
+            "commands": ["alpha-tool.md"],
+        },
+        {
+            "tool": "beta-tool",
+            "pattern": "copy_configure",
+            "expected_action": "updated (configured)",
+            "install_cmd": 'bash ./beta-tool/install.sh --target "/home/user/projects/road-runner/.claude"',
+            "post_install": "beta-tool/post-install.md",
+            "commands": ["beta-tool.md"],
+        },
+        {
+            "tool": "gamma-tool",
+            "pattern": "copy_only",
+            "expected_action": "installed",
+            "install_cmd": 'bash ./gamma-tool/install.sh --target "/home/user/projects/road-runner/.claude"',
+            "post_install": None,
+            "commands": ["gamma-tool.md"],
+        },
+    ]
+
+
+def _make_install_results_fixture():
+    """Create install results fixture for render-summary tests."""
+    return [
+        {"tool": "alpha-tool", "action": "reinstalled", "commands": ["alpha-tool.md"]},
+        {"tool": "beta-tool", "action": "updated (configured)", "commands": ["beta-tool.md"]},
+        {"tool": "gamma-tool", "action": "failed", "commands": []},
+    ]
+
+
+def _write_json_file(tmpdir, filename, data):
+    """Write JSON data to a file, return the path."""
+    path = os.path.join(tmpdir, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    return path
+
+
+# ============================================================
+# _get_temp_dir utility (Phase 11 Plan 02)
+# ============================================================
+
+
+class TestGetTempDir:
+    """Tests for per-target temp directory utility."""
+
+    def test_output_creates_parent_directory(self):
+        """--output on get-install-plan creates parent dirs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scan_status_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "alpha-tool",
+                "--output", os.path.join(tmp, "subdir", "plan.json"),
+            ])
+            assert result.returncode == 0, result.stderr
+            assert os.path.isfile(os.path.join(tmp, "subdir", "plan.json"))
+
+    def test_handles_trailing_slash_in_target(self):
+        """get-install-plan handles trailing slash in target path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scan_status_fixture()
+            scan_data["target"] = "/home/user/projects/road-runner/"
+            input_file = _write_scan_status_file(tmp, scan_data)
+
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "alpha-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+
+
+# ============================================================
+# get-install-plan subcommand (Phase 11 Plan 02)
+# ============================================================
+
+
+class TestGetInstallPlan:
+    """Tests for get-install-plan subcommand."""
+
+    def test_copy_only_pattern(self):
+        """Tool with install.sh and no post_install -> copy_only."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "alpha-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert len(plan) == 1
+            assert plan[0]["pattern"] == "copy_only"
+            assert plan[0]["install_cmd"] is not None
+            assert plan[0]["post_install"] is None
+
+    def test_copy_configure_pattern(self):
+        """Tool with install.sh and post_install -> copy_configure."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scan_status_fixture()
+            for t in scan_data["tools"]:
+                if t["name"] == "beta-tool":
+                    t["post_install"] = "post-install.md"
+            input_file = _write_scan_status_file(tmp, scan_data)
+
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "beta-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert len(plan) == 1
+            assert plan[0]["pattern"] == "copy_configure"
+            assert plan[0]["post_install"] == "beta-tool/post-install.md"
+
+    def test_execute_only_pattern(self):
+        """Tool without install.sh but with post_install -> execute_only."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scan_status_fixture()
+            for t in scan_data["tools"]:
+                if t["name"] == "gamma-tool":
+                    t["has_install_sh"] = False
+                    t["post_install"] = "post-install.md"
+            input_file = _write_scan_status_file(tmp, scan_data)
+
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "gamma-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert len(plan) == 1
+            assert plan[0]["pattern"] == "execute_only"
+            assert plan[0]["install_cmd"] is None
+            assert plan[0]["post_install"] == "gamma-tool/post-install.md"
+
+    def test_expected_action_available(self):
+        """Available tool -> expected_action is 'installed'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "gamma-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert plan[0]["expected_action"] == "installed"
+
+    def test_expected_action_update(self):
+        """Update tool -> expected_action is 'updated'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "beta-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert plan[0]["expected_action"] == "updated"
+
+    def test_expected_action_current(self):
+        """Current tool -> expected_action is 'reinstalled'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "alpha-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert plan[0]["expected_action"] == "reinstalled"
+
+    def test_expected_action_with_configured_suffix(self):
+        """copy_configure pattern appends ' (configured)' to action."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scan_status_fixture()
+            for t in scan_data["tools"]:
+                if t["name"] == "gamma-tool":
+                    t["post_install"] = "post-install.md"
+                    t["status"] = "available"
+            input_file = _write_scan_status_file(tmp, scan_data)
+
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "gamma-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert plan[0]["expected_action"] == "installed (configured)"
+
+    def test_includes_commands_from_scan(self):
+        """Plan includes commands list from scan-status."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "alpha-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert plan[0]["commands"] == ["alpha-tool.md"]
+
+    def test_includes_install_cmd(self):
+        """Plan includes install_cmd with correct path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "alpha-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert "install.sh" in plan[0]["install_cmd"]
+            assert "road-runner" in plan[0]["install_cmd"]
+
+    def test_skips_unknown_tools(self):
+        """Tools not in scan-status are gracefully skipped."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "nonexistent-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert len(plan) == 0
+
+    def test_multiple_tools(self):
+        """Plan handles multiple tools in comma-separated list."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "alpha-tool,gamma-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            plan = json.loads(result.stdout)
+            assert len(plan) == 2
+            assert plan[0]["tool"] == "alpha-tool"
+            assert plan[1]["tool"] == "gamma-tool"
+
+    def test_output_writes_file(self):
+        """--output writes full plan to file and compact to stdout."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            output_file = os.path.join(tmp, "plan.json")
+            result = _run([
+                "get-install-plan",
+                "--input", input_file,
+                "--tools", "alpha-tool,beta-tool",
+                "--output", output_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            with open(output_file) as f:
+                full_plan = json.load(f)
+            assert len(full_plan) == 2
+            assert "commands" in full_plan[0]
+
+            compact = json.loads(result.stdout)
+            assert isinstance(compact, list)
+            for entry in compact:
+                assert "tool" in entry
+                assert "pattern" in entry
+
+
+# ============================================================
+# preflight --output support (Phase 11 Plan 02)
+# ============================================================
+
+
+class TestPreflightOutput:
+    """Tests for preflight --output support."""
+
+    def test_output_writes_file(self):
+        """--output writes full result to file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            _make_tool(source, "test-tool", required=["python3"])
+            output_file = os.path.join(tmp, "out", "preflight.json")
+
+            result = _run([
+                "preflight",
+                "--source", source,
+                "--target", target,
+                "--tools", "test-tool",
+                "--output", output_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            assert os.path.isfile(output_file)
+
+            with open(output_file) as f:
+                full_result = json.load(f)
+            assert "checks" in full_result
+            assert "all_passed" in full_result
+
+    def test_output_compact_stdout(self):
+        """--output returns compact JSON to stdout."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            _make_tool(source, "test-tool", required=["python3"])
+            output_file = os.path.join(tmp, "preflight.json")
+
+            result = _run([
+                "preflight",
+                "--source", source,
+                "--target", target,
+                "--tools", "test-tool",
+                "--output", output_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            compact = json.loads(result.stdout)
+            assert "all_passed" in compact
+            assert "check_count" in compact
+            assert "details" in compact
+
+    def test_without_output_unchanged(self):
+        """Without --output, behavior is unchanged (full JSON to stdout)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            _make_tool(source, "test-tool", required=["python3"])
+
+            result = _run([
+                "preflight",
+                "--source", source,
+                "--target", target,
+                "--tools", "test-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            full_result = json.loads(result.stdout)
+            assert "checks" in full_result
+            assert "all_passed" in full_result
+
+
+# ============================================================
+# render-preflight subcommand (Phase 11 Plan 02)
+# ============================================================
+
+
+class TestRenderPreflight:
+    """Tests for render-preflight subcommand."""
+
+    def test_pass_fail_markers(self):
+        """Output shows [PASS] and [FAIL] markers."""
+        with tempfile.TemporaryDirectory() as tmp:
+            preflight_data = _make_preflight_fixture()
+            input_file = _write_json_file(tmp, "preflight.json", preflight_data)
+
+            result = _run(["render-preflight", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "[PASS]" in result.stdout
+            assert "[FAIL]" in result.stdout
+
+    def test_header_line(self):
+        """Output starts with 'Preflight checks:' header."""
+        with tempfile.TemporaryDirectory() as tmp:
+            preflight_data = _make_preflight_fixture()
+            input_file = _write_json_file(tmp, "preflight.json", preflight_data)
+
+            result = _run(["render-preflight", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "Preflight checks:" in result.stdout
+
+    def test_required_optional_labels(self):
+        """Output shows (required) and (optional) labels."""
+        with tempfile.TemporaryDirectory() as tmp:
+            preflight_data = _make_preflight_fixture()
+            input_file = _write_json_file(tmp, "preflight.json", preflight_data)
+
+            result = _run(["render-preflight", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "(required)" in result.stdout
+            assert "(optional)" in result.stdout
+
+    def test_summary_counts(self):
+        """Output includes Required: N/M passed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            preflight_data = _make_preflight_fixture()
+            input_file = _write_json_file(tmp, "preflight.json", preflight_data)
+
+            result = _run(["render-preflight", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "Required: 2/2 passed" in result.stdout
+            assert "Optional: 1/2 passed" in result.stdout
+
+    def test_no_optional_line_when_no_optional(self):
+        """Optional summary line is omitted when no optional checks exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            preflight_data = _make_preflight_fixture(include_optional=False)
+            input_file = _write_json_file(tmp, "preflight.json", preflight_data)
+
+            result = _run(["render-preflight", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "Required:" in result.stdout
+            assert "Optional:" not in result.stdout
+
+    def test_version_shown_for_passed(self):
+        """Version string shown for passed checks."""
+        with tempfile.TemporaryDirectory() as tmp:
+            preflight_data = _make_preflight_fixture()
+            input_file = _write_json_file(tmp, "preflight.json", preflight_data)
+
+            result = _run(["render-preflight", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "3.11.5" in result.stdout
+
+    def test_error_shown_for_failed(self):
+        """Error message shown for failed checks."""
+        with tempfile.TemporaryDirectory() as tmp:
+            preflight_data = _make_preflight_fixture()
+            input_file = _write_json_file(tmp, "preflight.json", preflight_data)
+
+            result = _run(["render-preflight", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "Command not found: ruff" in result.stdout
+
+
+# ============================================================
+# record-result subcommand (Phase 11 Plan 02)
+# ============================================================
+
+
+class TestRecordResult:
+    """Tests for record-result subcommand."""
+
+    def test_creates_file_on_first_call(self):
+        """Results file is created with first entry on first call."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = os.path.join(tmp, "results.json")
+            plan_file = _write_json_file(tmp, "plan.json", _make_install_plan_fixture())
+
+            result = _run([
+                "record-result",
+                "--file", results_file,
+                "--tool", "alpha-tool",
+                "--success",
+                "--plan", plan_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            assert os.path.isfile(results_file)
+
+            with open(results_file) as f:
+                data = json.load(f)
+            assert len(data) == 1
+            assert data[0]["tool"] == "alpha-tool"
+            assert data[0]["action"] == "reinstalled"
+            assert data[0]["commands"] == ["alpha-tool.md"]
+
+    def test_appends_on_subsequent_calls(self):
+        """Subsequent calls append to existing file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = os.path.join(tmp, "results.json")
+            plan_file = _write_json_file(tmp, "plan.json", _make_install_plan_fixture())
+
+            _run([
+                "record-result",
+                "--file", results_file,
+                "--tool", "alpha-tool",
+                "--success",
+                "--plan", plan_file,
+            ])
+            result = _run([
+                "record-result",
+                "--file", results_file,
+                "--tool", "beta-tool",
+                "--success",
+                "--plan", plan_file,
+            ])
+            assert result.returncode == 0, result.stderr
+
+            with open(results_file) as f:
+                data = json.load(f)
+            assert len(data) == 2
+            assert data[0]["tool"] == "alpha-tool"
+            assert data[1]["tool"] == "beta-tool"
+            assert data[1]["action"] == "updated (configured)"
+
+    def test_failed_entry(self):
+        """--failed records action as 'failed' with empty commands."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = os.path.join(tmp, "results.json")
+            plan_file = _write_json_file(tmp, "plan.json", _make_install_plan_fixture())
+
+            result = _run([
+                "record-result",
+                "--file", results_file,
+                "--tool", "gamma-tool",
+                "--failed",
+                "--plan", plan_file,
+            ])
+            assert result.returncode == 0, result.stderr
+
+            with open(results_file) as f:
+                data = json.load(f)
+            assert data[0]["action"] == "failed"
+            assert data[0]["commands"] == []
+
+    def test_success_failed_mutually_exclusive(self):
+        """--success and --failed cannot be used together."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = os.path.join(tmp, "results.json")
+            plan_file = _write_json_file(tmp, "plan.json", _make_install_plan_fixture())
+
+            result = _run([
+                "record-result",
+                "--file", results_file,
+                "--tool", "alpha-tool",
+                "--success",
+                "--failed",
+                "--plan", plan_file,
+            ])
+            assert result.returncode != 0
+
+
+# ============================================================
+# render-summary subcommand (Phase 11 Plan 02)
+# ============================================================
+
+
+class TestRenderSummary:
+    """Tests for render-summary subcommand."""
+
+    def test_header_and_target(self):
+        """Output includes header and target path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = _write_json_file(tmp, "results.json", _make_install_results_fixture())
+            input_file = _write_scan_status_file(tmp)
+
+            result = _run([
+                "render-summary",
+                "--results", results_file,
+                "--input", input_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            assert "INSTALL COMPLETE" in result.stdout
+            assert "road-runner" in result.stdout
+
+    def test_summary_counts(self):
+        """Output includes install/update/fail counts."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = _write_json_file(tmp, "results.json", _make_install_results_fixture())
+            input_file = _write_scan_status_file(tmp)
+
+            result = _run([
+                "render-summary",
+                "--results", results_file,
+                "--input", input_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            assert "Installed: 1" in result.stdout
+            assert "Updated: 1" in result.stdout
+            assert "Failed: 1" in result.stdout
+
+    def test_tool_table(self):
+        """Output includes tool names, actions, and commands."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = _write_json_file(tmp, "results.json", _make_install_results_fixture())
+            input_file = _write_scan_status_file(tmp)
+
+            result = _run([
+                "render-summary",
+                "--results", results_file,
+                "--input", input_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            assert "alpha-tool" in result.stdout
+            assert "beta-tool" in result.stdout
+            assert "gamma-tool" in result.stdout
+            assert "reinstalled" in result.stdout
+            assert "updated (configured)" in result.stdout
+            assert "failed" in result.stdout
+
+    def test_commands_in_table(self):
+        """Tool table shows command filenames or '--' for failed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = _write_json_file(tmp, "results.json", _make_install_results_fixture())
+            input_file = _write_scan_status_file(tmp)
+
+            result = _run([
+                "render-summary",
+                "--results", results_file,
+                "--input", input_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            assert "alpha-tool.md" in result.stdout
+            assert "--" in result.stdout
+
+    def test_preflight_capabilities(self):
+        """With --preflight, output includes capabilities section."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = _write_json_file(tmp, "results.json", _make_install_results_fixture())
+            input_file = _write_scan_status_file(tmp)
+            preflight_file = _write_json_file(tmp, "preflight.json", _make_preflight_fixture())
+
+            result = _run([
+                "render-summary",
+                "--results", results_file,
+                "--input", input_file,
+                "--preflight", preflight_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            assert "Capabilities" in result.stdout
+
+    def test_without_preflight(self):
+        """Without --preflight, no capabilities section."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_file = _write_json_file(tmp, "results.json", _make_install_results_fixture())
+            input_file = _write_scan_status_file(tmp)
+
+            result = _run([
+                "render-summary",
+                "--results", results_file,
+                "--input", input_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            assert "Capabilities" not in result.stdout
+
+
+# ============================================================
+# render-validation subcommand (Phase 11 Plan 02)
+# ============================================================
+
+
+class TestRenderValidation:
+    """Tests for render-validation subcommand."""
+
+    def test_all_passed(self):
+        """Clean validation shows 'All checks passed' message."""
+        with tempfile.TemporaryDirectory() as tmp:
+            validate_data = {"valid": True, "issue_count": 0, "issues": []}
+            input_file = _write_json_file(tmp, "validate.json", validate_data)
+
+            result = _run(["render-validation", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "Post-install validation:" in result.stdout
+            assert "All checks passed" in result.stdout
+
+    def test_with_issues(self):
+        """Validation with issues shows WARNING lines."""
+        with tempfile.TemporaryDirectory() as tmp:
+            validate_data = {
+                "valid": False,
+                "issue_count": 2,
+                "issues": [
+                    {
+                        "file": "/path/to/file.md",
+                        "line": 10,
+                        "type": "placeholder",
+                        "pattern": "{SCRIPTS_DIR}",
+                        "message": "Unresolved placeholder: {SCRIPTS_DIR}",
+                    },
+                    {
+                        "file": "/path/to/other.md",
+                        "line": 5,
+                        "type": "missing_path",
+                        "pattern": "/home/old/path.py",
+                        "message": "Resolved path not found: /home/old/path.py",
+                    },
+                ],
+            }
+            input_file = _write_json_file(tmp, "validate.json", validate_data)
+
+            result = _run(["render-validation", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "Post-install validation:" in result.stdout
+            assert "WARNING" in result.stdout
+            assert "Unresolved placeholder" in result.stdout
+            assert "Resolved path not found" in result.stdout
