@@ -85,7 +85,7 @@ This returns a compact JSON summary to stdout (tool names, statuses, description
 python3 "$MG_INSTALL_LIB" render-status-table --input /tmp/mg-scan-status.json
 ```
 
-**IMPORTANT:** Copy the command's stdout and output it as a fenced code block in your response text. Bash tool output is collapsed in the UI — the user cannot see it without expanding. You MUST echo the table as text so it's visible. Do not modify, reformat, or summarize it.
+**IMPORTANT:** Bash tool output is collapsed in the UI — the user cannot see it. You MUST copy the COMPLETE stdout (every line, including the legend at the bottom) and output it as a fenced code block in your response text. Do not drop, truncate, or omit ANY lines. The output typically has: header, table rows, separator, summary line, legend block, and footnote — ALL of these must appear in your response.
 
 ### Step 2b: Migration (if manifest missing but commands found)
 
