@@ -70,7 +70,23 @@ echo "installed: $INSTALLED_MD5"
 echo "source:    $SOURCE_MD5"
 ```
 
-**If identical:** Log `Hook file in sync.` and proceed to Step 3.
+**If identical:** Log `Hook file in sync.` Then check if PROJECT_ROOT needs resolving (see below). Then proceed to Step 3.
+
+**After sync check (both identical and synced cases):** Verify PROJECT_ROOT is resolved in the installed file:
+
+```bash
+grep '^PROJECT_ROOT = ' "<TARGET_HOOKS_DIR>/permission-guard.py"
+```
+
+If the value is empty (`PROJECT_ROOT = ""` or `PROJECT_ROOT = ''`) or still a placeholder (`{PROJECT_ROOT}`), resolve it:
+
+```bash
+sed -i "s|^PROJECT_ROOT = .*|PROJECT_ROOT = \"<target project>\"|" "<TARGET_HOOKS_DIR>/permission-guard.py"
+```
+
+Log: `Resolved PROJECT_ROOT to <target project>`
+
+If already resolved to a non-empty path, no action needed.
 
 **If different:** Ask via AskUserQuestion:
 - header: "Sync"

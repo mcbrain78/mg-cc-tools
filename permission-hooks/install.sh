@@ -76,8 +76,12 @@ case "$MODE" in
     TARGET_DIR="${HOME}/.claude"
     ;;
   custom)
-    PROJECT_ROOT=""
-    # TARGET_DIR already set
+    # TARGET_DIR already set — derive PROJECT_ROOT if target is a .claude dir
+    if [[ "$TARGET_DIR" == */.claude ]]; then
+      PROJECT_ROOT="$(cd "$(dirname "$TARGET_DIR")" && pwd)"
+    else
+      PROJECT_ROOT=""
+    fi
     ;;
 esac
 

@@ -323,7 +323,7 @@ def scan_status(source_dir, target_dir):
     tools_result = []
     summary = {
         "total": 0,
-        "installed": 0,
+        "installed_total": 0,
         "current": 0,
         "update": 0,
         "modified": 0,
@@ -401,7 +401,7 @@ def scan_status(source_dir, target_dir):
         summary["total"] += 1
         summary[status] += 1
         if status in ("current", "update", "modified", "corrupt"):
-            summary["installed"] += 1
+            summary["installed_total"] += 1
 
     return {
         "mg_cc_tools_version": version,

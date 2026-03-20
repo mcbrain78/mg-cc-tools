@@ -158,7 +158,7 @@ Present numbered options as a **plain text prompt** (NOT AskUserQuestion). The o
 
 Parse the `summary` from the scan-status output to determine the scenario.
 
-**Scenario A: Nothing installed (summary.installed == 0)**
+**Scenario A: Nothing installed (summary.installed_total == 0)**
 ```
 What would you like to do?
 
@@ -182,7 +182,7 @@ What would you like to do?
 Type a number, tool names, or 'all':
 ```
 
-**Scenario C: All current (summary.installed > 0 and summary.update == 0 and summary.modified == 0)**
+**Scenario C: All current (summary.installed_total > 0 and summary.update == 0 and summary.modified == 0)**
 ```
 What would you like to do?
 

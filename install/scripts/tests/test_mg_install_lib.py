@@ -500,7 +500,7 @@ class TestScanStatus:
             summary = data["summary"]
             assert summary["available"] == 2
             assert summary["total"] == 2
-            assert summary["installed"] == 0
+            assert summary["installed_total"] == 0
 
     def test_version_from_pyproject(self):
         """mg_cc_tools_version comes from pyproject.toml."""
