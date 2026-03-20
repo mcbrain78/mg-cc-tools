@@ -138,9 +138,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INST-49**: `render-summary` subcommand formats the final summary table from install results, scan-status, and optional preflight capability data
 - [x] **INST-50**: `render-validation` subcommand formats validation results from JSON into human-readable PASS/WARNING output
 - [x] **INST-51**: Scenario B now triggers on corrupt and adopted statuses in addition to update and modified (behavior change from v1.2)
-- [ ] **INST-52**: `install.md` prompt is rewritten as a thin orchestrator where the LLM only echoes output, collects input, and spawns agents — no conditional rendering or scenario logic in the prompt
+- [x] **INST-52**: `install.md` prompt is rewritten as a thin orchestrator where the LLM only echoes output, collects input, and spawns agents — no conditional rendering or scenario logic in the prompt
 - [x] **INST-53**: `render-action-menu` and `resolve-action` share a single `_determine_scenario()` function to prevent scenario drift
-- [ ] **INST-54**: All `render-*` subcommand output is echoed verbatim as fenced code blocks; other subcommand output is machine-readable JSON not echoed (single consolidated rendering rule)
+- [x] **INST-54**: All `render-*` subcommand output is echoed verbatim as fenced code blocks; other subcommand output is machine-readable JSON not echoed (single consolidated rendering rule)
 - [x] **INST-55**: All subcommands reading scan-status use `--input <path>`; `render-summary` uses `--input`, `--results`, `--preflight` for its three inputs
 - [x] **INST-56**: Inter-step temp files use per-target subdirectories (`/tmp/mg-install-<target-basename>/`) to prevent collision across concurrent sessions
 - [x] **INST-57**: All new code is stdlib-only with no pip dependencies
@@ -302,9 +302,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-49 | Phase 11 | Complete |
 | INST-50 | Phase 11 | Complete |
 | INST-51 | Phase 11 | Complete |
-| INST-52 | Phase 11 | Pending |
+| INST-52 | Phase 11 | Complete |
 | INST-53 | Phase 11 | Complete |
-| INST-54 | Phase 11 | Pending |
+| INST-54 | Phase 11 | Complete |
 | INST-55 | Phase 11 | Complete |
 | INST-56 | Phase 11 | Complete |
 | INST-57 | Phase 11 | Complete |
