@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Automate the creation and maintenance of audience-specific documentation so it stays current as code evolves
-**Current focus:** Phase 10 - Create a Renderer for the Install Command
+**Current focus:** Phase 11 - Add Tooling to Install Command
 
 ## Current Position
 
-Phase: 10 of 10 (Create a Renderer for the Install Command)
-Plan: 2 of 2 in current phase
-Status: Phase 10 Complete
-Last activity: 2026-03-20 -- Plan 10-02 complete (install.md prompt simplification with subcommand calls)
+Phase: 11 of 11 (Add Tooling to Install Command)
+Plan: 1 of 3 in current phase
+Status: Plan 11-01 Complete
+Last activity: 2026-03-20 -- Plan 11-01 complete (scenario logic, action menu, resolve-action, auto-adopt)
 
 Progress: [██████████] 97%
 
@@ -83,6 +83,7 @@ Progress: [██████████] 97%
 | Phase 09 P04 | 5min | 2 tasks | 5 files |
 | Phase 10 P01 | 6min | 1 tasks | 2 files |
 | Phase 10 P02 | 2min | 2 tasks | 2 files |
+| Phase 11 P01 | 4min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -180,6 +181,10 @@ Recent decisions affecting current work:
 - [Phase 10]: Unicode separators match existing install.md visual style; dynamic column widths from data
 - [Phase 10]: Step 2 uses single render-status-table call with verbatim display directive (replacing ~50 lines of template)
 - [Phase 10]: Scenario A/B/C menus remain LLM-rendered; only tool picker and resolver sub-flows use Python subcommands (INST-41)
+- [Phase 11]: _determine_scenario is shared by render_action_menu and resolve_action via direct call -- single source of truth prevents scenario drift
+- [Phase 11]: Scenario B triggers on corrupt and adopted statuses in addition to update and modified (INST-51 behavior change)
+- [Phase 11]: _resolve_menu_option helper encapsulates per-scenario option-to-action mapping as a dict lookup
+- [Phase 11]: auto-adopt runs adopt_tools before scan_status when flag set and no manifest, then re-runs scan to get updated statuses
 
 ### Pending Todos
 
@@ -200,6 +205,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T15:12:08.297Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-add-tooling-to-install-command/11-CONTEXT.md
+Last session: 2026-03-20T15:45:26Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: .planning/phases/11-add-tooling-to-install-command/11-01-SUMMARY.md

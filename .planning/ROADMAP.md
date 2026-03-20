@@ -123,7 +123,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 8. Install Tool Improvements | 0/5 | Planned | - |
 | 9. Session Analyzer | 3/4 | Complete    | 2026-03-20 |
 | 10. Renderer for Install Command | 2/2 | Complete    | 2026-03-20 |
-| 11. Add Tooling to Install Command | 0/3 | Planned | - |
+| 11. Add Tooling to Install Command | 1/3 | In Progress|  |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -224,7 +224,7 @@ Plans:
 **Goal:** Refactor the install command from a 475-line LLM-driven state machine into a thin orchestrator where all deterministic logic (scenario selection, action mapping, install planning, result tracking, summary rendering) lives in Python subcommands, with one deliberate behavior change (Scenario B expanded to include corrupt/adopted statuses)
 **Requirements**: INST-43, INST-44, INST-45, INST-46, INST-47, INST-48, INST-49, INST-50, INST-51, INST-52, INST-53, INST-54, INST-55, INST-56, INST-57
 **Depends on:** Phase 10
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 11-01-PLAN.md — TDD: _determine_scenario, render-action-menu, resolve-action, scan-status --auto-adopt
