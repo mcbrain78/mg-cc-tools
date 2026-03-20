@@ -98,6 +98,12 @@ if [[ ! -f "${SCRIPT_DIR}/references/${SNAPSHOT_FILE}" ]]; then
   exit 1
 fi
 
+GENERATOR_FILE="requirement-generator.md"
+if [[ ! -f "${SCRIPT_DIR}/references/${GENERATOR_FILE}" ]]; then
+  echo "Error: missing references/${GENERATOR_FILE} in source directory (${SCRIPT_DIR})"
+  exit 1
+fi
+
 PATCH_FILE="discuss-phase-check-remaining.md"
 PATCH_SOURCE="${REPO_DIR}/gsd-patches/patches/${PATCH_FILE}"
 if [[ ! -f "$PATCH_SOURCE" ]]; then
@@ -130,6 +136,10 @@ cp "${SCRIPT_DIR}/references/${SNAPSHOT_FILE}" "${TARGET_DIR}/mg-gsd-wrappers/re
 SNAPSHOT_ABSOLUTE="${TARGET_DIR}/mg-gsd-wrappers/references/${SNAPSHOT_FILE}"
 echo "  Snapshot → ${SNAPSHOT_ABSOLUTE}"
 
+cp "${SCRIPT_DIR}/references/${GENERATOR_FILE}" "${TARGET_DIR}/mg-gsd-wrappers/references/${GENERATOR_FILE}"
+GENERATOR_ABSOLUTE="${TARGET_DIR}/mg-gsd-wrappers/references/${GENERATOR_FILE}"
+echo "  Generator → ${GENERATOR_ABSOLUTE}"
+
 # Clean up stale snapshot from commands/mg/ (v1.0 location)
 STALE_SNAPSHOT="${COMMANDS_DIR}/${SNAPSHOT_FILE}"
 if [[ -f "$STALE_SNAPSHOT" ]]; then
@@ -143,6 +153,12 @@ echo "  Resolving {METHODOLOGY_SNAPSHOT} in discuss-milestone.md ..."
 cmd_file="${COMMANDS_DIR}/discuss-milestone.md"
 if grep -q '{METHODOLOGY_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
   sed -i "s|{METHODOLOGY_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
+fi
+
+echo "  Resolving {GENERATOR_PROMPT} in plan-phase.md ..."
+cmd_file="${COMMANDS_DIR}/plan-phase.md"
+if grep -q '{GENERATOR_PROMPT}' "$cmd_file" 2>/dev/null; then
+  sed -i "s|{GENERATOR_PROMPT}|${GENERATOR_ABSOLUTE}|g" "$cmd_file"
 fi
 
 # ── Copy patch to gsd-patches source ────────────────────────────────────────

@@ -152,43 +152,47 @@ Use a two-phase generate-then-curate pattern to derive right-sized requirements.
 - If no existing prefix fits, derive a new short prefix (3-5 uppercase chars) from the phase's feature domain. The prefix represents a category of capabilities, not the phase name.
 - Keep consistent with domain conventions — look at how existing prefixes relate to their categories for style guidance.
 
-**Phase 1 — Generate candidates (subagent):**
+**Derive requirements (consolidator subagent):**
 
-Spawn an Agent subagent (subagent_type: "general-purpose") with this prompt:
+Spawn a single Agent subagent (subagent_type: "general-purpose") that generates and curates requirements, returning only the final curated list. This keeps the exhaustive candidate list and curation reasoning out of the orchestrator's context.
+
+Prompt for the consolidator:
 
 ```
-Read {context_path}.
+You are a requirement consolidator. Your job:
+1. Spawn a generator subagent to produce tagged candidates
+2. Curate the candidates into right-sized requirements
+3. Return ONLY the final curated list
 
-For each locked decision in the <decisions> section, generate candidate requirements.
-A requirement describes what becomes true or what the user/system can do — not how it's built.
+## Step 1: Generate candidates
 
-For EACH candidate, output ONE line in this format:
-  N. [tag] Description (parent: #M if detail)
+Spawn an Agent subagent with this prompt:
+"Read /home/mcbrain/mg_projects/mg-cc-tools/.claude/mg-gsd-wrappers/references/requirement-generator.md. Follow its instructions using {context_path} as the context file."
 
-Where tag is one of:
-  - capability — a distinct user-observable feature or behavior
-    (e.g., "running command X on input Y produces output Z")
-  - constraint — a cross-cutting rule that applies to multiple capabilities
-    (e.g., "all output is plain text with no ANSI codes")
-  - detail — an implementation choice, internal mechanism, sub-behavior, or
-    edge case that belongs to another candidate
-    (e.g., "uses json.load() to parse input" is a detail of the command that loads it)
+## Step 2: Curate
 
-Be thorough — include everything from the decisions. Tagging handles the filtering.
-Do NOT read or modify any files other than the context file. Output ONLY the numbered list.
+Review the generator's tagged candidate list:
+
+- **capability** items → keep as individual requirements
+- **constraint** items → keep only if cross-cutting (applies to 2+ capabilities).
+  If scoped to a single capability, fold into that capability's description.
+- **detail** items → drop. The parent capability already covers it.
+  The detail lives in CONTEXT.md for implementors.
+
+The final count should roughly equal: distinct capabilities + cross-cutting constraints.
+A phase with 15 decisions typically yields 8-15 requirements, not 20+.
+
+## Step 3: Return
+
+Output ONLY the final curated list in this format (no curation reasoning, no candidate table):
+- Description of requirement 1
+- Description of requirement 2
+- ...
 ```
 
-**Phase 2 — Curate candidates (orchestrator):**
+Replace `{context_path}` with the actual CONTEXT.md path before spawning. `/home/mcbrain/mg_projects/mg-cc-tools/.claude/mg-gsd-wrappers/references/requirement-generator.md` is resolved at install time by install.sh.
 
-Review the subagent's tagged list and produce the final requirements:
-
-- **`capability`** items → keep as individual requirements
-- **`constraint`** items → keep only if cross-cutting (applies to 2+ capabilities). If scoped to a single capability, fold into that capability's description.
-- **`detail`** items → drop. The parent capability already covers it. The detail lives in CONTEXT.md for implementors.
-
-The final count should roughly equal: distinct capabilities + cross-cutting constraints. A phase with 15 decisions typically yields 8-15 requirements, not 20+.
-
-Number sequentially within the chosen prefix, continuing from the last used number (e.g., if `INST-12` exists, start at `INST-13`).
+The consolidator returns the curated list. Number the requirements sequentially within the chosen prefix, continuing from the last used number (e.g., if `INST-12` exists, start at `INST-13`).
 
 **Determine category section placement:**
 - If continuing an existing prefix: add requirements to the existing `### Category` section in REQUIREMENTS.md
