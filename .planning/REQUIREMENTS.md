@@ -127,7 +127,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SAN-07**: `agent-list` command shows one line per agent (ID, status, duration, tools, size, prompt summary), paginated
 - [x] **SAN-08**: `msg` command shows single message with ±2 context messages and full content, supports both `msg <N>` and `msg <agent-prefix> <N>` forms
 - [x] **SAN-09**: `search <pattern>` command searches tool inputs, results (with persisted file recovery), and assistant text, paginated
-- [ ] **SAN-10**: `export` command delegates to compactor after dropping chunks, supports `--level` flag
+- [x] **SAN-10**: `export` command delegates to compactor after dropping chunks, supports `--level` flag
 - [x] **SAN-11**: Pagination with `--offset N`, `--limit N`, `--all` flags and footer showing item count and exact copy-paste next command
 - [x] **SAN-12**: Error detection uses curated high-confidence patterns: `is_error` flag, Python tracebacks, bash exit codes, and agent result status patterns
 - [x] **SAN-13**: Error detection filters noise patterns (`exceeds maximum allowed tokens`, `File has not been read yet`, `File does not exist`) from error counts
@@ -136,8 +136,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SAN-16**: Ambiguous agent prefix lists matching agents and exits with guidance to use a longer prefix
 - [x] **SAN-17**: Search scope filters: `--scope orchestrator`, `--scope agents`, `--scope agent:<prefix>`, default searches everything
 - [x] **SAN-18**: All output is plain text — no ANSI color codes
-- [ ] **SAN-19**: `/mg:analyze-session` slash command with tool.toml and install.sh following mg-cc-tools conventions
-- [ ] **SAN-20**: Slash command dual mode: goal-directed investigation when user provides a question, autonomous analysis when no goal given
+- [x] **SAN-19**: `/mg:analyze-session` slash command with tool.toml and install.sh following mg-cc-tools conventions
+- [x] **SAN-20**: Slash command dual mode: goal-directed investigation when user provides a question, autonomous analysis when no goal given
 - [x] **SAN-21**: Pytest suite with 1MB sample tests (default) and 75MB sample tests (`@pytest.mark.slow`, `--slow` flag)
 - [x] **SAN-22**: Analyzer imports `cc_session_compactor` for export command but implements independent error detection
 - [x] **SAN-23**: Overview contextual commands section omits irrelevant commands based on session content (e.g., no `agent-list` if no agents)
@@ -265,7 +265,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAN-07 | Phase 9 | Complete |
 | SAN-08 | Phase 9 | Complete |
 | SAN-09 | Phase 9 | Complete |
-| SAN-10 | Phase 9 | Pending |
+| SAN-10 | Phase 9 | Complete |
 | SAN-11 | Phase 9 | Complete |
 | SAN-12 | Phase 9 | Complete |
 | SAN-13 | Phase 9 | Complete |
@@ -274,8 +274,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAN-16 | Phase 9 | Complete |
 | SAN-17 | Phase 9 | Complete |
 | SAN-18 | Phase 9 | Complete |
-| SAN-19 | Phase 9 | Pending |
-| SAN-20 | Phase 9 | Pending |
+| SAN-19 | Phase 9 | Complete |
+| SAN-20 | Phase 9 | Complete |
 | SAN-21 | Phase 9 | Complete |
 | SAN-22 | Phase 9 | Complete |
 | SAN-23 | Phase 9 | Complete |
