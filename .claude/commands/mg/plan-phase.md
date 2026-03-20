@@ -10,6 +10,7 @@ allowed-tools:
   - Edit
   - Glob
   - Grep
+  - Agent
   - AskUserQuestion
   - Skill
   - Bash
@@ -144,19 +145,50 @@ Ensure this phase has proper requirement IDs before the planner runs. Without ID
 
 **5c. Generate requirements (TBD case):**
 
-Analyze the CONTEXT.md `<decisions>` section and generate requirement IDs following GSD conventions:
+Use a two-phase generate-then-curate pattern to derive right-sized requirements. Implementation details belong in CONTEXT.md; requirements describe user-observable capabilities.
 
 **Prefix selection:**
 - Scan existing requirement categories in REQUIREMENTS.md for a prefix that fits this phase's domain. For example, if the phase is install-related and `INST-` already exists, continue with `INST-`.
 - If no existing prefix fits, derive a new short prefix (3-5 uppercase chars) from the phase's feature domain. The prefix represents a category of capabilities, not the phase name.
 - Keep consistent with domain conventions — look at how existing prefixes relate to their categories for style guidance.
 
-**Requirement derivation:**
-- Read all locked decisions in CONTEXT.md holistically
-- Derive requirements that are **specific, testable, and atomic** — each captures one verifiable capability or behavior
-- Requirements should describe what the system does or what becomes true, not restate implementation decisions verbatim
-- The number of requirements should match the scope — a phase with 3 decisions might produce 5 requirements, a phase with 15 decisions might produce 20+. Let the content drive the count.
-- Number sequentially within the chosen prefix, continuing from the last used number (e.g., if `INST-12` exists, start at `INST-13`)
+**Phase 1 — Generate candidates (subagent):**
+
+Spawn an Agent subagent (subagent_type: "general-purpose") with this prompt:
+
+```
+Read {context_path}.
+
+For each locked decision in the <decisions> section, generate candidate requirements.
+A requirement describes what becomes true or what the user/system can do — not how it's built.
+
+For EACH candidate, output ONE line in this format:
+  N. [tag] Description (parent: #M if detail)
+
+Where tag is one of:
+  - capability — a distinct user-observable feature or behavior
+    (e.g., "running command X on input Y produces output Z")
+  - constraint — a cross-cutting rule that applies to multiple capabilities
+    (e.g., "all output is plain text with no ANSI codes")
+  - detail — an implementation choice, internal mechanism, sub-behavior, or
+    edge case that belongs to another candidate
+    (e.g., "uses json.load() to parse input" is a detail of the command that loads it)
+
+Be thorough — include everything from the decisions. Tagging handles the filtering.
+Do NOT read or modify any files other than the context file. Output ONLY the numbered list.
+```
+
+**Phase 2 — Curate candidates (orchestrator):**
+
+Review the subagent's tagged list and produce the final requirements:
+
+- **`capability`** items → keep as individual requirements
+- **`constraint`** items → keep only if cross-cutting (applies to 2+ capabilities). If scoped to a single capability, fold into that capability's description.
+- **`detail`** items → drop. The parent capability already covers it. The detail lives in CONTEXT.md for implementors.
+
+The final count should roughly equal: distinct capabilities + cross-cutting constraints. A phase with 15 decisions typically yields 8-15 requirements, not 20+.
+
+Number sequentially within the chosen prefix, continuing from the last used number (e.g., if `INST-12` exists, start at `INST-13`).
 
 **Determine category section placement:**
 - If continuing an existing prefix: add requirements to the existing `### Category` section in REQUIREMENTS.md
