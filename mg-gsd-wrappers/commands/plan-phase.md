@@ -176,7 +176,7 @@ Analyze the CONTEXT.md `<decisions>` section and generate requirement IDs follow
 
 6. Commit:
 ```bash
-node "./.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs(phase-{N}): generate requirement IDs from context decisions" --files .planning/REQUIREMENTS.md .planning/ROADMAP.md
+git add .planning/REQUIREMENTS.md .planning/ROADMAP.md && git commit -m "docs(phase-{N}): generate requirement IDs from context decisions"
 ```
 
 7. Print the generated requirements to console:
@@ -204,7 +204,7 @@ Generate additional requirement IDs for the uncovered decisions, continuing the 
 
 Write the new requirements to REQUIREMENTS.md (definitions + traceability rows), update ROADMAP.md Requirements line, and commit:
 ```bash
-node "./.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs(phase-{N}): add requirement IDs for uncovered decisions" --files .planning/REQUIREMENTS.md .planning/ROADMAP.md
+git add .planning/REQUIREMENTS.md .planning/ROADMAP.md && git commit -m "docs(phase-{N}): add requirement IDs for uncovered decisions"
 ```
 
 Print:
