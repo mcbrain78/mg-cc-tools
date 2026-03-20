@@ -38,9 +38,9 @@ Validate the target path exists. If it does not have a `.claude/` directory:
    mkdir -p "$TARGET_PATH/.claude/commands/mg"
    ```
 
-Store `TARGET_PATH`. Set the per-target temp directory and clean stale files from any previous session:
+Store `TARGET_PATH`. Set the per-target temp directory, create it, and clean stale files from any previous session:
 ```bash
-MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")" && rm -rf "$TMP" && mkdir -p "$TMP"
+MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")" && mkdir -p "$TMP" && rm -f "$TMP"/*.json
 ```
 
 ---
