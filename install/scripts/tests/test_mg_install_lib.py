@@ -2314,3 +2314,715 @@ class TestGetOrderedTools:
             # Optional tier: delta, epsilon (already alphabetical)
             optional = tools[3:]
             assert optional == sorted(optional)
+
+
+# ============================================================
+# Scenario fixtures for action menu and resolve-action tests
+# ============================================================
+
+
+def _make_scenario_a_fixture():
+    """Scenario A: nothing installed (installed_total == 0)."""
+    return {
+        "mg_cc_tools_version": "0.3.0",
+        "target": "/home/user/projects/road-runner",
+        "manifest_exists": False,
+        "tools": [
+            {
+                "name": "alpha-tool",
+                "description": "Alpha tool",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["alpha-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "beta-tool",
+                "description": "Beta tool",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["beta-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "gamma-tool",
+                "description": "Gamma optional",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["gamma-tool.md"],
+                "excluded": False,
+                "standard": False,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "zeta-excluded",
+                "description": "Excluded tool",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["zeta-excluded.md"],
+                "excluded": True,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+        ],
+        "summary": {
+            "total": 4,
+            "installed_total": 0,
+            "current": 0,
+            "update": 0,
+            "modified": 0,
+            "corrupt": 0,
+            "adopted": 0,
+            "available": 4,
+        },
+    }
+
+
+def _make_scenario_b_fixture():
+    """Scenario B: some tools need attention (update/modified/corrupt/adopted)."""
+    return {
+        "mg_cc_tools_version": "0.3.0",
+        "target": "/home/user/projects/road-runner",
+        "manifest_exists": True,
+        "tools": [
+            {
+                "name": "alpha-tool",
+                "description": "Alpha current",
+                "status": "current",
+                "installed_version": "0.3.0",
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["alpha-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "beta-tool",
+                "description": "Beta needs update",
+                "status": "update",
+                "installed_version": "0.2.0",
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["beta-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "gamma-tool",
+                "description": "Gamma available standard",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["gamma-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "delta-tool",
+                "description": "Delta adopted",
+                "status": "adopted",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["delta-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "epsilon-optional",
+                "description": "Epsilon optional available",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["epsilon-optional.md"],
+                "excluded": False,
+                "standard": False,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+        ],
+        "summary": {
+            "total": 5,
+            "installed_total": 3,
+            "current": 1,
+            "update": 1,
+            "modified": 0,
+            "corrupt": 0,
+            "adopted": 1,
+            "available": 2,
+        },
+    }
+
+
+def _make_scenario_c_fixture():
+    """Scenario C: all installed are current, some still available."""
+    return {
+        "mg_cc_tools_version": "0.3.0",
+        "target": "/home/user/projects/road-runner",
+        "manifest_exists": True,
+        "tools": [
+            {
+                "name": "alpha-tool",
+                "description": "Alpha current",
+                "status": "current",
+                "installed_version": "0.3.0",
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["alpha-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "beta-tool",
+                "description": "Beta current",
+                "status": "current",
+                "installed_version": "0.3.0",
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["beta-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "gamma-tool",
+                "description": "Gamma available standard",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["gamma-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "delta-optional",
+                "description": "Delta optional available",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["delta-optional.md"],
+                "excluded": False,
+                "standard": False,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+        ],
+        "summary": {
+            "total": 4,
+            "installed_total": 2,
+            "current": 2,
+            "update": 0,
+            "modified": 0,
+            "corrupt": 0,
+            "adopted": 0,
+            "available": 2,
+        },
+    }
+
+
+# ============================================================
+# _determine_scenario shared helper
+# ============================================================
+
+
+class TestDetermineScenario:
+    """Tests for _determine_scenario shared helper."""
+
+    def test_returns_a_when_nothing_installed(self):
+        """Returns 'A' when installed_total == 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            # Use render-action-menu to verify scenario (it prints scenario-specific text)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            # Scenario A has "Install all standard tools"
+            assert "Install all standard tools" in result.stdout
+
+    def test_returns_b_when_update(self):
+        """Returns 'B' when summary has update > 0."""
+        scan_data = _make_scenario_a_fixture()
+        scan_data["summary"]["installed_total"] = 1
+        scan_data["summary"]["update"] = 1
+        scan_data["summary"]["available"] = 3
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "needing attention" in result.stdout
+
+    def test_returns_b_when_modified(self):
+        """Returns 'B' when summary has modified > 0."""
+        scan_data = _make_scenario_a_fixture()
+        scan_data["summary"]["installed_total"] = 1
+        scan_data["summary"]["modified"] = 1
+        scan_data["summary"]["available"] = 3
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "needing attention" in result.stdout
+
+    def test_returns_b_when_corrupt(self):
+        """Returns 'B' when summary has corrupt > 0 (INST-51 behavior change)."""
+        scan_data = _make_scenario_a_fixture()
+        scan_data["summary"]["installed_total"] = 1
+        scan_data["summary"]["corrupt"] = 1
+        scan_data["summary"]["available"] = 3
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "needing attention" in result.stdout
+
+    def test_returns_b_when_adopted(self):
+        """Returns 'B' when summary has adopted > 0 (INST-51 behavior change)."""
+        scan_data = _make_scenario_a_fixture()
+        scan_data["summary"]["installed_total"] = 1
+        scan_data["summary"]["adopted"] = 1
+        scan_data["summary"]["available"] = 3
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert "needing attention" in result.stdout
+
+    def test_returns_c_when_all_current(self):
+        """Returns 'C' when installed_total > 0 and no attention needed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_c_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            # Scenario C has "Reinstall all" (not in A or B)
+            assert "Reinstall all" in result.stdout
+
+
+# ============================================================
+# render-action-menu subcommand
+# ============================================================
+
+
+class TestRenderActionMenu:
+    """render-action-menu subcommand tests."""
+
+    def test_scenario_a_three_options(self):
+        """Scenario A prints 3 options with standard count."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "What would you like to do?" in out
+            assert "[1]" in out
+            assert "[2]" in out
+            assert "[3]" in out
+            # Should NOT have [4] or [5]
+            assert "[4]" not in out
+            assert "[5]" not in out
+            # Standard count: 2 standard tools (alpha, beta)
+            assert "2 tools" in out
+            assert "Type a number, or tool names" in out
+
+    def test_scenario_b_five_options(self):
+        """Scenario B prints 5 options with attention count and available count."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_b_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "What would you like to do?" in out
+            assert "[1]" in out
+            assert "[2]" in out
+            assert "[3]" in out
+            assert "[4]" in out
+            assert "[5]" in out
+            assert "needing attention" in out
+            assert "Type a number, tool names, or 'all':" in out
+
+    def test_scenario_c_four_options(self):
+        """Scenario C prints 4 options with remaining standard count."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_c_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "What would you like to do?" in out
+            assert "[1]" in out
+            assert "[2]" in out
+            assert "[3]" in out
+            assert "[4]" in out
+            assert "[5]" not in out
+            assert "Reinstall all" in out
+            assert "Type a number, tool names, or 'all':" in out
+
+    def test_scenario_a_header(self):
+        """All scenarios start with 'What would you like to do?'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["render-action-menu", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            lines = result.stdout.strip().split("\n")
+            assert lines[0].strip() == "What would you like to do?"
+
+    def test_cli_requires_input(self):
+        """render-action-menu requires --input argument."""
+        result = _run(["render-action-menu"])
+        assert result.returncode != 0
+
+
+# ============================================================
+# resolve-action subcommand
+# ============================================================
+
+
+class TestResolveAction:
+    """resolve-action subcommand tests."""
+
+    def test_scenario_a_option_1_install_standard(self):
+        """Scenario A option 1: install all standard tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "1"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "install"
+            # Should include alpha-tool and beta-tool (standard, non-excluded)
+            assert "alpha-tool" in data["tools"]
+            assert "beta-tool" in data["tools"]
+            # Should NOT include optional gamma-tool
+            assert "gamma-tool" not in data["tools"]
+            # Should NOT include excluded zeta-excluded
+            assert "zeta-excluded" not in data["tools"]
+
+    def test_scenario_a_option_2_select_specific(self):
+        """Scenario A option 2: select specific."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "2"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "select_specific"
+
+    def test_scenario_a_option_3_edit_standard(self):
+        """Scenario A option 3: edit standard."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "3"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "edit_standard"
+
+    def test_scenario_b_option_1_fix_attention(self):
+        """Scenario B option 1: fix/update tools needing attention."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_b_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "1"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "install"
+            # Tools needing attention: beta-tool (update), delta-tool (adopted)
+            assert "beta-tool" in data["tools"]
+            assert "delta-tool" in data["tools"]
+            # Should NOT include current or available
+            assert "alpha-tool" not in data["tools"]
+            assert "gamma-tool" not in data["tools"]
+
+    def test_scenario_b_option_2_attention_plus_missing(self):
+        """Scenario B option 2: fix/update + install missing standard."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_b_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "2"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "install"
+            # Attention tools: beta-tool, delta-tool
+            # Missing standard: gamma-tool (available + standard)
+            assert "beta-tool" in data["tools"]
+            assert "delta-tool" in data["tools"]
+            assert "gamma-tool" in data["tools"]
+            # NOT current, NOT optional
+            assert "alpha-tool" not in data["tools"]
+            assert "epsilon-optional" not in data["tools"]
+
+    def test_scenario_b_option_3_missing_standard_only(self):
+        """Scenario B option 3: install missing standard only."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_b_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "3"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "install"
+            # Only missing standard: gamma-tool
+            assert "gamma-tool" in data["tools"]
+            assert len(data["tools"]) == 1
+
+    def test_scenario_b_option_4_edit_standard(self):
+        """Scenario B option 4: edit standard."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_b_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "4"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "edit_standard"
+
+    def test_scenario_b_option_5_check_capabilities(self):
+        """Scenario B option 5: check capabilities."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_b_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "5"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "check_capabilities"
+
+    def test_scenario_c_option_1_remaining_standard(self):
+        """Scenario C option 1: install remaining available standard."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_c_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "1"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "install"
+            # Only gamma-tool is available + standard
+            assert "gamma-tool" in data["tools"]
+            assert "delta-optional" not in data["tools"]
+
+    def test_scenario_c_option_2_reinstall_all(self):
+        """Scenario C option 2: reinstall all non-excluded tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_c_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "2"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "install"
+            # All non-excluded tools
+            assert "alpha-tool" in data["tools"]
+            assert "beta-tool" in data["tools"]
+            assert "gamma-tool" in data["tools"]
+            assert "delta-optional" in data["tools"]
+
+    def test_scenario_c_option_3_edit_standard(self):
+        """Scenario C option 3: edit standard."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_c_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "3"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "edit_standard"
+
+    def test_scenario_c_option_4_check_capabilities(self):
+        """Scenario C option 4: check capabilities."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_c_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "4"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "check_capabilities"
+
+    def test_non_numeric_delegates_to_resolve_tool_selection(self):
+        """Non-numeric input delegates to resolve_tool_selection."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "alpha-tool"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["action"] == "install"
+            assert data["tools"] == ["alpha-tool"]
+
+    def test_invalid_menu_number_returns_error(self):
+        """Invalid menu number returns error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_data = _make_scenario_a_fixture()
+            input_file = _write_scan_status_file(tmp, scan_data)
+            # Scenario A only has options 1-3
+            result = _run(["resolve-action", "--input", input_file,
+                           "--selection", "4"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "error" in data
+
+    def test_cli_requires_input_and_selection(self):
+        """resolve-action requires both --input and --selection."""
+        result = _run(["resolve-action"])
+        assert result.returncode != 0
+
+
+# ============================================================
+# scan-status --auto-adopt flag
+# ============================================================
+
+
+class TestScanStatusAutoAdopt:
+    """Tests for scan-status --auto-adopt flag."""
+
+    def test_without_flag_no_auto_adopted_field(self):
+        """Without --auto-adopt, output has no auto_adopted field."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+
+            _make_tool(source, "my-tool")
+            _make_pyproject(source)
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "auto_adopted" not in data
+
+    def test_with_flag_and_manifest_exists_no_adoption(self):
+        """With --auto-adopt and manifest exists, no adoption happens."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+
+            _make_tool(source, "my-tool")
+            _make_pyproject(source)
+
+            # Create manifest (manifest exists)
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
+            _make_manifest(target, tools={
+                "my-tool": {
+                    "version": "0.1.0",
+                    "installed_at": "2026-01-01T00:00:00+00:00",
+                    "commands": ["my-tool.md"],
+                    "source_checksums": {},
+                }
+            })
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+                "--auto-adopt",
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            # auto_adopted should be empty (or absent) since manifest exists
+            auto = data.get("auto_adopted", [])
+            assert len(auto) == 0
+
+    def test_with_flag_no_manifest_adopts_tools(self):
+        """With --auto-adopt and no manifest, adopts detected tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+
+            _make_tool(source, "my-tool")
+            _make_pyproject(source)
+
+            # Place command file in target (pre-manifest installation)
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
+
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+                "--auto-adopt",
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "auto_adopted" in data
+            assert "my-tool" in data["auto_adopted"]
+
+    def test_auto_adopted_in_compact_output(self):
+        """Compact stdout (--output mode) includes auto_adopted field."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+
+            _make_tool(source, "my-tool")
+            _make_pyproject(source)
+
+            # Place command file for adoption
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
+
+            output_file = os.path.join(tmp, "output.json")
+            result = _run([
+                "scan-status", "--source", source, "--target", target,
+                "--auto-adopt", "--output", output_file,
+            ])
+            assert result.returncode == 0, result.stderr
+            # Check compact stdout
+            compact = json.loads(result.stdout)
+            assert "auto_adopted" in compact
+            assert "my-tool" in compact["auto_adopted"]
+            # Check full file output
+            with open(output_file) as f:
+                full = json.load(f)
+            assert "auto_adopted" in full
+            assert "my-tool" in full["auto_adopted"]
