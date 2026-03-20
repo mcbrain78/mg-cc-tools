@@ -462,7 +462,9 @@ def update_manifest(target_dir, tool_name, source_tool_dir):
     ).isoformat()
 
     # Compute entry for this tool
-    commands = get_tool_commands(source_tool_dir)
+    # For execute_only tools (no install.sh), commands aren't deployed to target
+    has_install_sh = os.path.isfile(os.path.join(source_tool_dir, "install.sh"))
+    commands = get_tool_commands(source_tool_dir) if has_install_sh else []
     checksums = compute_tool_checksums(source_tool_dir)
 
     manifest.setdefault("tools", {})[tool_name] = {
