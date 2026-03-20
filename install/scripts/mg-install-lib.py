@@ -1453,25 +1453,26 @@ def render_summary(results_data, scan_data, preflight_data=None):
     if preflight_data:
         checks = preflight_data.get("checks", [])
 
-        print()
-        print("  Capabilities:")
-
-        # LSP status
         lsp_check = next((c for c in checks if c["id"] == "lsp"), None)
-        if lsp_check:
-            if lsp_check["passed"]:
-                print(f"    LSP: functional ({lsp_check.get('version', 'unknown')})")
-            else:
-                print("    LSP: not configured")
-
-        # Missing optional tools
         missing_optional = [
             c for c in checks
             if not c["required"] and not c["passed"] and c["id"] != "lsp"
         ]
-        if missing_optional:
-            names = ", ".join(c["id"] for c in missing_optional)
-            print(f"    Missing optional tools: {names}")
+
+        if lsp_check or missing_optional:
+            print()
+            print("  Capabilities:")
+            if lsp_check:
+                if lsp_check["passed"]:
+                    print(f"    LSP: functional ({lsp_check.get('version', 'unknown')})")
+                else:
+                    print("    LSP: not configured")
+            if missing_optional:
+                names = ", ".join(c["id"] for c in missing_optional)
+                print(f"    Missing optional tools: {names}")
+        else:
+            print()
+            print("  Capabilities: not applicable")
     print("</verbatim>")
 
 
