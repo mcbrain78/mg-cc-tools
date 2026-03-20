@@ -1089,15 +1089,187 @@ def resolve_tool_selection(scan_data, selection_text):
 
 
 # ============================================================
+# Shared scenario logic
+# ============================================================
+
+
+def _determine_scenario(scan_data):
+    """Determine install scenario from scan-status data.
+
+    Returns:
+        "A" if nothing installed (installed_total == 0)
+        "B" if some tools need attention (update/modified/corrupt/adopted > 0)
+        "C" if all installed tools are current
+    """
+    summary = scan_data.get("summary", {})
+    installed_total = summary.get("installed_total", 0)
+    if installed_total == 0:
+        return "A"
+    if (summary.get("update", 0) > 0
+            or summary.get("modified", 0) > 0
+            or summary.get("corrupt", 0) > 0
+            or summary.get("adopted", 0) > 0):
+        return "B"
+    return "C"
+
+
+# ============================================================
+# Subcommand: render-action-menu
+# ============================================================
+
+
+def render_action_menu(scan_data):
+    """Render scenario-appropriate action menu to stdout."""
+    scenario = _determine_scenario(scan_data)
+    tools = scan_data.get("tools", [])
+    summary = scan_data.get("summary", {})
+
+    # Compute dynamic counts
+    attention_count = (summary.get("update", 0) + summary.get("modified", 0)
+                       + summary.get("corrupt", 0) + summary.get("adopted", 0))
+    standard_available = sum(
+        1 for t in tools
+        if t["status"] == "available" and t["standard"] and not t["excluded"]
+    )
+    standard_total = sum(
+        1 for t in tools if t["standard"] and not t["excluded"]
+    )
+
+    print("What would you like to do?")
+    print()
+
+    if scenario == "A":
+        print(f"  [1] Install all standard tools ({standard_total} tools) (recommended)")
+        print("  [2] Select specific tools")
+        print("  [3] Edit standard install list")
+        print()
+        print("Type a number, or tool names separated by commas:")
+    elif scenario == "B":
+        print(f"  [1] Fix/update {attention_count} tools needing attention (recommended)")
+        print("  [2] Fix/update + install all missing standard")
+        print(f"  [3] Install missing standard only ({standard_available} tools)")
+        print("  [4] Edit standard install list")
+        print("  [5] Check capabilities only")
+        print()
+        print("Type a number, tool names, or 'all':")
+    elif scenario == "C":
+        print(f"  [1] Install remaining {standard_available} standard tools")
+        print("  [2] Reinstall all")
+        print("  [3] Edit standard install list")
+        print("  [4] Check capabilities only")
+        print()
+        print("Type a number, tool names, or 'all':")
+
+
+# ============================================================
+# Subcommand: resolve-action
+# ============================================================
+
+
+def _resolve_menu_option(scenario, num, tools, summary):
+    """Map a menu number to an action dict for the given scenario.
+
+    Returns dict with "action" and optionally "tools", or "error".
+    """
+    # Precompute tool lists needed across scenarios
+    attention_statuses = {"update", "modified", "corrupt", "adopted"}
+    attention_tools = [
+        t["name"] for t in tools
+        if not t["excluded"] and t["status"] in attention_statuses
+    ]
+    missing_standard = [
+        t["name"] for t in tools
+        if not t["excluded"] and t["standard"] and t["status"] == "available"
+    ]
+    standard_tools = [
+        t["name"] for t in tools
+        if not t["excluded"] and t["standard"]
+    ]
+    all_non_excluded = [
+        t["name"] for t in _get_ordered_tools(tools)
+    ]
+
+    if scenario == "A":
+        options = {
+            1: {"action": "install", "tools": standard_tools},
+            2: {"action": "select_specific"},
+            3: {"action": "edit_standard"},
+        }
+    elif scenario == "B":
+        options = {
+            1: {"action": "install", "tools": attention_tools},
+            2: {"action": "install", "tools": attention_tools + missing_standard},
+            3: {"action": "install", "tools": missing_standard},
+            4: {"action": "edit_standard"},
+            5: {"action": "check_capabilities"},
+        }
+    elif scenario == "C":
+        options = {
+            1: {"action": "install", "tools": missing_standard},
+            2: {"action": "install", "tools": all_non_excluded},
+            3: {"action": "edit_standard"},
+            4: {"action": "check_capabilities"},
+        }
+    else:
+        return {"error": f"Unknown scenario: {scenario}"}
+
+    if num in options:
+        return options[num]
+    max_opt = max(options.keys())
+    return {"error": f"Invalid option: {num} (valid range is 1-{max_opt})"}
+
+
+def resolve_action(scan_data, selection_text):
+    """Resolve user's menu selection to action and tool list.
+
+    Returns dict: {"action": "install", "tools": [...]} or
+                  {"action": "select_specific"} or
+                  {"action": "edit_standard"} or
+                  {"action": "check_capabilities"} or
+                  {"error": "..."}
+    """
+    scenario = _determine_scenario(scan_data)
+    tools = scan_data.get("tools", [])
+    summary = scan_data.get("summary", {})
+    stripped = selection_text.strip()
+
+    # Try to match a menu number
+    if stripped.isdigit():
+        num = int(stripped)
+        return _resolve_menu_option(scenario, num, tools, summary)
+
+    # Not a menu number -- try resolve_tool_selection for names/ranges
+    result = resolve_tool_selection(scan_data, selection_text)
+    if "error" in result:
+        return result
+    return {"action": "install", "tools": result["tools"]}
+
+
+# ============================================================
 # CLI entry point
 # ============================================================
 
 
 def cmd_scan_status(args):
     """CLI handler for scan-status."""
+    auto_adopted = []
+
+    # Auto-adopt: when flag set and no manifest exists, adopt first
+    if args.auto_adopt:
+        manifest = read_manifest(args.target)
+        if manifest is None:
+            adopt_result = adopt_tools(args.source, args.target)
+            auto_adopted = adopt_result.get("adopted", [])
+
     result = scan_status(args.source, args.target)
 
+    # Add auto_adopted field only when --auto-adopt was used
+    if args.auto_adopt:
+        result["auto_adopted"] = auto_adopted
+
     if args.output:
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
         # Write full details to file, compact summary to stdout
         with open(args.output, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)
@@ -1122,6 +1294,8 @@ def cmd_scan_status(args):
             "summary": result["summary"],
             "details": args.output,
         }
+        if args.auto_adopt:
+            summary["auto_adopted"] = auto_adopted
         json.dump(summary, sys.stdout, indent=2)
         sys.stdout.write("\n")
     else:
@@ -1197,6 +1371,22 @@ def cmd_resolve_tool_selection(args):
     sys.stdout.write("\n")
 
 
+def cmd_render_action_menu(args):
+    """CLI handler for render-action-menu."""
+    with open(args.input, "r", encoding="utf-8") as f:
+        scan_data = json.load(f)
+    render_action_menu(scan_data)
+
+
+def cmd_resolve_action(args):
+    """CLI handler for resolve-action."""
+    with open(args.input, "r", encoding="utf-8") as f:
+        scan_data = json.load(f)
+    result = resolve_action(scan_data, args.selection)
+    json.dump(result, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="mg-cc-tools installer library",
@@ -1214,6 +1404,8 @@ def main():
                         help="Path to target project directory")
     p_scan.add_argument("--output",
                         help="Write full details to file, compact summary to stdout")
+    p_scan.add_argument("--auto-adopt", action="store_true", dest="auto_adopt",
+                        help="Auto-adopt existing installations when no manifest exists")
     p_scan.set_defaults(func=cmd_scan_status)
 
     # update-manifest
@@ -1296,6 +1488,26 @@ def main():
     p_resolve.add_argument("--selection", required=True,
                            help="User's selection text (numbers, ranges, names, or 'all')")
     p_resolve.set_defaults(func=cmd_resolve_tool_selection)
+
+    # render-action-menu
+    p_action_menu = sub.add_parser(
+        "render-action-menu",
+        help="Render scenario-appropriate action menu from scan-status JSON",
+    )
+    p_action_menu.add_argument("--input", required=True,
+                               help="Path to scan-status JSON file")
+    p_action_menu.set_defaults(func=cmd_render_action_menu)
+
+    # resolve-action
+    p_resolve_action = sub.add_parser(
+        "resolve-action",
+        help="Resolve user's menu selection to action and tool list",
+    )
+    p_resolve_action.add_argument("--input", required=True,
+                                  help="Path to scan-status JSON file")
+    p_resolve_action.add_argument("--selection", required=True,
+                                  help="User's menu selection text")
+    p_resolve_action.set_defaults(func=cmd_resolve_action)
 
     args = parser.parse_args()
     args.func(args)
