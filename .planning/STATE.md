@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Phase 11 context gathered
-last_updated: "2026-03-20T15:12:08.299Z"
-last_activity: 2026-03-20 -- Plan 10-02 complete (install.md prompt simplification with subcommand calls)
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-03-20T15:51:26.537Z"
+last_activity: 2026-03-20 -- Plan 11-02 complete (install plan, result tracking, and renderer subcommands)
 progress:
   total_phases: 11
   completed_phases: 9
-  total_plans: 34
-  completed_plans: 33
+  total_plans: 37
+  completed_plans: 35
   percent: 97
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 11 of 11 (Add Tooling to Install Command)
-Plan: 1 of 3 in current phase
-Status: Plan 11-01 Complete
-Last activity: 2026-03-20 -- Plan 11-01 complete (scenario logic, action menu, resolve-action, auto-adopt)
+Plan: 2 of 3 in current phase
+Status: Plan 11-02 Complete
+Last activity: 2026-03-20 -- Plan 11-02 complete (install plan, result tracking, and renderer subcommands)
 
 Progress: [██████████] 97%
 
@@ -84,6 +84,7 @@ Progress: [██████████] 97%
 | Phase 10 P01 | 6min | 1 tasks | 2 files |
 | Phase 10 P02 | 2min | 2 tasks | 2 files |
 | Phase 11 P01 | 4min | 1 tasks | 2 files |
+| Phase 11 P02 | 8min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,9 @@ Recent decisions affecting current work:
 - [Phase 11]: Scenario B triggers on corrupt and adopted statuses in addition to update and modified (INST-51 behavior change)
 - [Phase 11]: _resolve_menu_option helper encapsulates per-scenario option-to-action mapping as a dict lookup
 - [Phase 11]: auto-adopt runs adopt_tools before scan_status when flag set and no manifest, then re-runs scan to get updated statuses
+- [Phase 11]: render_summary classifies actions into installed/updated/failed counts using substring matching
+- [Phase 11]: record-result uses argparse mutually_exclusive_group for --success/--failed CLI enforcement
+- [Phase 11]: get-install-plan compact stdout returns tool+pattern+post_install (enough for install loop)
 
 ### Pending Todos
 
@@ -205,6 +209,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T15:45:26Z
-Stopped at: Completed 11-01-PLAN.md
-Resume file: .planning/phases/11-add-tooling-to-install-command/11-01-SUMMARY.md
+Last session: 2026-03-20T15:51:26.535Z
+Stopped at: Completed 11-02-PLAN.md
+Resume file: None
