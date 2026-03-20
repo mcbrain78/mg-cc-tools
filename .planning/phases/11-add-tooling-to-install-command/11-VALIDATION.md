@@ -42,12 +42,12 @@ created: 2026-03-20
 | 11-01-02 | 01 | 1 | INST-43 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "auto_adopt" -x` | ❌ W0 | ⬜ pending |
 | 11-01-03 | 01 | 1 | INST-44, INST-51 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "render_action_menu" -x` | ❌ W0 | ⬜ pending |
 | 11-01-04 | 01 | 1 | INST-45 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "resolve_action" -x` | ❌ W0 | ⬜ pending |
-| 11-01-05 | 01 | 1 | INST-46, INST-56 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "install_plan" -x` | ❌ W0 | ⬜ pending |
-| 11-01-06 | 01 | 1 | INST-47 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "render_preflight" -x` | ❌ W0 | ⬜ pending |
-| 11-01-07 | 01 | 1 | INST-48 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "record_result" -x` | ❌ W0 | ⬜ pending |
-| 11-01-08 | 01 | 1 | INST-49 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "render_summary" -x` | ❌ W0 | ⬜ pending |
-| 11-01-09 | 01 | 1 | INST-50 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "render_validation" -x` | ❌ W0 | ⬜ pending |
-| 11-02-01 | 02 | 2 | INST-52, INST-54 | manual | Manual: run `/mg:install` on test target | N/A | ⬜ pending |
+| 11-02-01 | 02 | 1 | INST-46, INST-56 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "install_plan" -x` | ❌ W0 | ⬜ pending |
+| 11-02-02 | 02 | 1 | INST-47 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "render_preflight" -x` | ❌ W0 | ⬜ pending |
+| 11-02-03 | 02 | 1 | INST-48 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "record_result" -x` | ❌ W0 | ⬜ pending |
+| 11-02-04 | 02 | 1 | INST-49 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "render_summary" -x` | ❌ W0 | ⬜ pending |
+| 11-02-05 | 02 | 1 | INST-50 | unit | `.venv/bin/pytest install/scripts/tests/test_mg_install_lib.py -k "render_validation" -x` | ❌ W0 | ⬜ pending |
+| 11-03-01 | 03 | 2 | INST-52, INST-54 | manual | Manual: run `/mg:install` on test target | N/A | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
