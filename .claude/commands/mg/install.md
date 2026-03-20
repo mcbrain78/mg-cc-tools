@@ -1,7 +1,7 @@
 ---
 name: mg:install
 description: Install, update, and manage mg-cc-tools in target projects
-allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion
+allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, Agent
 ---
 
 # mg:install -- Unified Tool Installer & Manager
@@ -101,10 +101,11 @@ mg-cc-tools v0.3.0 → /home/user/projects/road-runner
   debug-triage         GSD debug workflow with structured triage           Available
   ·
   data-provider  *     Research and map external data field sources        Available
+  gsd-patches    *     Apply GSD methodology patches                       Available
+  mg-gsd-wrappers *    GSD workflow slash commands (Requires: gsd-patches) ✓ Current
   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
   install              mg-cc-tools installer (internal)                    Excluded
   cc-regression-test   Claude Code regression test harness (internal)      Excluded
-  gsd-patches          Apply GSD methodology patches                       Excluded
 
   Installed: 6/9  |  Outdated: 1  |  Available: 3
 
@@ -145,6 +146,8 @@ python3 "$MG_INSTALL_LIB" adopt --source ./ --target "$TARGET_PATH"
 
 This returns a compact JSON with just the adopted tool names (e.g., `{"adopted": ["codebase-health", "create-docs"], "count": 2}`). The manifest is written automatically — no extra step needed.
 
+The adopt command detects tools via command files in `.claude/commands/mg/` AND via `[detect]` paths configured in each tool's `tool.toml`. Execute-only tools (no commands, no detect paths) are skipped.
+
 Show which tools were adopted, then re-run scan-status and display the updated table.
 
 ---
@@ -155,7 +158,7 @@ Present numbered options as a **plain text prompt** (NOT AskUserQuestion). The o
 
 Parse the `summary` from the scan-status output to determine the scenario.
 
-**Scenario A: Nothing installed (summary.installed == 0)**
+**Scenario A: Nothing installed (summary.installed_total == 0)**
 ```
 What would you like to do?
 
@@ -166,7 +169,7 @@ What would you like to do?
 Type a number, or tool names separated by commas:
 ```
 
-**Scenario B: Some outdated or modified (summary.outdated > 0 or summary.modified > 0)**
+**Scenario B: Some outdated or modified (summary.update > 0 or summary.modified > 0)**
 ```
 What would you like to do?
 
@@ -179,7 +182,7 @@ What would you like to do?
 Type a number, tool names, or 'all':
 ```
 
-**Scenario C: All current (summary.installed > 0 and summary.outdated == 0 and summary.modified == 0)**
+**Scenario C: All current (summary.installed_total > 0 and summary.update == 0 and summary.modified == 0)**
 ```
 What would you like to do?
 
@@ -247,10 +250,10 @@ If the user selects "Edit standard install list":
 Run preflight checks for the selected tools:
 
 ```bash
-python3 "$MG_INSTALL_LIB" preflight --source ./ --target "$TARGET_PATH" --tools tool1 tool2 tool3
+python3 "$MG_INSTALL_LIB" preflight --source ./ --target "$TARGET_PATH" --tools "tool1,tool2,tool3"
 ```
 
-This returns JSON with: `checks` array (each with `name`, `status`, `version`, `required_by`, `fix` info) and `all_required_passed` boolean.
+This returns JSON with: `checks` array (each with `id`, `type`, `passed`, `required`, `version`, `error`, `fix`) and `all_passed` boolean.
 
 **Display results:**
 ```
@@ -266,7 +269,7 @@ Preflight checks:
   Optional: 0/2 (degraded features noted)
 ```
 
-**If `all_required_passed` is false (required check failed):**
+**If `all_passed` is false (required check failed):**
 
 Hard abort. Show the failing check's fix instructions:
 ```
@@ -318,31 +321,86 @@ Capabilities:
 
 ## Step 6: Execute Installs
 
-For each tool in the final tool list, run its `install.sh`:
+For each tool in the final tool list, execute the install in sequence. **Stop immediately if any tool fails -- do not continue with remaining tools.**
+
+For each tool, read its `post_install` and `has_install_sh` fields from the scan-status output to determine the install pattern.
+
+### Pattern A: Copy only (has_install_sh=true, post_install=null)
 
 ```bash
 bash ./<tool-name>/install.sh --target "$TARGET_PATH/.claude"
 ```
 
-**IMPORTANT:** The `--target` argument points to the `.claude` directory inside the target project.
+If exit code != 0: STOP. Report "`<tool-name>` install FAILED" with stderr.
 
-Display progress for each tool:
+### Pattern B: Copy + configure (has_install_sh=true, post_install is not null)
+
+1. Run install.sh:
+```bash
+bash ./<tool-name>/install.sh --target "$TARGET_PATH/.claude"
+```
+If exit code != 0: STOP.
+
+2. Read the post-install script from source:
+```bash
+cat ./<tool-name>/<post_install_script>
+```
+
+3. Spawn Agent with the post-install content:
+```
+Agent prompt:
+"Target project: $TARGET_PATH
+Source directory: $SOURCE_PATH
+
+<contents of post-install.md file>"
+```
+
+4. Check the Agent's returned text for the status marker:
+   - If text contains "POST-INSTALL: SUCCESS" -> continue
+   - If text contains "POST-INSTALL: FAILED:" -> STOP. Show: "`<tool-name>` post-install FAILED: `<reason from marker>`". Then show the full Agent output below for debugging.
+   - If neither marker found -> STOP. Show: "`<tool-name>` post-install FAILED: no status marker in output". Show full output.
+
+### Pattern C: Execute only (has_install_sh=false, post_install is not null)
+
+1. Read and spawn Agent (same as Pattern B steps 2-4)
+
+2. If successful, call update-manifest directly (since no install.sh handled it):
+```bash
+python3 "$MG_INSTALL_LIB" update-manifest \
+  --target "$TARGET_PATH" --tool "<tool-name>" --source "./<tool-name>"
+```
+
+### Progress Display
+
+**IMPORTANT:** The `--target` argument for install.sh points to the `.claude` directory inside the target project.
+
+Display progress for each tool as it completes:
 ```
 Installing tools:
 
-  create-docs...        done
-  codebase-health...    done
-  debug-triage...       done
-  update-backlog...     done
+  create-docs...          done (copy only)
+  permission-hooks...     done (copy + configure)
+  gsd-patches...          done (execute only)
+  debug-triage...         done (copy only)
 ```
 
-**Error handling:** If a tool's install.sh fails (non-zero exit code):
-- Report the error: `create-docs...  FAILED (exit code 1)`
-- Capture and display stderr
-- Continue with remaining tools (do not abort the entire install)
-- Track failed tools for the summary
+If a tool fails:
+```
+Installing tools:
 
-Each tool's `install.sh` handles all file copying, sed placeholder resolution, workspace scaffolding, and manifest update internally.
+  create-docs...          done (copy only)
+  permission-hooks...     FAILED (post-install)
+
+  permission-hooks post-install FAILED: settings.json merge failed
+
+  --- Full post-install output ---
+  [full Agent output here]
+  ---
+
+  Installed successfully: create-docs
+  Failed: permission-hooks
+  Not attempted: gsd-patches, debug-triage
+```
 
 ---
 
@@ -417,8 +475,9 @@ mg-cc-tools -- INSTALL COMPLETE
 **Action column values:**
 - `Installed` -- newly installed this run
 - `Updated` -- reinstalled due to version or source changes
+- `Configured` -- ran post-install (Pattern B or C); show "(post-install)" note
 - `Unchanged` -- already current, not reinstalled
-- `Failed` -- install.sh failed (show error details above)
+- `Failed` -- install or post-install failed (show error details above)
 
 ---
 
@@ -427,9 +486,9 @@ mg-cc-tools -- INSTALL COMPLETE
 1. **Always runs from mg-cc-tools directory** -- source is always `./`
 2. **mg-install-lib.py is at `./install/scripts/mg-install-lib.py`** -- no sed resolution needed since this command always runs from the source directory
 3. **AskUserQuestion is ONLY for target selection** (Step 1) -- action selection (Step 3) uses numbered text prompts parsed by the LLM
-4. **claude -p probe runs from the TARGET directory** -- LSP availability is project-specific
-5. **Excluded tools** (install, cc-regression-test, gsd-patches) are shown in status but excluded from bulk operations; they can be installed explicitly by name
+4. **LSP detected via settings.json scan** -- checks global and project settings for LSP plugins
+5. **Excluded tools** (install, cc-regression-test) are shown in status but excluded from bulk operations; they can be installed explicitly by name. Note: gsd-patches is optional (standard=false), not excluded -- it appears in the optional section
 9. **Standard vs optional tools** -- bulk "install all" only includes tools where `standard: true` (resolved from tool.toml default + manifest `standard_overrides`). Optional tools can be installed by name or promoted via "Edit standard install list"
-6. **Each tool's install.sh handles its own manifest update** -- this command does NOT call update-manifest directly
+6. **Each tool's install.sh handles its own manifest update** -- this command does NOT call update-manifest directly. Exception: execute-only tools (no install.sh) -- for these, this command calls update-manifest directly after post-install completes
 7. **Preflight required check failure is a hard abort** -- do not proceed to installation
 8. **LSP probe failure is never blocking** -- note it and continue
