@@ -813,6 +813,276 @@ def adopt_tools(source_dir, target_dir):
 
 
 # ============================================================
+# Subcommand: render-status-table
+# ============================================================
+
+
+def _get_ordered_tools(tools):
+    """Return non-excluded tools in canonical order: standard first, then optional.
+
+    Each tool retains its original dict from scan-status JSON.
+    This is the SINGLE source of truth for tool numbering used by
+    render-tool-picker and resolve-tool-selection.
+
+    Within each tier, tools preserve scan-status order (alphabetical from
+    discover_tools).
+    """
+    standard = [t for t in tools if not t["excluded"] and t["standard"]]
+    optional = [t for t in tools if not t["excluded"] and not t["standard"]]
+    return standard + optional
+
+
+def _format_status(tool):
+    """Format the status column for a tool in the status table."""
+    status = tool["status"]
+    if status == "current":
+        return "\u2713 Current"
+    elif status == "update":
+        old_ver = tool.get("installed_version") or "?"
+        new_ver = tool.get("current_version") or "?"
+        return f"Update ({old_ver} -> {new_ver})"
+    elif status == "modified":
+        n = len(tool.get("changed_files", []))
+        return f"Modified ({n} files)"
+    elif status == "corrupt":
+        return "Corrupt"
+    elif status == "available":
+        return "Available"
+    elif status == "excluded":
+        return "Excluded"
+    else:
+        return status.capitalize()
+
+
+def render_status_table(scan_data):
+    """Render formatted status table from scan-status JSON.
+
+    Prints a three-tier table (standard, optional, excluded) with
+    aligned columns, summary counts, and status legend to stdout.
+    """
+    version = scan_data.get("mg_cc_tools_version", "?.?.?")
+    target = scan_data.get("target", "?")
+    tools = scan_data.get("tools", [])
+    summary = scan_data.get("summary", {})
+
+    # Separate tiers
+    standard = [t for t in tools if not t["excluded"] and t["standard"]]
+    optional = [t for t in tools if not t["excluded"] and not t["standard"]]
+    excluded = [t for t in tools if t["excluded"]]
+
+    # Build display rows: (name_col, description, status_str)
+    # name_col includes the optional * marker
+    rows = []
+    for t in standard:
+        rows.append((t["name"], t["description"], _format_status(t)))
+    for t in optional:
+        rows.append((t["name"] + "  *", t["description"], _format_status(t)))
+    for t in excluded:
+        status_str = "Excluded"
+        rows.append((t["name"], t["description"], status_str))
+
+    # Compute column widths dynamically
+    name_width = max((len(r[0]) for r in rows), default=10) + 2
+    desc_width = max((len(r[1]) for r in rows), default=20) + 2
+    status_width = max((len(r[2]) for r in rows), default=10)
+
+    # Ensure minimum widths for headers
+    name_width = max(name_width, len("Tool") + 2)
+    desc_width = max(desc_width, len("Description") + 2)
+    status_width = max(status_width, len("Status"))
+
+    total_width = 2 + name_width + desc_width + status_width  # 2 for leading indent
+
+    # Header
+    print(f"mg-cc-tools v{version} -> {target}")
+    print()
+
+    # Column headers
+    print(f"  {'Tool':<{name_width}}{'Description':<{desc_width}}{'Status'}")
+    print(f"  {'\u2500' * (total_width - 2)}")
+
+    # Standard tools
+    for t in standard:
+        name_col = t["name"]
+        print(f"  {name_col:<{name_width}}{t['description']:<{desc_width}}{_format_status(t)}")
+
+    # Dot separator between standard and optional
+    if standard and optional:
+        print(f"  \u00b7")
+
+    # Optional tools
+    for t in optional:
+        name_col = t["name"] + "  *"
+        print(f"  {name_col:<{name_width}}{t['description']:<{desc_width}}{_format_status(t)}")
+
+    # Dashed separator before excluded
+    if excluded:
+        dash_line = "\u2500 " * ((total_width - 2) // 2)
+        print(f"  {dash_line.rstrip()}")
+        for t in excluded:
+            status_str = "Excluded"
+            print(f"  {t['name']:<{name_width}}{t['description']:<{desc_width}}{status_str}")
+
+    # Summary line
+    non_excluded_total = len(standard) + len(optional)
+    installed_total = summary.get("installed_total", 0)
+    update_count = summary.get("update", 0)
+    available_count = summary.get("available", 0)
+
+    print()
+    print(f"  Installed: {installed_total}/{non_excluded_total}  |  Outdated: {update_count}  |  Available: {available_count}")
+
+    # Status legend
+    print()
+    print("  Status legend:")
+    print("    \u2713 Current       Installed, version and source files match")
+    print("    Update          Installed, but newer version available (old -> new)")
+    print("    Modified        Installed, same version, source files changed (N files)")
+    print("    Corrupt         In manifest but command files missing from disk")
+    print("    Available       Not yet installed")
+    print("    Excluded        Internal tool, install by name only")
+    print()
+    print('  *  = optional tool (not included in "Install all standard")')
+    print("     Edit the standard list with option [N] below")
+
+
+# ============================================================
+# Subcommand: render-tool-picker
+# ============================================================
+
+
+def render_tool_picker(scan_data):
+    """Render numbered tool picker from scan-status JSON.
+
+    Prints a numbered list with Standard and Optional section headers,
+    status annotations for non-available tools, to stdout.
+    """
+    tools = scan_data.get("tools", [])
+    ordered = _get_ordered_tools(tools)
+
+    # Separate into standard and optional for section headers
+    standard = [t for t in ordered if t["standard"]]
+    optional = [t for t in ordered if not t["standard"]]
+
+    # Compute column widths
+    max_name = max((len(t["name"]) for t in ordered), default=10)
+    num_width = len(str(len(ordered)))
+
+    # Separator width
+    sep_width = num_width + 2 + max_name + 6 + 40  # generous
+
+    print("Select tools to install:")
+    print()
+
+    idx = 1
+
+    # Standard section
+    print("  Standard")
+    print(f"  {'\u2500' * sep_width}")
+    for t in standard:
+        annotation = ""
+        if t["status"] != "available":
+            annotation = f" ({t['status'].capitalize()})"
+        print(f"  {idx:>{num_width}}. {t['name']:<{max_name + 6}}{t['description']}{annotation}")
+        idx += 1
+
+    # Optional section
+    if optional:
+        print()
+        print("  Optional")
+        print(f"  {'\u2500' * sep_width}")
+        for t in optional:
+            annotation = ""
+            if t["status"] != "available":
+                annotation = f" ({t['status'].capitalize()})"
+            print(f"  {idx:>{num_width}}. {t['name']:<{max_name + 6}}{t['description']}{annotation}")
+            idx += 1
+
+    print()
+    print("Type numbers, names, or 'all':")
+
+
+# ============================================================
+# Subcommand: resolve-tool-selection
+# ============================================================
+
+
+def resolve_tool_selection(scan_data, selection_text):
+    """Resolve user's selection text to a list of tool names.
+
+    Args:
+        scan_data: Full scan-status JSON dict.
+        selection_text: User's input (numbers, ranges, names, mixed, or "all").
+
+    Returns:
+        dict with either {"tools": [...]} or {"error": "..."}.
+    """
+    tools = scan_data.get("tools", [])
+    ordered = _get_ordered_tools(tools)
+
+    # Build lookup structures
+    num_to_name = {}
+    name_set = set()
+    for i, t in enumerate(ordered, start=1):
+        num_to_name[i] = t["name"]
+        name_set.add(t["name"])
+
+    total = len(ordered)
+
+    # Handle "all" keyword
+    stripped = selection_text.strip().lower()
+    if stripped == "all":
+        return {"tools": [t["name"] for t in ordered]}
+
+    # Split on commas and process each token
+    tokens = [tok.strip() for tok in selection_text.split(",")]
+    result_names = []
+
+    for token in tokens:
+        if not token:
+            continue
+
+        # Check if it's a range (e.g., "1-3")
+        range_match = re.match(r"^(\d+)\s*-\s*(\d+)$", token)
+        if range_match:
+            start = int(range_match.group(1))
+            end = int(range_match.group(2))
+            if start < 1 or end > total:
+                return {"error": f"Invalid range: {token} (valid range is 1-{total})"}
+            if start > end:
+                return {"error": f"Invalid range: {token} (start > end)"}
+            for n in range(start, end + 1):
+                result_names.append(num_to_name[n])
+            continue
+
+        # Check if it's a number
+        if token.isdigit():
+            num = int(token)
+            if num < 1 or num > total:
+                return {"error": f"Invalid selection: number {num} is out of range (1-{total})"}
+            result_names.append(num_to_name[num])
+            continue
+
+        # Must be a name
+        if token in name_set:
+            result_names.append(token)
+            continue
+
+        # Unknown
+        return {"error": f"Unknown tool name: {token}"}
+
+    # Deduplicate while preserving order
+    seen = set()
+    deduped = []
+    for name in result_names:
+        if name not in seen:
+            seen.add(name)
+            deduped.append(name)
+
+    return {"tools": deduped}
+
+
+# ============================================================
 # CLI entry point
 # ============================================================
 
@@ -898,6 +1168,29 @@ def cmd_adopt(args):
     sys.stdout.write("\n")
 
 
+def cmd_render_status_table(args):
+    """CLI handler for render-status-table."""
+    with open(args.input, "r", encoding="utf-8") as f:
+        scan_data = json.load(f)
+    render_status_table(scan_data)
+
+
+def cmd_render_tool_picker(args):
+    """CLI handler for render-tool-picker."""
+    with open(args.input, "r", encoding="utf-8") as f:
+        scan_data = json.load(f)
+    render_tool_picker(scan_data)
+
+
+def cmd_resolve_tool_selection(args):
+    """CLI handler for resolve-tool-selection."""
+    with open(args.input, "r", encoding="utf-8") as f:
+        scan_data = json.load(f)
+    result = resolve_tool_selection(scan_data, args.selection)
+    json.dump(result, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="mg-cc-tools installer library",
@@ -968,6 +1261,35 @@ def main():
     p_adopt.add_argument("--target", required=True,
                          help="Path to target project directory")
     p_adopt.set_defaults(func=cmd_adopt)
+
+    # render-status-table
+    p_render_table = sub.add_parser(
+        "render-status-table",
+        help="Render formatted status table from scan-status JSON",
+    )
+    p_render_table.add_argument("--input", required=True,
+                                help="Path to scan-status JSON file")
+    p_render_table.set_defaults(func=cmd_render_status_table)
+
+    # render-tool-picker
+    p_render_picker = sub.add_parser(
+        "render-tool-picker",
+        help="Render numbered tool picker from scan-status JSON",
+    )
+    p_render_picker.add_argument("--input", required=True,
+                                 help="Path to scan-status JSON file")
+    p_render_picker.set_defaults(func=cmd_render_tool_picker)
+
+    # resolve-tool-selection
+    p_resolve = sub.add_parser(
+        "resolve-tool-selection",
+        help="Resolve tool selection text to tool names",
+    )
+    p_resolve.add_argument("--input", required=True,
+                           help="Path to scan-status JSON file")
+    p_resolve.add_argument("--selection", required=True,
+                           help="User's selection text (numbers, ranges, names, or 'all')")
+    p_resolve.set_defaults(func=cmd_resolve_tool_selection)
 
     args = parser.parse_args()
     args.func(args)
