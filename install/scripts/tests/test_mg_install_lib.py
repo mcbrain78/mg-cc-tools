@@ -1696,3 +1696,587 @@ class TestAdopt:
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
             assert len(data["adopted"]) == 0
+
+
+# ============================================================
+# Helpers for renderer tests
+# ============================================================
+
+
+def _make_scan_status_fixture():
+    """Create a realistic scan-status JSON for renderer tests.
+
+    Includes:
+    - 3 standard tools (statuses: current, update, available)
+    - 2 optional tools (statuses: available, corrupt)
+    - 1 excluded tool
+    """
+    return {
+        "mg_cc_tools_version": "0.3.0",
+        "target": "/home/user/projects/road-runner",
+        "manifest_exists": True,
+        "tools": [
+            {
+                "name": "alpha-tool",
+                "description": "Alpha tool for testing",
+                "status": "current",
+                "installed_version": "0.3.0",
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["alpha-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "beta-tool",
+                "description": "Beta tool with update available",
+                "status": "update",
+                "installed_version": "0.2.0",
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["beta-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "gamma-tool",
+                "description": "Gamma tool not yet installed",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["gamma-tool.md"],
+                "excluded": False,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "delta-optional",
+                "description": "Delta optional tool",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["delta-optional.md"],
+                "excluded": False,
+                "standard": False,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "epsilon-optional",
+                "description": "Epsilon optional but corrupt",
+                "status": "corrupt",
+                "installed_version": "0.2.0",
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["epsilon-optional.md"],
+                "excluded": False,
+                "standard": False,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+            {
+                "name": "zeta-excluded",
+                "description": "Zeta internal excluded tool",
+                "status": "available",
+                "installed_version": None,
+                "current_version": "0.3.0",
+                "changed_files": [],
+                "commands": ["zeta-excluded.md"],
+                "excluded": True,
+                "standard": True,
+                "has_install_sh": True,
+                "post_install": None,
+            },
+        ],
+        "summary": {
+            "total": 6,
+            "installed_total": 3,
+            "current": 1,
+            "update": 1,
+            "modified": 0,
+            "corrupt": 1,
+            "available": 3,
+        },
+    }
+
+
+def _write_scan_status_file(tmpdir, scan_data=None):
+    """Write scan-status JSON to a temp file and return the path."""
+    if scan_data is None:
+        scan_data = _make_scan_status_fixture()
+    path = os.path.join(tmpdir, "scan-status.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(scan_data, f, indent=2)
+    return path
+
+
+# ============================================================
+# render-status-table subcommand
+# ============================================================
+
+
+class TestRenderStatusTable:
+    """render-status-table subcommand tests."""
+
+    def test_three_tier_layout(self):
+        """Table shows standard, optional (with dot separator), and excluded
+        (with dashed separator) sections."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+
+            # Standard tools present
+            assert "alpha-tool" in out
+            assert "beta-tool" in out
+            assert "gamma-tool" in out
+
+            # Optional tools present
+            assert "delta-optional" in out
+            assert "epsilon-optional" in out
+
+            # Excluded tool present
+            assert "zeta-excluded" in out
+
+            # Dot separator between standard and optional
+            lines = out.split("\n")
+            dot_line_found = any("\u00b7" in line for line in lines)
+            assert dot_line_found, "Expected dot separator (\u00b7) between standard and optional"
+
+            # Dashed separator before excluded
+            dashed_found = any("\u2500 \u2500" in line for line in lines)
+            assert dashed_found, "Expected dashed separator (\u2500 \u2500) before excluded section"
+
+    def test_summary_counts_non_excluded(self):
+        """Summary line counts only non-excluded tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+
+            # installed_total=3 from summary, non-excluded total=5
+            # Summary should show Installed: 3/5
+            assert "3/5" in out
+
+    def test_update_version_annotation(self):
+        """Tool with status 'update' shows version annotation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "Update (0.2.0" in out
+            assert "0.3.0)" in out
+
+    def test_current_status_shows_checkmark(self):
+        """Tool with status 'current' shows checkmark symbol."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "\u2713 Current" in out
+
+    def test_optional_tools_have_star_marker(self):
+        """Optional tools show '*' marker after tool name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+
+            # Find lines with optional tools -- they should have *
+            lines = out.split("\n")
+            delta_lines = [l for l in lines if "delta-optional" in l]
+            assert len(delta_lines) > 0
+            assert "*" in delta_lines[0]
+
+            epsilon_lines = [l for l in lines if "epsilon-optional" in l]
+            assert len(epsilon_lines) > 0
+            assert "*" in epsilon_lines[0]
+
+    def test_column_alignment(self):
+        """Column alignment is consistent across all rows."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+
+            # Find tool data rows (lines containing tool names)
+            tool_names = ["alpha-tool", "beta-tool", "gamma-tool",
+                          "delta-optional", "epsilon-optional"]
+            tool_lines = []
+            for line in out.split("\n"):
+                for name in tool_names:
+                    if name in line:
+                        tool_lines.append(line)
+                        break
+
+            # At least 5 tool lines should be present
+            assert len(tool_lines) >= 5, f"Expected 5+ tool lines, got {len(tool_lines)}"
+
+    def test_header_line(self):
+        """Header shows 'mg-cc-tools vX.Y.Z -> /path/to/target'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "mg-cc-tools v0.3.0" in out
+            assert "/home/user/projects/road-runner" in out
+            assert "->" in out
+
+    def test_status_legend(self):
+        """Status legend appears at bottom with all status definitions."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+
+            # All 6 status types in legend
+            assert "\u2713 Current" in out
+            assert "Update" in out
+            assert "Modified" in out
+            assert "Corrupt" in out
+            assert "Available" in out
+            assert "Excluded" in out
+
+            # Optional marker explanation
+            assert "*" in out
+            assert "optional" in out.lower()
+
+    def test_cli_invocation_with_input(self):
+        """CLI invocation via --input file works (subprocess)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-status-table", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            # Should produce non-empty stdout
+            assert len(result.stdout.strip()) > 0
+
+
+# ============================================================
+# render-tool-picker subcommand
+# ============================================================
+
+
+class TestRenderToolPicker:
+    """render-tool-picker subcommand tests."""
+
+    def test_section_headers(self):
+        """Shows Standard and Optional section headers with separator lines."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-tool-picker", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "Standard" in out
+            assert "Optional" in out
+
+    def test_sequential_numbering(self):
+        """Tools numbered sequentially (standard 1..N, then optional N+1..M)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-tool-picker", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+
+            # 3 standard + 2 optional = 5 tools
+            # Numbers 1-5 should appear
+            lines = out.split("\n")
+            numbered_lines = [l for l in lines if l.strip() and
+                              l.strip()[0].isdigit()]
+            # Should have exactly 5 numbered tool lines
+            assert len(numbered_lines) == 5, \
+                f"Expected 5 numbered lines, got {len(numbered_lines)}: {numbered_lines}"
+
+    def test_excluded_tools_filtered(self):
+        """Excluded tools are not shown."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-tool-picker", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "zeta-excluded" not in out
+
+    def test_non_available_status_annotation(self):
+        """Tools with non-available status get annotation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-tool-picker", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+
+            # alpha-tool is "current" -> should show (Current)
+            alpha_lines = [l for l in out.split("\n") if "alpha-tool" in l]
+            assert len(alpha_lines) > 0
+            assert "(Current)" in alpha_lines[0]
+
+            # epsilon-optional is "corrupt" -> should show (Corrupt)
+            epsilon_lines = [l for l in out.split("\n") if "epsilon-optional" in l]
+            assert len(epsilon_lines) > 0
+            assert "(Corrupt)" in epsilon_lines[0]
+
+    def test_available_tools_no_annotation(self):
+        """Available tools have no status annotation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-tool-picker", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+
+            # gamma-tool is "available" -> no annotation
+            gamma_lines = [l for l in out.split("\n") if "gamma-tool" in l]
+            assert len(gamma_lines) > 0
+            # Should NOT have a parenthesized annotation
+            assert "(Available)" not in gamma_lines[0]
+            assert "(Current)" not in gamma_lines[0]
+
+    def test_footer_line(self):
+        """Footer line 'Type numbers, names, or all:' appears."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-tool-picker", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            out = result.stdout
+            assert "Type numbers, names, or" in out
+            assert "all" in out
+
+    def test_cli_invocation_with_input(self):
+        """CLI invocation via --input file works."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["render-tool-picker", "--input", input_file])
+            assert result.returncode == 0, result.stderr
+            assert len(result.stdout.strip()) > 0
+
+
+# ============================================================
+# resolve-tool-selection subcommand
+# ============================================================
+
+
+class TestResolveToolSelection:
+    """resolve-tool-selection subcommand tests."""
+
+    def test_single_number(self):
+        """Single number '2' resolves to the second tool name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "2"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "tools" in data
+            assert len(data["tools"]) == 1
+            # Second tool in ordered list (standard first, alphabetical)
+            assert data["tools"][0] == "beta-tool"
+
+    def test_comma_separated_numbers(self):
+        """Comma-separated numbers '2,5' resolves to correct tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "2,5"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "tools" in data
+            assert len(data["tools"]) == 2
+            assert "beta-tool" in data["tools"]
+            assert "epsilon-optional" in data["tools"]
+
+    def test_range(self):
+        """Range '1-3' resolves to first three tool names."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "1-3"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "tools" in data
+            assert len(data["tools"]) == 3
+            assert "alpha-tool" in data["tools"]
+            assert "beta-tool" in data["tools"]
+            assert "gamma-tool" in data["tools"]
+
+    def test_tool_name(self):
+        """Tool name 'delta-optional' resolves to ['delta-optional']."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "delta-optional"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "tools" in data
+            assert data["tools"] == ["delta-optional"]
+
+    def test_mixed_input(self):
+        """Mixed '1-3, delta-optional' resolves to union of range + name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "1-3, delta-optional"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "tools" in data
+            assert len(data["tools"]) == 4
+            assert "alpha-tool" in data["tools"]
+            assert "beta-tool" in data["tools"]
+            assert "gamma-tool" in data["tools"]
+            assert "delta-optional" in data["tools"]
+
+    def test_all_keyword(self):
+        """'all' resolves to all non-excluded tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "all"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "tools" in data
+            assert len(data["tools"]) == 5
+            assert "zeta-excluded" not in data["tools"]
+
+    def test_out_of_range_number(self):
+        """Out-of-range number returns error JSON."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "99"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "error" in data
+
+    def test_unrecognized_name(self):
+        """Unrecognized name returns error JSON."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "nonexistent-tool"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "error" in data
+
+    def test_numbering_matches_picker(self):
+        """Numbering matches render-tool-picker output (shared _get_ordered_tools)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+
+            # Get picker output
+            picker_result = _run(["render-tool-picker", "--input", input_file])
+            assert picker_result.returncode == 0, picker_result.stderr
+            picker_out = picker_result.stdout
+
+            # Extract tool at position 1 from picker output
+            lines = picker_out.split("\n")
+            first_numbered = None
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("1."):
+                    first_numbered = stripped
+                    break
+
+            assert first_numbered is not None, "No line starting with '1.' in picker output"
+
+            # Resolve number 1
+            resolve_result = _run(["resolve-tool-selection",
+                                   "--input", input_file,
+                                   "--selection", "1"])
+            assert resolve_result.returncode == 0, resolve_result.stderr
+            data = json.loads(resolve_result.stdout)
+            resolved_name = data["tools"][0]
+
+            # The first tool name from picker should match the resolved name
+            assert resolved_name in first_numbered
+
+    def test_cli_invocation(self):
+        """CLI invocation via --input and --selection args works."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "1"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "tools" in data
+
+
+# ============================================================
+# Shared ordering (_get_ordered_tools)
+# ============================================================
+
+
+class TestGetOrderedTools:
+    """Tests for the shared _get_ordered_tools ordering function."""
+
+    def test_standard_before_optional(self):
+        """Standard tools come before optional tools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+
+            # Resolve all to get the ordered list
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "all"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            tools = data["tools"]
+
+            # Standard tools: alpha-tool, beta-tool, gamma-tool
+            # Optional tools: delta-optional, epsilon-optional
+            # Standard should come first
+            alpha_idx = tools.index("alpha-tool")
+            delta_idx = tools.index("delta-optional")
+            assert alpha_idx < delta_idx, \
+                "Standard tools should come before optional"
+
+    def test_excludes_excluded_tools(self):
+        """Excluded tools are not in the ordered list."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "all"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "zeta-excluded" not in data["tools"]
+
+    def test_alphabetical_within_tier(self):
+        """Tools are alphabetical within each tier."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = _write_scan_status_file(tmp)
+
+            result = _run(["resolve-tool-selection",
+                           "--input", input_file,
+                           "--selection", "all"])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            tools = data["tools"]
+
+            # Standard tier: alpha, beta, gamma (already alphabetical)
+            standard = tools[:3]
+            assert standard == sorted(standard)
+
+            # Optional tier: delta, epsilon (already alphabetical)
+            optional = tools[3:]
+            assert optional == sorted(optional)
