@@ -127,6 +127,24 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INST-41**: Scenario A/B/C top-level action menus remain LLM-rendered (not moved to Python)
 - [x] **INST-42**: Pytest tests cover all three new subcommands (render-status-table, render-tool-picker, resolve-tool-selection)
 
+### Install Orchestration
+
+- [ ] **INST-43**: `scan-status` gains an `--auto-adopt` flag that auto-detects and adopts existing installations when no manifest exists, reporting adopted tools in its output
+- [ ] **INST-44**: `render-action-menu` subcommand produces the correct scenario menu as plain text given scan-status JSON input
+- [ ] **INST-45**: `resolve-action` subcommand maps a user's menu selection to an action and tool list given scan-status JSON and the user's response
+- [ ] **INST-46**: `get-install-plan` subcommand produces a JSON install plan with per-tool install pattern, expected action, install command, and command filenames
+- [ ] **INST-47**: `render-preflight` subcommand formats preflight results from JSON into human-readable output (existing `preflight` subcommand gains `--output` support)
+- [ ] **INST-48**: `record-result` subcommand appends per-tool success or failure to an install-results JSON file, deriving action and command filenames from the install plan
+- [ ] **INST-49**: `render-summary` subcommand formats the final summary table from install results, scan-status, and optional preflight capability data
+- [ ] **INST-50**: `render-validation` subcommand formats validation results from JSON into human-readable PASS/WARNING output
+- [ ] **INST-51**: Scenario B now triggers on corrupt and adopted statuses in addition to update and modified (behavior change from v1.2)
+- [ ] **INST-52**: `install.md` prompt is rewritten as a thin orchestrator where the LLM only echoes output, collects input, and spawns agents — no conditional rendering or scenario logic in the prompt
+- [ ] **INST-53**: `render-action-menu` and `resolve-action` share a single `_determine_scenario()` function to prevent scenario drift
+- [ ] **INST-54**: All `render-*` subcommand output is echoed verbatim as fenced code blocks; other subcommand output is machine-readable JSON not echoed (single consolidated rendering rule)
+- [ ] **INST-55**: All subcommands reading scan-status use `--input <path>`; `render-summary` uses `--input`, `--results`, `--preflight` for its three inputs
+- [ ] **INST-56**: Inter-step temp files use per-target subdirectories (`/tmp/mg-install-<target-basename>/`) to prevent collision across concurrent sessions
+- [ ] **INST-57**: All new code is stdlib-only with no pip dependencies
+
 ### Session Analyzer
 
 - [x] **SAN-01**: `cc_session_compactor.py` renamed from `reduce_cc_session_export.py` with all existing functionality preserved (levels 0-5, l2-compact)
@@ -275,6 +293,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-40 | Phase 10 | Complete |
 | INST-41 | Phase 10 | Complete |
 | INST-42 | Phase 10 | Complete |
+| INST-43 | Phase 11 | Pending |
+| INST-44 | Phase 11 | Pending |
+| INST-45 | Phase 11 | Pending |
+| INST-46 | Phase 11 | Pending |
+| INST-47 | Phase 11 | Pending |
+| INST-48 | Phase 11 | Pending |
+| INST-49 | Phase 11 | Pending |
+| INST-50 | Phase 11 | Pending |
+| INST-51 | Phase 11 | Pending |
+| INST-52 | Phase 11 | Pending |
+| INST-53 | Phase 11 | Pending |
+| INST-54 | Phase 11 | Pending |
+| INST-55 | Phase 11 | Pending |
+| INST-56 | Phase 11 | Pending |
+| INST-57 | Phase 11 | Pending |
 | SAN-01 | Phase 9 | Complete |
 | SAN-02 | Phase 9 | Complete |
 | SAN-03 | Phase 9 | Complete |
@@ -301,10 +334,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAN-24 | Phase 9 | Complete |
 
 **Coverage:**
-- v1 requirements: 114 total
-- Mapped to phases: 114
+- v1 requirements: 129 total
+- Mapped to phases: 129
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-20 after Phase 10 requirement generation*
+*Last updated: 2026-03-20 after Phase 11 requirement generation*

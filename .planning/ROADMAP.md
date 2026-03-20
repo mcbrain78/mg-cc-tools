@@ -217,3 +217,13 @@ Plans:
 Plans:
 - [x] 10-01-PLAN.md — TDD: render-status-table, render-tool-picker, resolve-tool-selection subcommands with pytest
 - [ ] 10-02-PLAN.md — install.md prompt simplification: replace inline templates with subcommand calls
+
+### Phase 11: add tooling to install command
+
+**Goal:** [To be planned]
+**Requirements**: INST-43, INST-44, INST-45, INST-46, INST-47, INST-48, INST-49, INST-50, INST-51, INST-52, INST-53, INST-54, INST-55, INST-56, INST-57
+**Depends on:** Phase 10
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 11 to break down)
