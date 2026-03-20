@@ -159,19 +159,26 @@ Spawn a single Agent subagent (subagent_type: "general-purpose") that generates 
 Prompt for the consolidator:
 
 ```
-You are a requirement consolidator. Your job:
-1. Spawn a generator subagent to produce tagged candidates
-2. Curate the candidates into right-sized requirements
-3. Return ONLY the final curated list
+You are a requirement consolidator.
+
+CRITICAL INSTRUCTION: You MUST use the Agent tool to spawn a generator subagent in Step 1.
+Do NOT read the CONTEXT.md file yourself. Do NOT generate candidates yourself.
+The entire point of this architecture is context isolation — the generator's exhaustive
+candidate list must never appear in your context. You only see the generator's final output
+via the Agent tool return value, then you curate it.
 
 ## Step 1: Generate candidates
 
-Spawn an Agent subagent with this prompt:
+Use the Agent tool to spawn a subagent with this prompt:
 "Read /home/mcbrain/mg_projects/mg-cc-tools/.claude/mg-gsd-wrappers/references/requirement-generator.md. Follow its instructions using {context_path} as the context file."
+
+Wait for the agent to return. Its output is the tagged candidate list.
+
+CRITICAL INSTRUCTION: Do NOT use the Read tool on {context_path}. Only the generator reads it.
 
 ## Step 2: Curate
 
-Review the generator's tagged candidate list:
+Review the generator's tagged candidate list (from the Agent return):
 
 - **capability** items → keep as individual requirements
 - **constraint** items → keep only if cross-cutting (applies to 2+ capabilities).
@@ -184,7 +191,10 @@ A phase with 15 decisions typically yields 8-15 requirements, not 20+.
 
 ## Step 3: Return
 
-Output ONLY the final curated list in this format (no curation reasoning, no candidate table):
+CRITICAL INSTRUCTION: Output ONLY the final curated list below. Do NOT include the
+candidate list, do NOT include a curation table, do NOT explain your reasoning.
+The orchestrator must receive a clean list with zero analysis residue.
+
 - Description of requirement 1
 - Description of requirement 2
 - ...
