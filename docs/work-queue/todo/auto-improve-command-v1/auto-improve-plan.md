@@ -26,19 +26,23 @@ Read the reviewer's feedback. For each issue, apply this test — but only consi
 
 **Skip** everything else. Log it as cosmetic in the report and move on.
 
-Fix **up to 5 issues** per round. If fewer than 5 clear the bar, fix only those. If zero clear the bar, skip straight to Step 6 and recommend stopping.
+Fix **up to 5 issues** per round. If fewer than 5 clear the bar, fix only those. If zero clear the bar, skip straight to Step 8 and recommend stopping.
 
 **When running multiple rounds:** Treat each reviewer's output as the complete, canonical list of live issues. If an issue appears again from a previous round, it means it was not fixed — do not dismiss it as "already seen." If an issue from a previous round no longer appears, the reviewer considers it resolved. Never use your memory of prior rounds to filter or deprioritize findings.
 
-### Step 3 — Targeted Research
+### Step 3 — Enforce Cap
+
+Count the issues you marked for fixing in Step 2. If the count exceeds 5, re-read the list, keep only the 5 highest-severity ones, and move the rest to deferred. Do NOT proceed until the count is at most 5.
+
+### Step 4 — Targeted Research
 
 If any of the triaged issues require deeper understanding of the project, launch **RESEARCH_SUBAGENT** (see Subagent Definitions below) with the relevant issues and file paths.
 
-### Step 4 — Implement Fixes
+### Step 5 — Implement Fixes
 
 Apply all fixes where you are confident in the resolution. For each fix, leave a brief inline comment or commit-style note explaining what changed and why.
 
-### Step 5 — Validate
+### Step 6 — Validate
 
 After all fixes are applied, run any available validation steps against AUTO_IMPROVE_FILE:
 
@@ -47,7 +51,7 @@ After all fixes are applied, run any available validation steps against AUTO_IMP
 
 If validation surfaces new problems, fix them before proceeding.
 
-### Step 6 — Report to User
+### Step 7 — Report to User
 
 Provide a summary structured as:
 
@@ -70,7 +74,7 @@ Non-goals (proposed new):   <count>
 
 Then ask the user to approve or reject **fixes** and **proposed non-goals** independently.
 
-### Step 7 — Approval
+### Step 8 — Approval
 
 After delivering the report, **stop and wait for the user**. Do not proceed until the user responds. The user approves **fixes** and **non-goals** independently.
 
