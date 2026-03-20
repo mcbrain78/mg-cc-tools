@@ -1285,8 +1285,10 @@ class TestValidate:
             os.makedirs(cmd_dir, exist_ok=True)
 
             # File with a resolved absolute path that doesn't exist
+            # Use /home/ prefix (not /tmp/) since /tmp/ paths are skipped as
+            # runtime temp files
             with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
-                f.write(f"Use {tmp}/nonexistent/path/script.py for analysis\n")
+                f.write("Use /home/nonexistent/path/script.py for analysis\n")
 
             result = _run([
                 "validate", "--target", target,

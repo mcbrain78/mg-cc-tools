@@ -210,7 +210,8 @@ done
 
 # Resolve {SCRIPTS_DIR} placeholder in command files (for script calls)
 echo "  Resolving {SCRIPTS_DIR} in command files ..."
-for cmd_file in "${COMMANDS_DIR}/"*.md; do
+for cmd in "${COMMANDS[@]}"; do
+  cmd_file="${COMMANDS_DIR}/${cmd}.md"
   if grep -q '{SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
   fi

@@ -68,6 +68,15 @@ WORKSPACE_DIRS = {
 # GSD agent files and LLM prompts.
 PLACEHOLDER_RE = re.compile(r"\{[A-Z][A-Z_]{2,}\}")
 
+# Runtime placeholders that appear in LLM prompt templates and are resolved
+# at LLM runtime, not at install time. These are NOT unresolved install
+# placeholders and should be skipped by the validator.
+RUNTIME_PLACEHOLDERS = {
+    "{DOCUMENT}",
+    "{DOCUMENT_NAME}",
+    "{STAGE_LABEL}",
+}
+
 # Absolute path detection: lines containing paths like /home/... or /usr/...
 # We look for paths that were meant to be sed-resolved
 ABS_PATH_RE = re.compile(r"(?:^|[\s\"'])(/(?:home|usr|opt|tmp|var|etc|nix)[^\s\"']+)")
@@ -720,17 +729,27 @@ def _check_file_for_issues(fpath, issues):
     for line_num, line in enumerate(lines, start=1):
         # Check for unresolved placeholders
         for match in PLACEHOLDER_RE.finditer(line):
+            placeholder = match.group(0)
+            # Skip known runtime placeholders (resolved by LLM, not install.sh)
+            if placeholder in RUNTIME_PLACEHOLDERS:
+                continue
             issues.append({
                 "file": fpath,
                 "line": line_num,
                 "type": "placeholder",
-                "pattern": match.group(0),
-                "message": f"Unresolved placeholder: {match.group(0)}",
+                "pattern": placeholder,
+                "message": f"Unresolved placeholder: {placeholder}",
             })
 
         # Check for absolute paths that don't exist
         for match in ABS_PATH_RE.finditer(line):
             abs_path = match.group(1)
+            # Skip /tmp/ paths -- these are runtime temp files, not install artifacts
+            if abs_path.startswith("/tmp/"):
+                continue
+            # Skip paths containing runtime template variables like {audience}
+            if "{" in abs_path and "}" in abs_path:
+                continue
             # Only check paths that look like real file references
             # (have file extensions or end with specific patterns)
             if not os.path.exists(abs_path) and (

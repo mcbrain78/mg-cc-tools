@@ -170,7 +170,7 @@ via the Agent tool return value, then you curate it.
 ## Step 1: Generate candidates
 
 Use the Agent tool to spawn a subagent with this prompt:
-"Read {GENERATOR_PROMPT}. Follow its instructions using {context_path} as the context file."
+"Read the file {GENERATOR_PROMPT} and follow its instructions using {context_path} as the context file."
 
 Wait for the agent to return. Its output is the tagged candidate list.
 
@@ -200,7 +200,7 @@ The orchestrator must receive a clean list with zero analysis residue.
 - ...
 ```
 
-Replace `{context_path}` with the actual CONTEXT.md path before spawning. `{GENERATOR_PROMPT}` is resolved at install time by install.sh.
+Replace `{context_path}` with the actual CONTEXT.md path before spawning. The path `{GENERATOR_PROMPT}` is resolved at install time by install.sh
 
 The consolidator returns the curated list. Number the requirements sequentially within the chosen prefix, continuing from the last used number (e.g., if `INST-12` exists, start at `INST-13`).
 

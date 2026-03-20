@@ -233,7 +233,8 @@ SCRIPTS_ABS="${SUPPORT_DIR}/scripts"
 TEMPLATES_ABS="${SUPPORT_DIR}/references/templates"
 
 echo "  Resolving path placeholders in command files ..."
-for cmd_file in "${COMMANDS_DIR}/"*.md; do
+for cmd in "${COMMANDS[@]}"; do
+  cmd_file="${COMMANDS_DIR}/${cmd}.md"
   if [[ ! -f "$cmd_file" ]]; then
     continue
   fi
@@ -257,9 +258,12 @@ for cmd_file in "${COMMANDS_DIR}/"*.md; do
   if grep -q '{TEMPLATES_DIR}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{TEMPLATES_DIR}|${TEMPLATES_ABS}|g" "$cmd_file"
   fi
-  # Resolve agents/ prefix (bare path reference)
-  if grep -q 'agents/' "$cmd_file" 2>/dev/null; then
-    sed -i "s|agents/|${AGENTS_ABS}/|g" "$cmd_file"
+  # Resolve agents/ prefix (bare path reference to agent files)
+  # Only match agents/ followed by a lowercase letter -- real agent files use
+  # lowercase names (e.g., agents/verifier.md). Audience-category paths like
+  # agents/SYSTEM_MAP.md use uppercase and must NOT be rewritten.
+  if grep -q 'agents/[a-z{]' "$cmd_file" 2>/dev/null; then
+    sed -i 's|agents/\([a-z{]\)|'"${AGENTS_ABS}"'/\1|g' "$cmd_file"
   fi
 done
 
