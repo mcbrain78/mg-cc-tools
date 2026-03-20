@@ -435,11 +435,11 @@ mg-cc-tools -- INSTALL COMPLETE
 
   Tool                Action       Commands
   ------------------------------------------------
-  create-docs         Updated      5 commands
-  codebase-health     Installed    4 commands
-  debug-triage        Installed    1 command
-  update-backlog      Installed    1 command
-  create-context      Updated      2 commands
+  create-docs         Updated      create-docs.md, create-docs-scan.md, create-docs-generate.md, create-docs-verify.md, add-docs.md
+  codebase-health     Installed    codebase-health.md, codebase-health-scan.md, codebase-health-verify.md, codebase-health-implement.md
+  debug-triage        Installed    debug-triage.md
+  update-backlog      Installed    update-backlog.md
+  create-context      Updated      create-context.md, prepare-context.md
   permission-hooks    Unchanged    --
   mg-gsd-wrappers     Unchanged    --
   gsd-patches         Unchanged    --
@@ -450,6 +450,8 @@ mg-cc-tools -- INSTALL COMPLETE
 
   Manifest: .claude/mg-cc-tools.manifest.json
 ```
+
+**Commands column:** For tools that were Installed, Updated, or Configured this run, list the actual command filenames (from the install.sh output). For Unchanged tools, show `--`.
 
 **Action column values:**
 - `Installed` -- newly installed this run
