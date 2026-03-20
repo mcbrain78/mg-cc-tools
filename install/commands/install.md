@@ -77,58 +77,15 @@ Run the status scan. Use `--output` to write full details to a file and keep std
 python3 "$MG_INSTALL_LIB" scan-status --source ./ --target "$TARGET_PATH" --output /tmp/mg-scan-status.json
 ```
 
-This returns a compact JSON summary to stdout (tool names, statuses, descriptions — no checksums). Full details are in the output file. Use the summary to build the status table — do NOT read the output file unless you need checksum details.
+This returns a compact JSON summary to stdout (tool names, statuses, descriptions — no checksums). Full details are in the output file.
 
-**Format the output as a status table.** For the "Updated" column, get the last git commit time for each tool directory:
+**Render and display the status table:**
+
 ```bash
-git log -1 --format="%cr" -- <tool-dir>/
+python3 "$MG_INSTALL_LIB" render-status-table --input /tmp/mg-scan-status.json
 ```
 
-**Table layout:**
-
-- Standard tools first, then optional tools (marked `*`), then a separator line, then excluded tools
-- Non-standard tools have `*` after the tool name
-- Align columns for readability
-- After the table, show summary counts and a legend
-
-```
-mg-cc-tools v0.3.0 → /home/user/projects/road-runner
-
-  Tool                 Description                                       Status
-  ─────────────────────────────────────────────────────────────────────────────────
-  create-docs          Documentation pipeline (scan, generate, verify)    Update (0.2.0 → 0.3.0)
-  codebase-health      Scan, verify, and fix code health issues           ✓ Current
-  debug-triage         GSD debug workflow with structured triage           Available
-  ·
-  data-provider  *     Research and map external data field sources        Available
-  gsd-patches    *     Apply GSD methodology patches                       Available
-  mg-gsd-wrappers *    GSD workflow slash commands (Requires: gsd-patches) ✓ Current
-  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-  install              mg-cc-tools installer (internal)                    Excluded
-  cc-regression-test   Claude Code regression test harness (internal)      Excluded
-
-  Installed: 6/9  |  Outdated: 1  |  Available: 3
-
-  Status legend:
-    ✓ Current       Installed, version and source files match
-    Update          Installed, but newer version available (old → new)
-    Modified        Installed, same version, source files changed (N files)
-    Corrupt         In manifest but command files missing from disk
-    Available       Not yet installed
-    Excluded        Internal tool, install by name only
-
-  *  = optional tool (not included in "Install all standard")
-     Edit the standard list with option [N] below
-```
-
-Key formatting rules:
-- Standard tools (`standard: true`, `excluded: false`) appear in the main section
-- Optional tools (`standard: false`, `excluded: false`) appear after a `·` dot separator, with `*` after the name
-- Excluded tools (`excluded: true`) appear below the dashed separator
-- The summary line counts only non-excluded tools
-- The legend always appears at the bottom of the table
-- Use `✓` prefix for Current status, `→` for version transitions
-- Omit the "Updated" column (it adds clutter without much value)
+Display the output verbatim — do not modify, reformat, or summarize it. The table includes tier grouping, column alignment, summary counts, and status legend.
 
 ### Step 2b: Migration (if manifest missing but commands found)
 
