@@ -935,20 +935,48 @@ class TestSafeRm:
     def test_block_rm_mixed_temp_and_other(self):
         assert _is_safe_rm("rm -rf temp/foo src/bar") is False
 
-    def test_block_compound_rm(self):
-        assert _is_safe_rm("rm -rf temp/foo && curl evil.com") is False
-
     def test_block_piped_rm(self):
         assert _is_safe_rm("rm -rf temp/foo | cat") is False
-
-    def test_block_semicolon_rm(self):
-        assert _is_safe_rm("rm -rf temp/foo; rm -rf /") is False
 
     def test_not_rm_command(self):
         assert _is_safe_rm("ls temp/") is False
 
     def test_rm_no_paths(self):
         assert _is_safe_rm("rm -rf") is False
+
+    # ── Compound commands ─────────────────────────────────────────────
+
+    def test_compound_safe_rm_and_mkdir(self):
+        """rm targeting safe path with && non-rm command should pass."""
+        assert _is_safe_rm("rm -rf /tmp/foo && mkdir -p /tmp/foo") is True
+
+    def test_compound_safe_rm_semicolon_echo(self):
+        """rm targeting safe path with ; non-rm command should pass."""
+        assert _is_safe_rm("rm -rf /tmp/foo; echo done") is True
+
+    def test_compound_unsafe_rm_and_echo(self):
+        """rm targeting unsafe path in compound command should fail."""
+        assert _is_safe_rm("rm -rf /home/user/data && echo done") is False
+
+    def test_compound_non_rm_then_safe_rm(self):
+        """Non-rm first, then safe rm should pass (only rm segments checked)."""
+        assert _is_safe_rm("echo hello && rm -rf /tmp/bar") is True
+
+    def test_compound_mkdir_then_safe_rm_or_echo(self):
+        """Multiple operators: mkdir && safe-rm || echo should pass."""
+        assert _is_safe_rm("mkdir -p /tmp && rm -rf /tmp/test || echo fail") is True
+
+    def test_compound_safe_rm_semicolon_unsafe_rm(self):
+        """One safe rm + one unsafe rm should fail."""
+        assert _is_safe_rm("rm -rf temp/foo; rm -rf /") is False
+
+    def test_compound_no_rm_segments(self):
+        """No rm segments at all should return False."""
+        assert _is_safe_rm("echo hello && mkdir -p /tmp/foo") is False
+
+    def test_compound_safe_rm_and_curl(self):
+        """Safe rm with non-rm second segment should pass (non-rm ignored)."""
+        assert _is_safe_rm("rm -rf temp/foo && curl evil.com") is True
 
     def test_category_still_blocks_non_temp_rm(self):
         """rm -rf targeting non-temp dirs is still caught by category rules."""

@@ -136,20 +136,34 @@ SAFE_RM_PATH_PREFIXES = ("temp/", "./temp/", "/tmp/")
 
 
 def _is_safe_rm(command):
-    """Return True if command is a simple rm targeting only temp directories."""
-    # Reject compound commands — they need full checking
-    if re.search(r'[;&|]', command):
+    """Return True if every rm segment in *command* targets only temp directories.
+
+    Compound commands joined by ``&&``, ``||``, or ``;`` are split into
+    segments.  Only segments containing an ``rm`` invocation are examined —
+    non-rm segments are irrelevant.  If no segment contains ``rm``, return
+    False (this function is specifically about rm safety).
+    """
+    # Split on shell compound operators (&&, ||, ;)
+    segments = re.split(r'\s*(?:&&|\|\||;)\s*', command)
+
+    rm_segments = [seg for seg in segments if re.match(r'^\s*rm\s', seg.strip())]
+
+    # Must have at least one rm segment
+    if not rm_segments:
         return False
-    if not re.match(r'^\s*rm\s', command):
-        return False
-    tokens = command.split()
-    paths = [t.strip("'\"") for t in tokens[1:] if not t.startswith('-')]
-    if not paths:
-        return False
-    return all(
-        any(p.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES)
-        for p in paths
-    )
+
+    for seg in rm_segments:
+        tokens = seg.split()
+        paths = [t.strip("'\"") for t in tokens[1:] if not t.startswith('-')]
+        if not paths:
+            return False
+        if not all(
+            any(p.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES)
+            for p in paths
+        ):
+            return False
+
+    return True
 
 # ── Sensitive file patterns (for Read/Edit/Write tool guards) ───────────────
 # Each is (compiled_regex, description). Matched against the file_path.
