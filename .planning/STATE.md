@@ -100,7 +100,7 @@ Recent decisions affecting current work:
 - [01-02]: merge-scan.py processes all *.json in scan-dir (no scan- prefix filter) for flexibility
 - [01-02]: Gap analysis merges as sorted union for deterministic output
 - [01-03]: Hyphenated filenames matching codebase-health convention; importlib.machinery.SourceFileLoader for test imports
-- [01-03]: Best-effort regex symbol detection (no AST) to maintain zero-dependency constraint
+- [01-03]: Best-effort regex symbol detection (no AST) — sufficient for this use case without additional dependencies
 - [01-03]: staleness-check uses lib/git_helpers for all git log operations, only direct subprocess for is-git-repo check
 - [01-04]: Mirrored codebase-health/install.sh structure exactly for consistency across mg-cc-tools
 - [01-04]: Scaffolding checks .mg/docs/ existence to preserve user customizations on re-install

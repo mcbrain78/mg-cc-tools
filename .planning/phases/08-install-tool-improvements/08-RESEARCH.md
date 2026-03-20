@@ -63,7 +63,7 @@ All decisions are locked in CONTEXT.md. The implementation is well-specified wit
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| Python stdlib | 3.11+ | tomllib, json, hashlib, pathlib, subprocess | Zero-dependency constraint -- already established |
+| Python stdlib | 3.11+ | tomllib, json, hashlib, pathlib, subprocess | Uses stdlib; no additional dependencies needed |
 | Bash | 5.x | install.sh scripts | Existing pattern for all tools |
 | Claude Agent tool | N/A | post-install.md subagent execution | Built-in to Claude Code, no external dependency |
 
@@ -564,4 +564,4 @@ This is the critical sequencing for the planner:
 - Implementation order: HIGH - dependency chain derived from actual code dependencies
 
 **Research date:** 2026-03-19
-**Valid until:** No expiry -- internal code patterns, no external dependency changes expected
+**Valid until:** No expiry -- internal code patterns, unlikely to change

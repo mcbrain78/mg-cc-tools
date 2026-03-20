@@ -74,7 +74,7 @@ The codebase already has all the infrastructure needed. `mg-install-lib.py` has 
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| Python stdlib (argparse, json, sys) | 3.11+ | CLI parsing, JSON I/O, stdout output | Already used by mg-install-lib.py; zero-dependency constraint |
+| Python stdlib (argparse, json, sys) | 3.11+ | CLI parsing, JSON I/O, stdout output | Already used by mg-install-lib.py; no additional dependencies needed |
 
 ### Supporting
 | Library | Version | Purpose | When to Use |
@@ -84,7 +84,7 @@ The codebase already has all the infrastructure needed. `mg-install-lib.py` has 
 ### Alternatives Considered
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| Manual column alignment | `tabulate` pip package | Violates zero-dependency constraint; manual alignment is ~20 lines |
+| Manual column alignment | `tabulate` pip package | Not needed; manual alignment is ~20 lines and avoids an extra dependency |
 | f-string formatting | `str.format()` | f-strings preferred -- more readable, already used throughout codebase |
 
 **Installation:**

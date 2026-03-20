@@ -38,9 +38,9 @@
 
 ## Key Dependencies
 
-**Critical (zero runtime dependencies):**
-- Python stdlib only — All Python scripts explicitly use only stdlib modules (`json`, `os`, `sys`, `argparse`, `re`, `ast`, `csv`, `io`, `subprocess`, `shutil`, `tempfile`, `pathlib`, `dataclasses`, `typing`, `statistics`, `collections`, `fnmatch`, `glob`, `datetime`, `time`)
-- No pip packages are required at runtime
+**Runtime (currently stdlib-only):**
+- Existing Python scripts use stdlib modules (`json`, `os`, `sys`, `argparse`, `re`, `ast`, `csv`, `io`, `subprocess`, `shutil`, `tempfile`, `pathlib`, `dataclasses`, `typing`, `statistics`, `collections`, `fnmatch`, `glob`, `datetime`, `time`)
+- No pip packages are currently required at runtime; 3rd-party packages may be added when they bring real value
 
 **Dev-only:**
 - `pytest` — Test runner (installed via `pip install -e ".[dev]"`)

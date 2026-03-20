@@ -1,14 +1,14 @@
 # Phase 1: Foundation & Infrastructure - Research
 
 **Researched:** 2026-03-16
-**Domain:** Python CLI scripts (stdlib-only), bash install scripts, JSON schema definition, project scaffolding
+**Domain:** Python CLI scripts, bash install scripts, JSON schema definition, project scaffolding
 **Confidence:** HIGH
 
 ## Summary
 
 Phase 1 builds the foundational infrastructure for the `/mg:create-docs` tool: five Python scripts, a JSON schema definition, a style guide, an install script, project scaffolding, and a configuration system. The entire domain is well-understood because **the codebase already contains a mature reference implementation** in the `codebase-health/` tool that follows the exact same architectural patterns. Every deliverable in this phase has a direct analog in codebase-health that can be studied and adapted.
 
-The Python scripts use only stdlib (no pip dependencies), follow an established pattern of atomic JSON I/O via `argparse` + `json` + `os.replace()`, and are tested with pytest. The install script follows the three-mode (`--project`, `--global`, `--target`) pattern with sed-based path resolution. The configuration system uses field-level merge (project overrides global, missing fields fall back to defaults). All of these patterns are proven and running in production.
+The Python scripts use stdlib (`argparse` + `json` + `os.replace()`) for atomic JSON I/O and are tested with pytest. The install script follows the three-mode (`--project`, `--global`, `--target`) pattern with sed-based path resolution. The configuration system uses field-level merge (project overrides global, missing fields fall back to defaults). All of these patterns are proven and running in production.
 
 The key risk area is the **path conflict** noted in CONTEXT.md: the milestone discussion decided the install path should be `.claude/create-docs/` (not `.claude/docs/` as referenced in the DESIGN.md and some CONTEXT.md sections). This must be resolved consistently across all deliverables.
 
@@ -24,7 +24,7 @@ The key risk area is the **path conflict** noted in CONTEXT.md: the milestone di
 - `merge-scan.py` -- Merge per-audience scan results into single `docs-scan.json`
 - `staleness-check.py` -- Git-based section freshness analysis (which source files changed since section was last generated)
 - All scripts live in `scripts/` with a shared `lib/` for JSON I/O and git helpers
-- Python stdlib only -- no pip dependencies
+- Python scripts use stdlib for JSON I/O and git operations (no additional dependencies needed for this use case)
 - Full `docs-scan.json` schema defined in `references/schema.md` (following codebase-health pattern)
 - Key top-level fields: `project`, `scan_date`, `root_path`, `mode` (initial|update), `project_model`, `source_material_index`, `staleness_report`, `note_classifications`, `gap_analysis`, `gsd_context`
 - Inbox schema: notes with id (NOTE-001 format), text, added (ISO timestamp), context (phase, file), classification (audience, document, section, confidence), status (pending/integrated)
@@ -76,7 +76,7 @@ The key risk area is the **path conflict** noted in CONTEXT.md: the milestone di
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| Python | 3.8+ (runtime 3.12 on dev machine) | Script runtime | Project minimum per `pyproject.toml`, stdlib-only constraint |
+| Python | 3.8+ (runtime 3.12 on dev machine) | Script runtime | Project minimum per `pyproject.toml` |
 | argparse | stdlib | CLI argument parsing | Every codebase-health script uses this pattern |
 | json | stdlib | JSON I/O for all data contracts | Atomic read/write pattern established in add-finding.py |
 | os | stdlib | File operations, path handling, atomic replace | `os.replace()` for atomic writes, `os.makedirs()` for directory creation |
@@ -98,9 +98,9 @@ The key risk area is the **path conflict** noted in CONTEXT.md: the milestone di
 ### Alternatives Considered
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| argparse | click/typer | External dependency violates stdlib-only constraint |
+| argparse | click/typer | Not needed; stdlib argparse covers this use case |
 | os.replace atomic write | direct file.write | os.replace is atomic on POSIX; direct write risks corruption on interruption |
-| subprocess for git | gitpython | External dependency violates stdlib-only constraint |
+| subprocess for git | gitpython | Not needed; subprocess covers this use case without added complexity |
 | Structured markdown schema | JSON Schema in .json file | Markdown matches codebase-health pattern and is LLM-readable; JSON Schema would require a validator dependency |
 
 ## Architecture Patterns
@@ -174,7 +174,7 @@ def save_json(path, data):
 Usage:
     python3 script-name.py --arg1 value --arg2 value
 
-Atomic writes via temp file + os.replace(). Zero external dependencies.
+Atomic writes via temp file + os.replace(). Uses stdlib only.
 """
 import argparse
 import json
@@ -226,7 +226,7 @@ def load_config(project_config_path, global_config_path):
 # scripts/lib/json_io.py
 """Shared JSON I/O utilities for create-docs scripts.
 
-Zero external dependencies -- stdlib only.
+Uses stdlib only (no additional dependencies needed).
 """
 import json
 import os
@@ -250,7 +250,7 @@ def save_json(path, data):
 
 ### Anti-Patterns to Avoid
 - **Non-atomic JSON writes:** Never use `open(path, "w")` directly for JSON output. Always use temp + `os.replace()` pattern. Interrupted writes corrupt the file otherwise.
-- **External dependencies in scripts:** All scripts MUST use only Python stdlib. The `pyproject.toml` has zero runtime dependencies.
+- **Unnecessary dependencies in scripts:** These scripts use stdlib only since no additional dependencies are needed. Add 3rd-party packages only when they bring real value.
 - **Hardcoded paths in command/agent files:** Use placeholders (`{SCRIPTS_DIR}`, `references/schema.md`, etc.) that get sed-resolved at install time.
 - **Inline JSON construction in LLM prompts:** The purpose of Python scripts is to avoid LLM hand-writing JSON. Scripts validate inputs and produce correct output.
 - **Mixed concerns in scripts:** Each script does one thing. Don't combine add-note and classify-note into one script.
@@ -540,7 +540,7 @@ class TestAddNote:
 ## Metadata
 
 **Confidence breakdown:**
-- Standard stack: HIGH -- All stdlib, all proven in existing codebase
+- Standard stack: HIGH -- All proven in existing codebase
 - Architecture: HIGH -- Direct analogs exist for every deliverable in codebase-health
 - Pitfalls: HIGH -- Identified from actual code analysis, not speculation
 - Validation: MEDIUM -- Test structure is recommended but tests don't exist yet

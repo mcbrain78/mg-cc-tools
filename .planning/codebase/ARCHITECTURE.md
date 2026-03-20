@@ -35,8 +35,8 @@ This is a monorepo of independent Claude Code slash commands (tools) that share 
 **Script Layer (Deterministic Helpers):**
 - Purpose: Handle JSON I/O, data processing, and external tool invocation that LLMs cannot do reliably
 - Location: `codebase-health/scripts/*.py`, `codebase-health/scripts/lib/`, `data-provider/scripts/*.py`, `permission-hooks/hooks/permission-guard.py`, `cc-regression-test/hooks/intercept-trigger.py`, `cc-regression-test/scripts/trigger.py`
-- Contains: CLI Python scripts using only stdlib (argparse, json, os, sys, re, glob)
-- Depends on: Nothing external (stdlib only)
+- Contains: CLI Python scripts currently using stdlib (argparse, json, os, sys, re, glob)
+- Depends on: Currently stdlib only; 3rd-party packages may be added when they bring real value
 - Used by: Agent and command layers via Bash tool calls
 
 **Reference Layer (Shared Contracts):**

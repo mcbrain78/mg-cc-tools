@@ -78,7 +78,7 @@ The codebase already contains all the patterns needed. `codebase-health/scripts/
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| Python 3.8+ stdlib | 3.8+ | All script logic | Zero external dependencies -- project constraint |
+| Python 3.8+ stdlib | 3.8+ | All script logic | No additional dependencies needed for this use case |
 | `argparse` | stdlib | CLI argument parsing | Used by all existing scripts (add-note.py, add-finding.py, merge-scan.py, etc.) |
 | `json` | stdlib | JSON serialization/deserialization | Standard for all JSON I/O in this project |
 | `os` / `os.path` | stdlib | File operations, path manipulation | Atomic writes via `os.replace` pattern |
@@ -96,7 +96,7 @@ The codebase already contains all the patterns needed. `codebase-health/scripts/
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
 | `lib/json_io.py` | Direct `json.dump` + `os.replace` | json_io.py already handles makedirs + atomic pattern; duplication is unnecessary |
-| `argparse` | Click/Typer | External dependency violates zero-dependency constraint |
+| `argparse` | Click/Typer | Not needed; stdlib covers this use case |
 
 ## Architecture Patterns
 
@@ -516,7 +516,7 @@ def test_append_finding(self):
 ## Metadata
 
 **Confidence breakdown:**
-- Standard stack: HIGH -- zero external dependencies, all stdlib, verified against existing scripts
+- Standard stack: HIGH -- all stdlib, verified against existing scripts
 - Architecture: HIGH -- all patterns already exist in codebase, Phase 6 composes them
 - Pitfalls: HIGH -- identified from direct codebase analysis and CONTEXT.md specifics
 

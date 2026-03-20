@@ -85,7 +85,7 @@ Each task was committed atomically:
 ## Decisions Made
 
 - Used hyphenated filenames (check-references.py, staleness-check.py) to match the existing codebase-health script naming convention; tests use importlib.machinery.SourceFileLoader to import them
-- Symbol detection uses best-effort regex for ClassName.method() patterns rather than full AST analysis -- keeps zero external dependencies while catching obvious broken references
+- Symbol detection uses best-effort regex for ClassName.method() patterns rather than full AST analysis -- catches obvious broken references without added complexity
 - staleness-check.py uses subprocess only for the is-git-repo check (git rev-parse --git-dir); all actual git log operations go through lib/git_helpers as required
 
 ## Deviations from Plan

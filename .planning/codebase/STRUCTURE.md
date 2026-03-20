@@ -187,7 +187,7 @@ mg-cc-tools/
 **New Complex Tool (multiple commands, scripts, agents):**
 1. Create `<tool-name>/` at project root
 2. Create `<tool-name>/commands/*.md` for each slash command
-3. Create `<tool-name>/scripts/*.py` for deterministic helpers (stdlib only)
+3. Create `<tool-name>/scripts/*.py` for deterministic helpers
 4. Create `<tool-name>/agents/*.md` for subagent prompts (if using Task tool)
 5. Create `<tool-name>/references/` for shared schemas or config
 6. Create `<tool-name>/install.sh` following the complex installer pattern from `codebase-health/install.sh`
@@ -202,7 +202,7 @@ mg-cc-tools/
 
 **New Python Script:**
 - Place in `<tool>/scripts/` directory
-- Use only Python stdlib (no pip dependencies)
+- Use Python stdlib where sufficient; 3rd-party packages are fine when they bring real value
 - Use `argparse` for CLI interface
 - Use atomic writes (temp file + `os.replace()`) for JSON output
 - Add `#!/usr/bin/env python3` shebang

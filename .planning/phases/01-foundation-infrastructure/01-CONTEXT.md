@@ -21,7 +21,7 @@ All supporting infrastructure exists so pipeline steps and commands can be built
 - `merge-scan.py` — Merge per-audience scan results into single `docs-scan.json`
 - `staleness-check.py` — Git-based section freshness analysis (which source files changed since section was last generated)
 - All scripts live in `scripts/` with a shared `lib/` for JSON I/O and git helpers
-- Python stdlib only — no pip dependencies
+- Python scripts use stdlib for JSON I/O and git operations (no additional dependencies needed for this use case)
 
 ### Schema Definition (INF-06)
 - Full `docs-scan.json` schema defined in `references/schema.md` (following codebase-health pattern)
@@ -100,7 +100,7 @@ All supporting infrastructure exists so pipeline steps and commands can be built
 
 ### Established Patterns
 - mg-cc-tools install pattern: commands → `.claude/commands/mg/`, supporting files → `.claude/<tool-name>/`
-- Python scripts use only stdlib, no pip dependencies
+- Python scripts currently use stdlib (no additional dependencies needed for these use cases)
 - Config layering: global defaults + project overrides with field-level merge
 
 ### Integration Points

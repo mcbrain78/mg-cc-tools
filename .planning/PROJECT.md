@@ -67,7 +67,7 @@ Automate the creation and maintenance of audience-specific documentation so it s
 
 ## Constraints
 
-- **Declare dependencies**: Python scripts may use established 3rd party packages — declare them so the install process can manage them
+- **Dependencies**: 3rd-party dependencies are fine when they bring real value — prefer well-maintained, known solutions. Do not reinvent the wheel. Declare them so the install process can manage them
 - **Self-contained**: No cross-tool dependencies within mg-cc-tools — existing convention
 - **Install modes**: Must support --project, --global, --target install modes — existing convention
 - **Path resolution**: All resource references must use sed-replaceable placeholders — existing convention

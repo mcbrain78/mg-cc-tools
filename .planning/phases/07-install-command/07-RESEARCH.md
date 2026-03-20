@@ -92,7 +92,7 @@ Phase 7 has no formally assigned requirement IDs (TBD in REQUIREMENTS.md). The C
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| `tomllib` | stdlib (3.11+) | Parse `tool.toml` metadata files | Locked decision; no pip dependency |
+| `tomllib` | stdlib (3.11+) | Parse `tool.toml` metadata files | Locked decision; stdlib covers this use case |
 | `hashlib` | stdlib | SHA256 checksums of source files | Standard for file integrity checking |
 | `json` | stdlib | Manifest and subcommand JSON I/O | All existing scripts use it |
 | `subprocess` | stdlib | Run preflight commands, `claude -p` probe | Existing pattern in codebase |
@@ -116,7 +116,7 @@ Phase 7 has no formally assigned requirement IDs (TBD in REQUIREMENTS.md). The C
 | `fcntl.flock` | No locking | Concurrent install.sh could corrupt manifest; flock is simple insurance |
 | Single mg-install-lib.py | Multiple scripts | Single file is simpler to path-reference from 11 install.sh scripts |
 
-**Installation:** No pip dependencies. All stdlib. Dev dependencies already declared in pyproject.toml.
+**Installation:** All stdlib. Dev dependencies already declared in pyproject.toml.
 
 ## Architecture Patterns
 
@@ -314,7 +314,7 @@ python3 "${TOOL_SOURCE_DIR}/../install/scripts/mg-install-lib.py" \
 | CLI argument parsing | sys.argv slicing | `argparse` with subparsers | Handles help, errors, type coercion |
 | Glob matching | Manual os.walk + fnmatch | `pathlib.Path.glob` | Handles recursive patterns (`**/*`) correctly |
 
-**Key insight:** mg-install-lib.py does not need ANY pip dependencies. Every operation is achievable with Python stdlib. This is consistent with the project's zero-dependency constraint for scripts.
+**Key insight:** mg-install-lib.py does not need any pip dependencies. Every operation is achievable with Python stdlib.
 
 ## Common Pitfalls
 
@@ -724,4 +724,4 @@ These need python3 check AND manifest update:
 - Checksum scope: MEDIUM -- the non-.md file in commands/ is a real edge case that needs a decision
 
 **Research date:** 2026-03-17
-**Valid until:** 2026-04-17 (stable -- no external dependencies to go stale)
+**Valid until:** 2026-04-17 (stable -- internal patterns, unlikely to change)

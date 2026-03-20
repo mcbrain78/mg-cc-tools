@@ -22,7 +22,7 @@ python3 -m pytest codebase-health/scripts/tests/test_merge.py
 ruff check .
 ```
 
-Python scripts may use established 3rd party packages — declare dependencies so the install process can manage them. The `[dev]` extras install `pytest` and `ruff` for contributors.
+**Dependencies:** Since many tools invoke external programs (ruff, vulture, lizard) via subprocess or bash, the project's dependency footprint is not visible through `pyproject.toml`. 3rd-party dependencies are fine and are used when they bring real value — prefer well-maintained, known solutions. Do not reinvent the wheel. Declare Python package dependencies so the install process can manage them. The `[dev]` extras install `pytest` and `ruff` for contributors.
 
 ## Architecture
 

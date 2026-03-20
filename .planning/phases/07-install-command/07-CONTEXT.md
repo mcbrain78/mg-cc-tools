@@ -155,7 +155,7 @@ Build `/mg:install` — a unified Claude Code slash command that installs, updat
 - All install.sh scripts follow identical argument parsing (`--project/--global/--target`)
 - Sed placeholder resolution: `{SCRIPTS_DIR}`, `{GLOBAL_CONFIG}`, `{TEMPLATES_DIR}` etc. — install.sh replaces these with absolute paths
 - Workspace scaffolding: `--project` mode creates `.mg/<tool>/` directories with config files
-- Python scripts use stdlib only — no pip dependencies
+- Python scripts currently use stdlib only — no pip dependencies needed for existing functionality
 
 ### Integration Points
 - Every existing install.sh will be modified (add python3 check + manifest update call)
