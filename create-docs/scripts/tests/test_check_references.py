@@ -4,8 +4,6 @@ import importlib
 import json
 import os
 import sys
-import tempfile
-import shutil
 
 import pytest
 
@@ -343,3 +341,285 @@ class TestCLI:
         assert output_file.exists()
         data = json.loads(output_file.read_text())
         assert isinstance(data, list)
+
+    def test_cli_output_broken(self, project_dir, docs_dir, tmp_path):
+        """CLI --output-broken should write only broken file_path entries."""
+        import subprocess
+
+        doc = docs_dir / "api.md"
+        doc.write_text(
+            "See `src/main.py` and `src/deleted.py` for details.\n"
+            "```python\n"
+            "obj = MyClass()\n"
+            "```\n"
+        )
+        broken_file = tmp_path / "broken.json"
+
+        script = os.path.join(os.path.dirname(__file__), "..", "check-references.py")
+        result = subprocess.run(
+            [
+                sys.executable, script,
+                "--docs-dir", str(docs_dir),
+                "--project-root", str(project_dir),
+                "--output-broken", str(broken_file),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert broken_file.exists()
+        data = json.loads(broken_file.read_text())
+        assert isinstance(data, list)
+        # Only broken file_path entries
+        for entry in data:
+            assert entry["type"] == "file_path"
+            assert entry["status"] == "broken"
+        # src/deleted.py should appear
+        refs = [e["reference"] for e in data]
+        assert "src/deleted.py" in refs
+        # src/main.py (valid) should NOT appear
+        assert "src/main.py" not in refs
+
+    def test_cli_output_symbols(self, project_dir, docs_dir, tmp_path):
+        """CLI --output-symbols should write only symbol entries."""
+        import subprocess
+
+        doc = docs_dir / "api.md"
+        doc.write_text(
+            "See `src/deleted.py` for details.\n"
+            "```python\n"
+            "obj = MyClass()\n"
+            "bad = NonExistentClass()\n"
+            "```\n"
+        )
+        symbols_file = tmp_path / "symbols.json"
+
+        script = os.path.join(os.path.dirname(__file__), "..", "check-references.py")
+        result = subprocess.run(
+            [
+                sys.executable, script,
+                "--docs-dir", str(docs_dir),
+                "--project-root", str(project_dir),
+                "--skip-symbol-check",
+                "--output-symbols", str(symbols_file),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert symbols_file.exists()
+        data = json.loads(symbols_file.read_text())
+        assert isinstance(data, list)
+        # Only symbol entries
+        for entry in data:
+            assert entry["type"] == "symbol"
+        # File path entries should NOT appear
+        refs = [e["reference"] for e in data]
+        assert "src/deleted.py" not in refs
+
+    def test_cli_split_output_both_files(self, project_dir, docs_dir, tmp_path):
+        """CLI with both --output-broken and --output-symbols writes two files."""
+        import subprocess
+
+        doc = docs_dir / "api.md"
+        doc.write_text(
+            "See `src/deleted.py` for details.\n"
+            "```python\n"
+            "obj = NonExistentClass()\n"
+            "```\n"
+        )
+        broken_file = tmp_path / "broken.json"
+        symbols_file = tmp_path / "symbols.json"
+
+        script = os.path.join(os.path.dirname(__file__), "..", "check-references.py")
+        result = subprocess.run(
+            [
+                sys.executable, script,
+                "--docs-dir", str(docs_dir),
+                "--project-root", str(project_dir),
+                "--skip-symbol-check",
+                "--output-broken", str(broken_file),
+                "--output-symbols", str(symbols_file),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert broken_file.exists()
+        assert symbols_file.exists()
+        broken_data = json.loads(broken_file.read_text())
+        symbols_data = json.loads(symbols_file.read_text())
+        # Broken should have file_path entries
+        for entry in broken_data:
+            assert entry["type"] == "file_path"
+        # Symbols should have symbol entries
+        for entry in symbols_data:
+            assert entry["type"] == "symbol"
+
+
+# ── Grouped output tests ────────────────────────────────────────────────────
+
+
+class TestGroupedOutput:
+    """Tests for grouped output format (post-processing functions)."""
+
+    def test_broken_file_paths_grouped(self, project_dir, docs_dir):
+        """Broken file paths should be grouped by reference."""
+        doc = docs_dir / "api.md"
+        doc.write_text("See `src/deleted.py` for details.\n")
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+        )
+        grouped = check_references.group_broken_file_paths(issues, str(docs_dir))
+        assert len(grouped) == 1
+        assert grouped[0]["reference"] == "src/deleted.py"
+        assert grouped[0]["type"] == "file_path"
+        assert grouped[0]["status"] == "broken"
+        assert isinstance(grouped[0]["locations"], list)
+        assert len(grouped[0]["locations"]) == 1
+
+    def test_valid_file_paths_excluded(self, project_dir, docs_dir):
+        """Valid file paths should not appear in grouped broken output."""
+        doc = docs_dir / "api.md"
+        doc.write_text("See `src/main.py` for the entry point.\n")
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+        )
+        grouped = check_references.group_broken_file_paths(issues, str(docs_dir))
+        assert len(grouped) == 0
+
+    def test_deduplication_across_docs(self, project_dir, docs_dir):
+        """Same reference from multiple docs should produce one entry with multiple locations."""
+        doc1 = docs_dir / "api.md"
+        doc1.write_text("See `src/deleted.py` for details.\n")
+        doc2 = docs_dir / "guide.md"
+        doc2.write_text("Also see `src/deleted.py` here.\n")
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+        )
+        grouped = check_references.group_broken_file_paths(issues, str(docs_dir))
+        assert len(grouped) == 1
+        assert grouped[0]["reference"] == "src/deleted.py"
+        assert len(grouped[0]["locations"]) == 2
+
+    def test_locations_relativized(self, project_dir, docs_dir):
+        """Locations should use relative paths (no absolute paths)."""
+        doc = docs_dir / "api.md"
+        doc.write_text("See `src/deleted.py` for details.\n")
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+        )
+        grouped = check_references.group_broken_file_paths(issues, str(docs_dir))
+        assert len(grouped) == 1
+        for loc in grouped[0]["locations"]:
+            # Should not contain the absolute docs_dir path
+            assert str(docs_dir) not in loc
+            # Should be like "api.md:1"
+            assert "api.md:" in loc
+
+    def test_no_message_field_in_grouped(self, project_dir, docs_dir):
+        """Grouped output should not contain a message field."""
+        doc = docs_dir / "api.md"
+        doc.write_text("See `src/deleted.py` for details.\n")
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+        )
+        grouped = check_references.group_broken_file_paths(issues, str(docs_dir))
+        for entry in grouped:
+            assert "message" not in entry
+
+    def test_symbols_grouped(self, project_dir, docs_dir):
+        """Symbols should be grouped by reference."""
+        doc = docs_dir / "api.md"
+        doc.write_text(
+            "```python\n"
+            "obj = MyClass()\n"
+            "```\n"
+        )
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+            skip_symbol_check=True,
+        )
+        grouped = check_references.group_symbols(issues, str(docs_dir))
+        assert len(grouped) >= 1
+        refs = [e["reference"] for e in grouped]
+        assert "MyClass" in refs
+        for entry in grouped:
+            assert entry["type"] == "symbol"
+            assert "locations" in entry
+            assert "message" not in entry
+
+    def test_symbols_deduplication(self, project_dir, docs_dir):
+        """Same symbol from multiple docs should produce one entry with multiple locations."""
+        doc1 = docs_dir / "api.md"
+        doc1.write_text(
+            "```python\n"
+            "obj = MyClass()\n"
+            "```\n"
+        )
+        doc2 = docs_dir / "guide.md"
+        doc2.write_text(
+            "```python\n"
+            "obj = MyClass()\n"
+            "```\n"
+        )
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+            skip_symbol_check=True,
+        )
+        grouped = check_references.group_symbols(issues, str(docs_dir))
+        myclass_entries = [e for e in grouped if e["reference"] == "MyClass"]
+        assert len(myclass_entries) == 1
+        assert len(myclass_entries[0]["locations"]) == 2
+
+    def test_symbols_no_message_field(self, project_dir, docs_dir):
+        """Grouped symbol output should not contain a message field."""
+        doc = docs_dir / "api.md"
+        doc.write_text(
+            "```python\n"
+            "obj = NonExistentClass()\n"
+            "```\n"
+        )
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+            skip_symbol_check=True,
+        )
+        grouped = check_references.group_symbols(issues, str(docs_dir))
+        for entry in grouped:
+            assert "message" not in entry
+
+    def test_symbols_locations_relativized(self, project_dir, docs_dir):
+        """Symbol locations should use relative paths."""
+        doc = docs_dir / "api.md"
+        doc.write_text(
+            "```python\n"
+            "obj = MyClass()\n"
+            "```\n"
+        )
+
+        issues = check_references.check_docs(
+            docs_dir=str(docs_dir),
+            project_root=str(project_dir),
+            skip_symbol_check=True,
+        )
+        grouped = check_references.group_symbols(issues, str(docs_dir))
+        for entry in grouped:
+            for loc in entry["locations"]:
+                assert str(docs_dir) not in loc
+                assert "api.md:" in loc
