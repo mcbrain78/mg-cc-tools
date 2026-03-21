@@ -20,6 +20,13 @@ Launch **REVIEWER_SUBAGENT** (see Subagent Definitions below). Only a subagent �
 
 Read the reviewer's feedback. For each issue, apply this test — but only consider issues that are solvable without user input and that do not change the intent or scope of the file:
 
+**Exception — open questions and deferred decisions:** If the reviewer flags
+an unresolved question or a decision marked "non-blocking" / "to be resolved
+later", do NOT dismiss it because the plan already acknowledges it. The fact
+that the plan defers it is the problem. Either resolve it yourself using
+codebase context, or surface it to the user as an unresolved issue in Step 7.
+These must never silently pass through.
+
 **Fix immediately** if the issue would cause a wrong decision or block implementation — i.e., an implementer reading this file would build the wrong thing, get stuck, or have to come back and ask.
 
 **Fix as a batch** if 3+ minor ambiguities cluster in the same section or topic. Individually they're cosmetic, but clustered they signal the section is underspecified and needs a clarity pass.
@@ -115,6 +122,17 @@ Provide a critical review focused on:
 3. Assumptions that aren't stated or validated
 4. Overengineering vs underengineering
 5. Whether examples actually match the spec text
+6. Open questions or unresolved decisions — any item marked "non-blocking",
+   "to be resolved during implementation", or similar. These must be
+   resolved now. Deferring decisions to implementation is 5-10x more
+   expensive than getting them right in the plan. Either resolve the
+   question yourself using codebase context, or flag it as critical
+   so the user decides before implementation begins.
+7. Thin decisions — when the plan claims a decision is made, verify it
+   is actually substantiated. A decision that just restates the question
+   as a choice ("we'll use approach A") without reasoning, tradeoff
+   analysis, or evidence is not a decision — it's kicking the can down
+   the road. Flag these the same as open questions.
 
 Be harsh. Flag everything that seems off.
 Validate claims against actual data or code where possible.
