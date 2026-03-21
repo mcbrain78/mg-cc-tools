@@ -195,6 +195,8 @@ Recent decisions affecting current work:
 ### Pending Todos
 
 1. Fix shell metacharacter escaping in add-finding CLI args (area: codebase-health) — `.planning/todos/pending/2026-03-17-fix-shell-metacharacter-escaping-in-add-finding-cli-args.md`
+2. Add session directory cleanup command (area: tooling) — `.planning/todos/pending/2026-03-19-add-session-directory-cleanup-command.md`
+3. Create rich prompt renderer as AskUserQuestion alternative (area: tooling) — `.planning/todos/pending/2026-03-21-create-rich-prompt-renderer-as-askuserquestion-alternative.md`
 
 ### Roadmap Evolution
 
