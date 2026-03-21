@@ -198,6 +198,7 @@ Recent decisions affecting current work:
 2. Add session directory cleanup command (area: tooling) — `.planning/todos/pending/2026-03-19-add-session-directory-cleanup-command.md`
 3. Create rich prompt renderer as AskUserQuestion alternative (area: tooling) — `.planning/todos/pending/2026-03-21-create-rich-prompt-renderer-as-askuserquestion-alternative.md`
 4. Create mg:add-todo command that preserves verbatim user input (area: tooling) — `.planning/todos/pending/2026-03-21-create-mg-add-todo-command-that-preserves-verbatim-user-input.md`
+5. Add auto-loop mode to auto-improve command (area: tooling) — `.planning/todos/pending/2026-03-21-add-auto-loop-mode-to-auto-improve-command.md`
 
 ### Roadmap Evolution
 
