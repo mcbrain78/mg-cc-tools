@@ -20,12 +20,9 @@ Launch **REVIEWER_SUBAGENT** (see Subagent Definitions below). Only a subagent �
 
 Read the reviewer's feedback. For each issue, apply this test — but only consider issues that are solvable without user input and that do not change the intent or scope of the file:
 
-**Exception — open questions and deferred decisions:** If the reviewer flags
-an unresolved question or a decision marked "non-blocking" / "to be resolved
-later", do NOT dismiss it because the plan already acknowledges it. The fact
-that the plan defers it is the problem. Either resolve it yourself using
-codebase context, or surface it to the user as an unresolved issue in Step 7.
-These must never silently pass through.
+**Exception — unresolved and deferred items:** Do NOT dismiss these because
+the plan already acknowledges them — that's the problem. Resolve using
+codebase context, or surface to the user in Step 7. Never pass through silently.
 
 **Fix immediately** if the issue would cause a wrong decision or block implementation — i.e., an implementer reading this file would build the wrong thing, get stuck, or have to come back and ask.
 
@@ -108,12 +105,10 @@ These are explicit scoping decisions — do not flag issues that fall
 under a listed non-goal. You may still flag severe bugs in non-goal
 areas if they would break something.
 
-If the file references existing functionality — whether by file path,
-code reference, or concept (e.g., "replaces the X pipeline",
-"extends Y command") — read that code before reviewing. You cannot
-assess a plan without understanding what it builds on or replaces.
-
-All issues must be actionable on the target file only.
+If the file references existing functionality — by path, code reference,
+or concept (e.g., "replaces X", "extends Y") — read that code before
+reviewing. You cannot assess a plan without understanding what it builds
+on or replaces. All issues must be actionable on the target file only.
 
 Provide a critical review focused on:
 
@@ -122,17 +117,17 @@ Provide a critical review focused on:
 3. Assumptions that aren't stated or validated
 4. Overengineering vs underengineering
 5. Whether examples actually match the spec text
-6. Open questions or unresolved decisions — any item marked "non-blocking",
-   "to be resolved during implementation", or similar. These must be
-   resolved now. Deferring decisions to implementation is 5-10x more
-   expensive than getting them right in the plan. Either resolve the
-   question yourself using codebase context, or flag it as critical
-   so the user decides before implementation begins.
-7. Thin decisions — when the plan claims a decision is made, verify it
-   is actually substantiated. A decision that just restates the question
-   as a choice ("we'll use approach A") without reasoning, tradeoff
-   analysis, or evidence is not a decision — it's kicking the can down
-   the road. Flag these the same as open questions.
+6. Decision quality — every decision in the plan must be real:
+   - Open questions ("non-blocking", "to resolve during implementation")
+     must be resolved now or flagged as critical for the user to decide.
+     Deferring to implementation is 5-10x more expensive.
+   - Thin decisions that restate a choice without reasoning, tradeoffs,
+     or evidence are not decisions — flag them as open questions.
+   - Deferred commitments ("future work", "v2", "later phase") that park
+     a problem as a future promise. If needed, put it in the plan. If
+     not needed, remove it entirely. (Explicit scope exclusions like
+     "this plan does NOT cover X" are fine — those are boundaries, not
+     deferrals.)
 
 Be harsh. Flag everything that seems off.
 Validate claims against actual data or code where possible.
