@@ -276,6 +276,97 @@ class TestListVerifyFindingsFilter:
             assert data == []
 
 
+class TestListVerifyFindingsClean:
+    """--clean mode behavior."""
+
+    def test_clean_removes_all_verify_artifacts(self):
+        """--clean removes all verify artifacts that exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # Create the docs dir structure with all verify artifacts
+            scan_logs = os.path.join(tmp, "scan-logs")
+            os.makedirs(scan_logs)
+
+            artifacts = [
+                os.path.join(tmp, "docs-verify-findings.json"),
+                os.path.join(tmp, "docs-verify-report.md"),
+                os.path.join(scan_logs, "verify-refs-broken.json"),
+                os.path.join(scan_logs, "verify-refs-symbols.json"),
+                os.path.join(scan_logs, "verify-refs.json"),
+            ]
+            for path in artifacts:
+                with open(path, "w") as f:
+                    f.write("{}")
+
+            findings_file = os.path.join(tmp, "docs-verify-findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--clean",
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            # All artifacts should be gone
+            for path in artifacts:
+                assert not os.path.exists(path), f"Expected removed: {path}"
+
+            # Stderr should mention each removed file
+            for path in artifacts:
+                assert path in result.stderr
+
+    def test_clean_succeeds_when_no_artifacts_exist(self):
+        """--clean exits 0 when no verify artifacts exist (no error)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "docs-verify-findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--clean",
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+    def test_clean_only_removes_verify_artifacts(self):
+        """--clean does not remove other files in the directory."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_logs = os.path.join(tmp, "scan-logs")
+            os.makedirs(scan_logs)
+
+            # Create a verify artifact
+            verify_file = os.path.join(tmp, "docs-verify-findings.json")
+            with open(verify_file, "w") as f:
+                f.write("[]")
+
+            # Create non-verify files that should be preserved
+            other_files = [
+                os.path.join(tmp, "docs-scan.json"),
+                os.path.join(tmp, ".docs.config.json"),
+                os.path.join(scan_logs, "other-scan-log.json"),
+            ]
+            for path in other_files:
+                with open(path, "w") as f:
+                    f.write("{}")
+
+            findings_file = os.path.join(tmp, "docs-verify-findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--clean",
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            # Verify artifact should be gone
+            assert not os.path.exists(verify_file)
+
+            # Other files should still exist
+            for path in other_files:
+                assert os.path.exists(path), f"Expected preserved: {path}"
+
+
 class TestListVerifyFindingsCLI:
     """CLI argument validation."""
 

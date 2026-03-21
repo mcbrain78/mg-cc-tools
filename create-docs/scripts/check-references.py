@@ -339,6 +339,77 @@ def _check_file(fpath, project_root, skip_symbol_check=False):
     return issues
 
 
+# ── Post-processing ──────────────────────────────────────────────────────────
+
+
+def _relativize_file(filepath, docs_dir):
+    """Strip docs_dir prefix from a file path, returning just the filename:line part."""
+    abs_docs = os.path.abspath(docs_dir)
+    abs_file = os.path.abspath(filepath)
+    if abs_file.startswith(abs_docs + os.sep):
+        return abs_file[len(abs_docs) + 1:]
+    # Fallback: just the basename
+    return os.path.basename(abs_file)
+
+
+def group_broken_file_paths(issues, docs_dir):
+    """Group broken file_path entries by reference, deduplicating locations.
+
+    Args:
+        issues: Flat list of issue dicts from check_docs().
+        docs_dir: Docs directory path, used to relativize file paths.
+
+    Returns:
+        List of grouped entries, each with: reference, type, status, locations.
+    """
+    groups = {}
+    for issue in issues:
+        if issue["type"] != "file_path" or issue["status"] != "broken":
+            continue
+        ref = issue["reference"]
+        loc = f"{_relativize_file(issue['file'], docs_dir)}:{issue['line']}"
+        if ref not in groups:
+            groups[ref] = {
+                "reference": ref,
+                "type": "file_path",
+                "status": "broken",
+                "locations": [],
+            }
+        if loc not in groups[ref]["locations"]:
+            groups[ref]["locations"].append(loc)
+    return list(groups.values())
+
+
+def group_symbols(issues, docs_dir):
+    """Group symbol entries by reference, deduplicating locations.
+
+    Includes symbols with any status (unchecked, broken). Excludes valid.
+
+    Args:
+        issues: Flat list of issue dicts from check_docs().
+        docs_dir: Docs directory path, used to relativize file paths.
+
+    Returns:
+        List of grouped entries, each with: reference, type, status, locations.
+    """
+    groups = {}
+    for issue in issues:
+        if issue["type"] != "symbol":
+            continue
+        ref = issue["reference"]
+        loc = f"{_relativize_file(issue['file'], docs_dir)}:{issue['line']}"
+        if ref not in groups:
+            groups[ref] = {
+                "reference": ref,
+                "type": "symbol",
+                "status": issue["status"],
+                "locations": [],
+            }
+        if loc not in groups[ref]["locations"]:
+            groups[ref]["locations"].append(loc)
+    return list(groups.values())
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 
@@ -358,7 +429,16 @@ def main():
     )
     parser.add_argument(
         "--output",
-        help="Path to write JSON results. If omitted, prints to stdout.",
+        help="Path to write JSON results (flat array, backwards compat). "
+             "If omitted and no split flags given, prints to stdout.",
+    )
+    parser.add_argument(
+        "--output-broken",
+        help="Path to write grouped broken file_path entries.",
+    )
+    parser.add_argument(
+        "--output-symbols",
+        help="Path to write grouped symbol entries.",
     )
     parser.add_argument(
         "--skip-symbol-check",
@@ -375,8 +455,15 @@ def main():
         skip_symbol_check=args.skip_symbol_check,
     )
 
-    # Write output
-    if args.output:
+    # Write output -- split or flat
+    if args.output_broken or args.output_symbols:
+        if args.output_broken:
+            broken_grouped = group_broken_file_paths(issues, args.docs_dir)
+            save_json(args.output_broken, broken_grouped)
+        if args.output_symbols:
+            symbols_grouped = group_symbols(issues, args.docs_dir)
+            save_json(args.output_symbols, symbols_grouped)
+    elif args.output:
         save_json(args.output, issues)
     else:
         json.dump(issues, sys.stdout, indent=2)

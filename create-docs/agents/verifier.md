@@ -14,7 +14,8 @@ You are a specialized verification agent that analyzes generated documentation f
 - **glossary_path**: Path to the current GLOSSARY.md (for terminology consistency checks).
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **output_report_path**: Path where `docs-verify-report.md` will be written.
-- **verify_refs_path**: Path to pre-extracted references JSON (`scan-logs/verify-refs.json`).
+- **verify_refs_broken_path**: Path to pre-extracted broken file path references JSON (`scan-logs/verify-refs-broken.json`).
+- **verify_refs_symbols_path**: Path to pre-extracted symbol references JSON (`scan-logs/verify-refs-symbols.json`).
 - **findings_file**: Path to `.mg/docs/docs-verify-findings.json` (structured findings output).
 
 ## Process
@@ -52,23 +53,27 @@ Capture the prose description and suggestion while analysis context is fresh -- 
 
 ### Check 1: Reference Integrity
 
-Read the pre-extracted references from `verify_refs_path`. This JSON contains entries with `type` and `status` fields for each reference found in the documentation.
+Read two pre-extracted reference files. Both use a grouped format where each entry has `reference`, `type`, `status`, and `locations` (list of `"DOC.md:line"` strings). Duplicate references from multiple docs are already collapsed.
 
-**For entries with type `file_path`:**
-Use the script's status directly:
+**File path triage** -- read `verify_refs_broken_path`:
 
-| Status | Action |
-|--------|--------|
-| `broken` (file does not exist) | Record as **critical** finding |
-| `valid` (file exists) | No issue -- skip |
+This file contains only broken file path references (valid paths are already filtered out). Each entry has `status: "broken"`.
 
-**For entries with type `symbol`:**
-IGNORE the script's status. Instead, use LSP go-to-definition to verify each symbol:
+For each entry, triage: is this a real project file reference that is genuinely broken, or noise (example values, command fragments, config keys, env var names, external system paths)?
 
-| LSP Result | Severity |
-|------------|----------|
-| LSP resolves the symbol (definition found) | No issue -- skip |
-| LSP cannot resolve the symbol | **high** |
+| Triage Result | Action |
+|---------------|--------|
+| Genuinely broken file reference | Record as **critical** finding |
+| Noise (example, command fragment, etc.) | Skip |
+
+**Symbol spot-checking** -- read `verify_refs_symbols_path`:
+
+This file contains extracted symbols with `status: "unchecked"`. Pick 10-15 key public API symbols to spot-check via Grep (or LSP go-to-definition if available).
+
+| Verification Result | Severity |
+|---------------------|----------|
+| Symbol found in codebase | No issue -- skip |
+| Symbol not found | **high** |
 
 **For ambiguous references** (multiple matches for a single reference):
 Record as **medium** severity.

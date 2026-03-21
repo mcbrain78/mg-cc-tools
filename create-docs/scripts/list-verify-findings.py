@@ -3,7 +3,8 @@
 
 Provides filtered views of accumulated verify findings for the generate
 command and writer agents. Supports summary mode (counts by severity
-and document) and filtering by document, audience, and minimum severity.
+and document), filtering by document, audience, and minimum severity,
+and a --clean mode that removes all verify artifacts.
 
 Usage:
     # Summary mode (for generate's approval UI):
@@ -24,6 +25,11 @@ Usage:
         --severity high \
         --output /tmp/findings-high.json
 
+    # Clean all verify artifacts:
+    python3 list-verify-findings.py \
+        --clean \
+        --findings-file .mg/docs/docs-verify-findings.json
+
 Atomic writes via lib/json_io.py. Zero external dependencies.
 """
 
@@ -36,6 +42,30 @@ from lib.json_io import load_json, save_json
 
 # Index 0 = most severe. Used for "at or above" severity filtering.
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
+
+# Verify artifacts relative to the docs directory (parent of findings file).
+_VERIFY_ARTIFACTS = [
+    "docs-verify-findings.json",
+    "docs-verify-report.md",
+    "scan-logs/verify-refs-broken.json",
+    "scan-logs/verify-refs-symbols.json",
+    "scan-logs/verify-refs.json",  # old format, may linger
+]
+
+
+def clean_verify_artifacts(docs_dir):
+    """Remove all verify artifacts from the workspace.
+
+    Args:
+        docs_dir: The docs directory (parent of findings file).
+
+    Removes each artifact if it exists, prints removed files to stderr.
+    """
+    for rel_path in _VERIFY_ARTIFACTS:
+        full_path = os.path.join(docs_dir, rel_path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
+            print(f"Removed: {full_path}", file=sys.stderr)
 
 
 def filter_findings(findings, document=None, audience=None, severity=None):
@@ -100,8 +130,12 @@ def main():
         help="Path to docs-verify-findings.json",
     )
     parser.add_argument(
-        "--output", required=True,
-        help="Path to write results",
+        "--output", default=None,
+        help="Path to write results (required unless --clean)",
+    )
+    parser.add_argument(
+        "--clean", action="store_true",
+        help="Remove all verify artifacts and exit",
     )
     parser.add_argument(
         "--summary", action="store_true",
@@ -122,6 +156,17 @@ def main():
 
     args = parser.parse_args()
     findings_path = os.path.abspath(args.findings_file)
+    docs_dir = os.path.dirname(findings_path)
+
+    # --clean mode: remove verify artifacts and exit
+    if args.clean:
+        clean_verify_artifacts(docs_dir)
+        return
+
+    # --output is required for non-clean modes
+    if not args.output:
+        parser.error("--output is required unless --clean is used")
+
     output_path = os.path.abspath(args.output)
 
     # Load findings -- treat missing file as empty array
