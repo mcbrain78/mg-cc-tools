@@ -23,7 +23,7 @@ Meanwhile, the information needed to scope an incremental update is available fr
 
 ### 1. Git — What changed (authoritative)
 
-`git diff --name-only` since the last generation timestamp gives the complete list of added, modified, and deleted files. Catches everything regardless of process: GSD phases, quick fixes, dependency updates, refactors.
+`git diff -M --name-only` between the last-generation commit and HEAD gives the complete list of added, modified, deleted, and renamed files. The script resolves the generation timestamp to a commit via `git rev-list --max-count=1 --before=<timestamp> HEAD`, then diffs from that commit. Catches everything regardless of process: GSD phases, quick fixes, dependency updates, refactors.
 
 ### 2. GSD — Why it changed (contextual)
 
@@ -53,11 +53,13 @@ Baseline exists (docs + manifests + docs-meta)
     |
     v
 Diff phase (deterministic Python script):
-    1. git diff --name-only since last generation timestamp
+    1. Resolve timestamp to commit: git rev-list --max-count=1 --before=<ts> HEAD
+       Then: git diff -M --name-only <base-commit> HEAD
     2. Cross-reference changed files against reference manifests
        → which sections reference these files?
-    3. Load GSD phase summaries since last generation
-       → what was the intent behind these changes?
+    3. Discover GSD phases modified since last generation via
+       git log --since=<ts> --name-only --pretty=format:"" -- .planning/phases/
+       Then load matching *-SUMMARY.md files for intent context
     4. Classify results:
        - Changed files mapped to existing sections → sections need update
        - New files not mapped to any section → candidates for new docs
@@ -66,9 +68,11 @@ Diff phase (deterministic Python script):
     |
     v
 Scoped scan (LLM, narrowly focused):
-    - Scan agents receive ONLY changed/new files + GSD context
-    - Update source_material_index for affected sections only
-    - Carry forward unchanged sections from baseline
+    - Scan command loads previous docs-scan.json as baseline
+    - Filters baseline by audience and passes unchanged entries to each agent
+    - Scan agents analyze ONLY changed/new files + GSD context
+    - Agents write complete output (changed + carried-forward entries)
+    - merge-scan.py works unchanged — it sees complete per-audience files
     |
     v
 Generate (only affected sections, with approval)
@@ -92,7 +96,7 @@ diff-scan.py \
   --docs-dir <path to docs/auto-doc/> \
   --since <last generation ISO timestamp> \
   --gsd-dir <path to .planning/phases/> \
-  --output <path to .mg/docs/scan-logs/diff-scope.json>
+  --output <path to .mg/docs/diff-scope.json>
 ```
 
 ### Output: `diff-scope.json`
@@ -135,7 +139,10 @@ diff-scan.py \
   "deleted_files": [
     {
       "file": "src/old/legacy.py",
-      "referenced_in": ["ARCHITECTURE.md:data-model", "DEVELOPER_GUIDE.md:api-reference"]
+      "referenced_in": [
+        {"audience": "developers", "document": "ARCHITECTURE.md", "section": "data-model"},
+        {"audience": "developers", "document": "DEVELOPER_GUIDE.md", "section": "api-reference"}
+      ]
     }
   ],
   "gsd_phases_since": [
@@ -160,8 +167,10 @@ Task(
   Mode: incremental
   Only analyze these changed files: [list from diff-scope]
   GSD context for changes: [extracted from diff-scope]
-  Carry forward existing source_material_index for unchanged sections.
-  Flag new files that need documentation.
+  Baseline entries for unchanged sections: [JSON entries from previous docs-scan.json]
+  Copy these unchanged entries verbatim into your output.
+  New file candidates to classify into sections: [list from diff-scope]
+  Auto-classify each into your document sections based on content and location.
   ..."
 )
 ```
@@ -175,6 +184,8 @@ Task(
 **Pipeline cleanup (Phase 1):** `check-references.py` removed from scan pipeline. Incremental scan uses manifests and git diff, not runtime reference extraction.
 
 **Rename (Phase 1):** Must complete before this work. All new files use `auto-doc/` paths.
+
+**Staleness check (`staleness-check.py`):** In incremental mode, `diff-scan.py` replaces the staleness check's scoping role — both use git history to find what changed, but `diff-scan.py` also cross-references manifests and adds GSD context. The staleness check continues to run as a post-generate validation (confirming no section was missed), but no longer drives scoping decisions. The per-manifest timestamp is over-inclusive by design (see Decision 1), meaning it may flag extra sections but never misses changes. Staleness-check.py's per-section docs-meta timestamps serve as an independent correctness check after generation completes.
 
 **Verify:** Runs in full on every cycle (initial and incremental) — manifest + LSP checks are deterministic and fast. No scoping needed.
 
@@ -193,7 +204,10 @@ Task(
 
 ## Decisions
 
-1. **Timestamp source:** Single `"generated"` timestamp per manifest. One `git diff --since=<timestamp>` call. Slightly over-inclusive (a section regenerated more recently might get false-positive changed files), but harmless — the scan agent reads the file and concludes "no change needed." Simple implementation, optimize to per-section later if it becomes noisy.
+1. **Timestamp source:** Single `"generated"` ISO timestamp per manifest (not a commit SHA — commits can be lost during squash & merge). Resolved to a base commit via `git rev-list --max-count=1 --before=<timestamp> HEAD`, then `git diff -M --name-only <base-commit> HEAD`. The timestamp is captured at the *start* of the generate pipeline, making the next diff over-inclusive rather than under-inclusive — commits that land during generation appear in the next diff (harmless re-scan) rather than being silently missed. This is slightly over-inclusive: when individual sections were regenerated more recently than the manifest timestamp, their source files still appear in the diff even though their docs are current. This is harmless — the scan agent reads the file and concludes "no change needed," costing only extra read time, not incorrect output. Two timestamp systems coexist and are complementary: the manifest timestamp (per-audience) drives diff-scan.py scoping, while docs-meta `last_updated` timestamps (per-section) drive staleness-check.py post-generate validation.
 2. **Ad-hoc changes without GSD context:** `gsd_context` field is `null` when no GSD phase covers the change. The scan agent sees `null` and analyzes the changed files on their own merits — same depth as a full scan, just scoped to the changed files.
-3. **Rename detection:** `git diff --diff-filter=R` detects renames. The diff script adds an optional `renamed_from` field to affected section entries mapping old→new paths (e.g., `{"src/db/models.py": "src/db/models_v2.py"}`). The scan agent uses this to update source material index entries without re-analyzing unchanged code. The generate step updates the manifest with new paths when it rewrites.
-5. **Cross-audience impact:** The diff script does the fan-out. It reads all audience manifests, cross-references changed files, and emits one `affected_sections` entry per audience×document×section combination. The scan command simply filters by audience and passes each agent its slice. Intelligence lives in the deterministic, testable script.
+3. **Rename detection:** Both git commands use `-M` to enable rename detection. The main diff (`git diff -M --name-only <base-commit> HEAD`) reports renames as single entries rather than delete+add pairs, preventing false positives in `deleted_files` and `new_file_candidates`. A separate `git diff -M --diff-filter=R --name-status <base-commit> HEAD` extracts the rename pairs specifically. The diff script parses the `R<score>\told\tnew` output and adds an optional `renames` field to affected section entries mapping old→new paths (e.g., `{"src/db/models.py": "src/db/models_v2.py"}`). The scan agent uses this to update source material index entries and manifest paths without re-analyzing unchanged code.
+4. **Carry-forward strategy:** In incremental mode, the scan command loads the previous `docs-scan.json`, filters it by audience, and passes unchanged section entries to each scan agent as baseline data. The agent writes a complete output file — changed entries from its analysis plus carried-forward entries copied verbatim. This means `merge-scan.py` works unchanged (it still receives complete per-audience files). `diff-scope.json` is written to `.mg/docs/` (not `scan-logs/`) to avoid being picked up by the merge script, which reads all `*.json` in `scan-logs/`.
+5. **GSD absence:** If `--gsd-dir` does not exist, the script skips GSD entirely: `gsd_phases_since` is `[]` and all `gsd_context` fields are `null`. No error, no warning — GSD is optional context, not a prerequisite.
+6. **New file candidates:** Scan agents auto-classify new files into existing document sections based on the file's content, location, and the audience's template structure. No user approval step — there are too many files for manual triage. New files appear as new entries in the agent's `source_material_index` output, tagged with `"source": "incremental"` so the generate step can highlight them for review in the approval diff.
+7. **Cross-audience impact:** The diff script does the fan-out. It reads all audience manifests, cross-references changed files, and emits one `affected_sections` entry per audience×document×section combination. The scan command simply filters by audience and passes each agent its slice. Intelligence lives in the deterministic, testable script.
