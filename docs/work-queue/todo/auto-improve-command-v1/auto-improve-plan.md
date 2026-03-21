@@ -101,9 +101,12 @@ These are explicit scoping decisions — do not flag issues that fall
 under a listed non-goal. You may still flag severe bugs in non-goal
 areas if they would break something.
 
-If needed, explore the surrounding project directory to understand
-imports, shared types, or configuration — but your review targets
-only the AUTO_IMPROVE_FILE.
+If the file references existing functionality — whether by file path,
+code reference, or concept (e.g., "replaces the X pipeline",
+"extends Y command") — read that code before reviewing. You cannot
+assess a plan without understanding what it builds on or replaces.
+
+All issues must be actionable on the target file only.
 
 Provide a critical review focused on:
 
