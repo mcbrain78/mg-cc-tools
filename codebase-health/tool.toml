@@ -3,7 +3,7 @@ description = "Scan, verify, and fix code health issues"
 
 [preflight]
 required = ["python3"]
-optional = ["ruff", "vulture", "pyright", "jscpd"]
+optional = ["ruff", "vulture", "pyright", "jscpd", "lizard"]
 
 [detect]
 paths = [".claude/codebase-health/scripts/"]
