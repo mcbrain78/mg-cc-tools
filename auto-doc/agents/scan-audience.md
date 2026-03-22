@@ -15,6 +15,30 @@ You are a specialized scan subagent for a **specific audience**. You analyze a p
 - **templates_dir**: Path to `{TEMPLATES_DIR}` -- the base templates directory containing audience subdirectories and shared templates.
 - **output_path**: Where to write your partial scan JSON result.
 
+## Audience-Specific Rules
+
+### End-Users Audience
+
+When `audience` is `"end-users"`, apply these source material filtering rules:
+
+**EXCLUSIONS (NEVER index for end-user docs):**
+- Package manifests: `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, `Gemfile`
+- Database schemas and migrations: `alembic/`, `migrations/`, `prisma/`, SQL migration files
+- System service files: `systemd/`, `Procfile`, `docker-compose.yml`, `Dockerfile`
+- CI/CD configs: `.github/`, `.gitlab-ci.yml`, `.circleci/`
+- Environment files: `.env`, `.env.example`, `.env.local`
+- Internal API modules (backend implementation, not user-facing)
+- Test infrastructure: `tests/`, `test/`, `conftest.py`, `jest.config.*`, `pytest.ini`
+
+**INCLUSIONS (PREFER for end-user docs):**
+- User-facing entry points (CLI scripts, web route handlers, UI components)
+- README usage sections
+- User configuration files (not environment/deployment config)
+- Workflow and flow definitions
+- Error message strings and user-facing validation
+- UI templates, views, and page components
+- Route handlers that define user-facing URLs
+
 ## Process
 
 1. **Read orientation.** Load the orientation summary from `orientation_path` for project context: tech stack, components, entry points, infrastructure, and existing documentation.
@@ -27,6 +51,18 @@ You are a specialized scan subagent for a **specific audience**. You analyze a p
    c. For each section heading, derive the section slug: lowercase the heading, replace spaces with hyphens, strip non-alphanumeric characters except hyphens.
    d. For each section:
       - Read the `<!-- PURPOSE: ... -->` comment to understand what content the section covers.
+      - Check for `<!-- SYNTHESIZED: field1, field2 -->` comment on the section.
+        If found:
+        1. Split the value on commas, trim whitespace to get a field list (these are dotted paths into scan data, e.g., `"project_model.components"`)
+        2. **Skip source-file search entirely** -- do NOT run Glob or Grep for this section
+        3. Write the source_material_index entry with `"source_files": []` and `"synthesized_from": [field list]`
+        4. You MUST always produce the entry -- its presence triggers the writer's synthesis path. Do not skip it.
+        5. Continue to the next section (do not run the normal source file search below)
+      - Check for `<!-- BOUNDARY: description -->` comment on the section.
+        If found:
+        1. Record the boundary description as exclusion guidance
+        2. When searching for source files for this section, exclude files that match the bounded content (e.g., if boundary says "Infrastructure setup belongs in devops/OPERATIONS.md", do not index deployment scripts, service files, or infrastructure configuration for this section)
+        3. The section still gets a source_material_index entry -- BOUNDARY restricts what goes INTO the entry, it does not skip the entry
       - Search the project source tree for files relevant to that section's purpose. Use Glob and Grep to find matching files. Read candidate files to confirm relevance.
       - Build a `source_material_index` entry with key `"{DOCUMENT}/{section-slug}"`.
       - List only files that genuinely relate to the section content. Do not pad with loosely related files.
@@ -64,6 +100,11 @@ The temp file written in step 5 must match this structure:
     "DOCUMENT/section-slug": {
       "source_files": ["relative/path/to/file.py"],
       "staleness": "unknown"
+    },
+    "DOCUMENT/synthesized-section": {
+      "source_files": [],
+      "staleness": "unknown",
+      "synthesized_from": ["project_model.components", "project_model.entry_points"]
     }
   },
   "gap_analysis": {
@@ -74,6 +115,8 @@ The temp file written in step 5 must match this structure:
   }
 }
 ```
+
+The `synthesized_from` field is only present for sections with `<!-- SYNTHESIZED: ... -->` template comments. Normal sections omit this field.
 
 **Note:** Write this JSON to the temp file first. The `write-scan-output.py` script validates the structure (required fields, key format) and writes it atomically to `output_path`. Do NOT write directly to `output_path`.
 
@@ -88,3 +131,5 @@ The temp file written in step 5 must match this structure:
 - **For gap analysis,** compare project components against the set of sections you built. Components with no coverage are undocumented.
 - **Read-only.** Only write to the output_path. Never modify any project files.
 - **Follow the style guide** at `references/style-guide.md` for terminology and conventions when describing gaps.
+- **SYNTHESIZED sections MUST produce entries.** Even though they have no source files, the entry with `"source_files": []` and `"synthesized_from"` must exist. Missing entries cause the writer to skip the section.
+- **BOUNDARY is not OPTIONAL.** BOUNDARY means "this content belongs elsewhere" -- the section still exists and still gets an index entry. Only OPTIONAL means a section can be skipped entirely.
