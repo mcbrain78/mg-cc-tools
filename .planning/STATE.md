@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-22T11:27:01.777Z"
-last_activity: 2026-03-22 -- Plan 12-01 complete (rename create-docs to auto-doc)
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-03-22T11:32:55.125Z"
+last_activity: "2026-03-22 -- Plan 12-02 complete (bug fixes: staleness-check, note_id, dead scan call)"
 progress:
   total_phases: 16
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 39
-  completed_plans: 37
+  completed_plans: 38
   percent: 97
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 12 of 16 (Auto Doc Rename & Cleanup)
-Plan: 1 of 2 in current phase
-Status: Plan 12-01 Complete
-Last activity: 2026-03-22 -- Plan 12-01 complete (rename create-docs to auto-doc)
+Plan: 2 of 2 in current phase
+Status: Phase 12 Complete
+Last activity: 2026-03-22 -- Plan 12-02 complete (bug fixes: staleness-check, note_id, dead scan call)
 
 Progress: [██████████] 97%
 
@@ -87,6 +87,7 @@ Progress: [██████████] 97%
 | Phase 11 P02 | 8min | 1 tasks | 2 files |
 | Phase 11 P03 | 3min | 2 tasks | 1 files |
 | Phase 12 P01 | 13min | 2 tasks | 60 files |
+| Phase 12 P02 | 3min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -194,6 +195,9 @@ Recent decisions affecting current work:
 - [Phase 11]: Single consolidated display rule replaces per-subcommand echo instructions in install.md
 - [Phase 12]: Bulk sed s/create-docs/auto-doc/g followed by explicit s/add-docs/auto-doc-add/g -- independent patterns
 - [Phase 12]: install.sh migration path: detect old create-docs installation, remove stale files, clean manifest with inline python3, then deploy auto-doc
+- [Phase 12]: staleness-check.py internal check_staleness() returns bare list, CLI wraps in dict -- dual-output pattern preserves both API usability and merge compatibility
+- [Phase 12]: note_id wins over id per schema contract -- breaking change accepted since add-to-generate round-trip never completed
+- [Phase 12]: check-references.py removed from scan pipeline but kept for verify pipeline (Phase 14 will retire it)
 
 ### Pending Todos
 
@@ -226,6 +230,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T11:27:01.774Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-03-22T11:32:55.121Z
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None

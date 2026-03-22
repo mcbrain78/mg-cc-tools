@@ -181,11 +181,11 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **REN-05**: Migration path in `auto-doc/install.sh` detects old `create-docs` installation, removes stale files and commands, cleans manifest entry
 - [x] **REN-06**: Orphaned `staleness-scanner.md` agent deleted (never wired into any command, references non-existent parameters)
 - [x] **REN-07**: Verification grep confirms zero `create-docs` or `add-docs` references outside `.planning/` and `docs/work-queue/` exclusion directories
-- [ ] **FIX-C1**: Dead `check-references.py` invocation removed from scan pipeline Step 3 (reference checking is a verify concern, not scan)
-- [ ] **FIX-C2**: `staleness-check.py` CLI output wrapped in `{"staleness_report": entries}` dict for `merge-scan.py` compatibility
-- [ ] **FIX-C3**: `note_id` field used consistently in `add-note.py` and `classify-note.py` (replacing `id`), matching schema contract
-- [ ] **FIX-C4**: `add-note.py` outputs JSON `{"note_id": ...}` to stdout for command file consumption
-- [ ] **FIX-C5**: All existing tests pass after rename and bug fixes with updated assertions reflecting fixed behavior
+- [x] **FIX-C1**: Dead `check-references.py` invocation removed from scan pipeline Step 3 (reference checking is a verify concern, not scan)
+- [x] **FIX-C2**: `staleness-check.py` CLI output wrapped in `{"staleness_report": entries}` dict for `merge-scan.py` compatibility
+- [x] **FIX-C3**: `note_id` field used consistently in `add-note.py` and `classify-note.py` (replacing `id`), matching schema contract
+- [x] **FIX-C4**: `add-note.py` outputs JSON `{"note_id": ...}` to stdout for command file consumption
+- [x] **FIX-C5**: All existing tests pass after rename and bug fixes with updated assertions reflecting fixed behavior
 
 ## v2 Requirements
 

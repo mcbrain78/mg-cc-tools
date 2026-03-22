@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 9. Session Analyzer | 3/4 | Complete    | 2026-03-20 |
 | 10. Renderer for Install Command | 2/2 | Complete    | 2026-03-20 |
 | 11. Add Tooling to Install Command | 3/3 | Complete    | 2026-03-20 |
-| 12. Auto Doc Rename & Cleanup | 1/2 | In Progress|  |
+| 12. Auto Doc Rename & Cleanup | 2/2 | Complete   | 2026-03-22 |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -237,7 +237,7 @@ Plans:
 **Goal:** Rename the create-docs tool family to auto-doc and clean up dead code, orphaned agents, and latent bugs -- clearing the deck for all subsequent v1.1 work (phases 13-16)
 **Requirements**: REN-01, REN-02, REN-03, REN-04, REN-05, REN-06, REN-07, FIX-C1, FIX-C2, FIX-C3, FIX-C4, FIX-C5
 **Depends on:** Phase 11
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 12-01-PLAN.md — Rename: directory move, file renames, bulk sed, explicit add-docs substitution, cross-tool updates, migration path, verification grep
