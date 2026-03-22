@@ -119,7 +119,7 @@ No outstanding verify findings.
 Review the verification report: .mg/docs/docs-verify-report.md
 
 Options:
-  - Re-scan:   /mg:auto-doc-scan      (re-analyze codebase for changes)
+  - Re-scan:   /mg:auto-doc-scan      (incremental -- scoped to changes since last generation)
   - Re-verify: /mg:auto-doc-verify     (re-check documentation quality)
   - Add notes: /mg:auto-doc-add "your note"   (capture documentation notes)
 ```

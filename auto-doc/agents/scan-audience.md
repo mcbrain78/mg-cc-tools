@@ -76,6 +76,30 @@ When `audience` is `"end-users"`, apply these source material filtering rules:
    - `agents`: system map, conventions, gotchas, tool registry
    - `devops`: deployment, monitoring, backup, incident response
 
+## Incremental Mode
+
+When the orchestrator passes `Mode: incremental` in your prompt, you operate differently:
+
+1. **Analyze only changed sections.** The orchestrator provides a list of affected sections with their changed files. For each affected section:
+   - Read the changed files listed in the affected section entry
+   - Re-analyze and rebuild the source_material_index entry for that section
+   - If the entry includes a `renames` dict, update any source_files paths that match old rename paths to their new paths
+   - Set staleness to "unknown" (same as normal mode)
+
+2. **Carry forward unchanged sections.** The orchestrator provides baseline entries for sections NOT affected by changes. Copy these entries VERBATIM into your output. Do not re-analyze them. Do not modify their source_files or staleness values.
+
+3. **Classify new files.** The orchestrator provides new file candidates not in any manifest. For each candidate:
+   - Read the file to understand its content and purpose
+   - Classify it into the most appropriate existing document section based on content, file path, and audience template structure
+   - Add it to the appropriate source_material_index entry's source_files array
+   - Tag the entry with `"source": "incremental"` so the generate step can highlight it
+
+4. **Write complete output.** Your output JSON must contain ALL entries: re-analyzed affected entries + carried-forward baseline entries + new file additions. merge-scan.py expects complete per-audience output regardless of mode.
+
+5. **Gap analysis in incremental mode.** Only report gaps for components related to changed files. Do not re-report gaps for unchanged areas.
+
+---
+
 5. **Write output.** Write the complete scan output JSON to a temp file, then call the validation script to write it atomically to `output_path`:
 
    a. Write the JSON to a temp file via the Write tool (e.g., `/tmp/scan-{audience}.json`). The JSON structure is the same as the Output Format below.
@@ -99,7 +123,8 @@ The temp file written in step 5 must match this structure:
   "source_material_index": {
     "DOCUMENT/section-slug": {
       "source_files": ["relative/path/to/file.py"],
-      "staleness": "unknown"
+      "staleness": "unknown",
+      "source": "incremental"
     },
     "DOCUMENT/synthesized-section": {
       "source_files": [],
@@ -118,6 +143,8 @@ The temp file written in step 5 must match this structure:
 
 The `synthesized_from` field is only present for sections with `<!-- SYNTHESIZED: ... -->` template comments. Normal sections omit this field.
 
+The `"source"` field is optional. Only present on entries added during incremental scan for new file classification. Omit for carried-forward entries and normal scan entries.
+
 **Note:** Write this JSON to the temp file first. The `write-scan-output.py` script validates the structure (required fields, key format) and writes it atomically to `output_path`. Do NOT write directly to `output_path`.
 
 **Key format:** `{DOCUMENT_NAME}/{section-slug}` -- document name MUST match the config entry exactly (e.g., `"ARCHITECTURE"` not `"architecture"`). Section slug is derived from the template heading.
@@ -133,3 +160,5 @@ The `synthesized_from` field is only present for sections with `<!-- SYNTHESIZED
 - **Follow the style guide** at `references/style-guide.md` for terminology and conventions when describing gaps.
 - **SYNTHESIZED sections MUST produce entries.** Even though they have no source files, the entry with `"source_files": []` and `"synthesized_from"` must exist. Missing entries cause the writer to skip the section.
 - **BOUNDARY is not OPTIONAL.** BOUNDARY means "this content belongs elsewhere" -- the section still exists and still gets an index entry. Only OPTIONAL means a section can be skipped entirely.
+- **In incremental mode, completeness is critical.** Your output must contain ALL section entries (changed + unchanged). Missing entries cause merge-scan.py to lose data for those sections.
+- **Carry-forward entries are verbatim.** Do not modify baseline entries. Copy them exactly as provided.

@@ -95,6 +95,13 @@ Build an understanding of the project before delegating to scan subagents.
     - If no: `mode = "initial"`
     - **Edge case (Pitfall 4):** If mode is "update" but no prior `docs-scan.json` exists at `.mg/docs/docs-scan.json`, fall back to `mode = "initial"` gracefully. Log a note that previous scan data was not found.
 
+12b. **Detect incremental mode.** If mode is "update":
+    a. Read `.mg/docs/docs-scan.json` and check for `last_generated` field (non-null string)
+    b. Check `.mg/docs/reference-manifests/` for at least one `*.json` manifest file (via Bash `ls`)
+    c. If BOTH exist: `mode = "incremental"` (upgrade from "update")
+    d. If either missing: remain as `mode = "update"` (full scan, same as current)
+    e. Print the detected mode: `"Mode: incremental (scoped to changes since {last_generated})"` or `"Mode: update (full scan)"`
+
 13. **Clear scan-logs (Pitfall 6).** Remove stale data from prior runs to prevent merge contamination:
     ```bash
     rm -f <project_root>/.mg/docs/scan-logs/*.json
@@ -194,7 +201,47 @@ If either condition is false, skip this step. `gsd_context` remains `null` in sc
 
 7. **Update scan-project.json.** Overwrite the file, replacing `gsd_context: null` with the populated object. Keep `project_model` unchanged.
 
+### Step 2b: Incremental Diff Scoping (incremental mode only)
+
+**Only run this step if** mode is "incremental". If mode is "initial" or "update", skip entirely.
+
+**Important ordering:** In incremental mode, read previous docs-scan.json in this step BEFORE clearing scan-logs in Step 13. The previous scan data provides baseline entries for carry-forward.
+
+1. **Load previous scan data.** Read `.mg/docs/docs-scan.json` and store the complete object in memory as `previous_scan`. This provides baseline entries for carry-forward.
+
+2. **Run diff-scan.py** to produce the scoped work order:
+   ```bash
+   python3 {SCRIPTS_DIR}/diff-scan.py \
+       --project-root <project_root> \
+       --manifests-dir <project_root>/.mg/docs/reference-manifests \
+       --docs-dir <docs_dir_abs> \
+       --since <last_generated value from docs-scan.json> \
+       --gsd-dir <project_root>/.planning/phases \
+       --output <project_root>/.mg/docs/diff-scope.json
+   ```
+   If `--gsd-dir` path doesn't exist, still pass it -- diff-scan.py handles missing dirs gracefully.
+
+3. **Read diff-scope.json** from `<project_root>/.mg/docs/diff-scope.json`. Extract `affected_sections`, `new_file_candidates`, `deleted_files`, `gsd_phases_since`, and `summary`.
+
+4. **Prepare per-audience scoped data.** For each enabled audience, filter:
+   - `audience_affected`: entries from `affected_sections` where `audience` matches
+   - `audience_new_files`: entries from `new_file_candidates` (all audiences get all new files for classification)
+   - `audience_baseline`: from `previous_scan.source_material_index`, extract entries whose key starts with a document name belonging to this audience. These are the unchanged entries to carry forward.
+
+   For baseline extraction: for each key in `source_material_index` (format "DOCUMENT/section-slug"), check if DOCUMENT is in the audience's document list. If so, and if that (DOCUMENT, section-slug) pair is NOT in `audience_affected`, include it as a baseline entry.
+
+5. **Build GSD context string.** From `gsd_phases_since`, format a concise summary:
+   ```
+   GSD phases since last generation:
+     Phase {phase}: {name}
+       Deviations: {deviations or "none"}
+       Key decisions: {key_decisions or "none"}
+   ```
+   If `gsd_phases_since` is empty, set to null/omit.
+
 ### Step 3: Staleness Check (update mode only)
+
+**If mode is "incremental", skip this step.** In incremental mode, diff-scan.py replaces staleness check's scoping role. Staleness check continues as post-generate validation only.
 
 **Only run this step if** mode is `"update"` AND the docs directory contains `.md` files.
 
@@ -294,6 +341,38 @@ For each enabled audience in the config, spawn a scan subagent via the Task tool
    )
    ```
 
+   **If mode is "incremental"**, modify the Task prompt for each audience. Replace the standard prompt with:
+
+   ```
+   Task(
+     description="Incremental scan for {audience} audience",
+     prompt="You are a scan subagent for the {audience} audience.
+
+   [paste full contents of agents/scan-audience.md here]
+
+   Project root: {project_root}
+   Read orientation: {project_root}/.mg/docs/scan-logs/scan-orientation.md
+   Your audience: {audience}
+   Your documents: {document_list}
+   Templates directory: {TEMPLATES_DIR}
+   Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json
+   Scripts directory: {SCRIPTS_DIR}
+
+   Mode: incremental
+   Changed files for your audience: {JSON array of changed_files from audience_affected entries}
+   GSD context: {gsd_context_string or 'None'}
+
+   Affected sections to re-analyze:
+   {JSON of audience_affected entries with document, section, reason, changed_files, renames}
+
+   Baseline entries for unchanged sections (copy VERBATIM into your output):
+   {JSON of audience_baseline entries}
+
+   New file candidates to classify into your document sections:
+   {JSON array of audience_new_files entries}"
+   )
+   ```
+
 4. **After all subagents complete,** verify output files exist:
    ```
    Check: <project_root>/.mg/docs/scan-logs/scan-{audience}.json
@@ -330,6 +409,21 @@ For each enabled audience in the config, spawn a scan subagent via the Task tool
    - **Notes classified:** count, with expansion outlines shown (if any)
    - **Gaps identified:** per-audience summary of undocumented components and missing topics
    - **GSD context:** milestone, completed phases (if applicable)
+
+   **If mode is "incremental"**, present a diff-focused summary instead of the full project model summary:
+
+   ```
+   Incremental scan complete (scoped to changes since {last_generated}).
+
+     Files changed: {summary.files_changed}
+     Files added:   {summary.files_added}
+     Files deleted: {summary.files_deleted}
+     Sections affected: {summary.sections_affected} across {count unique audiences in affected_sections} audiences
+     New files classified: {summary.new_file_candidates}
+
+   Run `/mg:auto-doc-generate` to update affected documentation.
+   ```
+   Do NOT repeat the full project model summary (tech stack, components, etc.) -- that is unchanged.
 
 4. **Tell the user:**
    ```
