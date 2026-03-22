@@ -37,16 +37,24 @@ def _git(cwd, *args):
 
 
 def _make_git_repo(tmpdir):
-    """Initialize a git repo with one initial commit."""
+    """Initialize a git repo with one initial commit (backdated for tests)."""
     _git(tmpdir, "init")
     _git(tmpdir, "config", "user.email", "test@example.com")
     _git(tmpdir, "config", "user.name", "Test")
-    # Initial commit
+    # Initial commit -- backdated so there is a clear timestamp gap
+    # between it and any subsequent commits made "now".
     readme = os.path.join(tmpdir, "README.md")
     with open(readme, "w") as f:
         f.write("# Test\n")
     _git(tmpdir, "add", "README.md")
-    _git(tmpdir, "commit", "-m", "Initial commit")
+    env = dict(os.environ)
+    env["GIT_AUTHOR_DATE"] = "2025-01-01T00:00:00Z"
+    env["GIT_COMMITTER_DATE"] = "2025-01-01T00:00:00Z"
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        capture_output=True, text=True, cwd=tmpdir, env=env,
+        check=True,
+    )
 
 
 class TestResolveCommit:
@@ -468,8 +476,8 @@ class TestMainCLI:
             _git(tmp, "add", "src/app.ts")
             _git(tmp, "commit", "-m", "Add app.ts")
 
-            # Record timestamp before changes
-            since = "2020-01-01T00:00:00Z"
+            # Use timestamp between initial commit (2025-01-01) and now
+            since = "2025-06-01T00:00:00Z"
 
             # Create manifests dir with a manifest
             manifests_dir = os.path.join(tmp, "manifests")
@@ -541,7 +549,7 @@ class TestMainCLI:
                  "--project-root", tmp,
                  "--manifests-dir", manifests_dir,
                  "--docs-dir", docs_dir,
-                 "--since", "2020-01-01T00:00:00Z",
+                 "--since", "2025-06-01T00:00:00Z",
                  "--output", output],
                 capture_output=True, text=True,
             )
@@ -568,7 +576,7 @@ class TestMainCLI:
                  "--project-root", tmp,
                  "--manifests-dir", manifests_dir,
                  "--docs-dir", docs_dir,
-                 "--since", "2020-01-01T00:00:00Z",
+                 "--since", "2025-06-01T00:00:00Z",
                  "--gsd-dir", os.path.join(tmp, "nonexistent"),
                  "--output", output],
                 capture_output=True, text=True,
@@ -608,12 +616,16 @@ class TestMainCLI:
         """With no manifests, all changed files become new_file_candidates."""
         with tempfile.TemporaryDirectory() as tmp:
             _make_git_repo(tmp)
-
-            # Add a file
+            # Initial commit is backdated to 2025-01-01.
+            # Add a file after the initial commit (committed "now").
             with open(os.path.join(tmp, "new_file.py"), "w") as f:
                 f.write("x = 1\n")
             _git(tmp, "add", "new_file.py")
             _git(tmp, "commit", "-m", "Add new file")
+
+            # Use a since timestamp that resolves to the initial commit
+            # (2025-01-01), so the diff shows new_file.py.
+            since = "2025-06-01T00:00:00Z"
 
             manifests_dir = os.path.join(tmp, "manifests")
             os.makedirs(manifests_dir)  # empty dir
@@ -626,11 +638,11 @@ class TestMainCLI:
                  "--project-root", tmp,
                  "--manifests-dir", manifests_dir,
                  "--docs-dir", docs_dir,
-                 "--since", "2020-01-01T00:00:00Z",
+                 "--since", since,
                  "--output", output],
                 capture_output=True, text=True,
             )
-            assert result.returncode == 0
+            assert result.returncode == 0, f"CLI failed: {result.stderr}"
             with open(output) as f:
                 scope = json.load(f)
             # All changed files should be new_file_candidates
