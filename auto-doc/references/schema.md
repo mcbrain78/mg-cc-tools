@@ -409,3 +409,108 @@ The scan output and related pipeline files live in the project workspace:
 ```
 
 The scanner creates the workspace and `docs-scan.json`. The generator and verifier expect them to exist.
+
+## Reference Manifests
+
+Reference manifests track which code symbols and file paths each document section references. They are produced by the generate pipeline and consumed by the verify pipeline for reference-integrity checks.
+
+### Location
+
+```
+<project-root>/.mg/docs/reference-manifests/{audience}.json
+```
+
+One file per audience: `developers.json`, `end-users.json`, `agents.json`, `devops.json`.
+
+### Structure
+
+```json
+{
+  "audience": "string -- audience key (e.g., developers)",
+  "generated": "string -- ISO 8601 timestamp of last generation",
+  "documents": {
+    "DOCUMENT_NAME": {
+      "section-slug": {
+        "symbols": ["array of string -- unqualified code identifiers"],
+        "file_paths": ["array of string -- files/directories relative to project root"]
+      }
+    }
+  }
+}
+```
+
+### Top-Level Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `audience` | `string` | yes | Audience key: `"developers"`, `"end-users"`, `"agents"`, `"devops"` |
+| `generated` | `string` (ISO 8601) | yes | Timestamp of last generation run |
+| `documents` | `object` | yes | Nested object keyed by document name, then section slug |
+
+### Section Entry Fields
+
+Each section entry within a document:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `symbols` | `array of string` | yes | Unqualified code identifiers (function names, class names, constants). Never dotted paths -- `load_json` not `lib.json_io.load_json`. |
+| `file_paths` | `array of string` | yes | Files and directories referenced, relative to project root. |
+
+### Upsert Key
+
+Entries are upserted by `(document, section)` pair. Writing the same document and section replaces the previous entry rather than creating duplicates.
+
+### Lifecycle
+
+- **Initial mode:** All manifest files are cleared before a full generation run. Writer agents call `add-manifest-entry.py` after writing each section.
+- **Update mode:** Only regenerated sections are upserted. Sections not regenerated preserve their existing manifest entries.
+- **Verify consumption:** The verify pipeline reads manifests to check that referenced symbols and file paths still exist in the codebase.
+
+### `_written_sections` Metadata
+
+A transient metadata entry used for stale section cleanup during generation:
+
+```json
+{
+  "document": "ARCHITECTURE",
+  "section": "_written_sections",
+  "symbols": [],
+  "file_paths": [],
+  "sections_written": ["overview", "data-model", "auth-flow"]
+}
+```
+
+The `_written_sections` entry bypasses the normal validation that requires at least one non-empty `symbols` or `file_paths` array. It requires a `sections_written` field instead. This entry is stripped before the manifest is persisted for verify consumption.
+
+### Complete Example
+
+A minimal manifest for the `developers` audience with two documents:
+
+```json
+{
+  "audience": "developers",
+  "generated": "2026-03-22T14:30:00Z",
+  "documents": {
+    "ARCHITECTURE": {
+      "overview": {
+        "symbols": ["App", "Router", "middleware"],
+        "file_paths": ["src/app.ts", "src/routes/index.ts"]
+      },
+      "data-model": {
+        "symbols": ["User", "Session", "Product"],
+        "file_paths": ["prisma/schema.prisma", "src/db/migrations/"]
+      }
+    },
+    "API_REFERENCE": {
+      "authentication": {
+        "symbols": ["login", "logout", "refresh_token"],
+        "file_paths": ["src/api/auth/login.ts", "src/api/auth/logout.ts"]
+      },
+      "user-endpoints": {
+        "symbols": ["get_user", "update_profile", "delete_account"],
+        "file_paths": ["src/api/users/routes.ts"]
+      }
+    }
+  }
+}
+```
