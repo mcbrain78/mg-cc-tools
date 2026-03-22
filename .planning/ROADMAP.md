@@ -268,7 +268,7 @@ Plans:
 ### Phase 15: auto doc enduser quality
 
 **Goal:** [To be planned]
-**Requirements**: TBD
+**Requirements**: EUQ-01, EUQ-02, EUQ-03, EUQ-04, EUQ-05, EUQ-06, EUQ-07, EUQ-08, EUQ-09, EUQ-10
 **Depends on:** Phase 14
 **Plans:** 0 plans
 
