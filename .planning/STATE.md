@@ -199,6 +199,7 @@ Recent decisions affecting current work:
 3. Create rich prompt renderer as AskUserQuestion alternative (area: tooling) — `.planning/todos/pending/2026-03-21-create-rich-prompt-renderer-as-askuserquestion-alternative.md`
 4. Create mg:add-todo command that preserves verbatim user input (area: tooling) — `.planning/todos/pending/2026-03-21-create-mg-add-todo-command-that-preserves-verbatim-user-input.md`
 5. Add auto-loop mode to auto-improve command (area: tooling) — `.planning/todos/pending/2026-03-21-add-auto-loop-mode-to-auto-improve-command.md`
+6. Create mg command to arrange planning files into GSD plans (area: tooling) — `.planning/todos/pending/2026-03-22-create-mg-command-to-arrange-planning-files-into-gsd-plans.md`
 
 ### Roadmap Evolution
 
@@ -208,6 +209,11 @@ Recent decisions affecting current work:
 - Phase 9 added: session analyzer
 - Phase 10 added: create a renderer for the install command
 - Phase 11 added: add tooling to install command
+- Phase 12 added: auto doc rename and cleanup
+- Phase 13 added: auto doc script
+- Phase 14 added: auto doc reference manifest
+- Phase 15 added: auto doc enduser quality
+- Phase 16 added: auto doc incremental scan
 
 ### Blockers/Concerns
 
