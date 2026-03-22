@@ -267,13 +267,15 @@ Plans:
 
 ### Phase 15: auto doc enduser quality
 
-**Goal:** [To be planned]
+**Goal:** Make end-user documentation functional and interface-aware -- restructure the USER_GUIDE template to a 7-section functional-first layout, add interface detection to the scan pipeline with config persistence, update scan and writer agents to support SYNTHESIZED sections (from project model fields), BOUNDARY comments (cross-audience content separation), and per-audience source exclusion rules
 **Requirements**: EUQ-01, EUQ-02, EUQ-03, EUQ-04, EUQ-05, EUQ-06, EUQ-07, EUQ-08, EUQ-09, EUQ-10
 **Depends on:** Phase 14
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 15 to break down)
+- [ ] 15-01-PLAN.md — Schema + template: user_interfaces and synthesized_from fields, 7-section USER_GUIDE rewrite, DOMAIN_SPECIFIC deletion
+- [ ] 15-02-PLAN.md — Scan-side: interface detection in scan command, exclusion rules and SYNTHESIZED/BOUNDARY parsing in scan-audience agent
+- [ ] 15-03-PLAN.md — Writer-side: interface-aware generation, synthesized section handling, BOUNDARY cross-references, functional-first pattern
 
 ### Phase 16: auto doc incremental scan
 
