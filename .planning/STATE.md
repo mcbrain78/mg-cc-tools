@@ -200,6 +200,7 @@ Recent decisions affecting current work:
 4. Create mg:add-todo command that preserves verbatim user input (area: tooling) — `.planning/todos/pending/2026-03-21-create-mg-add-todo-command-that-preserves-verbatim-user-input.md`
 5. Add auto-loop mode to auto-improve command (area: tooling) — `.planning/todos/pending/2026-03-21-add-auto-loop-mode-to-auto-improve-command.md`
 6. Create mg command to arrange planning files into GSD plans (area: tooling) — `.planning/todos/pending/2026-03-22-create-mg-command-to-arrange-planning-files-into-gsd-plans.md`
+7. Create mg:add-phase-with-context compound command (area: tooling) — `.planning/todos/pending/2026-03-22-create-mg-add-phase-with-context-compound-command.md`
 
 ### Roadmap Evolution
 
