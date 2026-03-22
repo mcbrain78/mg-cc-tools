@@ -187,6 +187,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **FIX-C4**: `add-note.py` outputs JSON `{"note_id": ...}` to stdout for command file consumption
 - [x] **FIX-C5**: All existing tests pass after rename and bug fixes with updated assertions reflecting fixed behavior
 
+### Auto Doc Script Command
+
+- [ ] **SCRIPT-01**: `/mg:auto-doc-script` command file exists with correct frontmatter (name, description, allowed-tools: Bash, Read, Write, Glob, Grep) and implements argument parsing, validation, single-file mode, directory mode, and README generation
+- [ ] **SCRIPT-02**: `SCRIPT_README.template.md` template exists with `<!-- PURPOSE -->`, `<!-- EXAMPLE -->`, and `<!-- OPTIONAL -->` annotations for all sections (title/description, Prerequisites, Usage, Examples, Options, Output, Notes)
+- [ ] **SCRIPT-03**: `auto-doc-script` added to COMMANDS array in `auto-doc/install.sh`, deploys correctly with `{TEMPLATES_DIR}` sed resolution
+- [ ] **SCRIPT-04**: Default output filename is `README.AUTO-DOC.md`, placed in same directory as target file or inside target directory
+- [ ] **SCRIPT-05**: Directory mode warns at >20 source files, errors on zero source files, handles multiple entry points with summary table and per-script sections
+- [ ] **SCRIPT-06**: Generated examples use ` ```console ` fenced code blocks with `$` prompt prefix and expected output shown
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -359,12 +368,18 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FIX-C3 | Phase 12 | Planned |
 | FIX-C4 | Phase 12 | Planned |
 | FIX-C5 | Phase 12 | Planned |
+| SCRIPT-01 | Phase 13 | Planned |
+| SCRIPT-02 | Phase 13 | Planned |
+| SCRIPT-03 | Phase 13 | Planned |
+| SCRIPT-04 | Phase 13 | Planned |
+| SCRIPT-05 | Phase 13 | Planned |
+| SCRIPT-06 | Phase 13 | Planned |
 
 **Coverage:**
-- v1 requirements: 141 total
-- Mapped to phases: 141
+- v1 requirements: 147 total
+- Mapped to phases: 147
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-22 after Phase 12 requirement generation*
+*Last updated: 2026-03-22 after Phase 13 requirement generation*

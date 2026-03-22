@@ -243,15 +243,15 @@ Plans:
 - [ ] 12-01-PLAN.md — Rename: directory move, file renames, bulk sed, explicit add-docs substitution, cross-tool updates, migration path, verification grep
 - [ ] 12-02-PLAN.md — Bug fixes: staleness-check output wrapper, note_id field normalization, add-note stdout JSON, dead scan call removal, test updates
 
-### Phase 13: auto doc script
+### Phase 13: Auto Doc Script Command
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Add `/mg:auto-doc-script` -- a lightweight single-agent command that generates a README.AUTO-DOC.md for standalone scripts and small tool directories, without the full auto-doc pipeline
+**Requirements**: SCRIPT-01, SCRIPT-02, SCRIPT-03, SCRIPT-04, SCRIPT-05, SCRIPT-06
 **Depends on:** Phase 12
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 13 to break down)
+- [ ] 13-01-PLAN.md — Command file, SCRIPT_README template, and install.sh COMMANDS array update
 
 ### Phase 14: auto doc reference manifest
 
