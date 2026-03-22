@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
+milestone: v1.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 12 context updated after gray area discussion
-last_updated: "2026-03-22T10:38:33.018Z"
-last_activity: 2026-03-20 -- Plan 11-03 complete (install.md thin orchestrator rewrite)
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-03-22T11:27:01.777Z"
+last_activity: 2026-03-22 -- Plan 12-01 complete (rename create-docs to auto-doc)
 progress:
   total_phases: 16
   completed_phases: 10
-  total_plans: 37
-  completed_plans: 36
+  total_plans: 39
+  completed_plans: 37
   percent: 97
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: 11 of 11 (Add Tooling to Install Command)
-Plan: 3 of 3 in current phase
-Status: Plan 11-03 Complete
-Last activity: 2026-03-20 -- Plan 11-03 complete (install.md thin orchestrator rewrite)
+Phase: 12 of 16 (Auto Doc Rename & Cleanup)
+Plan: 1 of 2 in current phase
+Status: Plan 12-01 Complete
+Last activity: 2026-03-22 -- Plan 12-01 complete (rename create-docs to auto-doc)
 
 Progress: [██████████] 97%
 
@@ -86,6 +86,7 @@ Progress: [██████████] 97%
 | Phase 11 P01 | 4min | 1 tasks | 2 files |
 | Phase 11 P02 | 8min | 1 tasks | 2 files |
 | Phase 11 P03 | 3min | 2 tasks | 1 files |
+| Phase 12 P01 | 13min | 2 tasks | 60 files |
 
 ## Accumulated Context
 
@@ -191,6 +192,8 @@ Recent decisions affecting current work:
 - [Phase 11]: record-result uses argparse mutually_exclusive_group for --success/--failed CLI enforcement
 - [Phase 11]: get-install-plan compact stdout returns tool+pattern+post_install (enough for install loop)
 - [Phase 11]: Single consolidated display rule replaces per-subcommand echo instructions in install.md
+- [Phase 12]: Bulk sed s/create-docs/auto-doc/g followed by explicit s/add-docs/auto-doc-add/g -- independent patterns
+- [Phase 12]: install.sh migration path: detect old create-docs installation, remove stale files, clean manifest with inline python3, then deploy auto-doc
 
 ### Pending Todos
 
@@ -223,6 +226,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T10:38:33.015Z
-Stopped at: Phase 12 context updated after gray area discussion
-Resume file: .planning/phases/12-auto-doc-rename-and-cleanup/12-CONTEXT.md
+Last session: 2026-03-22T11:27:01.774Z
+Stopped at: Completed 12-01-PLAN.md
+Resume file: None
