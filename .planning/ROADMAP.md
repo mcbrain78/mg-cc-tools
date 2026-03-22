@@ -280,7 +280,7 @@ Plans:
 ### Phase 16: auto doc incremental scan
 
 **Goal:** [To be planned]
-**Requirements**: TBD
+**Requirements**: ISC-01, ISC-02, ISC-03, ISC-04, ISC-05, ISC-06, ISC-07, ISC-08, ISC-09
 **Depends on:** Phase 15
 **Plans:** 0 plans
 

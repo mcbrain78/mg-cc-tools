@@ -224,6 +224,18 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **EUQ-09**: Cross-audience boundaries are enforced: installation and infrastructure routes to devops docs, API details and architecture to developer docs, and only user-facing configuration remains in the USER_GUIDE
 - [x] **EUQ-10**: DOMAIN_SPECIFIC template is removed from the end-users template directory
 
+### Incremental Scan
+
+- [ ] **ISC-01**: Scan command detects whether to run initial (full) or incremental mode based on whether docs, manifests, and a `last_generated` timestamp exist in `docs-scan.json`; when incremental conditions are met, incremental mode is always used regardless of diff size
+- [ ] **ISC-02**: Deterministic Python script (`diff-scan.py`) produces a scoped work order (`diff-scope.json`) by cross-referencing git-diff changed files against all audience reference manifests, discovering modified GSD phases, and classifying results into affected sections, new file candidates, deleted files, and relevant GSD context
+- [ ] **ISC-03**: Git rename detection produces single rename entries rather than delete-plus-add pairs, preventing false broken-reference reports and enabling manifest path updates
+- [ ] **ISC-04**: In incremental mode, scan agents receive only changed sections to analyze plus carried-forward baseline entries for unchanged sections, and produce complete output so downstream pipeline steps work without modification
+- [ ] **ISC-05**: New files not present in any reference manifest are automatically classified by scan agents into existing document sections and tagged as incremental additions
+- [ ] **ISC-06**: GSD context is optional -- when no GSD directory exists, the pipeline proceeds normally with empty GSD context rather than erroring
+- [ ] **ISC-07**: After an incremental scan completes, a diff-focused summary is shown (files changed, sections affected, new files, deleted references) instead of the full project model summary
+- [ ] **ISC-08**: Verify step runs in full on every cycle regardless of scan mode
+- [ ] **ISC-09**: To force a full re-scan, the user deletes the docs output directory and `docs-scan.json` -- there is no flag or automatic threshold-based fallback
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -424,12 +436,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EUQ-08 | Phase 15 | Complete |
 | EUQ-09 | Phase 15 | Complete |
 | EUQ-10 | Phase 15 | Complete |
+| ISC-01 | Phase 16 | Pending |
+| ISC-02 | Phase 16 | Pending |
+| ISC-03 | Phase 16 | Pending |
+| ISC-04 | Phase 16 | Pending |
+| ISC-05 | Phase 16 | Pending |
+| ISC-06 | Phase 16 | Pending |
+| ISC-07 | Phase 16 | Pending |
+| ISC-08 | Phase 16 | Pending |
+| ISC-09 | Phase 16 | Pending |
 
 **Coverage:**
-- v1 requirements: 169 total
-- Mapped to phases: 169
+- v1 requirements: 178 total
+- Mapped to phases: 178
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-22 after Phase 15 requirement generation*
+*Last updated: 2026-03-22 after Phase 16 requirement generation*
