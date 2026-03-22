@@ -1,6 +1,6 @@
 # Documentation Style Guide
 
-Writing conventions for `/mg:create-docs` generated documentation. Writer agents reference this guide at generation time to ensure consistent, audience-appropriate output.
+Writing conventions for `/mg:auto-doc` generated documentation. Writer agents reference this guide at generation time to ensure consistent, audience-appropriate output.
 
 ## 1. Universal Conventions
 
@@ -135,12 +135,12 @@ outputs: Updated notes-inbox.json
 
 **Fix:**
 ```bash
-chmod +x .claude/create-docs/scripts/*.py
+chmod +x .claude/auto-doc/scripts/*.py
 ```
 
 **Expected output:** No output on success. Verify with:
 ```bash
-ls -la .claude/create-docs/scripts/
+ls -la .claude/auto-doc/scripts/
 # Should show -rwxr-xr-x for .py files
 ```
 

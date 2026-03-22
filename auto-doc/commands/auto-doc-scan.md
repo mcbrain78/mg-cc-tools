@@ -1,5 +1,5 @@
 ---
-name: mg:create-docs-scan
+name: mg:auto-doc-scan
 description: Scan project and build source material index for documentation generation
 allowed-tools: Bash, Read, Write, Glob, Grep, Task
 ---
@@ -303,7 +303,7 @@ For each enabled audience in the config, spawn a scan subagent via the Task tool
 
 4. **Tell the user:**
    ```
-   Scan complete. Run `/mg:create-docs-generate` to generate documentation.
+   Scan complete. Run `/mg:auto-doc-generate` to generate documentation.
    ```
 
 ## Key Formats Reference

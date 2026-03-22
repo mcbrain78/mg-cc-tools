@@ -6,4 +6,4 @@ required = ["python3"]
 optional = ["lsp"]
 
 [detect]
-paths = [".claude/create-docs/scripts/"]
+paths = [".claude/auto-doc/scripts/"]

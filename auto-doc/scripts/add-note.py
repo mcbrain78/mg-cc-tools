@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Append a single note to notes-inbox.json.
 
-Called by the /mg:add-docs command to capture documentation notes
+Called by the /mg:auto-doc-add command to capture documentation notes
 atomically. Each note gets a sequential ID (NOTE-001, NOTE-002, ...),
 an ISO timestamp, optional context (phase, file), and starts with
 status "pending" and classification None.

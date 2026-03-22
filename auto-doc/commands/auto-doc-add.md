@@ -1,19 +1,19 @@
 ---
-name: mg:add-docs
+name: mg:auto-doc-add
 description: Capture a documentation note to inbox with auto-classification
 allowed-tools: Bash, Read, Write, AskUserQuestion
 ---
 
 # Add Documentation Note
 
-You capture documentation notes to the inbox for later processing by the generate pipeline. This is a **standalone command** -- it does not trigger any pipeline step (scan, generate, or verify). Notes stay in the inbox until `/mg:create-docs-generate` processes them.
+You capture documentation notes to the inbox for later processing by the generate pipeline. This is a **standalone command** -- it does not trigger any pipeline step (scan, generate, or verify). Notes stay in the inbox until `/mg:auto-doc-generate` processes them.
 
 ## Arguments
 
 `$ARGUMENTS` contains the note text. Example usage:
 
 ```
-/mg:add-docs "Document the new auth flow for JWT tokens"
+/mg:auto-doc-add "Document the new auth flow for JWT tokens"
 ```
 
 ## Process
@@ -22,13 +22,13 @@ You capture documentation notes to the inbox for later processing by the generat
 
 1. **Extract note text from `$ARGUMENTS`.** If empty or missing, tell the user:
    ```
-   Usage: /mg:add-docs "your note text here"
+   Usage: /mg:auto-doc-add "your note text here"
    ```
    Then stop.
 
 2. **Check `.mg/docs/` directory exists.** If not, tell the user:
    ```
-   Error: Documentation workspace not found. Run /mg:create-docs first to initialize.
+   Error: Documentation workspace not found. Run /mg:auto-doc first to initialize.
    ```
    Then stop.
 
@@ -105,7 +105,7 @@ Then use AskUserQuestion to let the user accept or correct the classification:
 
 **If "Accept":** Done. Print:
 ```
-Note saved. It will be processed on next /mg:create-docs-generate run.
+Note saved. It will be processed on next /mg:auto-doc-generate run.
 ```
 
 **If "Correct":** Ask the user for the correct values via a follow-up AskUserQuestion with these fields:
@@ -121,16 +121,16 @@ Then update the note in the inbox:
 
 Print:
 ```
-Classification updated. Note saved. It will be processed on next /mg:create-docs-generate run.
+Classification updated. Note saved. It will be processed on next /mg:auto-doc-generate run.
 ```
 
 ## Important Principles
 
 - **Standalone command.** This command never triggers scan, generate, or verify. It only writes to the notes inbox.
-- **One note at a time.** No batch ingestion for v1. Users can run `/mg:add-docs` multiple times for multiple notes.
+- **One note at a time.** No batch ingestion for v1. Users can run `/mg:auto-doc-add` multiple times for multiple notes.
 - **GSD phase context detection is best-effort.** If `.planning/` does not exist, skip phase detection. Do not error on missing GSD state.
 - **Active file context is best-effort.** Pass an empty string if the active file cannot be determined.
-- **The note stays in inbox until `/mg:create-docs-generate` processes it.** This command does not integrate notes into documentation.
+- **The note stays in inbox until `/mg:auto-doc-generate` processes it.** This command does not integrate notes into documentation.
 - **Use `{SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
 - **Do not modify `add-note.py` or `classify-note.py`.** Use them as-is through their CLI interface.
-- **Do not modify `install.sh`.** The add-docs command is already in the COMMANDS array.
+- **Do not modify `install.sh`.** The auto-doc-add command is already in the COMMANDS array.

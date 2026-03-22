@@ -1,5 +1,5 @@
 ---
-name: mg:create-docs
+name: mg:auto-doc
 description: Documentation lifecycle router -- detects pipeline state and routes to correct step
 allowed-tools: Bash, Read, Write, Glob, Grep
 ---
@@ -17,12 +17,12 @@ You are the **entry point** for a 3-step documentation pipeline. Your job is to 
 ```
 
 Three commands, always run in order:
-1. `/mg:create-docs-scan` -- Scans the codebase and builds source material index. Read-only.
-2. `/mg:create-docs-generate` -- Creates or updates audience-segmented documents section-by-section. The only step that writes documentation files.
-3. `/mg:create-docs-verify` -- Checks reference integrity, cross-doc consistency, Diataxis compliance, completeness. Read-only.
+1. `/mg:auto-doc-scan` -- Scans the codebase and builds source material index. Read-only.
+2. `/mg:auto-doc-generate` -- Creates or updates audience-segmented documents section-by-section. The only step that writes documentation files.
+3. `/mg:auto-doc-verify` -- Checks reference integrity, cross-doc consistency, Diataxis compliance, completeness. Read-only.
 
 Plus a companion command:
-- `/mg:add-docs` -- Capture documentation notes to the inbox (standalone, runs independently of the pipeline).
+- `/mg:auto-doc-add` -- Capture documentation notes to the inbox (standalone, runs independently of the pipeline).
 
 ## Your Task: Detect State and Route
 
@@ -40,9 +40,9 @@ Run these checks IN ORDER:
    - NO -> Route A (fresh start)
 
 2. **Does `.mg/docs/docs-scan.json` exist?**
-   - NO -> Check if docs exist in `{docs_dir}/`. If docs exist but no scan data, this is "update mode needing a scan" -- suggest `/mg:create-docs-scan` (which will detect existing docs as update mode). If no docs either, Route A.
+   - NO -> Check if docs exist in `{docs_dir}/`. If docs exist but no scan data, this is "update mode needing a scan" -- suggest `/mg:auto-doc-scan` (which will detect existing docs as update mode). If no docs either, Route A.
 
-3. **Partial scan detection.** If `docs-scan.json` exists, read it and check for required top-level fields: `project_model`, `source_material_index`, `gap_analysis`. If any are missing, treat as incomplete scan and suggest re-running `/mg:create-docs-scan`.
+3. **Partial scan detection.** If `docs-scan.json` exists, read it and check for required top-level fields: `project_model`, `source_material_index`, `gap_analysis`. If any are missing, treat as incomplete scan and suggest re-running `/mg:auto-doc-scan`.
 
 4. **Does `{docs_dir}/` contain any `.md` files?**
    (Use Glob to check for `.md` files in the docs directory)
@@ -70,7 +70,7 @@ The documentation pipeline creates audience-segmented docs in 3 steps:
 
 All steps are guided. You review results between each step.
 
-Ready to scan? Run:  /mg:create-docs-scan
+Ready to scan? Run:  /mg:auto-doc-scan
 ```
 
 ### Route B: Scan complete, needs generation
@@ -88,7 +88,7 @@ Scan complete -- ready to generate documentation.
 Review the scan data: .mg/docs/docs-scan.json
 
 When ready, generate documentation:
-  /mg:create-docs-generate
+  /mg:auto-doc-generate
 ```
 
 ### Route C: Generation complete, needs verification
@@ -102,7 +102,7 @@ Documentation generated -- ready for verification.
   Audiences: {list enabled audiences from config}
 
 When ready, verify documentation quality:
-  /mg:create-docs-verify
+  /mg:auto-doc-verify
 ```
 
 ### Route D: Pipeline complete (no outstanding findings)
@@ -119,9 +119,9 @@ No outstanding verify findings.
 Review the verification report: .mg/docs/docs-verify-report.md
 
 Options:
-  - Re-scan:   /mg:create-docs-scan      (re-analyze codebase for changes)
-  - Re-verify: /mg:create-docs-verify     (re-check documentation quality)
-  - Add notes: /mg:add-docs "your note"   (capture documentation notes)
+  - Re-scan:   /mg:auto-doc-scan      (re-analyze codebase for changes)
+  - Re-verify: /mg:auto-doc-verify     (re-check documentation quality)
+  - Add notes: /mg:auto-doc-add "your note"   (capture documentation notes)
 ```
 
 ### Route E: Verify found issues -- needs re-generation
@@ -133,10 +133,10 @@ Verify found quality issues in the documentation.
 
   {N} critical, {N} high, {N} medium, {N} low, {N} info
 
-Run /mg:create-docs-generate to address verify findings.
+Run /mg:auto-doc-generate to address verify findings.
 The generator will present findings as an approval tier alongside staleness and notes.
 
-Or re-verify first:  /mg:create-docs-verify  (re-check after manual fixes)
+Or re-verify first:  /mg:auto-doc-verify  (re-check after manual fixes)
 ```
 
 ## Important

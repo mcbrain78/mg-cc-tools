@@ -1,4 +1,4 @@
-"""Shared JSON I/O utilities for create-docs scripts.
+"""Shared JSON I/O utilities for auto-doc scripts.
 
 Provides atomic JSON load/save helpers used by all pipeline scripts.
 Atomic writes use a temp file + os.replace() pattern to prevent

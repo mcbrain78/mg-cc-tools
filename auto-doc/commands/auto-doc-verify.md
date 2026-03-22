@@ -1,5 +1,5 @@
 ---
-name: mg:create-docs-verify
+name: mg:auto-doc-verify
 description: Verify documentation quality -- references, consistency, Diataxis, completeness
 allowed-tools: Bash, Read, Write, Glob, Grep, Task
 ---
@@ -31,13 +31,13 @@ Before proceeding, confirm these exist:
 1. **Scan data:** `.mg/docs/docs-scan.json` must exist. If missing:
    ```
    Error: No scan data found at .mg/docs/docs-scan.json.
-   Run /mg:create-docs-scan first to analyze the project.
+   Run /mg:auto-doc-scan first to analyze the project.
    ```
 
 2. **Generated docs directory exists:** The docs directory (from config `docs_dir`, default `docs/auto-doc`) must exist. Check with a simple directory existence test (e.g., `test -d`), NOT by listing files -- the verifier agent handles its own doc file discovery. If missing:
    ```
    Error: No generated documentation found in {docs_dir}.
-   Run /mg:create-docs-generate first to create documentation.
+   Run /mg:auto-doc-generate first to create documentation.
    ```
 
 If either prerequisite fails, abort with the corresponding message and do not proceed.
@@ -146,7 +146,7 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
 4. **Conditional guidance:**
    - If critical or high issues exist:
      ```
-     Run /mg:create-docs-generate to address verify findings. The generator will present findings as an approval tier alongside staleness and notes.
+     Run /mg:auto-doc-generate to address verify findings. The generator will present findings as an approval tier alongside staleness and notes.
      ```
    - If no critical or high issues:
      ```
@@ -168,7 +168,7 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
 
 - Direct the user to the router for pipeline overview:
   ```
-  Run /mg:create-docs for a full pipeline status overview.
+  Run /mg:auto-doc for a full pipeline status overview.
   ```
 
 ## Important Principles

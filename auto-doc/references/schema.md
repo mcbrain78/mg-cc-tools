@@ -1,6 +1,6 @@
 # Shared Schema: docs-scan.json
 
-This is the data contract for the `/mg:create-docs` documentation pipeline. The scanner creates it, the generator reads it, and the verifier validates against it.
+This is the data contract for the `/mg:auto-doc` documentation pipeline. The scanner creates it, the generator reads it, and the verifier validates against it.
 
 Each pipeline step reads its relevant fields and may enrich the document. The scan step populates all fields; the generate step reads but does not modify; the verify step adds quality metrics.
 
@@ -196,7 +196,7 @@ Each staleness entry:
 
 ## note_classifications
 
-Notes captured via `/mg:add-docs` that have been classified by audience, document, and section.
+Notes captured via `/mg:auto-doc-add` that have been classified by audience, document, and section.
 
 ```json
 "note_classifications": [
@@ -331,9 +331,9 @@ A flat array of verification findings produced by the verifier agent during the 
 **Location:** `.mg/docs/docs-verify-findings.json`
 
 **Lifecycle:**
-- Created/cleared by `create-docs-verify.md` before each verify run
+- Created/cleared by `auto-doc-verify.md` before each verify run
 - Populated by the verifier agent via `add-verify-finding.py` (one call per finding)
-- Read by `create-docs-generate.md` via `list-verify-findings.py` for the 3rd approval tier
+- Read by `auto-doc-generate.md` via `list-verify-findings.py` for the 3rd approval tier
 - Cleared again on the next verify run (findings from skipped approvals reappear naturally)
 
 ### Structure

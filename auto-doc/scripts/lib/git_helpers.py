@@ -1,4 +1,4 @@
-"""Git subprocess wrappers for create-docs scripts.
+"""Git subprocess wrappers for auto-doc scripts.
 
 Provides helpers to query git history for staleness checks and
 source material tracking. All subprocess calls use explicit

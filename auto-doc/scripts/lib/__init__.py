@@ -1,2 +1,2 @@
-# create-docs shared library
+# auto-doc shared library
 # Zero external dependencies -- stdlib only

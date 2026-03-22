@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# -- Create-Docs Pipeline -- Installer ----------------------------------------
+# -- Auto-Doc Pipeline -- Installer --------------------------------------------
 #
-# Installs the create-docs tool and its supporting files into a Claude Code
+# Installs the auto-doc tool and its supporting files into a Claude Code
 # project or global configuration.
 #
 # Usage:
@@ -13,7 +13,7 @@ set -euo pipefail
 #
 # What it does:
 #   1. Copies command files to <target>/commands/mg/
-#   2. Copies supporting files (scripts, references, agents) to <target>/create-docs/
+#   2. Copies supporting files (scripts, references, agents) to <target>/auto-doc/
 #   3. Resolves all relative paths in command files to absolute paths,
 #      so the LLM can find scripts, agents, and references at runtime.
 #   4. (--project only) Scaffolds .mg/docs/ workspace with config, inbox, scan-logs.
@@ -22,11 +22,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 COMMANDS=(
-  create-docs
-  create-docs-scan
-  create-docs-generate
-  create-docs-verify
-  add-docs
+  auto-doc
+  auto-doc-scan
+  auto-doc-generate
+  auto-doc-verify
+  auto-doc-add
 )
 
 # -- Parse arguments -----------------------------------------------------------
@@ -67,11 +67,11 @@ while [[ $# -gt 0 ]]; do
       echo "  --target <path>    Install into a custom .claude/ directory"
       echo ""
       echo "Invoke with:"
-      echo "  /mg:create-docs           <- router (guides you through the pipeline)"
-      echo "  /mg:create-docs-scan      <- step 1: scan"
-      echo "  /mg:create-docs-generate  <- step 2: generate"
-      echo "  /mg:create-docs-verify    <- step 3: verify"
-      echo "  /mg:add-docs              <- capture notes"
+      echo "  /mg:auto-doc           <- router (guides you through the pipeline)"
+      echo "  /mg:auto-doc-scan      <- step 1: scan"
+      echo "  /mg:auto-doc-generate  <- step 2: generate"
+      echo "  /mg:auto-doc-verify    <- step 3: verify"
+      echo "  /mg:auto-doc-add          <- capture notes"
       exit 0
       ;;
     *)
@@ -166,12 +166,36 @@ else
   exit 1
 fi
 
-# -- Install -------------------------------------------------------------------
+# -- Migrate from create-docs (if present) ------------------------------------
 
 COMMANDS_DIR="${TARGET_DIR}/commands/mg"
-SUPPORT_DIR="${TARGET_DIR}/create-docs"
+SUPPORT_DIR="${TARGET_DIR}/auto-doc"
+MANIFEST_FILE="${TARGET_DIR}/mg-cc-tools.manifest.json"
 
-echo "Installing create-docs pipeline to: ${TARGET_DIR}"
+if [[ -f "${COMMANDS_DIR}/create-docs.md" ]] || [[ -d "${TARGET_DIR}/create-docs" ]]; then
+  echo "  Migrating: removing old create-docs installation ..."
+  rm -f "${COMMANDS_DIR}/create-docs.md" \
+        "${COMMANDS_DIR}/create-docs-scan.md" \
+        "${COMMANDS_DIR}/create-docs-generate.md" \
+        "${COMMANDS_DIR}/create-docs-verify.md" \
+        "${COMMANDS_DIR}/add-docs.md"
+  rm -rf "${TARGET_DIR}/create-docs"
+
+  # Remove stale manifest entry
+  if [[ -f "$MANIFEST_FILE" ]]; then
+    python3 -c "
+import json, sys
+p = '$MANIFEST_FILE'
+with open(p) as f: m = json.load(f)
+if 'tools' in m: m['tools'].pop('create-docs', None)
+with open(p, 'w') as f: json.dump(m, f, indent=2)
+" 2>/dev/null || echo "  Warning: could not clean manifest (non-fatal)"
+  fi
+fi
+
+# -- Install -------------------------------------------------------------------
+
+echo "Installing auto-doc pipeline to: ${TARGET_DIR}"
 
 # Commands
 echo "  Commands -> ${COMMANDS_DIR}/"
@@ -334,13 +358,13 @@ TEMPLATE_COUNT=$(find "${SUPPORT_DIR}/references/templates" -name "*.template.md
 AGENT_COUNT=$(find "${SUPPORT_DIR}/agents" -name "*.md" -type f 2>/dev/null | wc -l)
 
 echo ""
-echo "Done. Installed create-docs to ${TARGET_DIR}/"
+echo "Done. Installed auto-doc to ${TARGET_DIR}/"
 echo ""
 echo "  Commands:    ${CMD_COUNT} command files -> .claude/commands/mg/"
-echo "  Scripts:     ${SCRIPT_COUNT} scripts -> .claude/create-docs/scripts/"
-echo "  References:  schema.md, style-guide.md, .docs.config.json -> .claude/create-docs/references/"
-echo "  Templates:   ${TEMPLATE_COUNT} templates -> .claude/create-docs/references/templates/"
-echo "  Agents:      ${AGENT_COUNT} agent definitions -> .claude/create-docs/agents/"
+echo "  Scripts:     ${SCRIPT_COUNT} scripts -> .claude/auto-doc/scripts/"
+echo "  References:  schema.md, style-guide.md, .docs.config.json -> .claude/auto-doc/references/"
+echo "  Templates:   ${TEMPLATE_COUNT} templates -> .claude/auto-doc/references/templates/"
+echo "  Agents:      ${AGENT_COUNT} agent definitions -> .claude/auto-doc/agents/"
 if [[ -n "$PROJECT_ROOT" ]]; then
   if [[ -d "${PROJECT_ROOT}/.mg/docs" ]]; then
     echo "  Scaffolded:  .mg/docs/ (config, inbox, scan-logs)"
@@ -348,8 +372,8 @@ if [[ -n "$PROJECT_ROOT" ]]; then
 fi
 echo ""
 echo "Invoke with:"
-echo "  /mg:create-docs              <- start here (guides you through the pipeline)"
-echo "  /mg:create-docs-scan         <- step 1: scan"
-echo "  /mg:create-docs-generate     <- step 2: generate"
-echo "  /mg:create-docs-verify       <- step 3: verify"
-echo "  /mg:add-docs                 <- capture documentation notes"
+echo "  /mg:auto-doc              <- start here (guides you through the pipeline)"
+echo "  /mg:auto-doc-scan         <- step 1: scan"
+echo "  /mg:auto-doc-generate     <- step 2: generate"
+echo "  /mg:auto-doc-verify       <- step 3: verify"
+echo "  /mg:auto-doc-add          <- capture documentation notes"
