@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-status: completed
-stopped_at: Phase 15 context updated with discussion decisions
-last_updated: "2026-03-22T19:52:10.740Z"
-last_activity: 2026-03-22 -- Plan 14-03 complete (verify pipeline manifest integration, check-references.py deleted)
+status: executing
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-03-22T21:11:39.961Z"
+last_activity: 2026-03-22 -- Plan 15-01 complete (schema + template data contracts for enduser quality)
 progress:
   total_phases: 16
   completed_phases: 13
-  total_plans: 43
-  completed_plans: 42
-  percent: 98
+  total_plans: 46
+  completed_plans: 43
+  percent: 93
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: 14 of 16 (Auto Doc Reference Manifest)
-Plan: 3 of 3 in current phase
-Status: Phase 14 Complete
-Last activity: 2026-03-22 -- Plan 14-03 complete (verify pipeline manifest integration, check-references.py deleted)
+Phase: 15 of 16 (Auto Doc Enduser Quality)
+Plan: 1 of 3 in current phase
+Status: In Progress
+Last activity: 2026-03-22 -- Plan 15-01 complete (schema + template data contracts for enduser quality)
 
-Progress: [██████████] 98%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -92,6 +92,7 @@ Progress: [██████████] 98%
 | Phase 14 P01 | 3min | 2 tasks | 3 files |
 | Phase 14 P02 | 2min | 2 tasks | 5 files |
 | Phase 14 P03 | 4min | 2 tasks | 4 files |
+| Phase 15 P01 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -210,6 +211,10 @@ Recent decisions affecting current work:
 - [Phase 14]: Generate orchestrator performs manifest merge inline between Stage 2 and Stage 3 with stale section cleanup via _written_sections metadata
 - [Phase 14]: Verifier reads structured manifests from .mg/docs/reference-manifests/ instead of regex-extracted reference files
 - [Phase 14]: No Grep fallback for symbol verification -- LSP errors produce info-severity findings and skip
+- [Phase 15]: user_interfaces optional on project_model -- absent field means CLI-style fallback (backward compatible)
+- [Phase 15]: SYNTHESIZED comment pattern: scan writes index with source_files: [] and synthesized_from: [field list], writer generates from project model
+- [Phase 15]: BOUNDARY comment pattern: negative guidance for scan (skip indexing) and writer (cross-reference alternate document)
+- [Phase 15]: All 7 USER_GUIDE exemplars use road-runner domain with web-UI style; WRITER NOTE guides CLI/API adaptation
 
 ### Pending Todos
 
@@ -243,6 +248,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T19:52:10.736Z
-Stopped at: Phase 15 context updated with discussion decisions
-Resume file: .planning/phases/15-auto-doc-enduser-quality/15-CONTEXT.md
+Last session: 2026-03-22T21:11:39.957Z
+Stopped at: Completed 15-01-PLAN.md
+Resume file: None
