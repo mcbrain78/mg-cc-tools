@@ -270,11 +270,11 @@ def main():
         project_root=args.project_root,
     )
 
-    # Write output
+    # Write output -- wrap in dict with staleness_report key for merge-scan.py
     if args.output:
-        save_json(args.output, entries)
+        save_json(args.output, {"staleness_report": entries})
     else:
-        json.dump(entries, sys.stdout, indent=2)
+        json.dump({"staleness_report": entries}, sys.stdout, indent=2)
         sys.stdout.write("\n")
 
     # Print summary to stderr

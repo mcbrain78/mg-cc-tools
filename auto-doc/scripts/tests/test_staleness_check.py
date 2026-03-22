@@ -348,7 +348,9 @@ class TestCLI:
         )
         assert result.returncode == 0
         data = json.loads(result.stdout)
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "staleness_report" in data
+        assert isinstance(data["staleness_report"], list)
 
     def test_cli_output_file(self, git_project, docs_dir, tmp_path):
         """CLI --output should write JSON to file."""
@@ -370,4 +372,6 @@ class TestCLI:
         assert result.returncode == 0
         assert output_file.exists()
         data = json.loads(output_file.read_text())
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "staleness_report" in data
+        assert isinstance(data["staleness_report"], list)

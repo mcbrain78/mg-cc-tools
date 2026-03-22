@@ -170,15 +170,7 @@ If mode is `"initial"`, skip this step entirely.
        --output <project_root>/.mg/docs/scan-logs/staleness-results.json
    ```
 
-2. **Run check-references.py** to detect broken file paths and symbol references in existing docs:
-   ```bash
-   python3 {SCRIPTS_DIR}/check-references.py \
-       --docs-dir <docs_dir> \
-       --project-root <project_root> \
-       --output <project_root>/.mg/docs/scan-logs/refs-check.json
-   ```
-
-3. **Note:** These scripts use `--docs-dir` (directory-level), NOT `--doc-file` (per-file). Each script iterates the directory internally. **(Pitfall 1)**
+2. **Note:** The staleness-check script uses `--docs-dir` (directory-level), NOT `--doc-file` (per-file). It iterates the directory internally. **(Pitfall 1)**
 
 4. Review script output for errors. If a script fails, log the error and continue -- partial staleness data is better than none.
 
@@ -287,7 +279,7 @@ For each enabled audience in the config, spawn a scan subagent via the Task tool
    The merge script reads ALL `*.json` files in `scan-dir`, which includes:
    - `scan-project.json` (project_model, gsd_context)
    - `scan-{audience}.json` files (source_material_index, gap_analysis per audience)
-   - `staleness-results.json` and `refs-check.json` (if update mode)
+   - `staleness-results.json` (if update mode)
    - `note-classifications.json` (if notes were classified)
 
 2. **Read the resulting `docs-scan.json`** and verify it has the expected top-level fields: `project`, `scan_date`, `root_path`, `mode`, `project_model`, `source_material_index`, `staleness_report`, `note_classifications`, `gap_analysis`, `gsd_context`.
