@@ -172,6 +172,21 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SAN-23**: Overview contextual commands section omits irrelevant commands based on session content (e.g., no `agent-list` if no agents)
 - [x] **SAN-24**: Summary commands (`overview`, `flow`, `agent`, `agent-list`) show metadata only; content commands (`msg`, `errors`, `search`) show full content with persisted recovery
 
+### Auto Doc Rename & Cleanup
+
+- [ ] **REN-01**: `create-docs/` directory renamed to `auto-doc/` with all 5 command files renamed per the command rename map
+- [ ] **REN-02**: Bulk `s/create-docs/auto-doc/g` substitution applied to all non-historical files under `auto-doc/`
+- [ ] **REN-03**: Explicit `s/add-docs/auto-doc-add/g` substitution applied to all non-trivial locations (generate command HTML comments, add command self-references, router references)
+- [ ] **REN-04**: Cross-tool references updated in mg-install-lib.py workspace mapping, install.md tool listing (both copies), and permission-hooks test data
+- [ ] **REN-05**: Migration path in `auto-doc/install.sh` detects old `create-docs` installation, removes stale files and commands, cleans manifest entry
+- [ ] **REN-06**: Orphaned `staleness-scanner.md` agent deleted (never wired into any command, references non-existent parameters)
+- [ ] **REN-07**: Verification grep confirms zero `create-docs` or `add-docs` references outside `.planning/` and `docs/work-queue/` exclusion directories
+- [ ] **FIX-C1**: Dead `check-references.py` invocation removed from scan pipeline Step 3 (reference checking is a verify concern, not scan)
+- [ ] **FIX-C2**: `staleness-check.py` CLI output wrapped in `{"staleness_report": entries}` dict for `merge-scan.py` compatibility
+- [ ] **FIX-C3**: `note_id` field used consistently in `add-note.py` and `classify-note.py` (replacing `id`), matching schema contract
+- [ ] **FIX-C4**: `add-note.py` outputs JSON `{"note_id": ...}` to stdout for command file consumption
+- [ ] **FIX-C5**: All existing tests pass after rename and bug fixes with updated assertions reflecting fixed behavior
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -332,12 +347,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAN-22 | Phase 9 | Complete |
 | SAN-23 | Phase 9 | Complete |
 | SAN-24 | Phase 9 | Complete |
+| REN-01 | Phase 12 | Planned |
+| REN-02 | Phase 12 | Planned |
+| REN-03 | Phase 12 | Planned |
+| REN-04 | Phase 12 | Planned |
+| REN-05 | Phase 12 | Planned |
+| REN-06 | Phase 12 | Planned |
+| REN-07 | Phase 12 | Planned |
+| FIX-C1 | Phase 12 | Planned |
+| FIX-C2 | Phase 12 | Planned |
+| FIX-C3 | Phase 12 | Planned |
+| FIX-C4 | Phase 12 | Planned |
+| FIX-C5 | Phase 12 | Planned |
 
 **Coverage:**
-- v1 requirements: 129 total
-- Mapped to phases: 129
+- v1 requirements: 141 total
+- Mapped to phases: 141
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-20 after Phase 11 requirement generation*
+*Last updated: 2026-03-22 after Phase 12 requirement generation*

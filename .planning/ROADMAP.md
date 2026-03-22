@@ -124,6 +124,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 9. Session Analyzer | 3/4 | Complete    | 2026-03-20 |
 | 10. Renderer for Install Command | 2/2 | Complete    | 2026-03-20 |
 | 11. Add Tooling to Install Command | 3/3 | Complete    | 2026-03-20 |
+| 12. Auto Doc Rename & Cleanup | 0/2 | Planned | - |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -230,3 +231,54 @@ Plans:
 - [ ] 11-01-PLAN.md — TDD: _determine_scenario, render-action-menu, resolve-action, scan-status --auto-adopt
 - [ ] 11-02-PLAN.md — TDD: get-install-plan, record-result, render-preflight, render-summary, render-validation, preflight --output
 - [ ] 11-03-PLAN.md — install.md rewrite: thin orchestrator with consolidated rendering rule
+
+### Phase 12: Auto Doc Rename & Cleanup
+
+**Goal:** Rename the create-docs tool family to auto-doc and clean up dead code, orphaned agents, and latent bugs -- clearing the deck for all subsequent v1.1 work (phases 13-16)
+**Requirements**: REN-01, REN-02, REN-03, REN-04, REN-05, REN-06, REN-07, FIX-C1, FIX-C2, FIX-C3, FIX-C4, FIX-C5
+**Depends on:** Phase 11
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — Rename: directory move, file renames, bulk sed, explicit add-docs substitution, cross-tool updates, migration path, verification grep
+- [ ] 12-02-PLAN.md — Bug fixes: staleness-check output wrapper, note_id field normalization, add-note stdout JSON, dead scan call removal, test updates
+
+### Phase 13: auto doc script
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 12
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 13 to break down)
+
+### Phase 14: auto doc reference manifest
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 13
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 14 to break down)
+
+### Phase 15: auto doc enduser quality
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 14
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 15 to break down)
+
+### Phase 16: auto doc incremental scan
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 15
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 16 to break down)
