@@ -996,9 +996,9 @@ class TestHeredocStripping:
     # ── Unit tests for _strip_heredocs ────────────────────────────────────
 
     def test_strip_single_quoted_heredoc(self):
-        cmd = "cat > /tmp/out.txt << 'EOF'\nUse /mg:add-docs here\nEOF"
+        cmd = "cat > /tmp/out.txt << 'EOF'\nUse /mg:auto-doc-add here\nEOF"
         result = _strip_heredocs(cmd)
-        assert "/mg:add-docs" not in result
+        assert "/mg:auto-doc-add" not in result
         assert "/tmp/out.txt" in result
 
     def test_strip_unquoted_heredoc(self):
@@ -1030,7 +1030,7 @@ class TestHeredocStripping:
 
     def test_outside_project_ignores_heredoc_paths(self):
         """Paths inside heredoc bodies should not trigger out-of-project guard."""
-        cmd = "cat > /tmp/out.txt << 'EOF'\nUse /mg:add-docs\nCheck /etc/config\nEOF"
+        cmd = "cat > /tmp/out.txt << 'EOF'\nUse /mg:auto-doc-add\nCheck /etc/config\nEOF"
         result = check_outside_project(cmd, self.PROJECT)
         assert result is None
 

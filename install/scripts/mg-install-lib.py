@@ -59,7 +59,7 @@ CHECKSUM_EXCLUDE_PATTERNS = [
 # Workspace directories that certain tools scaffold during --project install
 WORKSPACE_DIRS = {
     "codebase-health": ".mg/health-scan",
-    "create-docs": ".mg/docs",
+    "auto-doc": ".mg/docs",
     "data-provider": ".mg/data-provider",
 }
 

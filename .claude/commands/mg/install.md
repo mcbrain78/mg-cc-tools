@@ -105,7 +105,7 @@ If `"tools"` returned, proceed to Step 4. If `"error"`, show it and re-prompt.
    ```
    Standard install list for $TARGET_PATH:
 
-     [x] create-docs          Documentation pipeline (scan, generate, verify)
+     [x] auto-doc          Documentation pipeline (scan, generate, verify)
      [x] codebase-health      Scan, verify, and fix code health issues
      [ ] data-provider        Research and map external data field sources
      [x] debug-triage         GSD debug workflow with structured triage

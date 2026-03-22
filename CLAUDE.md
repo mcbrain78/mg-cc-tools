@@ -39,7 +39,7 @@ Each tool follows the same pattern:
 
 **Command files** are markdown documents that serve as LLM instruction prompts. They define the command's name, allowed tools, and step-by-step behavior. The install script copies them into the target's `.claude/commands/mg/` directory.
 
-**Simple tools** (debug-triage, update-backlog, new-milestone-gsd) contain only a single command .md file and a trivial install script. **Complex tools** (codebase-health) have agents, Python scripts, and a shared schema.
+**Simple tools** (debug-triage, update-backlog, new-milestone-gsd) contain only a single command .md file and a trivial install script. **Complex tools** (codebase-health, auto-doc) have agents, Python scripts, and a shared schema.
 
 ### Path resolution at install time
 
@@ -56,6 +56,17 @@ Key layers:
 - **Agents** (`agents/*.md`) — specialized scanner/implementor subagents spawned via the Task tool. Each agent follows `TEMPLATE.md` and records findings via Python scripts
 - **Scripts** (`scripts/*.py`) — deterministic Python helpers for JSON I/O (add-finding, merge-findings, verify-finding, update-findings, split-findings) and analysis (circular-deps, unused-deps)
 - **Schema** (`references/schema.md`) — shared data contract between all three pipeline steps
+
+### Auto-doc pipeline (the documentation tool)
+
+A 3-step pipeline: **scan** (read-only) → **generate** (creates/updates docs) → **verify** (read-only). The scan produces a `docs-scan.json` contract consumed by generate and verify.
+
+Key layers:
+- **Commands** (`commands/*.md`) — orchestrate pipeline steps: router (`auto-doc.md`), scan, generate, verify, and add (notes capture)
+- **Agents** (`agents/*.md`) — audience-specific writer subagents (end-user, developer, agent, devops, glossary) plus a scan-audience agent and verifier
+- **Scripts** (`scripts/*.py`) — deterministic Python helpers for JSON I/O (add-note, classify-note, merge-scan, staleness-check, check-references, write-scan-output, add-verify-finding, list-verify-findings)
+- **Schema** (`references/schema.md`) — shared `docs-scan.json` data contract between pipeline steps
+- **Templates** (`references/templates/`) — three-layer document templates (Diataxis + structure + exemplar) organized by audience
 
 ### GSD extension tools
 
