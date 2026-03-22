@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-03-22T23:04:02.232Z"
-last_activity: 2026-03-22 -- Plan 16-01 complete (diff-scan.py deterministic diff scoping script)
+stopped_at: Completed 16-02-PLAN.md
+last_updated: "2026-03-22T23:10:12Z"
+last_activity: 2026-03-22 -- Plan 16-02 complete (incremental scan pipeline wiring)
 progress:
   total_phases: 16
   completed_phases: 14
   total_plans: 48
-  completed_plans: 46
-  percent: 96
+  completed_plans: 48
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 16 of 16 (Auto Doc Incremental Scan)
-Plan: 1 of 2 in current phase
-Status: In Progress
-Last activity: 2026-03-22 -- Plan 16-01 complete (diff-scan.py deterministic diff scoping script)
+Plan: 2 of 2 in current phase
+Status: Phase Complete
+Last activity: 2026-03-22 -- Plan 16-02 complete (incremental scan pipeline wiring)
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -96,6 +96,7 @@ Progress: [██████████] 96%
 | Phase 15 P03 | 2min | 1 tasks | 1 files |
 | Phase 15 P02 | 3min | 2 tasks | 2 files |
 | Phase 16 P01 | 5min | 2 tasks | 2 files |
+| Phase 16 P02 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -222,6 +223,7 @@ Recent decisions affecting current work:
 - [Phase 15]: Interface detection uses 3-priority chain: config-first, heuristic+AskUserQuestion confirmation, non-interactive fallback
 - [Phase 16]: Git operations kept inside diff-scan.py for self-containment -- diff-specific functions not added to lib/git_helpers.py
 - [Phase 16]: classify_changes uses deleted_check_fn callback for filesystem checks, enabling pure unit testing with lambda mocks
+- [Phase 16]: last_generated written at pipeline START for over-inclusive diff window; incremental mode upgrades from update when last_generated + manifests exist; staleness check skipped in incremental mode
 
 ### Pending Todos
 
@@ -255,6 +257,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T23:04:02.229Z
-Stopped at: Completed 16-01-PLAN.md
+Last session: 2026-03-22T23:10:12Z
+Stopped at: Completed 16-02-PLAN.md
 Resume file: None
