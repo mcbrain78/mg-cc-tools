@@ -255,13 +255,15 @@ Plans:
 
 ### Phase 14: auto doc reference manifest
 
-**Goal:** [To be planned]
+**Goal:** Replace the lossy regex-based check-references.py with a structured manifest system where writer agents emit exact code symbols and file paths at generation time, and the verifier checks every entry deterministically via filesystem and LSP documentSymbol
 **Requirements**: MAN-01, MAN-02, MAN-03, MAN-04, MAN-05, MAN-06, MAN-07, MAN-08, MAN-09, MAN-10, MAN-11, MAN-12
 **Depends on:** Phase 13
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 14 to break down)
+- [ ] 14-01-PLAN.md — TDD: add-manifest-entry.py script with tests, schema.md manifest format documentation
+- [ ] 14-02-PLAN.md — Generate-side: manifest emission in 4 writer agents, manifest merge in generate orchestrator
+- [ ] 14-03-PLAN.md — Verify-side: manifest-based Check 1 with LSP, delete check-references.py
 
 ### Phase 15: auto doc enduser quality
 
