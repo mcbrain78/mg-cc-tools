@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 15-03-PLAN.md
-last_updated: "2026-03-22T21:15:43.947Z"
-last_activity: 2026-03-22 -- Plan 15-03 complete (end-user writer agent rewrite with interface awareness)
+stopped_at: Completed 15-02-PLAN.md
+last_updated: "2026-03-22T21:17:12.040Z"
+last_activity: 2026-03-22 -- Plan 15-02 complete (scan pipeline updates with interface detection and exclusion rules)
 progress:
   total_phases: 16
-  completed_phases: 13
+  completed_phases: 14
   total_plans: 46
-  completed_plans: 44
-  percent: 96
+  completed_plans: 45
+  percent: 98
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 15 of 16 (Auto Doc Enduser Quality)
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-03-22 -- Plan 15-03 complete (end-user writer agent rewrite with interface awareness)
+Plan: 2 of 3 in current phase
+Status: In Progress
+Last activity: 2026-03-22 -- Plan 15-02 complete (scan pipeline updates with interface detection and exclusion rules)
 
-Progress: [██████████] 96%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -94,6 +94,7 @@ Progress: [██████████] 96%
 | Phase 14 P03 | 4min | 2 tasks | 4 files |
 | Phase 15 P01 | 5min | 2 tasks | 4 files |
 | Phase 15 P03 | 2min | 1 tasks | 1 files |
+| Phase 15 P02 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -217,6 +218,7 @@ Recent decisions affecting current work:
 - [Phase 15]: BOUNDARY comment pattern: negative guidance for scan (skip indexing) and writer (cross-reference alternate document)
 - [Phase 15]: All 7 USER_GUIDE exemplars use road-runner domain with web-UI style; WRITER NOTE guides CLI/API adaptation
 - [Phase 15]: Writer determines interface_style from project_model.user_interfaces at runtime, defaulting to CLI when absent (backward compatible)
+- [Phase 15]: Interface detection uses 3-priority chain: config-first, heuristic+AskUserQuestion confirmation, non-interactive fallback
 
 ### Pending Todos
 
@@ -250,6 +252,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T21:15:43.943Z
-Stopped at: Completed 15-03-PLAN.md
+Last session: 2026-03-22T21:17:12.036Z
+Stopped at: Completed 15-02-PLAN.md
 Resume file: None

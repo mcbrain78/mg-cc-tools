@@ -213,9 +213,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### End-User Quality
 
-- [ ] **EUQ-01**: Scan phase detects the project's primary user interface type and persists it to configuration so subsequent scans skip re-detection
+- [x] **EUQ-01**: Scan phase detects the project's primary user interface type and persists it to configuration so subsequent scans skip re-detection
 - [x] **EUQ-02**: Writer generates procedures through the project's primary interface style (click paths for web, commands for CLI, requests for API), with secondary interfaces shown as callout tips
-- [ ] **EUQ-03**: End-user audience scan excludes infrastructure and internal files, focusing on user-facing entry points, config, workflows, and error messages
+- [x] **EUQ-03**: End-user audience scan excludes infrastructure and internal files, focusing on user-facing entry points, config, workflows, and error messages
 - [x] **EUQ-04**: USER_GUIDE template uses a 7-section functional-first structure (Overview, Key Concepts, Workflows, Getting Started, Common Tasks, Configuration, Troubleshooting) with static exemplars in a consistent domain example; the guide-level Overview orients within the guide rather than duplicating the shared OVERVIEW.md
 - [x] **EUQ-05**: Old end-user docs are deleted and regenerated fresh with the new template rather than merged or migrated
 - [x] **EUQ-06**: Scan agent and writer support synthesized sections (marked with `<!-- SYNTHESIZED -->` comments) that generate purely from named project model fields instead of source files, with a TODO placeholder emitted when insufficient data exists
@@ -414,9 +414,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MAN-10 | Phase 14 | Complete |
 | MAN-11 | Phase 14 | Complete |
 | MAN-12 | Phase 14 | Complete |
-| EUQ-01 | Phase 15 | Pending |
+| EUQ-01 | Phase 15 | Complete |
 | EUQ-02 | Phase 15 | Complete |
-| EUQ-03 | Phase 15 | Pending |
+| EUQ-03 | Phase 15 | Complete |
 | EUQ-04 | Phase 15 | Complete |
 | EUQ-05 | Phase 15 | Complete |
 | EUQ-06 | Phase 15 | Complete |
