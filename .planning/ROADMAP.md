@@ -248,7 +248,7 @@ Plans:
 **Goal:** Add `/mg:auto-doc-script` -- a lightweight single-agent command that generates a README.AUTO-DOC.md for standalone scripts and small tool directories, without the full auto-doc pipeline
 **Requirements**: SCRIPT-01, SCRIPT-02, SCRIPT-03, SCRIPT-04, SCRIPT-05, SCRIPT-06
 **Depends on:** Phase 12
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 13-01-PLAN.md — Command file, SCRIPT_README template, and install.sh COMMANDS array update

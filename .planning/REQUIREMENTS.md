@@ -189,12 +189,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Auto Doc Script Command
 
-- [ ] **SCRIPT-01**: `/mg:auto-doc-script` command file exists with correct frontmatter (name, description, allowed-tools: Bash, Read, Write, Glob, Grep) and implements argument parsing, validation, single-file mode, directory mode, and README generation
-- [ ] **SCRIPT-02**: `SCRIPT_README.template.md` template exists with `<!-- PURPOSE -->`, `<!-- EXAMPLE -->`, and `<!-- OPTIONAL -->` annotations for all sections (title/description, Prerequisites, Usage, Examples, Options, Output, Notes)
-- [ ] **SCRIPT-03**: `auto-doc-script` added to COMMANDS array in `auto-doc/install.sh`, deploys correctly with `{TEMPLATES_DIR}` sed resolution
-- [ ] **SCRIPT-04**: Default output filename is `README.AUTO-DOC.md`, placed in same directory as target file or inside target directory
-- [ ] **SCRIPT-05**: Directory mode warns at >20 source files, errors on zero source files, handles multiple entry points with summary table and per-script sections
-- [ ] **SCRIPT-06**: Generated examples use ` ```console ` fenced code blocks with `$` prompt prefix and expected output shown
+- [x] **SCRIPT-01**: `/mg:auto-doc-script` command file exists with correct frontmatter (name, description, allowed-tools: Bash, Read, Write, Glob, Grep) and implements argument parsing, validation, single-file mode, directory mode, and README generation
+- [x] **SCRIPT-02**: `SCRIPT_README.template.md` template exists with `<!-- PURPOSE -->`, `<!-- EXAMPLE -->`, and `<!-- OPTIONAL -->` annotations for all sections (title/description, Prerequisites, Usage, Examples, Options, Output, Notes)
+- [x] **SCRIPT-03**: `auto-doc-script` added to COMMANDS array in `auto-doc/install.sh`, deploys correctly with `{TEMPLATES_DIR}` sed resolution
+- [x] **SCRIPT-04**: Default output filename is `README.AUTO-DOC.md`, placed in same directory as target file or inside target directory
+- [x] **SCRIPT-05**: Directory mode warns at >20 source files, errors on zero source files, handles multiple entry points with summary table and per-script sections
+- [x] **SCRIPT-06**: Generated examples use ` ```console ` fenced code blocks with `$` prompt prefix and expected output shown
 
 ## v2 Requirements
 
