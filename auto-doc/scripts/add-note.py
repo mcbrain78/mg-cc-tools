@@ -17,6 +17,7 @@ Atomic writes via lib/json_io.py. Zero external dependencies.
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -34,7 +35,7 @@ def next_note_id(notes):
     """
     max_num = 0
     for note in notes:
-        match = re.match(r"NOTE-(\d+)", note.get("id", ""))
+        match = re.match(r"NOTE-(\d+)", note.get("note_id", ""))
         if match:
             num = int(match.group(1))
             if num > max_num:
@@ -75,7 +76,7 @@ def main():
     note_id = next_note_id(inbox["notes"])
 
     note = {
-        "id": note_id,
+        "note_id": note_id,
         "text": args.text,
         "added": datetime.now(timezone.utc).isoformat(),
         "context": {
@@ -88,6 +89,9 @@ def main():
 
     inbox["notes"].append(note)
     save_json(inbox_path, inbox)
+
+    # Output JSON to stdout for command file consumption
+    print(json.dumps({"note_id": note_id}))
 
     # Truncate display text for confirmation
     display_text = args.text[:60]

@@ -143,7 +143,7 @@ class TestClassifyNoteInboxUpdate:
         with tempfile.TemporaryDirectory() as tmp:
             inbox = os.path.join(tmp, "notes-inbox.json")
             inbox_data = {"notes": [
-                {"id": "NOTE-001", "text": "Deploy the server",
+                {"note_id": "NOTE-001", "text": "Deploy the server",
                  "added": "2025-01-01T00:00:00+00:00",
                  "context": {"phase": None, "file": None},
                  "classification": None, "status": "pending"},

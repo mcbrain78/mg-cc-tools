@@ -150,7 +150,7 @@ def main():
         inbox = load_json(inbox_path)
         if inbox and "notes" in inbox:
             for note in inbox["notes"]:
-                if note["id"] == args.note_id:
+                if note["note_id"] == args.note_id:
                     note["classification"] = classification
                     break
             save_json(inbox_path, inbox)

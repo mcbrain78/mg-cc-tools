@@ -39,7 +39,7 @@ class TestAddNoteBasic:
 
             assert len(data["notes"]) == 1
             note = data["notes"][0]
-            assert note["id"] == "NOTE-001"
+            assert note["note_id"] == "NOTE-001"
             assert note["text"] == "First test note"
             assert note["status"] == "pending"
             assert note["classification"] is None
@@ -54,13 +54,13 @@ class TestAddNoteBasic:
         with tempfile.TemporaryDirectory() as tmp:
             inbox = os.path.join(tmp, "notes-inbox.json")
             existing = {"notes": [
-                {"id": "NOTE-001", "text": "one", "added": "2025-01-01T00:00:00+00:00",
+                {"note_id": "NOTE-001", "text": "one", "added": "2025-01-01T00:00:00+00:00",
                  "context": {"phase": None, "file": None},
                  "classification": None, "status": "pending"},
-                {"id": "NOTE-002", "text": "two", "added": "2025-01-02T00:00:00+00:00",
+                {"note_id": "NOTE-002", "text": "two", "added": "2025-01-02T00:00:00+00:00",
                  "context": {"phase": None, "file": None},
                  "classification": None, "status": "pending"},
-                {"id": "NOTE-003", "text": "three", "added": "2025-01-03T00:00:00+00:00",
+                {"note_id": "NOTE-003", "text": "three", "added": "2025-01-03T00:00:00+00:00",
                  "context": {"phase": None, "file": None},
                  "classification": None, "status": "pending"},
             ]}
@@ -78,7 +78,7 @@ class TestAddNoteBasic:
                 data = json.load(f)
 
             assert len(data["notes"]) == 4
-            assert data["notes"][3]["id"] == "NOTE-004"
+            assert data["notes"][3]["note_id"] == "NOTE-004"
 
     def test_context_args_populate_context_object(self):
         """--phase and --file args populate the context object."""
@@ -144,7 +144,7 @@ class TestAddNoteEdgeCases:
                 data = json.load(f)
 
             assert len(data["notes"]) == 1
-            assert data["notes"][0]["id"] == "NOTE-001"
+            assert data["notes"][0]["note_id"] == "NOTE-001"
 
     def test_handles_id_gaps(self):
         """Uses max+1 for IDs, not length+1 (handles gaps in numbering)."""
@@ -152,10 +152,10 @@ class TestAddNoteEdgeCases:
             inbox = os.path.join(tmp, "notes-inbox.json")
             # Note with gap: NOTE-001 and NOTE-005 (missing 002-004)
             existing = {"notes": [
-                {"id": "NOTE-001", "text": "one", "added": "2025-01-01T00:00:00+00:00",
+                {"note_id": "NOTE-001", "text": "one", "added": "2025-01-01T00:00:00+00:00",
                  "context": {"phase": None, "file": None},
                  "classification": None, "status": "pending"},
-                {"id": "NOTE-005", "text": "five", "added": "2025-01-05T00:00:00+00:00",
+                {"note_id": "NOTE-005", "text": "five", "added": "2025-01-05T00:00:00+00:00",
                  "context": {"phase": None, "file": None},
                  "classification": None, "status": "pending"},
             ]}
@@ -173,7 +173,7 @@ class TestAddNoteEdgeCases:
                 data = json.load(f)
 
             # Should be NOTE-006 (max existing 5 + 1), not NOTE-003 (length 2 + 1)
-            assert data["notes"][2]["id"] == "NOTE-006"
+            assert data["notes"][2]["note_id"] == "NOTE-006"
 
     def test_stderr_confirmation_message(self):
         """Print confirmation to stderr with note ID and truncated text."""
@@ -190,3 +190,20 @@ class TestAddNoteEdgeCases:
             assert result.returncode == 0
             assert "NOTE-001" in result.stderr
             assert "A short note" in result.stderr
+
+    def test_stdout_json_output(self):
+        """Stdout contains JSON with note_id for command file consumption."""
+        with tempfile.TemporaryDirectory() as tmp:
+            inbox = os.path.join(tmp, "notes-inbox.json")
+            with open(inbox, "w") as f:
+                json.dump({"notes": []}, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH, "--inbox", inbox,
+                 "--text", "Test stdout JSON"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            stdout_data = json.loads(result.stdout)
+            assert "note_id" in stdout_data
+            assert stdout_data["note_id"] == "NOTE-001"
