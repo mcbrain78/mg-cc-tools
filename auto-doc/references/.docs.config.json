@@ -20,5 +20,6 @@
   },
   "shared_documents": ["OVERVIEW", "GLOSSARY"],
   "custom_documents": [],
-  "gsd_integration": true
+  "gsd_integration": true,
+  "user_interfaces": []
 }

@@ -80,7 +80,21 @@ A structured representation of the project's architecture, technology stack, and
     "deployment": "npm package / bash install script",
     "ci": "none",
     "config_files": ["pyproject.toml", ".docs.config.json"]
-  }
+  },
+  "user_interfaces": [
+    {
+      "type": "web",
+      "name": "Road Runner Dashboard",
+      "url_pattern": "/dashboard",
+      "primary": true
+    },
+    {
+      "type": "cli",
+      "name": "rr CLI",
+      "url_pattern": null,
+      "primary": false
+    }
+  ]
 }
 ```
 
@@ -134,18 +148,57 @@ Each component object:
 | `ci` | `string` | yes | CI/CD system in use (or `"none"`) |
 | `config_files` | `array of string` | yes | Configuration files in the project |
 
+### `project_model.user_interfaces`
+
+- **Type:** `array of object` (optional -- field may be absent)
+- **Required:** no
+- **Description:** Detected or configured user interface types for the project. When present, writer agents use this to adapt documentation style to the project's primary interface. When absent, writer agents fall back to CLI-style documentation.
+
+Each user interface object:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | `string` | yes | Interface type: `"web"`, `"cli"`, `"api"` |
+| `name` | `string` | yes | Human-readable interface name |
+| `url_pattern` | `string or null` | yes | URL pattern for web interfaces, null for CLI/API |
+| `primary` | `boolean` | yes | Whether this is the primary user interface |
+
+Example:
+
+```json
+"user_interfaces": [
+  {
+    "type": "web",
+    "name": "Road Runner Dashboard",
+    "url_pattern": "/dashboard",
+    "primary": true
+  },
+  {
+    "type": "cli",
+    "name": "rr CLI",
+    "url_pattern": null,
+    "primary": false
+  }
+]
+```
+
 ## source_material_index
 
 Maps document sections to the source files they describe. Used by the staleness checker to determine which sections need updates when source files change.
 
 ```json
 "source_material_index": {
+  "USER_GUIDE/overview": {
+    "source_files": [],
+    "staleness": "unknown",
+    "synthesized_from": ["project_model.components", "project_model.user_interfaces"]
+  },
   "ARCHITECTURE/overview": {
     "source_files": ["src/app.ts", "src/routes/index.ts"],
     "staleness": "fresh"
   },
-  "USER_GUIDE/installation": {
-    "source_files": ["package.json", "install.sh"],
+  "USER_GUIDE/getting-started": {
+    "source_files": ["src/routes/dashboard.py", "src/cli/main.py"],
     "staleness": "stale"
   }
 }
@@ -161,6 +214,9 @@ Each value object:
 |-------|------|----------|-------------|
 | `source_files` | `array of string` | yes | Relative paths to source files that this section documents |
 | `staleness` | `string` | yes | One of `"fresh"`, `"stale"`, `"unknown"`. Fresh means source files haven't changed since section was last generated. Stale means source files have changed. Unknown means no generation history exists. |
+| `synthesized_from` | `array of string` | no | Dotted field paths into scan data (e.g., `"project_model.components"`). When present with empty `source_files`, signals the writer to generate from project model fields instead of source files. |
+
+Optional field for synthesized sections (sections generated from project model fields instead of source files): when `synthesized_from` is present and `source_files` is empty, the writer generates content from the named project model fields rather than reading source files. This enables overview, concepts, and workflow sections that don't map to specific code files.
 
 ## staleness_report
 
@@ -306,7 +362,8 @@ A minimal valid `docs-scan.json` for an initial scan of a small project:
       "deployment": "pip install",
       "ci": "none",
       "config_files": ["pyproject.toml"]
-    }
+    },
+    "user_interfaces": []
   },
   "source_material_index": {},
   "staleness_report": [],
