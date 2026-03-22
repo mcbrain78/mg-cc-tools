@@ -205,4 +205,4 @@ Group issues by severity (critical first). Within each severity group, list issu
 - **Cross-reference across documents.** Look for systemic issues. If the same symbol is broken in three documents, report it as a pattern, not three separate issues.
 - **Never modify documentation.** Write the verification report only. The generate command decides what to regenerate based on the report.
 - **Record findings immediately.** Write each finding via `add-verify-finding.py` as soon as you discover it. Do not batch findings for later recording.
-- **Manifest-based verification only.** Check 1 reads structured manifest files, not extracted markdown references. Symbols are verified via LSP documentSymbol, not Grep. There is no fallback -- if LSP cannot verify a symbol, it is reported as info-severity and skipped.
+- **Manifest-based verification only.** Check 1 reads structured manifest files, not extracted markdown references. Symbols are verified via LSP documentSymbol, not text search. If LSP cannot verify a symbol, it is reported as info-severity and skipped -- there is no alternative verification path.
