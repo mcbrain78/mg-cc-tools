@@ -279,10 +279,11 @@ Plans:
 
 ### Phase 16: auto doc incremental scan
 
-**Goal:** [To be planned]
+**Goal:** Add incremental scan mode that uses git diff, reference manifests, and GSD phase summaries to scope documentation updates to only what changed -- instead of re-scanning the entire codebase every time
 **Requirements**: ISC-01, ISC-02, ISC-03, ISC-04, ISC-05, ISC-06, ISC-07, ISC-08, ISC-09
 **Depends on:** Phase 15
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 16 to break down)
+- [ ] 16-01-PLAN.md — TDD: diff-scan.py deterministic diff scoping script with comprehensive pytest suite
+- [ ] 16-02-PLAN.md — Pipeline wiring: schema update, scan command incremental mode, scan-audience agent carry-forward, generate timestamp, router update
