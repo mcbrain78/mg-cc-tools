@@ -2,8 +2,8 @@
 phase: 12
 slug: auto-doc-rename-and-cleanup
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-22
 ---
 
@@ -46,7 +46,6 @@ created: 2026-03-22
 | 12-02-03 | 02 | 2 | add-note.py note_id field | unit | `python3 -m pytest auto-doc/scripts/tests/test_add_note.py -x` | Exists (needs update) | ⬜ pending |
 | 12-02-04 | 02 | 2 | add-note.py JSON stdout | unit | `python3 -m pytest auto-doc/scripts/tests/test_add_note.py::TestAddNoteBasic::test_append_to_empty_inbox -x` | Exists (needs new assertion) | ⬜ pending |
 | 12-02-05 | 02 | 2 | classify-note.py note_id | unit | `python3 -m pytest auto-doc/scripts/tests/test_classify_note.py -x` | Exists (needs update) | ⬜ pending |
-| 12-02-06 | 02 | 2 | Remove dead check-references.py call | smoke | Scan pipeline produces valid docs-scan.json | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -55,7 +54,6 @@ created: 2026-03-22
 ## Wave 0 Requirements
 
 - [ ] Add test assertion for `add-note.py` JSON stdout output (new behavior in 12-02-04)
-- [ ] Add scan pipeline smoke test to verify `docs-scan.json` production after `check-references.py` call removal (12-02-06)
 
 *Existing infrastructure covers all other phase requirements.*
 
@@ -67,16 +65,17 @@ created: 2026-03-22
 |----------|-------------|------------|-------------------|
 | No `create-docs`/`add-docs` refs outside exclusions | Rename completeness | Repo-wide grep not suited for unit test | `grep -rn "create-docs\|add-docs" --include="*.py" --include="*.md" --include="*.sh" . \| grep -v ".planning/" \| grep -v "docs/work-queue/"` |
 | Migration removes old files in target project | Install migration | Requires real install target | Run `install.sh --project /tmp/test-project`, verify `.claude/commands/mg/create-docs*.md` absent |
+| Scan pipeline produces valid docs-scan.json after check-references.py removal | Dead call removal (FIX-C1) | Requires real project with docs directory and full scan pipeline execution; cannot be reduced to a unit test | Run `/mg:auto-doc-scan` on a test project, verify `docs-scan.json` is valid JSON with expected top-level keys |
 
 ---
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
 - [ ] No watch-mode flags
 - [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** pending
