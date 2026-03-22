@@ -284,4 +284,5 @@ Skill("gsd:plan-phase", "{phase} {pass-through-flags}")
 - Pass-through flags are forwarded verbatim to `gsd:plan-phase` (e.g., `--skip-research`, `--auto`, `--prd path`)
 - The user can always use `gsd:plan-phase` directly for vanilla behavior without pre-flight checks
 - When "Discuss first" is chosen, `mg:discuss-phase` is invoked (which itself does deviation scanning), so the user gets the full deviation-aware discussion flow
+- After completion, suggest the next step: `/mg:execute-phase {phase}` (execution with post-run deviation impact analysis)
 </important_notes>

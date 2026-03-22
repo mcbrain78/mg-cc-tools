@@ -148,4 +148,5 @@ Skill("gsd:discuss-phase", "{phase}")
 - The deviation scan is a best-effort heuristic — LLM judgment determines relevance
 - The user can always bypass this wrapper and use `gsd:discuss-phase` directly for vanilla behavior
 - Deviations surfaced here become part of the conversation context, so `gsd:discuss-phase` naturally considers them even without explicit flags
+- After completion, suggest the next step: `/mg:plan-phase {phase}` (deviation-aware planning with requirement traceability)
 </important_notes>
