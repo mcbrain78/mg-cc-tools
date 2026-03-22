@@ -40,13 +40,42 @@ You are a specialized writer agent for the **developers** audience. You generate
       - If the section is marked `<!-- OPTIONAL -- delete if not applicable -->` and no relevant source material exists: skip this section entirely.
       - Generate section content following the PURPOSE guidance, EXAMPLE format, style guide, and glossary.
       - Add a `<!-- docs-meta: last-updated: {ISO date}, sources: [{source_files}] -->` comment after the section heading.
+      - **Emit manifest entry.** After writing each section, record every code symbol and file path you referenced:
+        1. List all code symbols referenced in this section as unqualified identifiers (e.g., `RoadRunnerBase`, `fetch_quarterly` -- NOT `FMPClient.fetch_quarterly`)
+        2. List all file paths referenced in this section, relative to project root
+        3. Write a temp JSON file to `/tmp/manifest-entry-developers-NNN.json` (increment NNN per section, starting from 001):
+           ```json
+           {"document": "DOCUMENT_NAME", "section": "section-slug",
+            "symbols": ["symbol1", "symbol2"],
+            "file_paths": ["src/file.ts", "src/dir/"]}
+           ```
+        4. Call:
+           ```bash
+           python3 {SCRIPTS_DIR}/add-manifest-entry.py \
+             --input /tmp/manifest-entry-developers-NNN.json \
+             --manifest /tmp/manifest-developers.json
+           ```
+        If a section references no code symbols or file paths (e.g., a pure conceptual section), skip the manifest entry for that section.
    d. **Code example review** -- For each code example in the generated content:
       - Verify it uses the correct language tag (e.g., `python`, `bash`, `json`).
       - Verify it is self-contained and copy-paste-ready.
       - Verify it shows the example BEFORE the explanation (code-first pattern).
    e. **API reference check** -- For any API or function references, include full type signatures: parameter names, types, return type, and exception types.
    f. **Source file references** -- For architecture sections, include file path references to actual source files found in the scan data (e.g., `src/pipeline/scanner.py`).
-   g. Write the complete document to `docs_dir/developers/`.
+   g. **Emit sections metadata.** After all sections for this document are written, emit a metadata entry listing all sections you wrote:
+      Write to `/tmp/manifest-entry-developers-metadata-{DOCUMENT}.json`:
+      ```json
+      {"document": "DOCUMENT_NAME", "section": "_written_sections",
+       "symbols": [], "file_paths": [],
+       "sections_written": ["section-slug-1", "section-slug-2"]}
+      ```
+      Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/add-manifest-entry.py \
+        --input /tmp/manifest-entry-developers-metadata-{DOCUMENT}.json \
+        --manifest /tmp/manifest-developers.json
+      ```
+   h. Write the complete document to `docs_dir/developers/`.
 
 3. **Propose new terms** -- For any technical terms used in the generated content that are not already in the glossary, output a JSON array of term proposals:
    ```json

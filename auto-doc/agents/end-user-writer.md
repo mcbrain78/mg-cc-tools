@@ -39,8 +39,37 @@ You are a specialized writer agent for the **end-users** audience. You generate 
       - If the section is marked `<!-- OPTIONAL -- delete if not applicable -->` and no relevant source material exists: skip this section entirely.
       - Generate section content following the PURPOSE guidance, EXAMPLE format, style guide, and glossary.
       - Add a `<!-- docs-meta: last-updated: {ISO date}, sources: [{source_files}] -->` comment after the section heading.
+      - **Emit manifest entry.** After writing each section, record every code symbol and file path you referenced:
+        1. List all code symbols referenced in this section as unqualified identifiers (e.g., `RoadRunnerBase`, `fetch_quarterly` -- NOT `FMPClient.fetch_quarterly`)
+        2. List all file paths referenced in this section, relative to project root
+        3. Write a temp JSON file to `/tmp/manifest-entry-end-users-NNN.json` (increment NNN per section, starting from 001):
+           ```json
+           {"document": "DOCUMENT_NAME", "section": "section-slug",
+            "symbols": ["symbol1", "symbol2"],
+            "file_paths": ["src/file.ts", "src/dir/"]}
+           ```
+        4. Call:
+           ```bash
+           python3 {SCRIPTS_DIR}/add-manifest-entry.py \
+             --input /tmp/manifest-entry-end-users-NNN.json \
+             --manifest /tmp/manifest-end-users.json
+           ```
+        If a section references no code symbols or file paths (e.g., a pure conceptual section), skip the manifest entry for that section.
    d. **Jargon check** -- Re-read the generated section. Replace any technical terms with plain language equivalents. If a technical term is unavoidable, define it inline on first use (e.g., "the API (the connection point your app uses to talk to the system)").
-   e. Write the complete document to `docs_dir/end-users/`.
+   e. **Emit sections metadata.** After all sections for this document are written, emit a metadata entry listing all sections you wrote:
+      Write to `/tmp/manifest-entry-end-users-metadata-{DOCUMENT}.json`:
+      ```json
+      {"document": "DOCUMENT_NAME", "section": "_written_sections",
+       "symbols": [], "file_paths": [],
+       "sections_written": ["section-slug-1", "section-slug-2"]}
+      ```
+      Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/add-manifest-entry.py \
+        --input /tmp/manifest-entry-end-users-metadata-{DOCUMENT}.json \
+        --manifest /tmp/manifest-end-users.json
+      ```
+   f. Write the complete document to `docs_dir/end-users/`.
 
 3. **Propose new terms** -- For any domain-specific terms used in the generated content that are not already in the glossary, output a JSON array of term proposals:
    ```json

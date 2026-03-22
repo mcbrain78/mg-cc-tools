@@ -41,6 +41,22 @@ You are a specialized writer agent for the **agents** audience. You generate doc
       - If the section is marked `<!-- OPTIONAL -- delete if not applicable -->` and no relevant source material exists: skip this section entirely.
       - Generate section content following the PURPOSE guidance, EXAMPLE format, style guide, and glossary.
       - Add a `<!-- docs-meta: last-updated: {ISO date}, sources: [{source_files}] -->` comment after the section heading.
+      - **Emit manifest entry.** After writing each section, record every code symbol and file path you referenced:
+        1. List all code symbols referenced in this section as unqualified identifiers (e.g., `RoadRunnerBase`, `fetch_quarterly` -- NOT `FMPClient.fetch_quarterly`)
+        2. List all file paths referenced in this section, relative to project root
+        3. Write a temp JSON file to `/tmp/manifest-entry-agents-NNN.json` (increment NNN per section, starting from 001):
+           ```json
+           {"document": "DOCUMENT_NAME", "section": "section-slug",
+            "symbols": ["symbol1", "symbol2"],
+            "file_paths": ["src/file.ts", "src/dir/"]}
+           ```
+        4. Call:
+           ```bash
+           python3 {SCRIPTS_DIR}/add-manifest-entry.py \
+             --input /tmp/manifest-entry-agents-NNN.json \
+             --manifest /tmp/manifest-agents.json
+           ```
+        If a section references no code symbols or file paths (e.g., a pure conceptual section), skip the manifest entry for that section.
    d. **Add YAML frontmatter** -- At the top of each generated document, include structured metadata:
       ```yaml
       ---
@@ -52,7 +68,20 @@ You are a specialized writer agent for the **agents** audience. You generate doc
       ```
    e. **Absolute path verification** -- Verify every file reference uses an absolute path. Replace any relative paths with absolute paths rooted at `project_root`.
    f. **Heading uniqueness check** -- Verify every heading name in the document is unique. Duplicate headings cause embedding overlap in RAG systems. If duplicates are found, disambiguate with a qualifying prefix.
-   g. Write the complete document to `docs_dir/agents/`.
+   g. **Emit sections metadata.** After all sections for this document are written, emit a metadata entry listing all sections you wrote:
+      Write to `/tmp/manifest-entry-agents-metadata-{DOCUMENT}.json`:
+      ```json
+      {"document": "DOCUMENT_NAME", "section": "_written_sections",
+       "symbols": [], "file_paths": [],
+       "sections_written": ["section-slug-1", "section-slug-2"]}
+      ```
+      Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/add-manifest-entry.py \
+        --input /tmp/manifest-entry-agents-metadata-{DOCUMENT}.json \
+        --manifest /tmp/manifest-agents.json
+      ```
+   h. Write the complete document to `docs_dir/agents/`.
 
 3. **Propose new terms** -- For any technical terms used in the generated content that are not already in the glossary, output a JSON array of term proposals:
    ```json
