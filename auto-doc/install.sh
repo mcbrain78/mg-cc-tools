@@ -27,6 +27,7 @@ COMMANDS=(
   auto-doc-generate
   auto-doc-verify
   auto-doc-add
+  auto-doc-script
 )
 
 # -- Parse arguments -----------------------------------------------------------
@@ -72,6 +73,7 @@ while [[ $# -gt 0 ]]; do
       echo "  /mg:auto-doc-generate  <- step 2: generate"
       echo "  /mg:auto-doc-verify    <- step 3: verify"
       echo "  /mg:auto-doc-add          <- capture notes"
+      echo "  /mg:auto-doc-script       <- generate README for a standalone script"
       exit 0
       ;;
     *)
@@ -377,3 +379,4 @@ echo "  /mg:auto-doc-scan         <- step 1: scan"
 echo "  /mg:auto-doc-generate     <- step 2: generate"
 echo "  /mg:auto-doc-verify       <- step 3: verify"
 echo "  /mg:auto-doc-add          <- capture documentation notes"
+echo "  /mg:auto-doc-script       <- generate README for a standalone script"
