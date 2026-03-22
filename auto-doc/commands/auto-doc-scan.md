@@ -1,7 +1,7 @@
 ---
 name: mg:auto-doc-scan
 description: Scan project and build source material index for documentation generation
-allowed-tools: Bash, Read, Write, Glob, Grep, Task
+allowed-tools: Bash, Read, Write, Glob, Grep, Task, AskUserQuestion
 ---
 
 # Documentation Scanner
@@ -57,24 +57,57 @@ Build an understanding of the project before delegating to scan subagents.
     - `shared_documents`
     - `gsd_integration` flag
 
-11. **Detect mode.** Check if `{docs_dir}` (from config, default `docs/auto-doc`) contains any `.md` files:
+11. **Detect user interfaces.**
+
+    **Priority 1 -- Config has explicit interfaces.** Read the `user_interfaces` field from the loaded config (`.mg/docs/.docs.config.json`). If the field exists AND is a non-empty array, use it as-is. Skip detection and confirmation. Write `user_interfaces` into the `project_model` in `scan-project.json`.
+
+    **Priority 2 -- Heuristic detection + confirmation.** If `user_interfaces` is absent or an empty array in config:
+
+    a. **Detect interfaces from project structure.** Apply these heuristics based on files and frameworks discovered in steps 2-8:
+       - Front-end frameworks with routes or templates (React, Vue, Angular, Next.js, Flask with templates, Django with templates, Rails with views) -> `type: "web"`
+       - CLI frameworks or argument parsers (argparse, click, commander, clap, cobra) -> `type: "cli"`
+       - API-only frameworks without a UI layer (FastAPI without templates, Express without views, Actix) -> `type: "api"`
+       - Orchestration platforms with dashboards (Airflow, Prefect) -> `type: "web"`
+       - Disambiguate with directory structure: presence of `templates/`, `static/`, `pages/`, `app/` directories suggests web UI
+       - If multiple interfaces detected, mark the one with the strongest signal as `primary: true` and others as `primary: false`
+       - For each detected interface, provide a descriptive `name` (e.g., "React Dashboard", "CLI tool", "REST API") and `url_pattern` (for web: a representative route pattern like "/dashboard"; null for CLI/API)
+
+    b. **Confirm with user.** Present detected interfaces via AskUserQuestion:
+       ```
+       AskUserQuestion("Detected user interfaces:\n\n  Primary: {name} ({type})\n  Secondary: {name} ({type})\n\nIs this correct? Reply 'yes' to confirm, or describe corrections (e.g., 'primary is CLI, no web interface').")
+       ```
+
+    c. **Process response:**
+       - User confirms -> use detected interfaces
+       - User corrects -> parse corrections into updated interface objects
+       - **Persist to config.** Read `.mg/docs/.docs.config.json`, add/update the `user_interfaces` field with the confirmed/corrected array, write back atomically.
+
+    **Priority 3 -- Fallback (non-interactive).** If AskUserQuestion is not available or user does not respond:
+       - Omit `user_interfaces` from `scan-project.json` entirely (do NOT write an empty array -- omit the field)
+       - Writer agents fall back to CLI-style documentation (backward compatible)
+       - Do NOT persist anything to config
+       - Log: "Interface detection skipped (non-interactive). Writer will default to CLI-style documentation."
+
+    d. **Write to scan-project.json.** If interfaces were confirmed/corrected, include `user_interfaces` in the `project_model` object written to `scan-project.json`.
+
+12. **Detect mode.** Check if `{docs_dir}` (from config, default `docs/auto-doc`) contains any `.md` files:
     - If yes: `mode = "update"`
     - If no: `mode = "initial"`
     - **Edge case (Pitfall 4):** If mode is "update" but no prior `docs-scan.json` exists at `.mg/docs/docs-scan.json`, fall back to `mode = "initial"` gracefully. Log a note that previous scan data was not found.
 
-12. **Clear scan-logs (Pitfall 6).** Remove stale data from prior runs to prevent merge contamination:
+13. **Clear scan-logs (Pitfall 6).** Remove stale data from prior runs to prevent merge contamination:
     ```bash
     rm -f <project_root>/.mg/docs/scan-logs/*.json
     rm -f <project_root>/.mg/docs/scan-logs/*.md
     ```
     **Do NOT delete** `notes-inbox.json` or `.docs.config.json` -- those live in the parent `.mg/docs/` directory, not in `scan-logs/`.
 
-13. **Create workspace** if it does not exist:
+14. **Create workspace** if it does not exist:
     ```bash
     mkdir -p <project_root>/.mg/docs/scan-logs
     ```
 
-14. **Write orientation to TWO files:**
+15. **Write orientation to TWO files:**
 
     **a. `scan-orientation.md`** -- Human-readable orientation log for subagents:
     ```
@@ -110,11 +143,16 @@ Build an understanding of the project before delegating to scan subagents.
           "deployment": "How deployed",
           "ci": "CI system or none",
           "config_files": ["pyproject.toml", "..."]
-        }
+        },
+        "user_interfaces": [
+          {"type": "web", "name": "Dashboard", "url_pattern": "/dashboard", "primary": true}
+        ]
       },
       "gsd_context": null
     }
     ```
+
+    **Note:** `user_interfaces` is optional. Include it only if interfaces were detected and confirmed in step 11. If step 11 fell back to Priority 3 (non-interactive), omit the field entirely from `project_model`.
 
 ### Step 2: GSD Context (conditional)
 
