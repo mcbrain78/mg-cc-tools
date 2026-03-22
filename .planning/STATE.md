@@ -209,6 +209,7 @@ Recent decisions affecting current work:
 6. Create mg command to arrange planning files into GSD plans (area: tooling) — `.planning/todos/pending/2026-03-22-create-mg-command-to-arrange-planning-files-into-gsd-plans.md`
 7. Create mg:add-phase-with-context compound command (area: tooling) — `.planning/todos/pending/2026-03-22-create-mg-add-phase-with-context-compound-command.md`
 8. Create mg:formalize-plan command for structured plan generation (area: tooling) — `.planning/todos/pending/2026-03-22-create-mg-formalize-plan-command-for-structured-plan-generation.md`
+9. Add pyright strict mode compliance (area: tooling) — `.planning/todos/pending/2026-03-22-add-pyright-strict-mode-compliance.md`
 
 ### Roadmap Evolution
 
