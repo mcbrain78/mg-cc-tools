@@ -198,12 +198,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Reference Manifest
 
-- [ ] **MAN-01**: Per-audience reference manifest files are created in `.mg/docs/reference-manifests/`, each containing symbols and file paths organized by document and section
+- [x] **MAN-01**: Per-audience reference manifest files are created in `.mg/docs/reference-manifests/`, each containing symbols and file paths organized by document and section
 - [ ] **MAN-02**: Writer agents emit manifest entries after writing each section via `add-manifest-entry.py`, recording every code symbol and file path referenced
-- [ ] **MAN-03**: Symbols are stored as unqualified identifiers and verified against all LSP `documentSymbol` results at any nesting level without filtering by `SymbolKind`
+- [x] **MAN-03**: Symbols are stored as unqualified identifiers and verified against all LSP `documentSymbol` results at any nesting level without filtering by `SymbolKind`
 - [ ] **MAN-04**: Generate orchestrator merges per-audience temp manifests into persisted manifests, replacing matching `(document, section)` keys and preserving non-matching ones
 - [ ] **MAN-05**: In initial mode all existing manifests are cleared before generation; in update mode existing manifests are preserved and only regenerated sections are upserted
-- [ ] **MAN-06**: Stale section cleanup: writer agents emit a `_written_sections` metadata entry; during merge, entries for sections absent from that list are removed
+- [x] **MAN-06**: Stale section cleanup: writer agents emit a `_written_sections` metadata entry; during merge, entries for sections absent from that list are removed
 - [ ] **MAN-07**: Verify reads all manifests and checks every `file_paths` entry via filesystem existence and every `symbols` entry via LSP `documentSymbol` on the section's referenced files
 - [ ] **MAN-08**: If LSP returns error or empty results for a file, symbol verification is skipped and an info-severity finding is recorded
 - [ ] **MAN-09**: Broken references are reported grouped by document and section, distinguishing missing file paths from undefined symbols, all at high severity
@@ -389,12 +389,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCRIPT-04 | Phase 13 | Planned |
 | SCRIPT-05 | Phase 13 | Planned |
 | SCRIPT-06 | Phase 13 | Planned |
-| MAN-01 | Phase 14 | Pending |
+| MAN-01 | Phase 14 | Complete |
 | MAN-02 | Phase 14 | Pending |
-| MAN-03 | Phase 14 | Pending |
+| MAN-03 | Phase 14 | Complete |
 | MAN-04 | Phase 14 | Pending |
 | MAN-05 | Phase 14 | Pending |
-| MAN-06 | Phase 14 | Pending |
+| MAN-06 | Phase 14 | Complete |
 | MAN-07 | Phase 14 | Pending |
 | MAN-08 | Phase 14 | Pending |
 | MAN-09 | Phase 14 | Pending |
