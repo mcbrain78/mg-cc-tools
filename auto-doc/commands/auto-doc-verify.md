@@ -58,8 +58,6 @@ If either prerequisite fails, abort with the corresponding message and do not pr
    - `docs_dir_abs` = `{project_root}/{docs_dir}`
    - `scan_data_path` = `{project_root}/.mg/docs/docs-scan.json`
    - `glossary_path` = `{docs_dir_abs}/GLOSSARY.md`
-   - `verify_refs_broken_path` = `{project_root}/.mg/docs/scan-logs/verify-refs-broken.json`
-   - `verify_refs_symbols_path` = `{project_root}/.mg/docs/scan-logs/verify-refs-symbols.json`
    - `output_report_path` = `{project_root}/.mg/docs/docs-verify-report.md`
    - `findings_file` = `{project_root}/.mg/docs/docs-verify-findings.json`
 
@@ -76,32 +74,7 @@ If either prerequisite fails, abort with the corresponding message and do not pr
    ```
    This ensures each verify run produces findings reflecting the current documentation state. Generate reads findings but never clears them -- only verify clears (per finding lifecycle convention).
 
-### Step 2: Reference Extraction (deterministic)
-
-Run `check-references.py` ONCE for the entire docs directory to extract all file path and symbol references:
-
-```bash
-python3 {SCRIPTS_DIR}/check-references.py \
-  --docs-dir <docs_dir_abs> \
-  --project-root <project_root> \
-  --skip-symbol-check \
-  --output-broken <project_root>/.mg/docs/scan-logs/verify-refs-broken.json \
-  --output-symbols <project_root>/.mg/docs/scan-logs/verify-refs-symbols.json
-```
-
-**IMPORTANT:** Use `--docs-dir` (directory-level), NOT `--doc-file`. The script iterates all `.md` files in the directory internally.
-
-**IMPORTANT:** Use `--skip-symbol-check` so the script extracts symbols without walking the project tree for each one. Symbol verification is delegated to the verifier agent via LSP (much faster and more accurate).
-
-The script produces two split output files:
-- `verify-refs-broken.json` -- broken file path entries only, grouped by reference
-- `verify-refs-symbols.json` -- extracted symbols, grouped by reference
-
-Both use a grouped format with `reference`, `type`, `status`, and `locations` fields. Duplicate references from multiple docs are collapsed into a single entry with multiple locations.
-
-If the script fails, log the error and continue. The agent can still run the remaining 5 checks without reference extraction data.
-
-### Step 3: Spawn Verifier Agent
+### Step 2: Spawn Verifier Agent
 
 Spawn a **single** verifier agent instance via the Task tool. Unlike codebase-health which parallelizes verification by category, documentation verification runs 6 sequential checks in one agent.
 
@@ -121,15 +94,13 @@ Parameters:
 - glossary_path: {docs_dir_abs}/GLOSSARY.md
 - style_guide_path: references/style-guide.md
 - output_report_path: {project_root}/.mg/docs/docs-verify-report.md
-- verify_refs_broken_path: {project_root}/.mg/docs/scan-logs/verify-refs-broken.json
-- verify_refs_symbols_path: {project_root}/.mg/docs/scan-logs/verify-refs-symbols.json
 - findings_file: {project_root}/.mg/docs/docs-verify-findings.json"
 )
 ```
 
 Wait for the agent to complete. The agent writes `docs-verify-report.md` to the `output_report_path`.
 
-### Step 4: Present Results
+### Step 3: Present Results
 
 1. **Read the generated report:** Load `{project_root}/.mg/docs/docs-verify-report.md`.
 
@@ -159,7 +130,7 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
    ```
    (Where N comes from completeness check issues in the report. If zero gaps, omit this line.)
 
-### Step 5: Suggest Next Steps
+### Step 4: Suggest Next Steps
 
 - If this is the last pipeline step:
   ```
@@ -173,13 +144,12 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
 
 ## Important Principles
 
-- **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `verify-refs-broken.json` and `verify-refs-symbols.json` (scan-logs), `docs-verify-report.md`.
-- **Use `--docs-dir` not `--doc-file` for check-references.py.** The script iterates the directory internally. Calling it per-file would be redundant and slower.
+- **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `docs-verify-report.md`, `docs-verify-findings.json`.
 - **Agent instructions ARE pasted into the Task prompt.** The full contents of `agents/verifier.md` are included in the Task prompt so the spawned agent has its complete instruction set. The agent then reads data files itself via the paths provided.
-- **The agent uses LSP for symbol verification.** DO NOT use check-references.py's symbol status results. The script's regex-based `_symbol_exists_in_project()` misses valid symbols (re-exports, decorators, cross-module imports). The agent uses LSP go-to-definition which resolves semantically.
+- **The agent uses LSP documentSymbol for symbol verification against structured manifests.** There is no regex extraction step or Grep fallback.
+- **Reference integrity is manifest-based.** The verifier reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
 - **5-tier severity model:** critical, high, medium, low, info. This matches the verifier agent's definition and the report output format.
 - **Prefer false negatives over false positives.** Same principle as the verifier agent -- only flag issues with high confidence. A noisy report trains users to ignore it.
-- **Do not modify check-references.py.** It is used as-is for reference extraction.
 - **Verify clears all verify artifacts before each run** via `list-verify-findings.py --clean`. Generate reads findings but never clears them. This ensures each verify run reflects the current documentation state.
 - **Use `{SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
 - **Use `{GLOBAL_CONFIG}` placeholder for default config path** -- resolved by install.sh at install time.
