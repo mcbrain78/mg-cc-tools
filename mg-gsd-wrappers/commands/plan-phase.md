@@ -65,14 +65,13 @@ Skip to Step 5.
 
 Perform the same deviation scan as `mg:discuss-phase`:
 
-**3a. Find prior phase directories:**
+**3a. Find prior phase SUMMARY.md files:**
 
-Use Glob to find phase directories in `.planning/phases/` where the phase number is within the milestone range AND less than the current phase number.
+Glob for `.planning/phases/*-*/*-SUMMARY.md`. Filter results to phases where the leading number (digits before the first `-` in the directory name) is within the milestone range AND less than the current phase number.
 
 **3b. Read SUMMARY.md files:**
 
-For each prior phase directory found:
-- Glob for `*-SUMMARY.md` files within that directory
+For each matching SUMMARY.md file:
 - Read the "Deviations from Plan" and "Decisions Made" sections
 
 The deviation format to expect:
@@ -90,9 +89,7 @@ The deviation format to expect:
 
 **3c. Read prior CONTEXT.md files:**
 
-For each prior phase directory within the milestone range:
-- Glob for `*-CONTEXT.md`
-- Read `<decisions>` sections
+Glob for `.planning/phases/*-*/*-CONTEXT.md`. Filter results to phases within the milestone range AND less than the current phase number. Read the `<decisions>` sections from each.
 
 ## 4. Check for Conflicts with This Phase's CONTEXT.md
 
@@ -134,9 +131,9 @@ Ensure this phase has proper requirement IDs before the planner runs. Without ID
 
 - Read the `**Requirements**:` line for this phase from `.planning/ROADMAP.md`
 - Read `.planning/REQUIREMENTS.md` — note existing category prefixes, the highest used number per prefix, and which phase each requirement maps to
-- Read this phase's CONTEXT.md `<decisions>` section (already loaded from Step 4 if it exists)
+- Glob for `.planning/phases/{padded}-*/*-CONTEXT.md` and read the `<decisions>` section
 
-**If no CONTEXT.md exists:** Skip to Step 6 — nothing to derive requirements from.
+**If no CONTEXT.md exists for this phase:** Skip to Step 6 — nothing to derive requirements from.
 
 **5b. Determine current state:**
 

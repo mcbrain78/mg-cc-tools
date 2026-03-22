@@ -62,15 +62,13 @@ Skip to Step 5.
 
 Scan SUMMARY.md files from executed phases within the milestone range that precede the current phase.
 
-**3a. Find prior phase directories:**
+**3a. Find prior phase SUMMARY.md files:**
 
-Use Glob to find phase directories in `.planning/phases/` where the phase number is within the milestone range AND less than the current phase number.
+Glob for `.planning/phases/*-*/*-SUMMARY.md`. Filter results to phases where the leading number (digits before the first `-` in the directory name) is within the milestone range AND less than the current phase number.
 
 **3b. Read SUMMARY.md files:**
 
-For each prior phase directory found:
-- Glob for `*-SUMMARY.md` files within that directory
-- For each SUMMARY.md found, read the following sections:
+For each matching SUMMARY.md file, read the following sections:
   - **"Deviations from Plan"** — implementation changes, auto-fixed issues, unexpected behaviors
   - **"Decisions Made"** — runtime decisions that weren't in the original plan
 
@@ -89,9 +87,7 @@ The deviation format to expect:
 
 **3c. Read prior CONTEXT.md files:**
 
-For each prior phase directory within the milestone range:
-- Glob for `*-CONTEXT.md`
-- Read `<decisions>` sections to understand what was originally planned
+Glob for `.planning/phases/*-*/*-CONTEXT.md`. Filter results to phases within the milestone range AND less than the current phase number. Read the `<decisions>` sections to understand what was originally planned.
 
 **3d. Evaluate relevance:**
 
