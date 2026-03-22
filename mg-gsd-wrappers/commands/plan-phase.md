@@ -175,16 +175,22 @@ CRITICAL INSTRUCTION: Do NOT use the Read tool on {context_path}. Only the gener
 
 ## Step 2: Curate
 
-Review the generator's tagged candidate list (from the Agent return):
+The generator is an implementor — it sticks close to code and tends to tag internal mechanisms as capabilities. Treat its tags as hints, not verdicts.
 
-- **capability** items → keep as individual requirements
-- **constraint** items → keep only if cross-cutting (applies to 2+ capabilities).
-  If scoped to a single capability, fold into that capability's description.
-- **detail** items → drop. The parent capability already covers it.
-  The detail lives in CONTEXT.md for implementors.
+Apply three quality gates. A requirement must pass ALL THREE:
 
-The final count should roughly equal: distinct capabilities + cross-cutting constraints.
-A phase with 15 decisions typically yields 8-15 requirements, not 20+.
+1. **Externally observable** — verifiable by examining outputs or artifacts, not source code
+2. **Implementation-independent** — still meaningful after a complete rewrite
+3. **Independently meaningful** — not a sub-point, refinement, or negation of another requirement
+
+Tag guidance:
+- `capability` → usually passes, but check gate 3 — merge capabilities that describe the same behavior at different granularities
+- `constraint` → keep only if cross-cutting (2+ capabilities). Otherwise fold into the parent capability
+- `detail` → drop. The detail lives in CONTEXT.md for implementors
+
+Multiple candidates may aggregate into one requirement when they describe facets of the same observable behavior.
+
+Target count: distinct capabilities + cross-cutting constraints. A phase with 15 decisions typically yields 6-10 requirements, not 12+.
 
 ## Step 3: Return
 
