@@ -237,6 +237,20 @@ For notes: add the note's classified `section` slug to the appropriate audience'
    rm -f /tmp/manifest-*.json /tmp/manifest-entry-*.json
    ```
 
+5. **Write last_generated timestamp.** Record the current time as the generation baseline for future incremental scans:
+   ```bash
+   python3 -c "
+   import json, os, datetime
+   scan_path = '{project_root}/.mg/docs/docs-scan.json'
+   with open(scan_path) as f: data = json.load(f)
+   data['last_generated'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+   tmp = scan_path + '.tmp'
+   with open(tmp, 'w') as f: json.dump(data, f, indent=2, ensure_ascii=False); f.write('\n')
+   os.replace(tmp, scan_path)
+   "
+   ```
+   This timestamp is written at pipeline START so the next incremental scan's diff window is over-inclusive (commits during this generation cycle will be re-scanned next time, which is harmless).
+
 ### Stage 1: Build Glossary (initial pass)
 
 Print progress: `"Stage 1/4: Building glossary (initial pass)..."`

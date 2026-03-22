@@ -12,6 +12,7 @@ Each pipeline step reads its relevant fields and may enrich the document. The sc
   "scan_date": "string -- ISO 8601 timestamp",
   "root_path": "string -- absolute path to project root",
   "mode": "initial | update",
+  "last_generated": "string (ISO 8601) | null",
   "project_model": { "..." },
   "source_material_index": { "..." },
   "staleness_report": [ "..." ],
@@ -51,6 +52,13 @@ Each pipeline step reads its relevant fields and may enrich the document. The sc
 - **Values:** `"initial"` | `"update"`
 - **Description:** Whether this is a first-time scan (`initial`) or an incremental update (`update`). In update mode, the scanner reuses previous scan data and only re-scans changed areas.
 - **Example:** `"initial"`
+
+### `last_generated`
+
+- **Type:** `string` (ISO 8601) | `null`
+- **Required:** no (null or absent for initial scans; present after first generation)
+- **Description:** ISO timestamp of when the generate command last ran. Written by the generate command at pipeline start. Used by the scan command to detect incremental mode and by diff-scan.py to scope changes. Over-inclusive by design: commits during generation appear in the next diff rather than being silently missed.
+- **Example:** `"2026-03-22T14:30:00Z"`
 
 ## project_model
 
@@ -339,6 +347,7 @@ A minimal valid `docs-scan.json` for an initial scan of a small project:
   "scan_date": "2026-03-15T14:30:00Z",
   "root_path": "/home/user/projects/my-app",
   "mode": "initial",
+  "last_generated": null,
   "project_model": {
     "tech_stack": ["python"],
     "entry_points": [
@@ -448,6 +457,130 @@ All 7 fields are required per finding. The `add-verify-finding.py` script valida
 ]
 ```
 
+## Diff Scope: diff-scope.json
+
+A scoped work order produced by `diff-scan.py` for incremental scans. Contains the set of documentation sections affected by code changes since the last generation, along with new file candidates and deleted file references.
+
+**Location:** `.mg/docs/diff-scope.json` (NOT `scan-logs/` -- avoids being picked up by `merge-scan.py` which reads all `*.json` in `scan-logs/`)
+
+**Lifecycle:**
+- Created by the scan command in incremental mode via `diff-scan.py`
+- Read by scan agents to scope their analysis to affected sections only
+- Deleted on the next scan run (scan-logs cleanup does not affect this file, but the next scan overwrites it)
+
+### Structure
+
+```json
+{
+  "since": "string -- ISO 8601 timestamp used as diff baseline",
+  "summary": {
+    "files_changed": "number -- total files modified",
+    "files_added": "number -- new files not in any manifest",
+    "files_deleted": "number -- files deleted but still in manifests",
+    "sections_affected": "number -- total documentation sections needing update",
+    "new_file_candidates": "number -- files to be classified by scan agents"
+  },
+  "affected_sections": [
+    {
+      "audience": "string -- audience key (e.g., developers)",
+      "document": "string -- document name (e.g., ARCHITECTURE)",
+      "section": "string -- section slug (e.g., system-overview)",
+      "reason": "string -- why this section is affected (e.g., source file modified)",
+      "changed_files": ["array of string -- files that changed for this section"],
+      "gsd_context": "string | null -- GSD phase context explaining the change",
+      "renames": "object | null -- optional mapping of old_path -> new_path for renamed files"
+    }
+  ],
+  "new_file_candidates": [
+    {
+      "file": "string -- relative path to new file",
+      "reason": "string -- why this is a candidate (e.g., new file, not in any manifest)",
+      "gsd_context": "string | null -- GSD phase context if available"
+    }
+  ],
+  "deleted_files": [
+    {
+      "file": "string -- relative path to deleted file",
+      "referenced_in": [
+        {
+          "audience": "string -- audience key",
+          "document": "string -- document name",
+          "section": "string -- section slug"
+        }
+      ]
+    }
+  ],
+  "gsd_phases_since": [
+    {
+      "phase": "string -- phase number (e.g., 06)",
+      "name": "string -- phase name (e.g., fix-verify-feedback-loop)",
+      "deviations": ["array of string -- plan deviations"],
+      "key_decisions": ["array of string -- key decisions made"]
+    }
+  ]
+}
+```
+
+### Top-Level Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `since` | `string` (ISO 8601) | yes | Timestamp used as the diff baseline (from `last_generated` in docs-scan.json) |
+| `summary` | `object` | yes | Aggregate counts for display |
+| `affected_sections` | `array of object` | yes | Sections needing re-analysis (one entry per audience x document x section) |
+| `new_file_candidates` | `array of object` | yes | Files not in any manifest, to be classified by scan agents |
+| `deleted_files` | `array of object` | yes | Files still in manifests but deleted from the filesystem |
+| `gsd_phases_since` | `array of object` | yes | GSD phases modified since last generation (empty if GSD not available) |
+
+### Example
+
+```json
+{
+  "since": "2026-03-17T14:30:00Z",
+  "summary": {
+    "files_changed": 15,
+    "files_added": 3,
+    "files_deleted": 1,
+    "sections_affected": 8,
+    "new_file_candidates": 3
+  },
+  "affected_sections": [
+    {
+      "audience": "developers",
+      "document": "ARCHITECTURE",
+      "section": "system-architecture",
+      "reason": "source file modified",
+      "changed_files": ["src/llm/model_routing.py"],
+      "gsd_context": "Phase 6: replaced route_model() with provider-specific functions",
+      "renames": {"src/old/model.py": "src/llm/model_routing.py"}
+    }
+  ],
+  "new_file_candidates": [
+    {
+      "file": "src/verify/add-verify-finding.py",
+      "reason": "new file, not in any manifest",
+      "gsd_context": null
+    }
+  ],
+  "deleted_files": [
+    {
+      "file": "src/old/legacy.py",
+      "referenced_in": [
+        {"audience": "developers", "document": "ARCHITECTURE", "section": "data-model"}
+      ]
+    }
+  ],
+  "gsd_phases_since": [
+    {
+      "phase": "06",
+      "name": "fix-verify-feedback-loop",
+      "deviations": [],
+      "key_decisions": ["replaced route_model with provider-specific functions"]
+    }
+  ]
+}
+```
+
 ## File Location Convention
 
 The scan output and related pipeline files live in the project workspace:
@@ -460,6 +593,7 @@ The scan output and related pipeline files live in the project workspace:
 │       ├── notes-inbox.json          -- captured documentation notes
 │       ├── docs-scan.json            -- the shared scan contract
 │       ├── docs-verify-findings.json -- structured verify findings (flat array)
+│       ├── diff-scope.json           -- scoped work order for incremental scans
 │       ├── docs-update-report.md     -- generation report
 │       ├── docs-verify-report.md     -- verification report
 │       └── scan-logs/                -- per-audience scan intermediates
