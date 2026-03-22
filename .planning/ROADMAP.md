@@ -270,7 +270,7 @@ Plans:
 **Goal:** Make end-user documentation functional and interface-aware -- restructure the USER_GUIDE template to a 7-section functional-first layout, add interface detection to the scan pipeline with config persistence, update scan and writer agents to support SYNTHESIZED sections (from project model fields), BOUNDARY comments (cross-audience content separation), and per-audience source exclusion rules
 **Requirements**: EUQ-01, EUQ-02, EUQ-03, EUQ-04, EUQ-05, EUQ-06, EUQ-07, EUQ-08, EUQ-09, EUQ-10
 **Depends on:** Phase 14
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 15-01-PLAN.md — Schema + template: user_interfaces and synthesized_from fields, 7-section USER_GUIDE rewrite, DOMAIN_SPECIFIC deletion
