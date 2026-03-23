@@ -255,7 +255,7 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
      description="Build glossary (initial pass)",
      prompt="You are the glossary writer agent.
 
-   Read and follow the instructions in: agents/glossary-writer.md
+   Read and follow the instructions in: {AGENTS_DIR}/glossary-writer.md
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
@@ -305,7 +305,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
      description="Generate {audience} documentation ({mode} mode)",
      prompt="You are a {audience} writer agent.
 
-   Read and follow the instructions in: agents/{audience}-writer.md
+   Read and follow the instructions in: {AGENTS_DIR}/{audience}-writer.md
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
@@ -373,7 +373,7 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
      description="Reconcile glossary terms from writer proposals",
      prompt="You are the glossary writer agent.
 
-   Read and follow the instructions in: agents/glossary-writer.md
+   Read and follow the instructions in: {AGENTS_DIR}/glossary-writer.md
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}

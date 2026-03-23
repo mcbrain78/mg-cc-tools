@@ -17,13 +17,6 @@ Read references/schema.md
 
 This tells you the JSON format of `docs-scan.json` -- the input produced by the scanner (step 1) and consumed by the generator (step 2). You use it for completeness checks.
 
-Read the verifier agent definition. You will paste its full contents into the Task prompt when spawning the agent:
-```
-Read agents/verifier.md
-```
-
-Store the entire contents of `agents/verifier.md` in memory -- you will need it for Step 3.
-
 ## Prerequisites
 
 Before proceeding, confirm these exist:
@@ -85,7 +78,7 @@ Agent(
   description="Verify documentation quality (6 checks)",
   prompt="You are the documentation verifier agent.
 
-Read and follow the instructions in: agents/verifier.md
+Read and follow the instructions in: {AGENTS_DIR}/verifier.md
 
 Parameters:
 - project_root: {project_root}

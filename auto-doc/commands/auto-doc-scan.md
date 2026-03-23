@@ -288,7 +288,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
      description="Scan source material for {audience} audience",
      prompt="You are a scan subagent for the {audience} audience.
 
-   Read and follow the instructions in: agents/scan-audience.md
+   Read and follow the instructions in: {AGENTS_DIR}/scan-audience.md
 
    Project root: {project_root}
    Read orientation: {project_root}/.mg/docs/scan-logs/scan-orientation.md
@@ -307,7 +307,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
      description="Incremental scan for {audience} audience",
      prompt="You are a scan subagent for the {audience} audience.
 
-   Read and follow the instructions in: agents/scan-audience.md
+   Read and follow the instructions in: {AGENTS_DIR}/scan-audience.md
 
    Project root: {project_root}
    Read orientation: {project_root}/.mg/docs/scan-logs/scan-orientation.md
@@ -432,7 +432,7 @@ Default config structure (from `{GLOBAL_CONFIG}`):
 - **Read-only on project source code.** Never modify, delete, move, or create files in the project's source directories. The only directory you write to is `.mg/docs/`.
 - **Orchestrator stays lean.** Delegate heavy analysis to subagents. The orchestrator only handles lightweight checks, user interaction (AskUserQuestion), mode-dependent routing, and summary presentation. Large file writes (orientation, project model) happen in subagents.
 - **Scan agents receive file paths only; they read files themselves.** Do not pass file contents in subagent prompts -- pass paths and let the subagent use the Read tool.
-- **The `agents/` prefix in file references gets resolved to absolute paths by install.sh.** At runtime, `agents/scan-audience.md` points to the installed absolute path.
+- **The `{AGENTS_DIR}` placeholder in file references gets resolved to absolute paths by install.sh.** At runtime, `{AGENTS_DIR}/scan-audience.md` points to the installed absolute path.
 - **If a subagent fails** (no output JSON), log a warning and continue with other audiences. The merge script handles partial results. Missing data is better than a crashed pipeline.
 - **If python3 is not available,** abort immediately with install instructions. All scripts require Python 3.8+.
 - **Clear scan-logs/ at the start of every run** to prevent stale data from prior scans contaminating the merge (Pitfall 6).

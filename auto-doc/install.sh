@@ -289,12 +289,9 @@ for cmd in "${COMMANDS[@]}"; do
   if grep -q '{TMP_DIR}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{TMP_DIR}|${TMP_ABS}|g" "$cmd_file"
   fi
-  # Resolve agents/ prefix (bare path reference to agent files)
-  # Only match agents/ followed by a lowercase letter -- real agent files use
-  # lowercase names (e.g., agents/verifier.md). Audience-category paths like
-  # agents/SYSTEM_MAP.md use uppercase and must NOT be rewritten.
-  if grep -q 'agents/[a-z{]' "$cmd_file" 2>/dev/null; then
-    sed -i 's|agents/\([a-z{]\)|'"${AGENTS_ABS}"'/\1|g' "$cmd_file"
+  # Resolve agents dir placeholder
+  if grep -q '{AGENTS_DIR}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{AGENTS_DIR}|${AGENTS_ABS}|g" "$cmd_file"
   fi
 done
 
