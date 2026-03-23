@@ -119,6 +119,13 @@ CHECKS = {
             "general": "Enable an LSP plugin in Claude Code settings (e.g., pyright-lsp)",
         },
     },
+    "serena": {
+        "type": "plugin_scan",
+        "plugin_name": "serena",
+        "fix": {
+            "general": "Install Serena MCP server: see https://github.com/oraios/serena",
+        },
+    },
     "ruff": {
         "type": "command",
         "command": "ruff --version",
@@ -565,6 +572,20 @@ def run_preflight(source_dir, target_dir, tool_names):
             })
             continue
 
+        if check_type == "plugin_scan":
+            plugin_name = check_def["plugin_name"]
+            passed, detail = _check_plugin_installed(plugin_name)
+            checks_result.append({
+                "id": cid,
+                "type": "plugin_scan",
+                "passed": passed,
+                "required": is_required,
+                "version": detail if passed else None,
+                "error": None if passed else f"Plugin '{plugin_name}' not found",
+                "fix": check_def.get("fix", {}) if not passed else {},
+            })
+            continue
+
         if check_type == "command":
             passed, version_str, error = _run_command_check(check_def)
             checks_result.append({
@@ -629,6 +650,40 @@ def _run_command_check(check_def):
         return False, None, f"Command not found: {command.split()[0]}"
     except subprocess.TimeoutExpired:
         return False, None, f"Command timed out: {command}"
+
+
+def _check_plugin_installed(plugin_name):
+    """Check if a Claude Code plugin/MCP server is installed.
+
+    Scans the global plugins directory for a matching plugin name in
+    .mcp.json files or plugin directory names.
+
+    Returns (passed, detail_string).
+    """
+    plugins_base = os.path.join(
+        os.path.expanduser("~"), ".claude", "plugins", "marketplaces"
+    )
+    if not os.path.isdir(plugins_base):
+        return False, None
+
+    for root, _dirs, files in os.walk(plugins_base):
+        # Check directory name match
+        if os.path.basename(root) == plugin_name:
+            mcp_json = os.path.join(root, ".mcp.json")
+            if os.path.isfile(mcp_json):
+                return True, f"plugin:{plugin_name}"
+        # Check .mcp.json contents for plugin name as a key
+        if ".mcp.json" in files:
+            mcp_path = os.path.join(root, ".mcp.json")
+            try:
+                with open(mcp_path, "r", encoding="utf-8") as f:
+                    mcp_data = json.load(f)
+                if plugin_name in mcp_data:
+                    return True, f"plugin:{plugin_name}"
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    return False, None
 
 
 def _check_lsp_settings(target_dir):
