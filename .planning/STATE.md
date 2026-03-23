@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-status: completed
-stopped_at: Phase 17 context gathered
-last_updated: "2026-03-23T22:21:12.509Z"
-last_activity: 2026-03-22 -- Plan 16-02 complete (incremental scan pipeline wiring)
+status: executing
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-23T23:06:57.064Z"
+last_activity: 2026-03-23 -- Plan 17-01 complete (split-scan-by-audience.py)
 progress:
   total_phases: 17
   completed_phases: 15
-  total_plans: 48
-  completed_plans: 47
-  percent: 100
+  total_plans: 50
+  completed_plans: 48
+  percent: 96
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: 16 of 16 (Auto Doc Incremental Scan)
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-03-22 -- Plan 16-02 complete (incremental scan pipeline wiring)
+Phase: 17 of 17 (Auto Doc Generate Docs Improvements)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-03-23 -- Plan 17-01 complete (split-scan-by-audience.py)
 
-Progress: [██████████] 100%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -97,6 +97,7 @@ Progress: [██████████] 100%
 | Phase 15 P02 | 3min | 2 tasks | 2 files |
 | Phase 16 P01 | 5min | 2 tasks | 2 files |
 | Phase 16 P02 | 4min | 2 tasks | 5 files |
+| Phase 17 P01 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -224,6 +225,8 @@ Recent decisions affecting current work:
 - [Phase 16]: Git operations kept inside diff-scan.py for self-containment -- diff-specific functions not added to lib/git_helpers.py
 - [Phase 16]: classify_changes uses deleted_check_fn callback for filesystem checks, enabling pure unit testing with lambda mocks
 - [Phase 16]: last_generated written at pipeline START for over-inclusive diff window; incremental mode upgrades from update when last_generated + manifests exist; staleness check skipped in incremental mode
+- [Phase 17]: Empty gap_analysis passes through as empty dict (not structured skeleton)
+- [Phase 17]: Audience mode validates --audience/--documents at runtime (not argparse required=True) to allow glossary mode to omit them
 
 ### Pending Todos
 
@@ -258,6 +261,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T22:21:12.504Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-auto-doc-generate-docs-improvements/17-CONTEXT.md
+Last session: 2026-03-23T23:06:57.060Z
+Stopped at: Completed 17-01-PLAN.md
+Resume file: None

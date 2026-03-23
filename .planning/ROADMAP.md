@@ -293,7 +293,7 @@ Plans:
 **Goal:** Improve generate pipeline efficiency by adding Serena-based source code exploration to all writer agents and splitting docs-scan.json into per-audience view files so each writer reads a small focused file instead of the full 19k-token scan
 **Requirements**: GEN-07, GEN-08, GEN-09, GEN-10, GEN-11, GEN-12, GEN-13
 **Depends on:** Phase 16
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 17-01-PLAN.md — TDD: split-scan-by-audience.py per-audience and glossary view splitter with pytest suite
