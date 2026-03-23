@@ -79,7 +79,7 @@ GSD integration: {true|false}
 
 ## Instructions
 
-1. **Analyze the project.** Use Glob to find files by pattern (not Bash ls). Use `LSP documentSymbol` on source files to understand their structure (classes, functions, line ranges) — never read an entire source file blind. Only use targeted Read calls for specific line ranges when you need details. Identify:
+1. **Analyze the project.** Use Glob to find files by pattern (not Bash ls). Use `get_symbols_overview` (with `depth: 1`) on source files to understand their structure (classes, functions, methods). Use `find_symbol` with `include_info: true` for signatures/docstrings when needed. Use `find_referencing_symbols` to understand component relationships. Never read an entire source file — only use `Read` for non-code files (yaml, toml, config). Identify:
    - Languages, frameworks, package managers (package.json, pyproject.toml, Cargo.toml, go.mod, etc.)
    - Entry points: main files, route definitions, CLI scripts, event handlers, exported modules
    - Components: major directories/modules, their purpose, public API, dependencies, database tables

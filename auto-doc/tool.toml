@@ -3,7 +3,7 @@ description = "Documentation pipeline (scan, generate, verify)"
 
 [preflight]
 required = ["python3"]
-optional = ["lsp"]
+optional = ["lsp", "serena"]
 
 [post_install]
 script = "post-install.md"
