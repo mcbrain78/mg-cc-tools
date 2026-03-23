@@ -78,14 +78,14 @@ If either prerequisite fails, abort with the corresponding message and do not pr
 
 Spawn a **single** verifier agent instance via the Task tool. Unlike codebase-health which parallelizes verification by category, documentation verification runs 6 sequential checks in one agent.
 
-Build the Task prompt by pasting the full contents of `agents/verifier.md` and providing these parameters:
+Build the Task prompt with a reference to the agent file and parameters:
 
 ```
 Task(
   description="Verify documentation quality (6 checks)",
   prompt="You are the documentation verifier agent.
 
-[paste full contents of agents/verifier.md here]
+Read and follow the instructions in: agents/verifier.md
 
 Parameters:
 - project_root: {project_root}

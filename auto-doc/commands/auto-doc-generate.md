@@ -255,20 +255,14 @@ For notes: add the note's classified `section` slug to the appropriate audience'
 
 Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
 
-1. **Read the glossary writer agent file:**
-   ```
-   Read agents/glossary-writer.md
-   ```
-   Store the full file contents.
-
-2. **Spawn a single Task call** with the glossary-writer agent:
+1. **Spawn a single Task call** with the glossary-writer agent:
 
    ```
    Task(
      description="Build glossary (initial pass)",
      prompt="You are the glossary writer agent.
 
-   [paste full contents of agents/glossary-writer.md here]
+   Read and follow the instructions in: agents/glossary-writer.md
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
@@ -291,13 +285,7 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
 
 Print progress: `"Stage 2/4: Writing audience documents with manifest emission (4 agents in parallel)..."`
 
-1. **For each enabled audience** in config (e.g., `end-users`, `developers`, `agents`, `devops`), read the corresponding writer agent file:
-   ```
-   Read agents/{audience}-writer.md
-   ```
-   Where `{audience}` maps to: `end-user`, `developer`, `agent`, `devops`. Store each file's contents.
-
-   **Audience name mapping** (config key -> agent file):
+1. **Audience name mapping** (config key -> agent file):
    - `end-users` -> `agents/end-user-writer.md`
    - `developers` -> `agents/developer-writer.md`
    - `agents` -> `agents/agent-writer.md`
@@ -305,7 +293,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
 2. **In update mode:** Only spawn agents for audiences that have approved sections. If an audience has no sections in the `approved_sections` dict from Step 2, skip it entirely to save subagent cost.
 
-3. **Spawn one Task call per enabled audience in a SINGLE message** (parallel execution). For each audience:
+3. **Spawn one Task call per enabled audience in a SINGLE message** (parallel execution). Each subagent reads its own instructions. For each audience:
 
    **In update mode, before spawning each writer:** If the audience has approved findings (entries in the `approved_findings` dict from Step 2e), load the relevant findings for that audience. For each document that the audience will update, run:
    ```bash
@@ -324,7 +312,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
      description="Generate {audience} documentation ({mode} mode)",
      prompt="You are a {audience} writer agent.
 
-   [paste full contents of agents/{audience}-writer.md here]
+   Read and follow the instructions in: agents/{audience}-writer.md
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
@@ -385,19 +373,14 @@ This merge logic ensures:
 
 Print progress: `"Stage 3/4: Reconciling glossary terms..."`
 
-1. **Read the glossary writer agent file** (same as Stage 1):
-   ```
-   Read agents/glossary-writer.md
-   ```
-
-2. **Spawn a single Task call** with the glossary-writer agent in reconciliation mode:
+1. **Spawn a single Task call** with the glossary-writer agent in reconciliation mode:
 
    ```
    Task(
      description="Reconcile glossary terms from writer proposals",
      prompt="You are the glossary writer agent.
 
-   [paste full contents of agents/glossary-writer.md here]
+   Read and follow the instructions in: agents/glossary-writer.md
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
