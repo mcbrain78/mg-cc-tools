@@ -79,14 +79,14 @@ GSD integration: {true|false}
 
 ## Instructions
 
-1. **Analyze the project.** Read the top-level structure (2-3 levels deep via Bash `ls` or Glob). Identify:
+1. **Analyze the project.** Use Glob to find files by pattern (not Bash ls). Use `LSP documentSymbol` on source files to understand their structure (classes, functions, line ranges) — never read an entire source file blind. Only use targeted Read calls for specific line ranges when you need details. Identify:
    - Languages, frameworks, package managers (package.json, pyproject.toml, Cargo.toml, go.mod, etc.)
    - Entry points: main files, route definitions, CLI scripts, event handlers, exported modules
    - Components: major directories/modules, their purpose, public API, dependencies, database tables
    - Deployment artifacts: Dockerfile, docker-compose.yml, CI/CD configs, systemd units, Procfile
    - Existing documentation: docs/, README, CLAUDE.md, CONTRIBUTING.md, API docs
    - Database schemas, API contracts, configuration files
-   - Environment files: .env.example, config templates
+   - Environment files: .env.example, config templates (never read .env — may contain secrets)
 
 2. **Detect user interfaces.** Apply heuristics:
    - Front-end frameworks with routes/templates (React, Vue, Next.js, Flask+templates, Django+templates) -> type: web
