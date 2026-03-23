@@ -287,3 +287,13 @@ Plans:
 Plans:
 - [ ] 16-01-PLAN.md — TDD: diff-scan.py deterministic diff scoping script with comprehensive pytest suite
 - [ ] 16-02-PLAN.md — Pipeline wiring: schema update, scan command incremental mode, scan-audience agent carry-forward, generate timestamp, router update
+
+### Phase 17: auto-doc generate docs improvements
+
+**Goal:** [To be planned]
+**Requirements**: GEN-07, GEN-08, GEN-09, GEN-10, GEN-11, GEN-12, GEN-13
+**Depends on:** Phase 16
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 17 to break down)
