@@ -111,7 +111,7 @@ Build an understanding of the project before delegating to scan subagents.
 
 14. **Create workspace** if it does not exist:
     ```bash
-    mkdir -p <project_root>/.mg/docs/scan-logs
+    mkdir -p <project_root>/.mg/docs/scan-logs <project_root>/.mg/docs/tmp
     ```
 
 15. **Write orientation to TWO files:**

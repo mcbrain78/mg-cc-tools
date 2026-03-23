@@ -102,12 +102,12 @@ When the orchestrator passes `Mode: incremental` in your prompt, you operate dif
 
 5. **Write output.** Write the complete scan output JSON to a temp file, then call the validation script to write it atomically to `output_path`:
 
-   a. Write the JSON to a temp file via the Write tool (e.g., `/tmp/scan-{audience}.json`). The JSON structure is the same as the Output Format below.
+   a. Write the JSON to a temp file via the Write tool (e.g., `{TMP_DIR}/scan-{audience}.json`). The JSON structure is the same as the Output Format below.
 
    b. Call the validation script:
       ```bash
       python3 {SCRIPTS_DIR}/write-scan-output.py \
-        --input /tmp/scan-{audience}.json \
+        --input {TMP_DIR}/scan-{audience}.json \
         --output {output_path} \
         --audience {audience}
       ```

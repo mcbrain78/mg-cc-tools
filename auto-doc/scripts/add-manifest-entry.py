@@ -9,7 +9,7 @@ atomically into the manifest file keyed by (document, section).
 
 Usage:
     python3 add-manifest-entry.py \
-        --input /tmp/entry-001.json \
+        --input {TMP_DIR}/entry-001.json \
         --manifest .mg/docs/reference-manifests/developers.json
 
 Input JSON must contain:

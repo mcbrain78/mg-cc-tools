@@ -44,7 +44,7 @@ You are a specialized writer agent for the **agents** audience. You generate doc
       - **Emit manifest entry.** After writing each section, record every code symbol and file path you referenced:
         1. List all code symbols referenced in this section as unqualified identifiers (e.g., `RoadRunnerBase`, `fetch_quarterly` -- NOT `FMPClient.fetch_quarterly`)
         2. List all file paths referenced in this section, relative to project root
-        3. Write a temp JSON file to `/tmp/manifest-entry-agents-NNN.json` (increment NNN per section, starting from 001):
+        3. Write a temp JSON file to `{TMP_DIR}/manifest-entry-agents-NNN.json` (increment NNN per section, starting from 001):
            ```json
            {"document": "DOCUMENT_NAME", "section": "section-slug",
             "symbols": ["symbol1", "symbol2"],
@@ -53,8 +53,8 @@ You are a specialized writer agent for the **agents** audience. You generate doc
         4. Call:
            ```bash
            python3 {SCRIPTS_DIR}/add-manifest-entry.py \
-             --input /tmp/manifest-entry-agents-NNN.json \
-             --manifest /tmp/manifest-agents.json
+             --input {TMP_DIR}/manifest-entry-agents-NNN.json \
+             --manifest {TMP_DIR}/manifest-agents.json
            ```
         If a section references no code symbols or file paths (e.g., a pure conceptual section), skip the manifest entry for that section.
    d. **Add YAML frontmatter** -- At the top of each generated document, include structured metadata:
@@ -69,7 +69,7 @@ You are a specialized writer agent for the **agents** audience. You generate doc
    e. **Absolute path verification** -- Verify every file reference uses an absolute path. Replace any relative paths with absolute paths rooted at `project_root`.
    f. **Heading uniqueness check** -- Verify every heading name in the document is unique. Duplicate headings cause embedding overlap in RAG systems. If duplicates are found, disambiguate with a qualifying prefix.
    g. **Emit sections metadata.** After all sections for this document are written, emit a metadata entry listing all sections you wrote:
-      Write to `/tmp/manifest-entry-agents-metadata-{DOCUMENT}.json`:
+      Write to `{TMP_DIR}/manifest-entry-agents-metadata-{DOCUMENT}.json`:
       ```json
       {"document": "DOCUMENT_NAME", "section": "_written_sections",
        "symbols": [], "file_paths": [],
@@ -78,8 +78,8 @@ You are a specialized writer agent for the **agents** audience. You generate doc
       Call:
       ```bash
       python3 {SCRIPTS_DIR}/add-manifest-entry.py \
-        --input /tmp/manifest-entry-agents-metadata-{DOCUMENT}.json \
-        --manifest /tmp/manifest-agents.json
+        --input {TMP_DIR}/manifest-entry-agents-metadata-{DOCUMENT}.json \
+        --manifest {TMP_DIR}/manifest-agents.json
       ```
    h. Write the complete document to `docs_dir/agents/`.
 

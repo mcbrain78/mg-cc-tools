@@ -257,6 +257,7 @@ CONFIG_ABS="${SUPPORT_DIR}/references/.docs.config.json"
 AGENTS_ABS="${SUPPORT_DIR}/agents"
 SCRIPTS_ABS="${SUPPORT_DIR}/scripts"
 TEMPLATES_ABS="${SUPPORT_DIR}/references/templates"
+TMP_ABS="${PROJECT_ROOT}/.mg/docs/tmp"
 
 echo "  Resolving path placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
@@ -283,6 +284,10 @@ for cmd in "${COMMANDS[@]}"; do
   # Resolve templates dir placeholder
   if grep -q '{TEMPLATES_DIR}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{TEMPLATES_DIR}|${TEMPLATES_ABS}|g" "$cmd_file"
+  fi
+  # Resolve tmp dir placeholder
+  if grep -q '{TMP_DIR}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{TMP_DIR}|${TMP_ABS}|g" "$cmd_file"
   fi
   # Resolve agents/ prefix (bare path reference to agent files)
   # Only match agents/ followed by a lowercase letter -- real agent files use
@@ -314,6 +319,9 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   if grep -q '{TEMPLATES_DIR}' "$agent_file" 2>/dev/null; then
     sed -i "s|{TEMPLATES_DIR}|${TEMPLATES_ABS}|g" "$agent_file"
   fi
+  if grep -q '{TMP_DIR}' "$agent_file" 2>/dev/null; then
+    sed -i "s|{TMP_DIR}|${TMP_ABS}|g" "$agent_file"
+  fi
 done
 
 # -- Scaffold project workspace ------------------------------------------------
@@ -329,7 +337,7 @@ if [[ -n "$PROJECT_ROOT" ]]; then
     echo "  Scaffolding: .mg/docs/ already exists -- skipping (preserving existing config)"
   else
     echo "  Scaffolding -> ${DOCS_WORKSPACE}/"
-    mkdir -p "${DOCS_WORKSPACE}/scan-logs"
+    mkdir -p "${DOCS_WORKSPACE}/scan-logs" "${DOCS_WORKSPACE}/tmp"
 
     # Project-local config (copy of global defaults for user to customize)
     cp "${SCRIPT_DIR}/references/.docs.config.json" "${DOCS_WORKSPACE}/.docs.config.json"

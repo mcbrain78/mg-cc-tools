@@ -5,5 +5,8 @@ description = "Documentation pipeline (scan, generate, verify)"
 required = ["python3"]
 optional = ["lsp"]
 
+[post_install]
+file = "post-install.md"
+
 [detect]
 paths = [".claude/auto-doc/scripts/"]

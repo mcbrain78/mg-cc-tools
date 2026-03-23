@@ -65,7 +65,7 @@ If mode is `"initial"`, skip this step entirely and proceed to Step 3.
    python3 {SCRIPTS_DIR}/list-verify-findings.py \
      --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
      --summary \
-     --output /tmp/findings-summary.json
+     --output {TMP_DIR}/findings-summary.json
    ```
    Read the output file. Extract total findings count and per-document/per-severity breakdowns. If the findings file does not exist or is empty, treat as zero findings.
 
@@ -139,7 +139,7 @@ If any tier has zero items, omit that tier's section from the overview (but alwa
   python3 {SCRIPTS_DIR}/list-verify-findings.py \
     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
     --document {DOCUMENT} \
-    --output /tmp/findings-{DOCUMENT}.json
+    --output {TMP_DIR}/findings-{DOCUMENT}.json
   ```
   Read the output file to get findings for that document.
 
@@ -234,7 +234,7 @@ For notes: add the note's classified `section` slug to the appropriate audience'
 
    Clean temp manifest files from prior runs:
    ```bash
-   rm -f /tmp/manifest-*.json /tmp/manifest-entry-*.json
+   rm -f {TMP_DIR}/manifest-*.json {TMP_DIR}/manifest-entry-*.json
    ```
 
 5. **Write last_generated timestamp.** Record the current time as the generation baseline for future incremental scans:
@@ -313,7 +313,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
      --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
      --document {DOCUMENT} \
      --audience {audience} \
-     --output /tmp/findings-{audience}-{DOCUMENT}.json
+     --output {TMP_DIR}/findings-{audience}-{DOCUMENT}.json
    ```
    Read the output file to get findings for that audience/document combination.
 
@@ -357,9 +357,9 @@ After all writer agents complete, merge their temp manifests into persisted loca
 
 For each audience that had a writer agent run (i.e., each audience that was spawned in Stage 2):
 
-1. Check if `/tmp/manifest-{audience}.json` exists. If not, skip this audience (agent produced no manifest entries).
+1. Check if `{TMP_DIR}/manifest-{audience}.json` exists. If not, skip this audience (agent produced no manifest entries).
 
-2. Read the temp manifest: `/tmp/manifest-{audience}.json`
+2. Read the temp manifest: `{TMP_DIR}/manifest-{audience}.json`
 
 3. Read persisted manifest (if it exists): `{project_root}/.mg/docs/reference-manifests/{audience}.json`
    If it does not exist, start with an empty manifest: `{"audience": "{audience}", "generated": "", "documents": {}}`

@@ -74,7 +74,7 @@ You are a specialized writer agent for the **end-users** audience. You generate 
       - **Emit manifest entry.** After writing each section, record every code symbol and file path you referenced:
         1. List all code symbols referenced in this section as unqualified identifiers (e.g., `RoadRunnerBase`, `fetch_quarterly` -- NOT `FMPClient.fetch_quarterly`)
         2. List all file paths referenced in this section, relative to project root
-        3. Write a temp JSON file to `/tmp/manifest-entry-end-users-NNN.json` (increment NNN per section, starting from 001):
+        3. Write a temp JSON file to `{TMP_DIR}/manifest-entry-end-users-NNN.json` (increment NNN per section, starting from 001):
            ```json
            {"document": "DOCUMENT_NAME", "section": "section-slug",
             "symbols": ["symbol1", "symbol2"],
@@ -83,13 +83,13 @@ You are a specialized writer agent for the **end-users** audience. You generate 
         4. Call:
            ```bash
            python3 {SCRIPTS_DIR}/add-manifest-entry.py \
-             --input /tmp/manifest-entry-end-users-NNN.json \
-             --manifest /tmp/manifest-end-users.json
+             --input {TMP_DIR}/manifest-entry-end-users-NNN.json \
+             --manifest {TMP_DIR}/manifest-end-users.json
            ```
         If a section references no code symbols or file paths (e.g., a pure conceptual section), skip the manifest entry for that section.
    d. **Jargon check** -- Re-read the generated section. Replace any technical terms with plain language equivalents. If a technical term is unavoidable, define it inline on first use (e.g., "the API (the connection point your app uses to talk to the system)").
    e. **Emit sections metadata.** After all sections for this document are written, emit a metadata entry listing all sections you wrote:
-      Write to `/tmp/manifest-entry-end-users-metadata-{DOCUMENT}.json`:
+      Write to `{TMP_DIR}/manifest-entry-end-users-metadata-{DOCUMENT}.json`:
       ```json
       {"document": "DOCUMENT_NAME", "section": "_written_sections",
        "symbols": [], "file_paths": [],
@@ -98,8 +98,8 @@ You are a specialized writer agent for the **end-users** audience. You generate 
       Call:
       ```bash
       python3 {SCRIPTS_DIR}/add-manifest-entry.py \
-        --input /tmp/manifest-entry-end-users-metadata-{DOCUMENT}.json \
-        --manifest /tmp/manifest-end-users.json
+        --input {TMP_DIR}/manifest-entry-end-users-metadata-{DOCUMENT}.json \
+        --manifest {TMP_DIR}/manifest-end-users.json
       ```
    f. Write the complete document to `docs_dir/end-users/`.
 

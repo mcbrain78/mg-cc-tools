@@ -11,19 +11,19 @@ Usage:
     python3 list-verify-findings.py \
         --findings-file .mg/docs/docs-verify-findings.json \
         --summary \
-        --output /tmp/findings-summary.json
+        --output {TMP_DIR}/findings-summary.json
 
     # Filter by document and audience (for writer agents):
     python3 list-verify-findings.py \
         --findings-file .mg/docs/docs-verify-findings.json \
         --document OPERATIONS --audience devops \
-        --output /tmp/findings-ops.json
+        --output {TMP_DIR}/findings-ops.json
 
     # Filter by minimum severity:
     python3 list-verify-findings.py \
         --findings-file .mg/docs/docs-verify-findings.json \
         --severity high \
-        --output /tmp/findings-high.json
+        --output {TMP_DIR}/findings-high.json
 
     # Clean all verify artifacts:
     python3 list-verify-findings.py \

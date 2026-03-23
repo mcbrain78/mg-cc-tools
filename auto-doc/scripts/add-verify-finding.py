@@ -9,7 +9,7 @@ atomically to the consolidated findings file.
 
 Usage:
     python3 add-verify-finding.py \
-        --input /tmp/finding-001.json \
+        --input {TMP_DIR}/finding-001.json \
         --findings-file .mg/docs/docs-verify-findings.json
 
 Input JSON must contain:

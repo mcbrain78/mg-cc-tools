@@ -36,12 +36,12 @@ For each issue discovered during any of the 6 checks below:
      "suggestion": "How to fix it"
    }
    ```
-   Write this to `/tmp/finding-NNN.json` using an incrementing counter (001, 002, 003, ...) to avoid collisions.
+   Write this to `{TMP_DIR}/finding-NNN.json` using an incrementing counter (001, 002, 003, ...) to avoid collisions.
 
 2. Call the script to validate and append:
    ```bash
    python3 {SCRIPTS_DIR}/add-verify-finding.py \
-     --input /tmp/finding-NNN.json \
+     --input {TMP_DIR}/finding-NNN.json \
      --findings-file {findings_file}
    ```
 
@@ -142,10 +142,10 @@ After all 6 checks are complete:
    ```bash
    python3 {SCRIPTS_DIR}/list-verify-findings.py \
      --findings-file {findings_file} \
-     --output /tmp/all-findings.json
+     --output {TMP_DIR}/all-findings.json
    ```
 
-2. Read `/tmp/all-findings.json` to get all recorded findings.
+2. Read `{TMP_DIR}/all-findings.json` to get all recorded findings.
 
 3. Identify patterns across findings. Look for systemic issues:
    - Same broken reference appearing in multiple documents
