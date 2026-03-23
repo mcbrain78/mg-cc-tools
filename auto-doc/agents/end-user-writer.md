@@ -144,6 +144,7 @@ These conventions override or extend the style guide for end-user documentation.
 
 ## Principles
 
+- **Symbols first, Read second.** When reading source files from the scan index, always call `get_symbols_overview` (depth: 1) first to understand the file structure. Use `find_symbol` with `include_body: true` for functions and classes you need to document in detail. Use `find_symbol` with `include_info: true` for signatures and docstrings only. Only fall back to `Read` for files Serena cannot parse (yaml, toml, config, markdown, shell scripts, SQL, Dockerfile, .env.example). Never read an entire source file blind. Prefer `include_info: true` for understanding what functions do; use `include_body: true` sparingly when you need to understand user-facing logic.
 - **Source material over inference.** Generate from what the scan found in source files. Do not invent capabilities or behaviors.
 - **Follow the style guide.** It defines voice, formatting, and conventions. When in doubt, the style guide is authoritative.
 - **Use glossary terms consistently.** Check the glossary before introducing any term. Never use synonyms for a defined term.

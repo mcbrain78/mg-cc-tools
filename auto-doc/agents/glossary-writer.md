@@ -77,6 +77,7 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
 
 ## Principles
 
+- **Symbols first, Read second.** When reading source files from the scan index, always call `get_symbols_overview` (depth: 1) first to understand the file structure. Use `find_symbol` with `include_body: true` for functions and classes you need to document in detail. Use `find_symbol` with `include_info: true` for signatures and docstrings only. Only fall back to `Read` for files Serena cannot parse (yaml, toml, config, markdown, shell scripts, SQL, Dockerfile, .env.example). Never read an entire source file blind. Prefer `include_body: true` for accurate term definitions -- understanding what components actually do requires reading their implementation.
 - **Writers propose, glossary agent defines.** Writer agents suggest terms with a one-line context note. The glossary agent writes all formal definitions. Writers never add terms directly to GLOSSARY.md.
 - **One canonical term per concept.** No synonyms allowed. If "issue" and "finding" mean the same thing, pick one and redirect the other.
 - **Every term must be clear to its audience.** Definitions should be jargon-free within the term's own definition. Use previously defined glossary terms when they help, but never create circular definitions.
