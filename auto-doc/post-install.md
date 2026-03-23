@@ -81,7 +81,37 @@ else:
 
 **If OK:** Report that permissions are correctly configured.
 
-## Step 3: Status Report
+## Step 3: Ensure .mg is in .gitignore
+
+Check if `.mg` (or `.mg/`) is already in the target project's `.gitignore`. If not, append it.
+
+```bash
+python3 -c "
+import os
+
+gitignore_path = '<target project>/.gitignore'
+patterns = ['.mg', '.mg/']
+
+try:
+    with open(gitignore_path) as f:
+        lines = f.read().splitlines()
+except FileNotFoundError:
+    lines = []
+
+already_present = any(line.strip() in patterns for line in lines)
+
+if already_present:
+    print('OK: .mg already in .gitignore')
+else:
+    with open(gitignore_path, 'a') as f:
+        if lines and lines[-1] != '':
+            f.write('\n')
+        f.write('.mg/\n')
+    print('ADDED: .mg/ to .gitignore')
+"
+```
+
+## Step 4: Status Report
 
 ```
 Auto-Doc Permissions
@@ -93,6 +123,7 @@ Auto-Doc Permissions
 
   Write(path:.mg/)           — workspace, temp files, scan output
   Write(path:docs/auto-doc/) — generated documentation
+  .gitignore:                [ADDED / OK] .mg/ entry
 
 ==================================================
 ```
