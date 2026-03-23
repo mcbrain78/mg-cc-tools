@@ -1,7 +1,7 @@
 ---
 name: mg:auto-doc-verify
 description: Verify documentation quality -- references, consistency, Diataxis, completeness
-allowed-tools: Bash, Read, Write, Glob, Grep, Task
+allowed-tools: Bash, Read, Write, Glob, Grep, Agent
 ---
 
 # Documentation Verifier
@@ -76,12 +76,12 @@ If either prerequisite fails, abort with the corresponding message and do not pr
 
 ### Step 2: Spawn Verifier Agent
 
-Spawn a **single** verifier agent instance via the Task tool. Unlike codebase-health which parallelizes verification by category, documentation verification runs 6 sequential checks in one agent.
+Spawn a **single** verifier agent instance via the Agent tool. Unlike codebase-health which parallelizes verification by category, documentation verification runs 6 sequential checks in one agent.
 
-Build the Task prompt with a reference to the agent file and parameters:
+Build the Agent prompt with a reference to the agent file and parameters:
 
 ```
-Task(
+Agent(
   description="Verify documentation quality (6 checks)",
   prompt="You are the documentation verifier agent.
 
@@ -145,7 +145,7 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
 ## Important Principles
 
 - **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `docs-verify-report.md`, `docs-verify-findings.json`.
-- **Agent instructions ARE pasted into the Task prompt.** The full contents of `agents/verifier.md` are included in the Task prompt so the spawned agent has its complete instruction set. The agent then reads data files itself via the paths provided.
+- **Subagents read their own instructions via file path.** The Agent prompt passes a reference (`Read and follow the instructions in: agents/verifier.md`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
 - **The agent uses LSP documentSymbol for symbol verification against structured manifests.** There is no regex extraction step or Grep fallback.
 - **Reference integrity is manifest-based.** The verifier reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
 - **5-tier severity model:** critical, high, medium, low, info. This matches the verifier agent's definition and the report output format.

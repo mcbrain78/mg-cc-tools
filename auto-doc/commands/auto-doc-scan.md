@@ -1,7 +1,7 @@
 ---
 name: mg:auto-doc-scan
 description: Scan project and build source material index for documentation generation
-allowed-tools: Bash, Read, Write, Glob, Grep, Task, AskUserQuestion
+allowed-tools: Bash, Read, Write, Glob, Grep, Agent, AskUserQuestion
 ---
 
 # Documentation Scanner
@@ -67,7 +67,7 @@ Only gather the small decisions needed to drive the pipeline. Heavy project anal
 Spawn a single orient subagent that does the heavy project analysis and writes the orientation files. This keeps ~400 lines of project data out of the orchestrator's context.
 
 ```
-Task(
+Agent(
   description="Orient: analyze project structure for documentation scan",
   prompt="You are the project orientation agent for auto-doc.
 
@@ -288,9 +288,9 @@ If mode is `"initial"`, skip this step entirely.
    ```
    Format: `{ "note_classifications": [ ... ] }` -- an object with a `note_classifications` array containing all classified entries with expansion outlines.
 
-### Step 6: Per-Audience Scan (parallel via Task tool)
+### Step 6: Per-Audience Scan (parallel foreground)
 
-For each enabled audience in the config, spawn a scan subagent via the Task tool.
+For each enabled audience in the config, spawn a scan subagent via the Agent tool. All agents run as parallel foreground (do NOT set `run_in_background`) so progress is visible inline.
 
 1. **For each enabled audience** in config (e.g., `end-users`, `developers`, `agents`, `devops`):
 
@@ -298,10 +298,10 @@ For each enabled audience in the config, spawn a scan subagent via the Task tool
    - Audience-specific documents from `config.audiences.{audience}.documents`
    - Include any `shared_documents` from config (e.g., `["OVERVIEW", "GLOSSARY"]`) -- these are shared but each audience subagent should index source material for them
 
-2. **Spawn subagents in parallel.** Launch one Task tool call per audience in a single message. Each subagent receives only parameters -- it reads its own instructions:
+2. **Spawn subagents in parallel.** Launch one Agent tool call per audience in a single message (parallel foreground). Each subagent receives only parameters -- it reads its own instructions:
 
    ```
-   Task(
+   Agent(
      description="Scan source material for {audience} audience",
      prompt="You are a scan subagent for the {audience} audience.
 
@@ -320,7 +320,7 @@ For each enabled audience in the config, spawn a scan subagent via the Task tool
    **If mode is "incremental"**, append incremental context to the Task prompt:
 
    ```
-   Task(
+   Agent(
      description="Incremental scan for {audience} audience",
      prompt="You are a scan subagent for the {audience} audience.
 

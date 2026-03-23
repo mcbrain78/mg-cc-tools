@@ -1,7 +1,7 @@
 ---
 name: mg:auto-doc-generate
 description: Generate or update audience-segmented documentation section-by-section
-allowed-tools: Bash, Read, Write, Glob, Grep, Task, AskUserQuestion
+allowed-tools: Bash, Read, Write, Glob, Grep, Agent, AskUserQuestion
 ---
 
 # Documentation Generator
@@ -255,10 +255,10 @@ For notes: add the note's classified `section` slug to the appropriate audience'
 
 Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
 
-1. **Spawn a single Task call** with the glossary-writer agent:
+1. **Spawn a single Agent call** with the glossary-writer agent:
 
    ```
-   Task(
+   Agent(
      description="Build glossary (initial pass)",
      prompt="You are the glossary writer agent.
 
@@ -293,7 +293,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
 2. **In update mode:** Only spawn agents for audiences that have approved sections. If an audience has no sections in the `approved_sections` dict from Step 2, skip it entirely to save subagent cost.
 
-3. **Spawn one Task call per enabled audience in a SINGLE message** (parallel execution). Each subagent reads its own instructions. For each audience:
+3. **Spawn one Agent call per enabled audience in a SINGLE message** (parallel foreground — do NOT set `run_in_background`). Each subagent reads its own instructions. For each audience:
 
    **In update mode, before spawning each writer:** If the audience has approved findings (entries in the `approved_findings` dict from Step 2e), load the relevant findings for that audience. For each document that the audience will update, run:
    ```bash
@@ -305,10 +305,10 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    ```
    Read the output file to get findings for that audience/document combination.
 
-   Then spawn the Task:
+   Then spawn the Agent:
 
    ```
-   Task(
+   Agent(
      description="Generate {audience} documentation ({mode} mode)",
      prompt="You are a {audience} writer agent.
 
@@ -373,10 +373,10 @@ This merge logic ensures:
 
 Print progress: `"Stage 3/4: Reconciling glossary terms..."`
 
-1. **Spawn a single Task call** with the glossary-writer agent in reconciliation mode:
+1. **Spawn a single Agent call** with the glossary-writer agent in reconciliation mode:
 
    ```
-   Task(
+   Agent(
      description="Reconcile glossary terms from writer proposals",
      prompt="You are the glossary writer agent.
 
@@ -566,7 +566,7 @@ Examples: `ARCHITECTURE/system-overview`, `USER_GUIDE/getting-started`, `OPERATI
 
 - **Agents receive file paths only; they read files themselves.** Do not paste source material, templates, or scan data content into subagent prompts. Pass paths as strings. The locked decision says: "Agents receive file paths only, read files themselves." This prevents context limit blowouts on large projects.
 
-- **Agent instructions ARE pasted into Task prompts.** While agents receive file paths for data, the agent definition file itself (e.g., `agents/developer-writer.md`) IS pasted into the Task prompt. This is required because subagents cannot read the agent definition file via relative path. This follows the codebase-health pattern.
+- **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: agents/{name}.md`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
 
 - **Create all output directories before spawning writers.** Writer agents assume their target directories exist. Create the full tree in Step 3 before any Stage runs. Failure to do this causes FileNotFoundError in subagents.
 

@@ -192,6 +192,21 @@ def read_tool_toml(tool_dir):
     with open(toml_path, "rb") as f:
         data = tomllib.load(f)
 
+    # Validate keys to catch typos (e.g., "file" instead of "script")
+    _EXPECTED_KEYS = {
+        "tool": {"description", "exclude", "standard"},
+        "preflight": {"required", "optional"},
+        "post_install": {"script"},
+        "detect": {"paths"},
+    }
+    for section_name, expected in _EXPECTED_KEYS.items():
+        actual = set(data.get(section_name, {}).keys())
+        unexpected = actual - expected
+        if unexpected:
+            raise ValueError(
+                f"{toml_path} [{section_name}]: unknown keys {unexpected}"
+            )
+
     tool_section = data.get("tool", {})
     preflight_section = data.get("preflight", {})
     post_install_section = data.get("post_install", {})
