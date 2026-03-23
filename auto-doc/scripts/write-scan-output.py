@@ -33,8 +33,9 @@ from lib.json_io import load_json, save_json
 
 # Key format: DOCUMENT/section-slug
 # DOCUMENT: starts with uppercase letter, followed by uppercase letters, digits, or underscores
-# section-slug: lowercase alphanumeric segments separated by hyphens
-KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]+/[a-z0-9]+(?:-[a-z0-9]+)*$")
+# section-slug: lowercase alphanumeric with hyphens (consecutive hyphens allowed from
+# slugified headings like "Do / Don't Rules" -> "do--dont-rules")
+KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]+/[a-z0-9][-a-z0-9]*[a-z0-9]$")
 
 
 def validate_scan_output(data):
