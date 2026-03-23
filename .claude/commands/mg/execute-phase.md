@@ -103,6 +103,11 @@ Phase {current}'s execution had deviations that may affect Phase {downstream}'s 
 
 Silent — just confirm execution completed. The standard `gsd:execute-phase` output is sufficient.
 
+**After reporting (both cases), print:**
+```
+Next step: `/mg:discuss-phase {next_phase}` or `/mg:plan-phase {next_phase}` if context already exists
+```
+
 </process>
 
 <important_notes>
@@ -111,5 +116,4 @@ Silent — just confirm execution completed. The standard `gsd:execute-phase` ou
 - `mg:discuss-phase` will independently detect these same deviations when the user discusses the downstream phase
 - The user can always use `gsd:execute-phase` directly for vanilla behavior
 - Pass-through flags are forwarded verbatim (e.g., `--auto`, `--wave N`)
-- After completion, suggest the next step: `/mg:discuss-phase {next_phase}` or `/mg:plan-phase {next_phase}` if context already exists
 </important_notes>
