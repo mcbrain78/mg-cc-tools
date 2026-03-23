@@ -63,7 +63,12 @@ When `audience` is `"end-users"`, apply these source material filtering rules:
         1. Record the boundary description as exclusion guidance
         2. When searching for source files for this section, exclude files that match the bounded content (e.g., if boundary says "Infrastructure setup belongs in devops/OPERATIONS.md", do not index deployment scripts, service files, or infrastructure configuration for this section)
         3. The section still gets a source_material_index entry -- BOUNDARY restricts what goes INTO the entry, it does not skip the entry
-      - Search the project source tree for files relevant to that section's purpose. Use Glob and Grep to find matching files. Read candidate files to confirm relevance.
+      - **Find candidate files.** Use Glob to find files by path pattern and Grep to find files by content. Do NOT use `Bash(ls)` for file discovery -- Glob is faster and more precise.
+      - **Explore file structure via LSP.** For each candidate source file, call `LSP documentSymbol` to get the complete structure (classes, functions, methods with line ranges). This gives you the full API surface without reading any code. Use this to:
+        1. Determine which symbols are relevant to the section's purpose
+        2. Decide if the file belongs in this section's source_material_index
+        3. If you need implementation details for a specific symbol, Read only that symbol's line range
+      - **Never Read an entire source file.** Always use LSP documentSymbol first, then targeted Read calls for specific line ranges. Reading lines 1-60 of a file gives you imports, not content. Reading an entire large file wastes tokens on irrelevant code.
       - Build a `source_material_index` entry with key `"{DOCUMENT}/{section-slug}"`.
       - List only files that genuinely relate to the section content. Do not pad with loosely related files.
       - Set `"staleness": "unknown"` for all entries (the orchestrator handles staleness separately).
@@ -151,13 +156,13 @@ The `"source"` field is optional. Only present on entries added during increment
 
 ## Principles
 
-- **Read source files yourself.** You receive paths, not contents. Use the Read tool to examine files.
+- **LSP first, Read second.** Always call `LSP documentSymbol` on source files before reading them. This gives you the complete structure (classes, functions, line ranges) without consuming tokens. Only use targeted `Read` calls for specific line ranges when you need implementation details. Never read an entire source file blind.
 - **Use `"unknown"` for staleness** on all entries. The orchestrator runs staleness checks separately.
 - **Key format is strict.** Keys MUST be `{DOCUMENT_NAME}/{section-slug}`. Document names match config entries exactly.
 - **Quality over quantity.** Only include source files that genuinely relate to the section content.
 - **For gap analysis,** compare project components against the set of sections you built. Components with no coverage are undocumented.
 - **Read-only.** Only write to the output_path. Never modify any project files.
-- **Follow the style guide** at `references/style-guide.md` for terminology and conventions when describing gaps.
+- **Use Glob, not Bash ls.** For file discovery, use `Glob("src/**/*.py")` instead of individual `Bash(ls ...)` calls per directory. One Glob replaces many ls calls.
 - **SYNTHESIZED sections MUST produce entries.** Even though they have no source files, the entry with `"source_files": []` and `"synthesized_from"` must exist. Missing entries cause the writer to skip the section.
 - **BOUNDARY is not OPTIONAL.** BOUNDARY means "this content belongs elsewhere" -- the section still exists and still gets an index entry. Only OPTIONAL means a section can be skipped entirely.
 - **In incremental mode, completeness is critical.** Your output must contain ALL section entries (changed + unchanged). Missing entries cause merge-scan.py to lose data for those sections.
