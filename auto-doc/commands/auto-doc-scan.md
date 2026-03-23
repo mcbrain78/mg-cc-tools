@@ -153,29 +153,12 @@ GSD integration: {true|false}
    - User confirms -> use detected interfaces
    - User corrects -> parse corrections into updated interface objects
 
-4. **Persist to config and update scan-project.json** via Bash (keeps JSON out of orchestrator context):
+4. **Persist to config and update scan-project.json** via script (keeps JSON out of orchestrator context):
    ```bash
-   python3 -c "
-   import json
-   interfaces = $INTERFACES_JSON
-
-   # Persist to config
-   with open('<project_root>/.mg/docs/.docs.config.json') as f:
-       config = json.load(f)
-   config['user_interfaces'] = interfaces
-   with open('<project_root>/.mg/docs/.docs.config.json', 'w') as f:
-       json.dump(config, f, indent=2)
-       f.write('\n')
-
-   # Update scan-project.json
-   with open('<project_root>/.mg/docs/scan-logs/scan-project.json') as f:
-       scan = json.load(f)
-   scan['project_model']['user_interfaces'] = interfaces
-   with open('<project_root>/.mg/docs/scan-logs/scan-project.json', 'w') as f:
-       json.dump(scan, f, indent=2)
-       f.write('\n')
-   print('Interfaces persisted to config and scan-project.json')
-   "
+   python3 {SCRIPTS_DIR}/persist-interfaces.py \
+       --config <project_root>/.mg/docs/.docs.config.json \
+       --scan-project <project_root>/.mg/docs/scan-logs/scan-project.json \
+       --interfaces '$INTERFACES_JSON'
    ```
 
 **Fallback (non-interactive):** If AskUserQuestion is not available:
@@ -375,35 +358,10 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
    - `staleness-results.json` (if update mode)
    - `note-classifications.json` (if notes were classified)
 
-2. **Read the summary counts** from docs-scan.json via Bash (keeps full JSON out of orchestrator context):
+2. **Read the summary counts** from docs-scan.json via script (keeps full JSON out of orchestrator context):
    ```bash
-   python3 -c "
-   import json
-   with open('<project_root>/.mg/docs/docs-scan.json') as f:
-       d = json.load(f)
-   smi = len(d.get('source_material_index', {}))
-   stale = len(d.get('staleness_report', []))
-   notes = len(d.get('note_classifications', []))
-   gap = d.get('gap_analysis', {})
-   undoc = len(gap.get('undocumented_components', []))
-   missing = {k: len(v) for k, v in gap.get('missing_for_audience', {}).items()}
-   pm = d.get('project_model', {})
-   tech = len(pm.get('tech_stack', []))
-   comps = len(pm.get('components', []))
-   eps = len(pm.get('entry_points', []))
-   gsd = d.get('gsd_context')
-   print(f'mode={d.get(\"mode\")}')
-   print(f'tech_stack={tech}')
-   print(f'components={comps}')
-   print(f'entry_points={eps}')
-   print(f'source_material={smi}')
-   print(f'staleness={stale}')
-   print(f'notes={notes}')
-   print(f'undocumented={undoc}')
-   print(f'missing={json.dumps(missing)}')
-   print(f'gsd_milestone={gsd.get(\"milestone\") if gsd else \"none\"}')
-   print(f'gsd_phases={len(gsd.get(\"completed_phases\", [])) if gsd else 0}')
-   "
+   python3 {SCRIPTS_DIR}/scan-summary.py \
+       --scan-file <project_root>/.mg/docs/docs-scan.json
    ```
 
 3. **Present a summary to the user** using the counts from the Bash output:

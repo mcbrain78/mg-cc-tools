@@ -32,86 +32,22 @@ If not found, output:
 
 Stop.
 
-## Step 2: Add Write Permissions
+## Step 2: Configure Permissions and Gitignore
 
-Add the required permission entries to settings.local.json. These allow auto-doc subagents
-to write temp files, scan output, and generated docs without interactive approval.
-
-Required permissions:
-- `Write(path:.mg/)` — workspace temp files, scan logs, docs-scan.json, reference manifests, config
-- `Write(path:docs/auto-doc/)` — generated documentation output
+Run the post-install configuration script. It handles both permissions and .gitignore in a single call:
 
 ```bash
-python3 -c "
-import json, os
-
-settings_path = '<TARGET_SETTINGS_LOCAL>'
-
-try:
-    with open(settings_path) as f:
-        settings = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    settings = {}
-
-perms = settings.setdefault('permissions', {})
-allow = perms.setdefault('allow', [])
-
-needed = [
-    'Write(path:.mg/)',
-    'Write(path:docs/auto-doc/)',
-]
-
-added = []
-for perm in needed:
-    if perm not in allow:
-        allow.append(perm)
-        added.append(perm)
-
-if added:
-    with open(settings_path, 'w') as f:
-        json.dump(settings, f, indent=2)
-        f.write('\n')
-    print('ADDED: ' + ', '.join(added))
-else:
-    print('OK: All permissions already present')
-"
+python3 {SCRIPTS_DIR}/post-install-configure.py \
+    --project-root "<target project>" \
+    --settings-path "<TARGET_SETTINGS_LOCAL>"
 ```
 
-**If ADDED:** Report which permissions were added.
+The script:
+- Adds `Write(path:.mg/)` and `Write(path:docs/auto-doc/)` to settings.local.json (idempotent)
+- Ensures `.mg/` is in `.gitignore` (idempotent)
+- Prints `permissions=ADDED` or `permissions=OK` and `gitignore=ADDED` or `gitignore=OK`
 
-**If OK:** Report that permissions are correctly configured.
-
-## Step 3: Ensure .mg is in .gitignore
-
-Check if `.mg` (or `.mg/`) is already in the target project's `.gitignore`. If not, append it.
-
-```bash
-python3 -c "
-import os
-
-gitignore_path = '<target project>/.gitignore'
-patterns = ['.mg', '.mg/']
-
-try:
-    with open(gitignore_path) as f:
-        lines = f.read().splitlines()
-except FileNotFoundError:
-    lines = []
-
-already_present = any(line.strip() in patterns for line in lines)
-
-if already_present:
-    print('OK: .mg already in .gitignore')
-else:
-    with open(gitignore_path, 'a') as f:
-        if lines and lines[-1] != '':
-            f.write('\n')
-        f.write('.mg/\n')
-    print('ADDED: .mg/ to .gitignore')
-"
-```
-
-## Step 4: Status Report
+## Step 3: Status Report
 
 ```
 Auto-Doc Permissions
