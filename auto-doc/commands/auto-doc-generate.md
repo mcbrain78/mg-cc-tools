@@ -244,6 +244,30 @@ For notes: add the note's classified `section` slug to the appropriate audience'
    ```
    This timestamp is written at pipeline START so the next incremental scan's diff window is over-inclusive (commits during this generation cycle will be re-scanned next time, which is harmless).
 
+6. **Split scan data into per-audience views.** Create lightweight view files so each writer agent reads only the scan entries relevant to its audience, instead of the full `docs-scan.json`.
+
+   For each enabled audience in the config (end-users, developers, agents, devops), run:
+   ```bash
+   python3 {SCRIPTS_DIR}/split-scan-by-audience.py \
+       --input {project_root}/.mg/docs/docs-scan.json \
+       --output {TMP_DIR}/scan-view-{audience}.json \
+       --mode audience \
+       --audience {audience} \
+       --documents {comma_separated_documents_from_config}
+   ```
+
+   Then create the glossary view:
+   ```bash
+   python3 {SCRIPTS_DIR}/split-scan-by-audience.py \
+       --input {project_root}/.mg/docs/docs-scan.json \
+       --output {TMP_DIR}/scan-view-glossary.json \
+       --mode glossary
+   ```
+
+   The `{audience}` is the config key (e.g., `end-users`, `developers`, `agents`, `devops`). The `{documents}` is the comma-separated list from `audiences.{audience}.documents` in `.docs.config.json` (e.g., `ARCHITECTURE,DEVELOPER_GUIDE,QUICK_REFERENCE` for developers).
+
+   In update mode, all audience views are created eagerly (not filtered to approved audiences only). Views are tiny temp files -- no point complicating the orchestrator to filter.
+
 ### Stage 1: Build Glossary (initial pass)
 
 Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
@@ -259,7 +283,7 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {project_root}/.mg/docs/docs-scan.json
+   Scan data path: {TMP_DIR}/scan-view-glossary.json
    Glossary template path: {TEMPLATES_DIR}/GLOSSARY.template.md
    Style guide path: references/style-guide.md
    Mode: {mode}
@@ -309,7 +333,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {project_root}/.mg/docs/docs-scan.json
+   Scan data path: {TMP_DIR}/scan-view-{audience}.json
    Templates dir: {TEMPLATES_DIR}/{audience}/
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
@@ -377,7 +401,7 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {project_root}/.mg/docs/docs-scan.json
+   Scan data path: {TMP_DIR}/scan-view-glossary.json
    Glossary template path: {TEMPLATES_DIR}/GLOSSARY.template.md
    Style guide path: references/style-guide.md
    Mode: {mode}
@@ -580,3 +604,5 @@ Examples: `ARCHITECTURE/system-overview`, `USER_GUIDE/getting-started`, `OPERATI
 - **Generate reads verify findings but NEVER clears docs-verify-findings.json.** Only the verify command clears findings (at the start of each verify run). Findings the user skips in the approval flow reappear on the next verify run -- this is correct behavior, not a bug.
 
 - **Tier ordering is staleness -> verify findings -> notes.** This follows logical severity ordering: code changes first, quality issues second, user knowledge third.
+
+- **Subagents receive audience-specific view files, not full scan data.** The orchestrator splits `docs-scan.json` into per-audience view files (Step 3 substep 6) and passes view file paths as `scan_data_path` in Agent() prompts. The orchestrator itself continues to read the full `docs-scan.json` for its own Step 1/Step 2 processing (staleness report, note classifications, mode detection). Do not reference view file paths in orchestrator logic outside of Agent() prompts.
