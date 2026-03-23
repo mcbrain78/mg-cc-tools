@@ -67,13 +67,13 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **GEN-04**: Section ownership tracking via docs-meta HTML comments (last-updated, sources)
 - [x] **GEN-05**: Cross-document consistency: writers receive glossary, new terms proposed for addition
 - [x] **GEN-06**: OVERVIEW.md generated last (after all audience docs complete) for accurate routing
-- [ ] **GEN-07**: All five writer agents (glossary, end-user, developer, agent, devops) use Serena-based source code exploration to read specific symbols rather than entire files, falling back to Read only for file types Serena cannot parse
+- [x] **GEN-07**: All five writer agents (glossary, end-user, developer, agent, devops) use Serena-based source code exploration to read specific symbols rather than entire files, falling back to Read only for file types Serena cannot parse
 - [x] **GEN-08**: A split-scan script produces per-audience view files from docs-scan.json, each containing only the project model, GSD context, source material index entries, and gap analysis relevant to that audience's documents
 - [x] **GEN-09**: A glossary-specific view contains all source material index keys but reduces source file entries to filenames only
-- [ ] **GEN-10**: The generate orchestrator splits the scan before spawning writer agents and passes each writer its audience-specific view file instead of the full docs-scan.json
+- [x] **GEN-10**: The generate orchestrator splits the scan before spawning writer agents and passes each writer its audience-specific view file instead of the full docs-scan.json
 - [x] **GEN-11**: View files preserve the same top-level key structure as docs-scan.json so writer agents require no changes to their data access patterns
 - [x] **GEN-12**: Each audience view is sized to fit in a single read operation, eliminating chunked reads across the generate run
-- [ ] **GEN-13**: The existing per-entry manifest write pattern is retained unchanged
+- [x] **GEN-13**: The existing per-entry manifest write pattern is retained unchanged
 
 ### Verify
 
@@ -452,13 +452,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ISC-07 | Phase 16 | Complete |
 | ISC-08 | Phase 16 | Complete |
 | ISC-09 | Phase 16 | Complete |
-| GEN-07 | Phase 17 | Pending |
+| GEN-07 | Phase 17 | Complete |
 | GEN-08 | Phase 17 | Complete |
 | GEN-09 | Phase 17 | Complete |
-| GEN-10 | Phase 17 | Pending |
+| GEN-10 | Phase 17 | Complete |
 | GEN-11 | Phase 17 | Complete |
 | GEN-12 | Phase 17 | Complete |
-| GEN-13 | Phase 17 | Pending |
+| GEN-13 | Phase 17 | Complete |
 
 **Coverage:**
 - v1 requirements: 185 total

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-03-23T23:06:57.064Z"
-last_activity: 2026-03-23 -- Plan 17-01 complete (split-scan-by-audience.py)
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-03-23T23:11:51.538Z"
+last_activity: 2026-03-23 -- Plan 17-02 complete (orchestrator wiring + writer Serena guidance)
 progress:
   total_phases: 17
-  completed_phases: 15
+  completed_phases: 16
   total_plans: 50
-  completed_plans: 48
-  percent: 96
+  completed_plans: 49
+  percent: 98
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 17 of 17 (Auto Doc Generate Docs Improvements)
-Plan: 1 of 2 in current phase
+Plan: 2 of 2 in current phase
 Status: In Progress
-Last activity: 2026-03-23 -- Plan 17-01 complete (split-scan-by-audience.py)
+Last activity: 2026-03-23 -- Plan 17-02 complete (orchestrator wiring + writer Serena guidance)
 
-Progress: [██████████] 96%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -98,6 +98,7 @@ Progress: [██████████] 96%
 | Phase 16 P01 | 5min | 2 tasks | 2 files |
 | Phase 16 P02 | 4min | 2 tasks | 5 files |
 | Phase 17 P01 | 2min | 2 tasks | 2 files |
+| Phase 17 P02 | 2min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -227,6 +228,8 @@ Recent decisions affecting current work:
 - [Phase 16]: last_generated written at pipeline START for over-inclusive diff window; incremental mode upgrades from update when last_generated + manifests exist; staleness check skipped in incremental mode
 - [Phase 17]: Empty gap_analysis passes through as empty dict (not structured skeleton)
 - [Phase 17]: Audience mode validates --audience/--documents at runtime (not argparse required=True) to allow glossary mode to omit them
+- [Phase 17]: View files created eagerly for all audiences in update mode (not filtered to approved)
+- [Phase 17]: Orchestrator uses loop pattern with {audience} placeholder for split-scan calls
 
 ### Pending Todos
 
@@ -261,6 +264,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T23:06:57.060Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-03-23T23:11:51.535Z
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None
