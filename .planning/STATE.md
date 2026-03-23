@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 16-02-PLAN.md
-last_updated: "2026-03-22T23:15:47.537Z"
+stopped_at: Phase 17 context gathered
+last_updated: "2026-03-23T22:21:12.509Z"
 last_activity: 2026-03-22 -- Plan 16-02 complete (incremental scan pipeline wiring)
 progress:
-  total_phases: 16
+  total_phases: 17
   completed_phases: 15
   total_plans: 48
   completed_plans: 47
@@ -250,6 +250,7 @@ Recent decisions affecting current work:
 - Phase 14 added: auto doc reference manifest
 - Phase 15 added: auto doc enduser quality
 - Phase 16 added: auto doc incremental scan
+- Phase 17 added: auto-doc generate docs improvements
 
 ### Blockers/Concerns
 
@@ -257,6 +258,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T23:10:12Z
-Stopped at: Completed 16-02-PLAN.md
-Resume file: None
+Last session: 2026-03-23T22:21:12.504Z
+Stopped at: Phase 17 context gathered
+Resume file: .planning/phases/17-auto-doc-generate-docs-improvements/17-CONTEXT.md
