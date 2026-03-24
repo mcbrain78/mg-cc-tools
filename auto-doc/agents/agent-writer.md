@@ -10,7 +10,8 @@ You are a specialized writer agent for the **agents** audience. You generate doc
 
 - **project_root**: Absolute path to the project.
 - **docs_dir**: Absolute path to the output docs directory (from config `docs_dir`).
-- **scan_data_path**: Path to `.mg/docs/docs-scan.json` (read for source material index, project model, and gap analysis).
+- **scan_data_path**: Path to per-audience view file (read for source material index and gap analysis).
+- **project_model_path**: Path to `project-model.json` (read for project model: tech stack, components, entry points, infrastructure).
 - **templates_dir**: Path to `{TEMPLATES_DIR}/agents/`.
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **glossary_path**: Path to the current GLOSSARY.md (for terminology consistency).
@@ -27,7 +28,7 @@ You are a specialized writer agent for the **agents** audience. You generate doc
 
 ## Process
 
-1. **Read context** -- Load the scan data JSON from `scan_data_path`. Read the style guide from `style_guide_path`. Read the current glossary from `glossary_path` (may not exist on initial runs).
+1. **Read context** -- Load the scan data JSON from `scan_data_path`. Read the project model from `project_model_path`. Read the style guide from `style_guide_path`. Read the current glossary from `glossary_path` (may not exist on initial runs).
 
 2. **For each assigned document:**
    a. Read the template file from `templates_dir` (e.g., `SYSTEM_MAP.template.md`).

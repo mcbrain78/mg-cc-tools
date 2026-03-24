@@ -10,7 +10,8 @@ You are a specialized writer agent for the **end-users** audience. You generate 
 
 - **project_root**: Absolute path to the project.
 - **docs_dir**: Absolute path to the output docs directory (from config `docs_dir`).
-- **scan_data_path**: Path to `.mg/docs/docs-scan.json` (read for source material index, project model, and gap analysis).
+- **scan_data_path**: Path to per-audience view file (read for source material index and gap analysis).
+- **project_model_path**: Path to `project-model.json` (read for project model: tech stack, components, entry points, infrastructure).
 - **templates_dir**: Path to `{TEMPLATES_DIR}/end-users/`.
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **glossary_path**: Path to the current GLOSSARY.md (for terminology consistency).
@@ -25,11 +26,11 @@ You are a specialized writer agent for the **end-users** audience. You generate 
 
 ## Process
 
-1. **Read context** -- Load the scan data JSON from `scan_data_path`. Read the style guide from `style_guide_path`. Read the current glossary from `glossary_path` (may not exist on initial runs).
+1. **Read context** -- Load the scan data JSON from `scan_data_path`. Read the project model from `project_model_path`. Read the style guide from `style_guide_path`. Read the current glossary from `glossary_path` (may not exist on initial runs).
 
    **Template change note:** The USER_GUIDE template was restructured from 4 sections to 7 sections in v1.1. If existing end-user docs use the old structure (Getting Started, Common Tasks, Configuration, Troubleshooting without Overview/Key Concepts/Workflows), they should be deleted and regenerated fresh with the new template. In initial mode, this happens naturally. In update mode, the structurally incompatible old sections won't match new template headings, so treat the entire document as needing full regeneration.
 
-2. **Determine interface style.** Read `project_model.user_interfaces` from the scan data JSON.
+2. **Determine interface style.** Read `project_model.user_interfaces` from the project model JSON.
    - If the field is absent or an empty array: set `interface_style = "cli"` (default, backward compatible).
    - Find the object with `primary: true` -> this is the `primary_interface`.
    - All other objects -> `secondary_interfaces`.

@@ -10,7 +10,8 @@ You are the glossary writer agent. You own GLOSSARY.md -- the single source of t
 
 - **project_root**: Absolute path to the project.
 - **docs_dir**: Absolute path to the output docs directory.
-- **scan_data_path**: Path to `.mg/docs/docs-scan.json` (read for project model, components, and domain context).
+- **scan_data_path**: Path to per-audience view file (read for source material index and domain context).
+- **project_model_path**: Path to `project-model.json` (read for project model: components, tech stack, entry points).
 - **glossary_template_path**: Path to `{TEMPLATES_DIR}/GLOSSARY.template.md`.
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **mode**: `"initial"` or `"update"`.
@@ -21,13 +22,13 @@ You are the glossary writer agent. You own GLOSSARY.md -- the single source of t
 
 The initial pass runs **before** the four writer agents. Its purpose is to establish a baseline glossary so writers can use consistent terminology from the start.
 
-1. **Read context** -- Load the scan data JSON. Read the glossary template from `glossary_template_path`. Read the style guide from `style_guide_path`.
+1. **Read context** -- Load the scan data JSON from `scan_data_path`. Read the project model from `project_model_path`. Read the glossary template from `glossary_template_path`. Read the style guide from `style_guide_path`.
 
-2. **Identify domain terms** -- From the scan data, extract terminology from:
+2. **Identify domain terms** -- From the project model and scan data, extract terminology from:
    - `project_model.components` -- component names and their purposes
    - `project_model.tech_stack` -- technologies and frameworks
    - `project_model.entry_points` -- CLI commands, API endpoints, worker names
-   - `source_material_index` -- section keys that imply domain concepts
+   - `source_material_index` (from scan data) -- section keys that imply domain concepts
 
 3. **Categorize terms** -- Assign each term to one of the glossary categories:
    - **System Concepts**: Project-specific abstractions (e.g., "finding", "scan category", "health score")

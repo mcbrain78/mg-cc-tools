@@ -253,8 +253,11 @@ For notes: add the note's classified `section` slug to the appropriate audience'
        --output {TMP_DIR}/scan-view-{audience}.json \
        --mode audience \
        --audience {audience} \
-       --documents {comma_separated_documents_from_config}
+       --documents {comma_separated_documents_from_config} \
+       --project-model-output {TMP_DIR}/project-model.json
    ```
+
+   **Note:** `--project-model-output` is passed on **every** audience split call, but the script only writes the file on the first call (skips if already exists). This avoids needing to special-case which call goes first.
 
    Then create the glossary view:
    ```bash
@@ -284,6 +287,7 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
    Scan data path: {TMP_DIR}/scan-view-glossary.json
+   Project model path: {TMP_DIR}/project-model.json
    Glossary template path: {TEMPLATES_DIR}/GLOSSARY.template.md
    Style guide path: references/style-guide.md
    Mode: {mode}
@@ -334,6 +338,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
    Scan data path: {TMP_DIR}/scan-view-{audience}.json
+   Project model path: {TMP_DIR}/project-model.json
    Templates dir: {TEMPLATES_DIR}/{audience}/
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
@@ -402,6 +407,7 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
    Scan data path: {TMP_DIR}/scan-view-glossary.json
+   Project model path: {TMP_DIR}/project-model.json
    Glossary template path: {TEMPLATES_DIR}/GLOSSARY.template.md
    Style guide path: references/style-guide.md
    Mode: {mode}
@@ -429,7 +435,7 @@ Generate OVERVIEW.md **inline** (not via subagent). The orchestrator already has
    ```
    For each file found, read the first few lines to extract the H1 heading and any introductory text.
 
-3. **Read the scan data** for the project model (tech stack, components, entry points) and the glossary for key concepts.
+3. **Read the project model** from `{TMP_DIR}/project-model.json` for tech stack, components, and entry points. Read the glossary for key concepts.
 
 4. **Generate OVERVIEW.md** following the template structure:
    - **File ownership header** at the very top (before any template content):
@@ -605,4 +611,4 @@ Examples: `ARCHITECTURE/system-overview`, `USER_GUIDE/getting-started`, `OPERATI
 
 - **Tier ordering is staleness -> verify findings -> notes.** This follows logical severity ordering: code changes first, quality issues second, user knowledge third.
 
-- **Subagents receive audience-specific view files, not full scan data.** The orchestrator splits `docs-scan.json` into per-audience view files (Step 3 substep 6) and passes view file paths as `scan_data_path` in Agent() prompts. The orchestrator itself continues to read the full `docs-scan.json` for its own Step 1/Step 2 processing (staleness report, note classifications, mode detection). Do not reference view file paths in orchestrator logic outside of Agent() prompts.
+- **Subagents receive audience-specific view files, not full scan data.** The orchestrator splits `docs-scan.json` into per-audience view files (Step 3 substep 6) and passes view file paths as `scan_data_path` in Agent() prompts. The project model is extracted to a separate `project-model.json` file (passed as `project_model_path`) to avoid duplicating it in every view. The orchestrator itself continues to read the full `docs-scan.json` for its own Step 1/Step 2 processing (staleness report, note classifications, mode detection). Do not reference view file paths in orchestrator logic outside of Agent() prompts.

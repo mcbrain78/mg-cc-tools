@@ -766,7 +766,7 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
                 if scoped_filenames is not None and fname not in scoped_filenames:
                     continue
                 fpath = os.path.join(root, fname)
-                _check_file_for_issues(fpath, issues)
+                _check_file_for_issues(fpath, issues, target_dir)
 
     # Check workspace directories for tools that scaffold them
     check_tools = tool_names or list(WORKSPACE_DIRS.keys())
@@ -788,13 +788,19 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
     return {"valid": len(issues) == 0, "issue_count": len(issues), "issues": issues}
 
 
-def _check_file_for_issues(fpath, issues):
+def _check_file_for_issues(fpath, issues, target_dir=None):
     """Check a single installed file for placeholder and path issues."""
     try:
         with open(fpath, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
     except (OSError, IOError):
         return
+
+    # Build runtime tmp prefix: paths under {target}/.mg/*/tmp/ are created
+    # at pipeline runtime, not at install time, so skip them.
+    tmp_prefix = None
+    if target_dir:
+        tmp_prefix = os.path.join(os.path.abspath(target_dir), ".mg") + os.sep
 
     for line_num, line in enumerate(lines, start=1):
         # Check for unresolved placeholders
@@ -820,6 +826,14 @@ def _check_file_for_issues(fpath, issues):
             # Skip paths containing runtime template variables like {audience}
             if "{" in abs_path and "}" in abs_path:
                 continue
+            # Skip paths under .mg/*/tmp/ -- these are runtime temp files
+            # created during pipeline execution (e.g. {TMP_DIR} paths)
+            if tmp_prefix and abs_path.startswith(tmp_prefix):
+                # Match .mg/<tool>/tmp/ pattern
+                suffix = abs_path[len(tmp_prefix):]
+                parts = suffix.split(os.sep)
+                if len(parts) >= 2 and parts[1] == "tmp":
+                    continue
             # Only check paths that look like real file references
             # (have file extensions or end with specific patterns)
             if not os.path.exists(abs_path) and (

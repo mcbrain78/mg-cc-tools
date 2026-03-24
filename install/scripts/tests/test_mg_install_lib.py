@@ -1299,6 +1299,31 @@ class TestValidate:
             path_issues = [i for i in data["issues"] if i["type"] == "missing_path"]
             assert len(path_issues) > 0
 
+    def test_skips_runtime_tmp_paths(self):
+        """Paths under .mg/*/tmp/ are runtime files -- not flagged as missing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            # File with resolved {TMP_DIR} paths that don't exist on disk
+            abs_target = os.path.abspath(target)
+            with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
+                f.write(
+                    f"Read {abs_target}/.mg/docs/tmp/project-model.json\n"
+                    f"Read {abs_target}/.mg/docs/tmp/manifest-developers.json\n"
+                    f"Read {abs_target}/.mg/health-scan/tmp/results.json\n"
+                )
+
+            result = _run([
+                "validate", "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            path_issues = [i for i in data["issues"] if i["type"] == "missing_path"]
+            assert len(path_issues) == 0, f"Expected no path issues, got: {path_issues}"
+
     def test_clean_install_has_no_issues(self):
         """A clean install with no placeholders or bad paths has zero issues."""
         with tempfile.TemporaryDirectory() as tmp:
