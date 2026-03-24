@@ -178,7 +178,7 @@ The compact stdout JSON contains an array of `{tool, pattern, post_install}` ent
 
 **copy_only pattern** (has install.sh, no post-install):
 ```bash
-bash ./<tool>/install.sh --target "$TARGET_PATH/.claude"
+bash ./<tool>/install.sh --project "$TARGET_PATH"
 ```
 If exit code != 0: STOP.
 

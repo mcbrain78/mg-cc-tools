@@ -1405,7 +1405,7 @@ def get_install_plan(scan_data, tool_names):
         # Build install command
         install_cmd = None
         if has_sh:
-            install_cmd = f'bash ./{name}/install.sh --target "{target}/.claude"'
+            install_cmd = f'bash ./{name}/install.sh --project "{target}"'
 
         plan.append({
             "tool": name,
