@@ -228,8 +228,8 @@ class TestAudienceModeFiltering:
             assert view["source_material_index"]["ARCHITECTURE/overview"]["staleness"] == "fresh"
             assert view["source_material_index"]["ARCHITECTURE/data-model"]["staleness"] == "unknown"
 
-    def test_copies_project_model_verbatim(self):
-        """Test 2: project_model is copied unchanged from input."""
+    def test_does_not_include_project_model(self):
+        """Test 2: project_model is NOT included in view files (extracted separately)."""
         data = _make_scan_data()
         with tempfile.TemporaryDirectory() as tmp:
             input_path = os.path.join(tmp, "docs-scan.json")
@@ -252,7 +252,7 @@ class TestAudienceModeFiltering:
             with open(output_path) as f:
                 view = json.load(f)
 
-            assert view["project_model"] == data["project_model"]
+            assert "project_model" not in view
 
     def test_filters_gap_analysis_missing_for_audience(self):
         """Test 3: gap_analysis.missing_for_audience filtered to target audience only;
@@ -361,8 +361,8 @@ class TestAudienceModeFiltering:
             )
             assert result.returncode != 0
 
-    def test_output_has_exactly_four_top_level_keys(self):
-        """Test 6: Output has exactly project_model, gsd_context,
+    def test_output_has_exactly_three_top_level_keys(self):
+        """Test 6: Output has exactly gsd_context,
         source_material_index, and gap_analysis at top level."""
         data = _make_scan_data()
         with tempfile.TemporaryDirectory() as tmp:
@@ -386,7 +386,7 @@ class TestAudienceModeFiltering:
             with open(output_path) as f:
                 view = json.load(f)
 
-            expected_keys = {"project_model", "gsd_context", "source_material_index", "gap_analysis"}
+            expected_keys = {"gsd_context", "source_material_index", "gap_analysis"}
             assert set(view.keys()) == expected_keys
 
 
@@ -500,8 +500,8 @@ class TestGlossaryMode:
             # Entry without synthesized_from should not have it
             assert "synthesized_from" not in view["source_material_index"]["ARCHITECTURE/overview"]
 
-    def test_copies_project_model_and_gsd_context_verbatim(self):
-        """Test 9: project_model and gsd_context are copied unchanged."""
+    def test_does_not_include_project_model_copies_gsd_context(self):
+        """Test 9: project_model is NOT in view; gsd_context is copied unchanged."""
         data = _make_scan_data()
         with tempfile.TemporaryDirectory() as tmp:
             input_path = os.path.join(tmp, "docs-scan.json")
@@ -522,7 +522,7 @@ class TestGlossaryMode:
             with open(output_path) as f:
                 view = json.load(f)
 
-            assert view["project_model"] == data["project_model"]
+            assert "project_model" not in view
             assert view["gsd_context"] == data["gsd_context"]
 
     def test_includes_full_gap_analysis(self):
@@ -549,8 +549,8 @@ class TestGlossaryMode:
 
             assert view["gap_analysis"] == data["gap_analysis"]
 
-    def test_output_has_exactly_four_top_level_keys(self):
-        """Test 11: Output has exactly 4 top-level keys."""
+    def test_output_has_exactly_three_top_level_keys(self):
+        """Test 11: Output has exactly 3 top-level keys."""
         data = _make_scan_data()
         with tempfile.TemporaryDirectory() as tmp:
             input_path = os.path.join(tmp, "docs-scan.json")
@@ -571,7 +571,7 @@ class TestGlossaryMode:
             with open(output_path) as f:
                 view = json.load(f)
 
-            expected_keys = {"project_model", "gsd_context", "source_material_index", "gap_analysis"}
+            expected_keys = {"gsd_context", "source_material_index", "gap_analysis"}
             assert set(view.keys()) == expected_keys
 
 
@@ -670,3 +670,191 @@ class TestEdgeCases:
             entry = view["source_material_index"]["ARCHITECTURE/mixed-paths"]
             assert "source_files" not in entry
             assert entry["staleness"] == "fresh"
+
+
+class TestProjectModelExtraction:
+    """--project-model-output: standalone slimmed project model file."""
+
+    def test_writes_project_model_json(self):
+        """Writes project-model.json with correct content."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            result = subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE,DEVELOPER_GUIDE",
+                    "--project-model-output", pm_path,
+                ],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, f"stderr: {result.stderr}"
+            assert os.path.exists(pm_path)
+
+            with open(pm_path) as f:
+                pm = json.load(f)
+
+            # Top-level keys preserved
+            assert "tech_stack" in pm
+            assert "entry_points" in pm
+            assert "components" in pm
+            assert "infrastructure" in pm
+
+    def test_strips_public_api_and_database_tables(self):
+        """Strips public_api and database_tables from components."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE",
+                    "--project-model-output", pm_path,
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(pm_path) as f:
+                pm = json.load(f)
+
+            for comp in pm["components"]:
+                assert "public_api" not in comp, f"{comp['name']} should not have public_api"
+                assert "database_tables" not in comp, f"{comp['name']} should not have database_tables"
+
+    def test_preserves_component_core_fields(self):
+        """Preserves name, path, purpose, dependencies in components."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE",
+                    "--project-model-output", pm_path,
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(pm_path) as f:
+                pm = json.load(f)
+
+            comp = pm["components"][0]
+            assert comp["name"] == "core"
+            assert comp["path"] == "src/core.py"
+            assert comp["purpose"] == "Core logic"
+            assert comp["dependencies"] == []
+
+    def test_skips_write_if_file_exists(self):
+        """Does not overwrite existing project-model.json."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            # Pre-create a sentinel file
+            sentinel = {"sentinel": True}
+            with open(pm_path, "w") as f:
+                json.dump(sentinel, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE",
+                    "--project-model-output", pm_path,
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(pm_path) as f:
+                pm = json.load(f)
+
+            # Sentinel data should be unchanged
+            assert pm == sentinel
+
+    def test_no_file_written_without_flag(self):
+        """Without --project-model-output, no project-model.json is written."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE",
+                ],
+                capture_output=True, text=True,
+            )
+
+            assert not os.path.exists(pm_path)
+
+    def test_view_file_has_no_project_model_with_flag(self):
+        """View file still has no project_model even when --project-model-output is used."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE",
+                    "--project-model-output", pm_path,
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(output_path) as f:
+                view = json.load(f)
+
+            assert "project_model" not in view
+            expected_keys = {"gsd_context", "source_material_index", "gap_analysis"}
+            assert set(view.keys()) == expected_keys

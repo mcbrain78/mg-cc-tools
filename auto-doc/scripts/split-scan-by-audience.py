@@ -3,9 +3,9 @@
 
 Reads a full docs-scan.json and produces a filtered view file containing
 only the data relevant to a specific audience or the glossary writer.
-Each view file has the same 4 top-level keys (project_model, gsd_context,
-source_material_index, gap_analysis) so writer agents' access patterns
-work unchanged.
+Each view file has 3 top-level keys (gsd_context, source_material_index,
+gap_analysis). project_model is extracted to a separate standalone file
+via --project-model-output to avoid duplicating it across all views.
 
 source_files arrays are stripped from all view files -- writers fetch
 per-section source files on demand via get-section-sources.py.
@@ -25,7 +25,8 @@ Usage:
         --output /tmp/scan-view-developers.json \\
         --mode audience \\
         --audience developers \\
-        --documents ARCHITECTURE,DEVELOPER_GUIDE
+        --documents ARCHITECTURE,DEVELOPER_GUIDE \\
+        --project-model-output /tmp/project-model.json
 
     python3 split-scan-by-audience.py \\
         --input .mg/docs/docs-scan.json \\
@@ -36,6 +37,7 @@ Atomic writes via lib/json_io.py. Zero external dependencies.
 """
 
 import argparse
+import copy
 import os
 import sys
 
@@ -43,8 +45,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
 
 
-# Keys to include in every view file
-VIEW_KEYS = ("project_model", "gsd_context", "source_material_index", "gap_analysis")
+# Keys to include in every view file (project_model extracted separately)
+VIEW_KEYS = ("gsd_context", "source_material_index", "gap_analysis")
 
 
 def filter_source_material(index, document_list):
@@ -111,8 +113,31 @@ def strip_source_files(index):
     return result
 
 
+def slim_project_model(pm):
+    """Deep-copy project_model and strip bulky fields from components.
+
+    Removes ``public_api`` and ``database_tables`` from each component
+    entry -- writers get this data from source files via Serena, so
+    duplicating it in the extracted model wastes tokens.
+
+    Args:
+        pm: The project_model dict from docs-scan.json.
+
+    Returns:
+        New dict with slimmed components.
+    """
+    slimmed = copy.deepcopy(pm)
+    for comp in slimmed.get("components", []):
+        comp.pop("public_api", None)
+        comp.pop("database_tables", None)
+    return slimmed
+
+
 def build_view(data, source_material_index, gap_analysis):
-    """Assemble a view file with the 4 standard top-level keys.
+    """Assemble a view file with the 3 standard top-level keys.
+
+    project_model is extracted separately via --project-model-output
+    to avoid duplicating it across all view files.
 
     Args:
         data: Full docs-scan.json data.
@@ -120,10 +145,9 @@ def build_view(data, source_material_index, gap_analysis):
         gap_analysis: Pre-filtered gap analysis.
 
     Returns:
-        Dict with exactly 4 top-level keys.
+        Dict with exactly 3 top-level keys.
     """
     return {
-        "project_model": data.get("project_model", {}),
         "gsd_context": data.get("gsd_context", None),
         "source_material_index": source_material_index,
         "gap_analysis": gap_analysis,
@@ -153,6 +177,10 @@ def main():
     parser.add_argument(
         "--documents",
         help="Comma-separated uppercase document names (required for audience mode)",
+    )
+    parser.add_argument(
+        "--project-model-output", dest="project_model_output",
+        help="Path to write slimmed project-model.json (skipped if file already exists)",
     )
 
     args = parser.parse_args()
@@ -185,6 +213,14 @@ def main():
 
     view = build_view(data, filtered_index, filtered_gap)
     save_json(os.path.abspath(args.output), view)
+
+    # Write slimmed project_model to standalone file (once, first caller wins)
+    if args.project_model_output:
+        pm_path = os.path.abspath(args.project_model_output)
+        if not os.path.exists(pm_path):
+            pm = slim_project_model(data.get("project_model", {}))
+            save_json(pm_path, pm)
+            print("Wrote project-model.json", file=sys.stderr)
 
     entry_count = len(filtered_index)
     mode_label = f"{args.mode}"
