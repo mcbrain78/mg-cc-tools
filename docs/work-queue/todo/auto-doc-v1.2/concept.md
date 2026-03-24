@@ -8,11 +8,11 @@ The generate pipeline was tested on road-runner (first real target): 12 files, 7
 
 ## Complication
 
-The generate pipeline has three efficiency problems discovered during road-runner testing:
+The generate pipeline has two efficiency problems discovered during road-runner testing:
 
 ### 1. Writer agents don't use Serena (~630k tokens, should be ~400k)
 
-The scan agents got Serena guidance in scan-audience.md, but the 6 writer/glossary agents still use the old pattern: `Read(file.py, lines 1-80)` across dozens of files. The agents writer consumed 175k tokens reading nearly every source file — most of which could be explored via get_symbols_overview + find_symbol.
+The scan agents got Serena guidance in scan-audience.md, but the 5 writer/glossary agents still use the old pattern: `Read(file.py, lines 1-80)` across dozens of files. The agents writer consumed 175k tokens reading nearly every source file — most of which could be explored via get_symbols_overview + find_symbol.
 
 Evidence from the road-runner generate run:
 - Glossary writer: 62.9k tokens, reads 16 files with `lines 1-60`
@@ -35,15 +35,11 @@ Each writer only needs:
 
 A per-audience "view" file would be ~5k tokens — well under the limit, one Read.
 
-The glossary writer needs cross-audience data but not the full index. A compact glossary view with project_model + gsd_context + flat list of unique source files would also fit under 10k tokens.
-
-### 3. Inline Python for manifest merge
-
-The generate orchestrator has a ~25-line `python3 -c "..."` block for merging temp manifests to the persisted reference-manifests/ directory. This is the last inline Python in the auto-doc command files, violating the convention we enforced in v1.1 (all deterministic logic in scripts/*.py).
+The glossary writer needs cross-audience data but not the full index. A compact glossary view with project_model + gsd_context + all section keys (for term discovery) with source_files reduced to filenames only would also fit under 10k tokens.
 
 ## Solution
 
-### A. Serena guidance in writer agents (6 files, ~5 lines each)
+### A. Serena guidance in writer agents (5 files, ~5 lines each)
 
 Add a "Source Code Exploration" principle to each writer agent:
 - `glossary-writer.md`
@@ -57,7 +53,7 @@ Pattern (adapted for writers who need more code than scan agents):
 Use get_symbols_overview (depth: 1) to understand file structure before reading.
 Use find_symbol with include_body: true for specific functions/classes you need to document.
 Use find_symbol with include_info: true for signatures and docstrings.
-Only use Read for non-code files (yaml, toml, config, markdown, .env.example).
+Only use Read for files Serena cannot parse (yaml, toml, config, markdown, shell scripts, SQL, Dockerfile, .env.example).
 Never read an entire source file — explore structure first, then read specific symbols.
 ```
 
@@ -66,33 +62,20 @@ Never read an entire source file — explore structure first, then read specific
 New script: `split-scan-by-audience.py`
 
 Two modes:
-- `--mode audience --audience {name} --documents {list}` — extracts project_model + gsd_context + filtered source_material_index + filtered gap_analysis
-- `--mode glossary` — extracts project_model + gsd_context + flat list of unique source files from all entries
+- `--mode audience --audience {name} --documents ARCHITECTURE,DEVELOPER_GUIDE` — extracts project_model + gsd_context + filtered source_material_index + filtered gap_analysis. Filters `source_material_index` by matching the document prefix of each key (text before the first `/`) against the comma-separated document list.
+- `--mode glossary` — extracts project_model + gsd_context + all `source_material_index` keys (preserving the `{DOCUMENT}/{section-slug}` structure for term discovery) with `source_files` reduced to filenames only. Shared documents (OVERVIEW, GLOSSARY) have no `source_material_index` entries and are not affected by view filtering.
 
-The generate orchestrator calls it once per audience + once for glossary before spawning agents. Each writer reads its small view file (~5k tokens) instead of the full 19k token scan JSON.
+Output files: `{TMP_DIR}/scan-view-{audience}.json` for audience mode, `{TMP_DIR}/scan-view-glossary.json` for glossary mode. View files use the same top-level key structure as `docs-scan.json` (`project_model`, `gsd_context`, `source_material_index`, `gap_analysis`) so writer agents' existing access patterns work unchanged. Keys not relevant to the view (`staleness_report`, `note_classifications`, `scan_date`) are omitted.
 
-### C. Manifest merge script (1 new script + orchestrator change)
+The generate orchestrator calls the script once per audience + once for glossary before spawning writer agents. The orchestrator then passes the view file path as `scan_data_path` in each writer agent's prompt (replacing the full docs-scan.json path). No changes needed in the writer agent .md files for this — the orchestrator already constructs the prompt and controls `scan_data_path`.
 
-New script: `merge-manifests.py`
+## Expected Impact (rough estimates)
 
-Takes `--tmp-dir`, `--output-dir`, `--audiences`. Handles:
-- Read temp manifest per audience from tmp/
-- Remove _written_sections metadata entries
-- Overlay onto persisted manifest (update mode: preserve unmodified sections)
-- Update generated timestamp
-- Write to reference-manifests/
-
-Replaces the inline `python3 -c "..."` block in auto-doc-generate.md.
-
-## Expected Impact
-
-| Metric | Current (v1.1) | Target (v1.2) |
+| Metric | Current (v1.1) | Estimated (v1.2) |
 |--------|---------------|---------------|
-| Generate total tokens | ~630k | ~400k |
-| Agents writer tokens | 175k | ~90-100k |
+| Generate total tokens | ~630k | lower (Serena + view files reduce redundant reads) |
 | docs-scan.json chunk reads | ~30 | 0 |
-| Generate wall time | 22m 30s | ~15-17m |
-| Inline Python in .md files | 1 block | 0 |
+| Generate wall time | 22m 30s | lower (bottleneck agent reads less) |
 
 ## Not in scope
 
@@ -100,9 +83,9 @@ Replaces the inline `python3 -c "..."` block in auto-doc-generate.md.
 
 ## Scope
 
-- 6 agent .md files updated (Serena guidance)
-- 1 command .md updated (auto-doc-generate.md — view file paths + merge script call)
-- 2 new scripts with tests (split-scan-by-audience.py, merge-manifests.py)
+- 5 writer agent .md files updated (Serena guidance)
+- 1 command .md updated (auto-doc-generate.md — view file paths + scan_data_path routing)
+- 1 new script with tests (split-scan-by-audience.py)
 - No schema changes, no scan pipeline changes, no new commands
 
 ## Dependencies
@@ -114,6 +97,5 @@ Replaces the inline `python3 -c "..."` block in auto-doc-generate.md.
 
 - Run generate on road-runner, compare token counts per agent
 - Verify all 12 docs regenerate with same quality
-- Verify manifest merge produces identical output to inline Python version
 - Verify glossary reconciliation still works with compact view
-- Verify single-write manifests contain same section/source data as old per-entry approach
+- Verify per-audience view files contain all data each writer needs (spot-check against full docs-scan.json)

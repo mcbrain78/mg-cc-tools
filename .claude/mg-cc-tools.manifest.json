@@ -2,7 +2,7 @@
   "tools": {
     "mg-gsd-wrappers": {
       "version": "0.1.0",
-      "installed_at": "2026-03-20T18:44:08.549860+00:00",
+      "installed_at": "2026-03-23T08:27:19.871073+00:00",
       "commands": [
         "discuss-milestone.md",
         "discuss-phase.md",
@@ -12,9 +12,9 @@
       "source_checksums": {
         "install.sh": "sha256:96ea027523882bc35c9b9db1a2f2a3d2c3da8c8f2904317404a767857cd07350",
         "commands/discuss-milestone.md": "sha256:dc9ba622c6a89b3ebc18c1f1e2a5bee06c4e2067b79f1c1bd417effba82d03db",
-        "commands/discuss-phase.md": "sha256:3dd2b658f51c0c3327480d7f426be29ecd96545dd5b765d51703098c00715282",
-        "commands/execute-phase.md": "sha256:336a02b880624073e6ad2bbb13130748041e96e382ced03e3235d94384d5de55",
-        "commands/plan-phase.md": "sha256:df0f6da045862fcf1d76dcb6db138c04b6625eb4a5fce531e182aaccf753b218",
+        "commands/discuss-phase.md": "sha256:f51de294666cd57d5eef2041c2375bba3e4df17440b6423e52bdddfe463ff5f8",
+        "commands/execute-phase.md": "sha256:a975cca696ae85441901ad3f34808295467505bc45443f44b3d599e92b31e6ff",
+        "commands/plan-phase.md": "sha256:3f6bc7497e7cca9aa1893af1de5ff898f48e962505cca0f6582768ab6a6dd802",
         "references/discuss-methodology.snapshot.md": "sha256:b9489288e6b7968d8725f49075594e92220d23c6c6224cb337981a3688724fc5",
         "references/requirement-generator.md": "sha256:da00751ac9dcfbd2615f9448c41538cfd627e9cf272614cbd15013d65466befe"
       }
@@ -23,5 +23,5 @@
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools",
-  "last_updated": "2026-03-20T18:44:08.548325+00:00"
+  "last_updated": "2026-03-23T08:27:19.869455+00:00"
 }

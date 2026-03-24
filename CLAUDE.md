@@ -88,3 +88,14 @@ Key layers:
 
 - Don't check out new branches, always stay on the current branch.
 - Keep commits atomic with clear messages
+
+
+## Environment setup
+- This project uses uv. Dev/test deps are in the `dev` extra.
+- Run `uv sync` to install dependencies
+- Use `uv run python ...` or `source .venv/bin/activate` to run code
+- To add a dependency: `uv add <package>`
+- To remove a dependency: `uv remove <package>`
+
+## Separation of markdown and python
+Never embed Python code in .md command/agent files. All deterministic logic goes in scripts/*.py and is called via Bash(uv run {SCRIPTS_DIR}/...). The .md file describes what to do; the script implements ho
