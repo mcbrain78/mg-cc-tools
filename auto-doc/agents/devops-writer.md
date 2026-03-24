@@ -34,7 +34,12 @@ You are a specialized writer agent for the **devops** audience. You generate doc
       - Read the `<!-- PURPOSE: ... -->` comment to understand what to generate.
       - Read the `<!-- EXAMPLE: ... -->` comment to understand what "good" looks like.
       - Look up source material: find the matching entry in `scan_data.source_material_index` for this `document/section` key.
-      - Read the actual source files listed in the index entry's `source_files` array.
+      - Fetch source files for this section:
+        ```bash
+        python3 {SCRIPTS_DIR}/get-section-sources.py --scan-file {project_root}/.mg/docs/docs-scan.json --key "DOCUMENT/section-slug"
+        ```
+        Parse the JSON output to get the `source_files` array.
+      - Read the actual source files from the output's `source_files` array.
       - In update mode: skip sections not in `update_sections`.
       - If the section is marked `<!-- OPTIONAL -- delete if not applicable -->` and no relevant source material exists: skip this section entirely.
       - Generate section content following the PURPOSE guidance, EXAMPLE format, style guide, and glossary.

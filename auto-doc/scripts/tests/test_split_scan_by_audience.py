@@ -69,6 +69,11 @@ def _make_scan_data():
                 "source_files": ["src/cli/main.py"],
                 "staleness": "stale",
             },
+            "USER_GUIDE/overview": {
+                "source_files": [],
+                "staleness": "fresh",
+                "synthesized_from": ["project_model.components"],
+            },
             "SYSTEM_MAP/components": {
                 "source_files": ["src/core.py", "src/utils/helpers.py"],
                 "staleness": "fresh",
@@ -168,6 +173,60 @@ class TestAudienceModeFiltering:
             assert "USER_GUIDE/getting-started" not in smi
             assert "SYSTEM_MAP/components" not in smi
             assert "OPERATIONS/deployment" not in smi
+
+    def test_strips_source_files_from_entries(self):
+        """Test 1b: source_files are stripped from audience view entries."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE,DEVELOPER_GUIDE",
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(output_path) as f:
+                view = json.load(f)
+
+            for key, entry in view["source_material_index"].items():
+                assert "source_files" not in entry, f"{key} should not have source_files"
+
+    def test_preserves_staleness_in_entries(self):
+        """Test 1c: staleness is preserved in audience view entries."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE,DEVELOPER_GUIDE",
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(output_path) as f:
+                view = json.load(f)
+
+            assert view["source_material_index"]["ARCHITECTURE/overview"]["staleness"] == "fresh"
+            assert view["source_material_index"]["ARCHITECTURE/data-model"]["staleness"] == "unknown"
 
     def test_copies_project_model_verbatim(self):
         """Test 2: project_model is copied unchanged from input."""
@@ -332,7 +391,7 @@ class TestAudienceModeFiltering:
 
 
 class TestGlossaryMode:
-    """Glossary mode: preserves all keys, reduces source_files to basenames."""
+    """Glossary mode: preserves all keys, strips source_files."""
 
     def test_preserves_all_source_material_index_keys(self):
         """Test 7: All source_material_index keys are preserved (no document filtering)."""
@@ -358,15 +417,15 @@ class TestGlossaryMode:
                 view = json.load(f)
 
             smi = view["source_material_index"]
-            # All 6 keys from the fixture should be present
-            assert len(smi) == 6
+            # All 7 keys from the fixture should be present
+            assert len(smi) == 7
             assert "ARCHITECTURE/overview" in smi
             assert "USER_GUIDE/getting-started" in smi
             assert "SYSTEM_MAP/components" in smi
             assert "OPERATIONS/deployment" in smi
 
-    def test_reduces_source_files_to_basenames(self):
-        """Test 8: source_files arrays contain basenames only."""
+    def test_strips_source_files_from_entries(self):
+        """Test 8: source_files are stripped from glossary view entries."""
         data = _make_scan_data()
         with tempfile.TemporaryDirectory() as tmp:
             input_path = os.path.join(tmp, "docs-scan.json")
@@ -387,13 +446,59 @@ class TestGlossaryMode:
             with open(output_path) as f:
                 view = json.load(f)
 
-            smi = view["source_material_index"]
-            # "src/app.ts" -> "app.ts", "src/routes/index.ts" -> "index.ts"
-            assert smi["ARCHITECTURE/overview"]["source_files"] == ["app.ts", "index.ts"]
-            # "src/db/schema.py" -> "schema.py"
-            assert smi["ARCHITECTURE/data-model"]["source_files"] == ["schema.py"]
-            # Absolute path: "/home/user/test-project/deploy/run.sh" -> "run.sh"
-            assert smi["OPERATIONS/deployment"]["source_files"] == ["run.sh"]
+            for key, entry in view["source_material_index"].items():
+                assert "source_files" not in entry, f"{key} should not have source_files"
+
+    def test_preserves_staleness_in_entries(self):
+        """Test 8b: staleness is preserved in glossary view entries."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-glossary.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "glossary",
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(output_path) as f:
+                view = json.load(f)
+
+            assert view["source_material_index"]["ARCHITECTURE/overview"]["staleness"] == "fresh"
+
+    def test_preserves_synthesized_from_when_present(self):
+        """Test 8c: synthesized_from is preserved in glossary view entries."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-glossary.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "glossary",
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(output_path) as f:
+                view = json.load(f)
+
+            entry = view["source_material_index"]["USER_GUIDE/overview"]
+            assert entry["synthesized_from"] == ["project_model.components"]
+            # Entry without synthesized_from should not have it
+            assert "synthesized_from" not in view["source_material_index"]["ARCHITECTURE/overview"]
 
     def test_copies_project_model_and_gsd_context_verbatim(self):
         """Test 9: project_model and gsd_context are copied unchanged."""
@@ -529,8 +634,8 @@ class TestEdgeCases:
 
             assert view["gap_analysis"] == {}
 
-    def test_mixed_path_separators_reduce_to_basenames(self):
-        """Test 14: source_files with mixed path separators all reduce correctly."""
+    def test_source_files_stripped_regardless_of_path_format(self):
+        """Test 14: source_files are stripped even with mixed path formats."""
         data = _make_scan_data()
         data["source_material_index"] = {
             "ARCHITECTURE/mixed-paths": {
@@ -562,5 +667,6 @@ class TestEdgeCases:
             with open(output_path) as f:
                 view = json.load(f)
 
-            expected = ["path.py", "file.ts", "module.js"]
-            assert view["source_material_index"]["ARCHITECTURE/mixed-paths"]["source_files"] == expected
+            entry = view["source_material_index"]["ARCHITECTURE/mixed-paths"]
+            assert "source_files" not in entry
+            assert entry["staleness"] == "fresh"

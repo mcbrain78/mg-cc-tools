@@ -46,7 +46,7 @@ You are a specialized writer agent for the **end-users** audience. You generate 
       - Read all HTML comments for the section: `<!-- PURPOSE: ... -->`, `<!-- EXAMPLE: ... -->`, `<!-- SYNTHESIZED: ... -->`, `<!-- BOUNDARY: ... -->`, `<!-- OPTIONAL ... -->`.
 
       - **If `<!-- SYNTHESIZED: field1, field2 -->` is present:**
-        Look up the source_material_index entry for this section. If `synthesized_from` is present and `source_files` is empty:
+        Look up the source_material_index entry for this section. If `synthesized_from` is present:
         1. Read the named project model fields from scan data (e.g., `project_model.components`, `project_model.user_interfaces`)
         2. Generate section content purely from these structured fields -- do NOT read source files, do NOT infer beyond field contents
         3. If the project model lacks sufficient data for a meaningful section (e.g., no components, no entry points), emit:
@@ -66,7 +66,12 @@ You are a specialized writer agent for the **end-users** audience. You generate 
       - Read the `<!-- PURPOSE: ... -->` comment to understand what to generate.
       - Read the `<!-- EXAMPLE: ... -->` comment to understand what "good" looks like. **Important:** Exemplars demonstrate web-UI style as the reference case. If the project's primary interface is CLI or API, follow the same structure (functional context before procedure, expected results after steps) but use commands/responses (CLI) or requests/responses (API) instead of click paths.
       - Look up source material: find the matching entry in `scan_data.source_material_index` for this `document/section` key.
-      - Read the actual source files listed in the index entry's `source_files` array.
+      - Fetch source files for this section:
+        ```bash
+        python3 {SCRIPTS_DIR}/get-section-sources.py --scan-file {project_root}/.mg/docs/docs-scan.json --key "DOCUMENT/section-slug"
+        ```
+        Parse the JSON output to get the `source_files` array.
+      - Read the actual source files from the output's `source_files` array.
       - In update mode: skip sections not in `update_sections`.
       - If the section is marked `<!-- OPTIONAL -- delete if not applicable -->` and no relevant source material exists: skip this section entirely.
       - Generate section content following the PURPOSE guidance, EXAMPLE format, style guide, and glossary.

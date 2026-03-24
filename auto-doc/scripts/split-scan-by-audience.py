@@ -7,14 +7,16 @@ Each view file has the same 4 top-level keys (project_model, gsd_context,
 source_material_index, gap_analysis) so writer agents' access patterns
 work unchanged.
 
+source_files arrays are stripped from all view files -- writers fetch
+per-section source files on demand via get-section-sources.py.
+
 Audience mode:
     Filters source_material_index to only keys whose document prefix
     (text before first "/") matches the --documents list. Filters
     gap_analysis.missing_for_audience to only the target audience.
 
 Glossary mode:
-    Preserves all source_material_index keys but reduces source_files
-    arrays to basenames only (for term discovery without path noise).
+    Preserves all source_material_index keys (no document filtering).
     Includes full gap_analysis (all audiences).
 
 Usage:
@@ -90,22 +92,21 @@ def filter_gap_analysis(gap, audience):
     return result
 
 
-def reduce_source_files_to_basenames(index):
-    """Reduce source_files in each entry to basenames only.
+def strip_source_files(index):
+    """Remove source_files from each entry in the index.
+
+    Writers fetch source_files on demand via get-section-sources.py,
+    so view files only need section keys, staleness, and synthesized_from.
 
     Args:
         index: The source_material_index dict.
 
     Returns:
-        New dict with source_files arrays containing only basenames.
+        New dict with source_files removed from each entry.
     """
     result = {}
     for key, value in index.items():
-        entry = dict(value)
-        if "source_files" in entry:
-            entry["source_files"] = [
-                os.path.basename(f) for f in entry["source_files"]
-            ]
+        entry = {k: v for k, v in value.items() if k != "source_files"}
         result[key] = entry
     return result
 
@@ -173,11 +174,13 @@ def main():
 
     if args.mode == "audience":
         document_list = [d.strip() for d in args.documents.split(",")]
-        filtered_index = filter_source_material(raw_index, document_list)
+        filtered_index = strip_source_files(
+            filter_source_material(raw_index, document_list)
+        )
         filtered_gap = filter_gap_analysis(raw_gap, args.audience) if raw_gap else {}
     else:
         # Glossary mode
-        filtered_index = reduce_source_files_to_basenames(raw_index)
+        filtered_index = strip_source_files(raw_index)
         filtered_gap = raw_gap if raw_gap is not None else {}
 
     view = build_view(data, filtered_index, filtered_gap)
