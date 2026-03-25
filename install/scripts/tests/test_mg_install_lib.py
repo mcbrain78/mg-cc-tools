@@ -98,6 +98,22 @@ def _make_tool(parent, name, description="Test tool", exclude=False,
     return tool_dir
 
 
+def _make_venv(target):
+    """Create a .venv in target that mirrors the test runner's venv.
+
+    Uses a wrapper script that execs the test runner's python, preserving
+    its sys.path and installed packages. A plain symlink would resolve to
+    the base interpreter and lose access to venv site-packages.
+    """
+    venv_bin = os.path.join(target, ".venv", "bin")
+    os.makedirs(venv_bin, exist_ok=True)
+    python_wrapper = os.path.join(venv_bin, "python3")
+    if not os.path.exists(python_wrapper):
+        with open(python_wrapper, "w") as f:
+            f.write(f"#!/bin/sh\nexec {sys.executable} \"$@\"\n")
+        os.chmod(python_wrapper, 0o755)
+
+
 def _make_pyproject(parent, version="0.1.0"):
     """Create a pyproject.toml with given version."""
     with open(os.path.join(parent, "pyproject.toml"), "w") as f:
@@ -958,12 +974,13 @@ class TestPreflight:
     """preflight subcommand tests."""
 
     def test_command_check_passes_for_python3(self):
-        """python3 command check passes (we know it's installed)."""
+        """python3 venv check passes when .venv exists."""
         with tempfile.TemporaryDirectory() as tmp:
             source = os.path.join(tmp, "source")
             target = os.path.join(tmp, "target")
             os.makedirs(source)
             os.makedirs(os.path.join(target, ".claude"))
+            _make_venv(target)
 
             _make_tool(source, "my-tool", required=["python3"])
             _make_pyproject(source)
@@ -1148,6 +1165,7 @@ class TestPreflight:
             target = os.path.join(tmp, "target")
             os.makedirs(source)
             os.makedirs(os.path.join(target, ".claude"))
+            _make_venv(target)
 
             _make_tool(source, "tool-a", required=["python3"])
             _make_tool(source, "tool-b", required=["python3", "git"])
@@ -1174,6 +1192,7 @@ class TestPreflight:
             target = os.path.join(tmp, "target")
             os.makedirs(source)
             os.makedirs(os.path.join(target, ".claude"))
+            _make_venv(target)
 
             _make_tool(source, "my-tool", required=["python3"], optional=["ruff"])
             _make_pyproject(source)
@@ -1231,6 +1250,7 @@ class TestPreflight:
             target = os.path.join(tmp, "target")
             os.makedirs(source)
             os.makedirs(os.path.join(target, ".claude"))
+            _make_venv(target)
 
             _make_tool(source, "my-tool", required=["python3"])
             _make_pyproject(source)
@@ -1245,6 +1265,96 @@ class TestPreflight:
             data = json.loads(result.stdout)
             assert "all_passed" in data
             assert isinstance(data["all_passed"], bool)
+
+    def test_python3_fails_without_venv(self):
+        """python3 check fails when target has no .venv."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+            # No _make_venv(target) -- deliberately omitted
+
+            _make_tool(source, "my-tool", required=["python3"])
+            _make_pyproject(source)
+
+            result = _run([
+                "preflight",
+                "--source", source,
+                "--target", target,
+                "--tools", "my-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            py_check = None
+            for check in data["checks"]:
+                if check["id"] == "python3":
+                    py_check = check
+                    break
+            assert py_check is not None
+            assert py_check["passed"] is False
+            assert ".venv" in py_check["error"]
+            assert data["all_passed"] is False
+
+    def test_python_import_passes_with_installed_package(self):
+        """python_import check passes when package is in target venv."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+            _make_venv(target)
+
+            _make_tool(source, "my-tool", required=["tiktoken"])
+
+            result = _run([
+                "preflight",
+                "--source", source,
+                "--target", target,
+                "--tools", "my-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            tk_check = None
+            for check in data["checks"]:
+                if check["id"] == "tiktoken":
+                    tk_check = check
+                    break
+            assert tk_check is not None
+            assert tk_check["passed"] is True
+            assert tk_check["version"] is not None
+
+    def test_python_import_fails_without_venv(self):
+        """python_import check fails when target has no .venv."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+            os.makedirs(os.path.join(target, ".claude"))
+            # No venv
+
+            _make_tool(source, "my-tool", required=["tiktoken"])
+            _make_pyproject(source)
+
+            result = _run([
+                "preflight",
+                "--source", source,
+                "--target", target,
+                "--tools", "my-tool",
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            tk_check = None
+            for check in data["checks"]:
+                if check["id"] == "tiktoken":
+                    tk_check = check
+                    break
+            assert tk_check is not None
+            assert tk_check["passed"] is False
+            assert ".venv" in tk_check["error"]
 
 
 # ============================================================
@@ -3093,7 +3203,7 @@ def _make_preflight_fixture(all_passed=True, include_optional=True):
     checks = [
         {
             "id": "python3",
-            "type": "command",
+            "type": "venv_python",
             "passed": True,
             "required": True,
             "version": "3.11.5",
@@ -3446,6 +3556,7 @@ class TestPreflightOutput:
             target = os.path.join(tmp, "target")
             os.makedirs(source)
             os.makedirs(os.path.join(target, ".claude"))
+            _make_venv(target)
 
             _make_tool(source, "test-tool", required=["python3"])
             output_file = os.path.join(tmp, "out", "preflight.json")
@@ -3472,6 +3583,7 @@ class TestPreflightOutput:
             target = os.path.join(tmp, "target")
             os.makedirs(source)
             os.makedirs(os.path.join(target, ".claude"))
+            _make_venv(target)
 
             _make_tool(source, "test-tool", required=["python3"])
             output_file = os.path.join(tmp, "preflight.json")
@@ -3496,6 +3608,7 @@ class TestPreflightOutput:
             target = os.path.join(tmp, "target")
             os.makedirs(source)
             os.makedirs(os.path.join(target, ".claude"))
+            _make_venv(target)
 
             _make_tool(source, "test-tool", required=["python3"])
 

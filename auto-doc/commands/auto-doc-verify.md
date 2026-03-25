@@ -49,7 +49,6 @@ If either prerequisite fails, abort with the corresponding message and do not pr
 
 3. **Build runtime paths:**
    - `docs_dir_abs` = `{project_root}/{docs_dir}`
-   - `scan_data_path` = `{project_root}/.mg/docs/docs-scan.json`
    - `glossary_path` = `{docs_dir_abs}/GLOSSARY.md`
    - `output_report_path` = `{project_root}/.mg/docs/docs-verify-report.md`
    - `findings_file` = `{project_root}/.mg/docs/docs-verify-findings.json`
@@ -67,15 +66,36 @@ If either prerequisite fails, abort with the corresponding message and do not pr
    ```
    This ensures each verify run produces findings reflecting the current documentation state. Generate reads findings but never clears them -- only verify clears (per finding lifecycle convention).
 
-### Step 2: Spawn Verifier Agent
+6. **Extract verify context.** Extract the 3 fields the verifier needs from the full scan data:
+   ```bash
+   python3 {SCRIPTS_DIR}/extract-verify-context.py \
+     --scan-file {project_root}/.mg/docs/docs-scan.json \
+     --output {project_root}/.mg/docs/tmp/verify-scan-context.json
+   ```
 
-Spawn a **single** verifier agent instance via the Agent tool. Unlike codebase-health which parallelizes verification by category, documentation verification runs 6 sequential checks in one agent.
+7. **Prepare doc review manifest.** Split large docs into chunks and produce a manifest for all docs:
+   ```bash
+   python3 {SCRIPTS_DIR}/prepare-doc-review.py \
+     --docs-dir {docs_dir_abs} \
+     --output-dir {project_root}/.mg/docs/tmp/review-chunks \
+     --token-limit 5000
+   ```
 
-Build the Agent prompt with a reference to the agent file and parameters:
+8. **Init agent-specific findings files.** Each agent gets its own isolated findings file:
+   ```bash
+   python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+     --findings-file {project_root}/.mg/docs/docs-verify-findings-mechanical.json
+   python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+     --findings-file {project_root}/.mg/docs/docs-verify-findings-editorial.json
+   ```
+
+### Step 2: Spawn Verification Agents
+
+Spawn **two** verification agents in parallel via the Agent tool. Each agent writes to its own isolated findings file. The orchestrator merges them after both complete.
 
 ```
 Agent(
-  description="Verify documentation quality (6 checks)",
+  description="Verify documentation quality (6 mechanical checks)",
   prompt="You are the documentation verifier agent.
 
 Read and follow the instructions in: {AGENTS_DIR}/verifier.md
@@ -83,19 +103,97 @@ Read and follow the instructions in: {AGENTS_DIR}/verifier.md
 Parameters:
 - project_root: {project_root}
 - docs_dir: {docs_dir_abs}
-- scan_data_path: {project_root}/.mg/docs/docs-scan.json
+- scan_context_path: {project_root}/.mg/docs/tmp/verify-scan-context.json
 - glossary_path: {docs_dir_abs}/GLOSSARY.md
 - style_guide_path: references/style-guide.md
-- output_report_path: {project_root}/.mg/docs/docs-verify-report.md
-- findings_file: {project_root}/.mg/docs/docs-verify-findings.json"
+- findings_file: {project_root}/.mg/docs/docs-verify-findings-mechanical.json"
+)
+
+Agent(
+  description="Editorial review of documentation quality",
+  prompt="You are the editorial review agent.
+
+Read and follow the instructions in: {AGENTS_DIR}/editorial-reviewer.md
+
+Parameters:
+- project_root: {project_root}
+- review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
+- style_guide_path: references/style-guide.md
+- findings_file: {project_root}/.mg/docs/docs-verify-findings-editorial.json"
 )
 ```
 
-Wait for the agent to complete. The agent writes `docs-verify-report.md` to the `output_report_path`.
+Wait for **both** agents to complete before proceeding.
 
-### Step 3: Present Results
+### Step 3: Generate Report
 
-1. **Read the generated report:** Load `{project_root}/.mg/docs/docs-verify-report.md`.
+After both agents complete, merge their isolated findings and generate the verification report:
+
+1. **Merge agent findings:**
+   ```bash
+   python3 {SCRIPTS_DIR}/list-verify-findings.py \
+     --merge-from {project_root}/.mg/docs/docs-verify-findings-mechanical.json \
+     --merge-from {project_root}/.mg/docs/docs-verify-findings-editorial.json \
+     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
+     --output {TMP_DIR}/all-findings.json
+   ```
+
+2. **Read** `{TMP_DIR}/all-findings.json` to get all recorded findings (both mechanical and editorial).
+
+3. **Identify systemic issues.** Look for patterns across findings:
+   - Same broken reference appearing in multiple documents
+   - Same glossary term misused across documents
+   - Repeated Diataxis mixing patterns in documents of the same type
+   - Same editorial issue (e.g., filler content) appearing across multiple documents
+   Group these as systemic issues rather than listing each occurrence separately.
+
+4. **Write** `docs-verify-report.md` to `{project_root}/.mg/docs/docs-verify-report.md` with this structure:
+
+```markdown
+# Documentation Verification Report
+
+**Verified:** {ISO date}
+**Documents checked:** {count}
+**Total issues:** {count}
+
+## Summary
+
+| Severity | Count |
+|----------|-------|
+| Critical | N |
+| High     | N |
+| Medium   | N |
+| Low      | N |
+| Info     | N |
+
+## Systemic Issues
+
+{Group related findings that share a root cause. Example: "The function `processData` was renamed to `handleData` -- references are broken in 4 documents." List the affected documents and sections.}
+
+## Critical Issues
+
+### {Issue title}
+- **Document:** {file path}
+- **Section:** {section name}
+- **Check:** {which check found this}
+- **Description:** {what's wrong}
+- **Suggestion:** {how to fix it}
+
+## High Issues
+...
+
+## Medium Issues
+...
+
+## Low Issues
+...
+```
+
+Group issues by severity (critical first). Within each severity group, list issues in the order they were found. Include document path, section name, check type, description, and an actionable suggestion for every issue. Omit empty severity sections.
+
+### Step 4: Present Results
+
+1. **Read the report** you just wrote: `{project_root}/.mg/docs/docs-verify-report.md`.
 
 2. **Parse the severity summary table.** Extract counts for each severity level.
 
@@ -123,7 +221,7 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
    ```
    (Where N comes from completeness check issues in the report. If zero gaps, omit this line.)
 
-### Step 4: Suggest Next Steps
+### Step 5: Suggest Next Steps
 
 - If this is the last pipeline step:
   ```
@@ -138,8 +236,9 @@ Wait for the agent to complete. The agent writes `docs-verify-report.md` to the 
 ## Important Principles
 
 - **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `docs-verify-report.md`, `docs-verify-findings.json`.
-- **Subagents read their own instructions via file path.** The Agent prompt passes a reference (`Read and follow the instructions in: agents/verifier.md`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
-- **The agent uses LSP documentSymbol for symbol verification against structured manifests.** There is no regex extraction step or Grep fallback.
+- **Subagents read their own instructions via file path.** The Agent prompt passes a reference (`Read and follow the instructions in: agents/...`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
+- **Two agents run in parallel with isolated findings.** The mechanical verifier (6 checks) and editorial reviewer (22 criteria) each write to their own findings file. The orchestrator merges them after both complete — agents never touch the shared findings file directly.
+- **The verifier agent uses LSP documentSymbol for symbol verification against structured manifests.** There is no regex extraction step or Grep fallback.
 - **Reference integrity is manifest-based.** The verifier reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
 - **5-tier severity model:** critical, high, medium, low, info. This matches the verifier agent's definition and the report output format.
 - **Prefer false negatives over false positives.** Same principle as the verifier agent -- only flag issues with high confidence. A noisy report trains users to ignore it.

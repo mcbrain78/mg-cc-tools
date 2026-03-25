@@ -34,8 +34,28 @@ REQUIRED_FIELDS = [
 VALID_SEVERITIES = ["critical", "high", "medium", "low", "info"]
 
 VALID_CHECKS = [
+    # Mechanical checks (1-6)
     "reference-integrity", "cross-doc", "diataxis",
     "completeness", "example-validity", "link-integrity",
+    # Editorial checks -- universal (8)
+    "filler-content", "heading-content-mismatch",
+    "inconsistent-granularity", "dangling-prose-reference",
+    "unexplained-code-block", "internal-contradiction",
+    "malformed-table", "placeholder-content",
+    # Editorial checks -- end-user (4)
+    "end-user-jargon", "end-user-missing-expected-result",
+    "end-user-implementation-leak", "end-user-missing-goal",
+    # Editorial checks -- developer (3)
+    "developer-abstract-architecture", "developer-missing-types",
+    "developer-adr-missing-alternatives",
+    # Editorial checks -- agent (3)
+    "agent-ambiguous-constraint", "agent-missing-negative-examples",
+    "agent-missing-consequences",
+    # Editorial checks -- devops (3)
+    "devops-missing-expected-output", "devops-missing-rollback",
+    "devops-placeholder-in-command",
+    # Editorial checks -- shared (1)
+    "overview-missing-audience",
 ]
 
 

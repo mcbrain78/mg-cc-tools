@@ -87,13 +87,10 @@ ABS_PATH_RE = re.compile(r"(?:^|[\s\"'])(/(?:home|usr|opt|tmp|var|etc|nix)[^\s\"
 
 CHECKS = {
     "python3": {
-        "type": "command",
-        "command": "python3 --version",
+        "type": "venv_python",
         "parse_version": r"Python\s+(\d+\.\d+\.\d+)",
         "fix": {
-            "linux": "sudo apt install python3 (Debian/Ubuntu) or sudo dnf install python3 (Fedora)",
-            "macos": "brew install python3",
-            "general": "Install Python 3.11+ from https://python.org",
+            "general": "Create a .venv in the project: python3 -m venv .venv && .venv/bin/pip install <deps>",
         },
     },
     "git": {
@@ -156,6 +153,13 @@ CHECKS = {
         "parse_version": r"(\d+\.\d+\.\d+)",
         "fix": {
             "general": "npm install -g jscpd",
+        },
+    },
+    "tiktoken": {
+        "type": "python_import",
+        "module": "tiktoken",
+        "fix": {
+            "general": "Install in project venv: .venv/bin/pip install tiktoken",
         },
     },
 }
@@ -598,6 +602,33 @@ def run_preflight(source_dir, target_dir, tool_names):
                 "fix": check_def.get("fix", {}) if not passed else {},
             })
 
+        elif check_type == "venv_python":
+            passed, version_str, error = _run_venv_python_check(
+                target_dir, check_def)
+            checks_result.append({
+                "id": cid,
+                "type": "venv_python",
+                "passed": passed,
+                "required": is_required,
+                "version": version_str,
+                "error": error,
+                "fix": check_def.get("fix", {}) if not passed else {},
+            })
+
+        elif check_type == "python_import":
+            module_name = check_def["module"]
+            passed, version_str, error = _run_python_import_check(
+                target_dir, module_name)
+            checks_result.append({
+                "id": cid,
+                "type": "python_import",
+                "passed": passed,
+                "required": is_required,
+                "version": version_str,
+                "error": error,
+                "fix": check_def.get("fix", {}) if not passed else {},
+            })
+
         elif check_type == "path_exists":
             path_template = check_def["path"]
             check_path = path_template.replace("{target}", target_dir)
@@ -620,6 +651,18 @@ def run_preflight(source_dir, target_dir, tool_names):
         "checks": checks_result,
         "all_passed": all_passed,
     }
+
+
+def _resolve_venv_python(target_dir):
+    """Resolve the .venv/bin/python3 path for the target project.
+
+    Returns:
+        (python_path, None) if found, or (None, error_message) if not.
+    """
+    venv_python = os.path.join(target_dir, ".venv", "bin", "python3")
+    if os.path.isfile(venv_python):
+        return venv_python, None
+    return None, f"No .venv found at {target_dir}/.venv/bin/python3"
 
 
 def _run_command_check(check_def):
@@ -650,6 +693,63 @@ def _run_command_check(check_def):
         return False, None, f"Command not found: {command.split()[0]}"
     except subprocess.TimeoutExpired:
         return False, None, f"Command timed out: {command}"
+
+
+def _run_venv_python_check(target_dir, check_def):
+    """Check the target project's .venv/bin/python3, return (passed, version, error)."""
+    python_path, err = _resolve_venv_python(target_dir)
+    if python_path is None:
+        return False, None, err
+
+    version_re = check_def.get("parse_version")
+    try:
+        result = subprocess.run(
+            [python_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False, None, f"Command failed: {python_path} --version"
+
+        output = result.stdout.strip() or result.stderr.strip()
+        version_str = None
+        if version_re and output:
+            match = re.search(version_re, output)
+            if match:
+                version_str = match.group(1)
+
+        return True, version_str, None
+
+    except subprocess.TimeoutExpired:
+        return False, None, f"Command timed out: {python_path} --version"
+
+
+def _run_python_import_check(target_dir, module_name):
+    """Check if a Python module is importable in the target venv.
+
+    Returns (passed, version, error).
+    """
+    python_path, err = _resolve_venv_python(target_dir)
+    if python_path is None:
+        return False, None, err
+
+    script = f"import {module_name}; print(getattr({module_name}, '__version__', 'unknown'))"
+    try:
+        result = subprocess.run(
+            [python_path, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False, None, f"Python module not importable: {module_name}"
+
+        version_str = result.stdout.strip() or None
+        return True, version_str, None
+
+    except subprocess.TimeoutExpired:
+        return False, None, f"Import check timed out: {module_name}"
 
 
 def _check_plugin_installed(plugin_name):

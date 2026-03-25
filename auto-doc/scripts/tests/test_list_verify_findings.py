@@ -292,6 +292,8 @@ class TestListVerifyFindingsClean:
                 os.path.join(scan_logs, "verify-refs-broken.json"),
                 os.path.join(scan_logs, "verify-refs-symbols.json"),
                 os.path.join(scan_logs, "verify-refs.json"),
+                os.path.join(tmp, "docs-verify-findings-mechanical.json"),
+                os.path.join(tmp, "docs-verify-findings-editorial.json"),
             ]
             for path in artifacts:
                 with open(path, "w") as f:
@@ -397,3 +399,145 @@ class TestListVerifyFindingsCLI:
                 capture_output=True, text=True,
             )
             assert result.returncode != 0
+
+
+class TestListVerifyFindingsInit:
+    """--init mode behavior."""
+
+    def test_init_creates_empty_findings_file(self):
+        """--init creates file with [], verify contents."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--init",
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+            assert data == []
+
+    def test_init_overwrites_existing_file(self):
+        """--init resets existing file with data to []."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            # Seed with existing data
+            with open(findings_file, "w") as f:
+                json.dump([{"document": "OLD", "severity": "high"}], f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--init",
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+            assert data == []
+
+
+class TestListVerifyFindingsMerge:
+    """--merge-from behavior."""
+
+    def test_merge_from_combines_two_files(self):
+        """Two findings files merged into one with all findings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            merge_a = os.path.join(tmp, "mechanical.json")
+            merge_b = os.path.join(tmp, "editorial.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            # Empty main findings file
+            with open(findings_file, "w") as f:
+                json.dump([], f)
+
+            # Two findings in mechanical
+            with open(merge_a, "w") as f:
+                json.dump([
+                    _sample_findings()[0],
+                    _sample_findings()[1],
+                ], f)
+
+            # Three findings in editorial
+            with open(merge_b, "w") as f:
+                json.dump([
+                    _sample_findings()[2],
+                    _sample_findings()[3],
+                    _sample_findings()[4],
+                ], f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--merge-from", merge_a,
+                 "--merge-from", merge_b,
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                data = json.load(f)
+            assert len(data) == 5
+
+    def test_merge_from_skips_missing_file(self):
+        """Missing merge-from file is silently skipped."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            merge_a = os.path.join(tmp, "mechanical.json")
+            merge_b = os.path.join(tmp, "nonexistent.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            with open(findings_file, "w") as f:
+                json.dump([], f)
+
+            with open(merge_a, "w") as f:
+                json.dump([_sample_findings()[0], _sample_findings()[1]], f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--merge-from", merge_a,
+                 "--merge-from", merge_b,
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                data = json.load(f)
+            assert len(data) == 2
+
+    def test_merge_from_with_output(self):
+        """Merged findings are available to --output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            merge_a = os.path.join(tmp, "mechanical.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            with open(findings_file, "w") as f:
+                json.dump([], f)
+
+            with open(merge_a, "w") as f:
+                json.dump([_sample_findings()[0]], f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--merge-from", merge_a,
+                 "--summary",
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                summary = json.load(f)
+            assert summary["total"] == 1

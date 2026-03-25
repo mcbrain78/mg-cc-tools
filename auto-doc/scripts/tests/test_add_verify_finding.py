@@ -212,6 +212,60 @@ class TestAddVerifyFindingRejection:
             assert os.path.exists(rejected_path)
 
 
+EDITORIAL_CHECKS = [
+    # Universal (8)
+    "filler-content", "heading-content-mismatch",
+    "inconsistent-granularity", "dangling-prose-reference",
+    "unexplained-code-block", "internal-contradiction",
+    "malformed-table", "placeholder-content",
+    # End-user (4)
+    "end-user-jargon", "end-user-missing-expected-result",
+    "end-user-implementation-leak", "end-user-missing-goal",
+    # Developer (3)
+    "developer-abstract-architecture", "developer-missing-types",
+    "developer-adr-missing-alternatives",
+    # Agent (3)
+    "agent-ambiguous-constraint", "agent-missing-negative-examples",
+    "agent-missing-consequences",
+    # DevOps (3)
+    "devops-missing-expected-output", "devops-missing-rollback",
+    "devops-placeholder-in-command",
+    # Shared (1)
+    "overview-missing-audience",
+]
+
+
+class TestAddVerifyFindingEditorialChecks:
+    """Editorial check types accepted by add-verify-finding.py."""
+
+    def test_all_editorial_checks_accepted(self):
+        """Each of the 22 editorial check types is accepted (exit code 0)."""
+        for check in EDITORIAL_CHECKS:
+            with tempfile.TemporaryDirectory() as tmp:
+                findings_file = os.path.join(tmp, "findings.json")
+                input_file = os.path.join(tmp, "input.json")
+
+                finding = _valid_finding()
+                finding["check"] = check
+                with open(input_file, "w") as f:
+                    json.dump(finding, f)
+
+                result = subprocess.run(
+                    [sys.executable, SCRIPT_PATH,
+                     "--input", input_file,
+                     "--findings-file", findings_file],
+                    capture_output=True, text=True,
+                )
+                assert result.returncode == 0, (
+                    f"Editorial check '{check}' rejected: {result.stderr}"
+                )
+
+                with open(findings_file) as f:
+                    data = json.load(f)
+                assert len(data) == 1
+                assert data[0]["check"] == check
+
+
 class TestAddVerifyFindingCLI:
     """CLI argument validation."""
 

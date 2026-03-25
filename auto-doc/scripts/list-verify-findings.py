@@ -50,6 +50,8 @@ _VERIFY_ARTIFACTS = [
     "scan-logs/verify-refs-broken.json",
     "scan-logs/verify-refs-symbols.json",
     "scan-logs/verify-refs.json",  # old format, may linger
+    "docs-verify-findings-mechanical.json",
+    "docs-verify-findings-editorial.json",
 ]
 
 
@@ -138,6 +140,14 @@ def main():
         help="Remove all verify artifacts and exit",
     )
     parser.add_argument(
+        "--init", action="store_true",
+        help="Create an empty [] findings file and exit",
+    )
+    parser.add_argument(
+        "--merge-from", action="append", default=[],
+        help="Path to agent-specific findings file to merge (repeatable)",
+    )
+    parser.add_argument(
         "--summary", action="store_true",
         help="Produce summary counts instead of filtered list",
     )
@@ -163,14 +173,31 @@ def main():
         clean_verify_artifacts(docs_dir)
         return
 
-    # --output is required for non-clean modes
-    if not args.output:
-        parser.error("--output is required unless --clean is used")
+    # --init mode: create empty findings file and exit
+    if args.init:
+        save_json(findings_path, [])
+        print(f"Initialized empty findings: {findings_path}", file=sys.stderr)
+        return
+
+    # --output is required for non-init/clean modes
+    if not args.output and not args.merge_from:
+        parser.error("--output is required unless --clean or --init is used")
 
     output_path = os.path.abspath(args.output)
 
     # Load findings -- treat missing file as empty array
     findings = load_json(findings_path, default=[])
+
+    # --merge-from: load and append findings from agent-specific files
+    if args.merge_from:
+        for merge_path in args.merge_from:
+            merge_path = os.path.abspath(merge_path)
+            agent_findings = load_json(merge_path, default=[])
+            findings.extend(agent_findings)
+        save_json(findings_path, findings)
+
+    if not args.output:
+        return
 
     # Apply filters (even in summary mode, filters apply first)
     filtered = filter_findings(

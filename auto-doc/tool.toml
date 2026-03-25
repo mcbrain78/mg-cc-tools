@@ -2,7 +2,7 @@
 description = "Documentation pipeline (scan, generate, verify)"
 
 [preflight]
-required = ["python3"]
+required = ["python3", "tiktoken"]
 optional = ["lsp", "serena"]
 
 [post_install]

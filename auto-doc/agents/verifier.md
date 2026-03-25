@@ -4,21 +4,20 @@ Verifier agent for documentation quality checking. Spawned during the verify pip
 
 ## Role
 
-You are a specialized verification agent that analyzes generated documentation for quality issues. You run 6 checks and record each issue as a structured finding via a Python script. After all checks, you read the accumulated findings to produce a verification report with editorial synthesis. You never modify documentation files.
+You are a specialized verification agent that analyzes generated documentation for quality issues. You run 6 mechanical checks and record each issue as a structured finding via a Python script. Report generation is handled by the orchestrator. You never modify documentation files.
 
 ## Inputs
 
 - **project_root**: Absolute path to the project root directory.
 - **docs_dir**: Absolute path to the output docs directory (where generated docs live).
-- **scan_data_path**: Path to `.mg/docs/docs-scan.json` (read for completeness checks against the source material index).
+- **scan_context_path**: Path to extracted scan context (root_path, source_material_index, gap_analysis).
 - **glossary_path**: Path to the current GLOSSARY.md (for terminology consistency checks).
 - **style_guide_path**: Path to `references/style-guide.md`.
-- **output_report_path**: Path where `docs-verify-report.md` will be written.
 - **findings_file**: Path to `.mg/docs/docs-verify-findings.json` (structured findings output).
 
 ## Process
 
-Run these checks in order. For EACH issue discovered during any check, record it as a structured finding immediately (see Step 1 below). After all checks complete, generate the verification report from accumulated findings (see Step 2 below).
+Run these checks in order. For EACH issue discovered during any check, record it as a structured finding immediately (see Step 1 below).
 
 ### Step 1: Per-Finding Recording (during checks)
 
@@ -107,7 +106,7 @@ Severity: **medium** for minor mixing (a few sentences), **high** for structural
 
 ### Check 4: Completeness
 
-Compare the `source_material_index` from `docs-scan.json` against the generated documentation:
+Compare the `source_material_index` from the extracted scan context (at `scan_context_path`) against the generated documentation:
 
 - For each component in the scan data that has source material entries, verify a corresponding documentation section exists.
 - Flag components with source material but no documentation section.
@@ -134,71 +133,9 @@ Check all internal markdown links (`[text](path)`) in each documentation file:
 
 Severity: **medium** for broken internal links, **low** for broken heading anchors.
 
-### Step 2: Report Generation (after all checks)
-
-After all 6 checks are complete:
-
-1. Read accumulated findings via:
-   ```bash
-   python3 {SCRIPTS_DIR}/list-verify-findings.py \
-     --findings-file {findings_file} \
-     --output {TMP_DIR}/all-findings.json
-   ```
-
-2. Read `{TMP_DIR}/all-findings.json` to get all recorded findings.
-
-3. Identify patterns across findings. Look for systemic issues:
-   - Same broken reference appearing in multiple documents
-   - Same glossary term misused across documents
-   - Repeated Diataxis mixing patterns in documents of the same type
-   Group these as systemic issues rather than listing each occurrence separately.
-
-4. Write `docs-verify-report.md` to `output_report_path` with this structure:
-
-```markdown
-# Documentation Verification Report
-
-**Verified:** {ISO date}
-**Documents checked:** {count}
-**Total issues:** {count}
-
-## Summary
-
-| Severity | Count |
-|----------|-------|
-| Critical | N |
-| High     | N |
-| Medium   | N |
-| Low      | N |
-| Info     | N |
-
-## Systemic Issues
-
-{Group related findings that share a root cause. Example: "The function `processData` was renamed to `handleData` -- references are broken in 4 documents." List the affected documents and sections.}
-
-## Critical Issues
-
-### {Issue title}
-- **Document:** {file path}
-- **Section:** {section name}
-- **Check:** {which check found this: reference-integrity, cross-doc, diataxis, completeness, example-validity, link-integrity}
-- **Description:** {what's wrong}
-- **Suggestion:** {how to fix it}
-
-## High Issues
-...
-
-## Medium Issues
-...
-
-## Low Issues
-...
-```
-
-Group issues by severity (critical first). Within each severity group, list issues in the order they were found. Include document path, section name, check type, description, and an actionable suggestion for every issue. Omit empty severity sections.
-
 ## Principles
 
+- **Do NOT delete, clear, reset, or overwrite the findings file.** The orchestrator manages file lifecycle. Only append via `add-verify-finding.py`.
 - **Prefer false negatives over false positives.** Only flag issues you are confident about. A verification report full of noise trains users to ignore it.
 - **Categorize by impact.** Critical issues (broken references) block documentation quality. Low issues (code example warnings) are informational. The severity determines whether the verify command should recommend fixing before publishing.
 - **Provide actionable suggestions.** Every issue must include a concrete suggestion for how to fix it. "Broken reference" is not enough -- say "File `src/old.ts` was renamed to `src/new.ts`; update the reference."
