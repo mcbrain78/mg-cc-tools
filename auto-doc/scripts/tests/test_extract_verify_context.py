@@ -50,7 +50,7 @@ class TestExtractVerifyContext:
     """Core extraction behavior."""
 
     def test_extracts_correct_fields(self):
-        """Output contains root_path, source_material_index, gap_analysis."""
+        """Output contains root_path, documented_sections (list), gap_analysis."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_file = os.path.join(tmp, "docs-scan.json")
             output_file = os.path.join(tmp, "context.json")
@@ -70,11 +70,13 @@ class TestExtractVerifyContext:
                 context = json.load(f)
 
             assert context["root_path"] == "/home/user/project"
-            assert "src/main.py" in context["source_material_index"]
-            assert "src/utils.py" in context["source_material_index"]
+            # documented_sections is a sorted list of section keys
+            assert isinstance(context["documented_sections"], list)
+            assert "src/main.py" in context["documented_sections"]
+            assert "src/utils.py" in context["documented_sections"]
             assert "missing_for_audience" in context["gap_analysis"]
             # Only 3 keys in output
-            assert set(context.keys()) == {"root_path", "source_material_index", "gap_analysis"}
+            assert set(context.keys()) == {"root_path", "documented_sections", "gap_analysis"}
 
     def test_output_smaller_than_input(self):
         """Output file size is smaller than input file size."""
@@ -119,7 +121,7 @@ class TestExtractVerifyContext:
                 context = json.load(f)
 
             assert context["root_path"] == "/home/user/project"
-            assert context["source_material_index"] == {}
+            assert context["documented_sections"] == []
             assert context["gap_analysis"] == {}
 
     def test_missing_scan_file_exits_nonzero(self):

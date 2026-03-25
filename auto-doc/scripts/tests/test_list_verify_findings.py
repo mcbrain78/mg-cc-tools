@@ -102,6 +102,137 @@ class TestListVerifyFindingsSummary:
             assert summary["by_document"]["ARCHITECTURE"] == 2
             assert summary["by_document"]["GETTING_STARTED"] == 1
 
+    def test_summary_includes_distinct_groups(self):
+        """--summary includes distinct_groups count based on group_id."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            findings = _sample_findings()
+            # Add group_id to findings (as add-verify-finding.py would)
+            for f in findings:
+                f["group_id"] = f"{f['document']}/{f['section']}"
+
+            with open(findings_file, "w") as f:
+                json.dump(findings, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--summary",
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                summary = json.load(f)
+
+            # 5 findings, all with different doc/section → 5 distinct groups
+            assert summary["distinct_groups"] == 5
+
+    def test_summary_distinct_groups_deduplicates(self):
+        """Findings with same group_id count as one group."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            # Two findings for same doc/section
+            findings = [
+                {
+                    "document": "OPERATIONS",
+                    "section": "deploy",
+                    "audience": "devops",
+                    "severity": "high",
+                    "check": "reference-integrity",
+                    "description": "issue 1",
+                    "suggestion": "fix 1",
+                    "group_id": "OPERATIONS/deploy",
+                },
+                {
+                    "document": "OPERATIONS",
+                    "section": "deploy",
+                    "audience": "devops",
+                    "severity": "medium",
+                    "check": "diataxis",
+                    "description": "issue 2",
+                    "suggestion": "fix 2",
+                    "group_id": "OPERATIONS/deploy",
+                },
+                {
+                    "document": "ARCHITECTURE",
+                    "section": "overview",
+                    "audience": "developers",
+                    "severity": "low",
+                    "check": "cross-doc",
+                    "description": "issue 3",
+                    "suggestion": "fix 3",
+                    "group_id": "ARCHITECTURE/overview",
+                },
+            ]
+            with open(findings_file, "w") as f:
+                json.dump(findings, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--summary",
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                summary = json.load(f)
+
+            assert summary["total"] == 3
+            assert summary["distinct_groups"] == 2
+
+    def test_summary_distinct_groups_fallback_without_group_id(self):
+        """Findings without group_id fall back to document/section for grouping."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            # Findings without explicit group_id (legacy format)
+            findings = [
+                {
+                    "document": "OPERATIONS",
+                    "section": "deploy",
+                    "audience": "devops",
+                    "severity": "high",
+                    "check": "reference-integrity",
+                    "description": "issue 1",
+                    "suggestion": "fix 1",
+                },
+                {
+                    "document": "OPERATIONS",
+                    "section": "deploy",
+                    "audience": "devops",
+                    "severity": "medium",
+                    "check": "diataxis",
+                    "description": "issue 2",
+                    "suggestion": "fix 2",
+                },
+            ]
+            with open(findings_file, "w") as f:
+                json.dump(findings, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--summary",
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                summary = json.load(f)
+
+            assert summary["total"] == 2
+            assert summary["distinct_groups"] == 1
+
     def test_missing_findings_file_summary_produces_zero_counts(self):
         """Missing findings file with --summary produces zero-count summary."""
         with tempfile.TemporaryDirectory() as tmp:

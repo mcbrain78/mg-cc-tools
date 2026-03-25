@@ -114,11 +114,16 @@ def build_summary(findings):
         "by_document": {},
     }
 
+    groups = set()
     for f in findings:
         sev = f.get("severity", "unknown")
         doc = f.get("document", "unknown")
         summary["by_severity"][sev] = summary["by_severity"].get(sev, 0) + 1
         summary["by_document"][doc] = summary["by_document"].get(doc, 0) + 1
+        gid = f.get("group_id", f"{doc}/{f.get('section', '')}")
+        groups.add(gid)
+
+    summary["distinct_groups"] = len(groups)
 
     return summary
 

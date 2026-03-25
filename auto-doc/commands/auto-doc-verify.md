@@ -102,7 +102,7 @@ Read and follow the instructions in: {AGENTS_DIR}/verifier.md
 
 Parameters:
 - project_root: {project_root}
-- docs_dir: {docs_dir_abs}
+- review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
 - scan_context_path: {project_root}/.mg/docs/tmp/verify-scan-context.json
 - glossary_path: {docs_dir_abs}/GLOSSARY.md
 - style_guide_path: references/style-guide.md
@@ -189,7 +189,7 @@ After both agents complete, merge their isolated findings and generate the verif
 ...
 ```
 
-Group issues by severity (critical first). Within each severity group, list issues in the order they were found. Include document path, section name, check type, description, and an actionable suggestion for every issue. Omit empty severity sections.
+Group issues by severity (critical first). Within each severity group, list issues in the order they were found. **Skip findings already fully described in a Systemic Issues group** — instead include a one-line back-reference: `See Systemic Issue #N above (K findings)`. Include document path, section name, check type, description, and an actionable suggestion for every non-systemic issue. Omit empty severity sections.
 
 ### Step 4: Present Results
 
@@ -238,7 +238,7 @@ Group issues by severity (critical first). Within each severity group, list issu
 - **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `docs-verify-report.md`, `docs-verify-findings.json`.
 - **Subagents read their own instructions via file path.** The Agent prompt passes a reference (`Read and follow the instructions in: agents/...`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
 - **Two agents run in parallel with isolated findings.** The mechanical verifier (6 checks) and editorial reviewer (22 criteria) each write to their own findings file. The orchestrator merges them after both complete — agents never touch the shared findings file directly.
-- **The verifier agent uses LSP documentSymbol for symbol verification against structured manifests.** There is no regex extraction step or Grep fallback.
+- **Reference integrity uses `ast.parse()` via a deterministic script (`verify-references.py`).** The agent calls the script as its first step.
 - **Reference integrity is manifest-based.** The verifier reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
 - **5-tier severity model:** critical, high, medium, low, info. This matches the verifier agent's definition and the report output format.
 - **Prefer false negatives over false positives.** Same principle as the verifier agent -- only flag issues with high confidence. A noisy report trains users to ignore it.

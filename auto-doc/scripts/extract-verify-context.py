@@ -3,7 +3,11 @@
 
 The full scan data can exceed subagent Read limits. This script
 extracts only the 3 fields the verifier needs (root_path,
-source_material_index, gap_analysis) into a small file.
+documented_sections, gap_analysis) into a small file.
+
+The source_material_index is reduced to just its section keys
+(a flat list), since Check 4 only needs to know which sections
+exist — not the per-section source file details.
 
 Usage:
     python3 extract-verify-context.py \
@@ -43,9 +47,10 @@ def main():
         print(f"Error: scan file not found: {scan_path}", file=sys.stderr)
         sys.exit(1)
 
+    smi = scan_data.get("source_material_index", {})
     context = {
         "root_path": scan_data.get("root_path", ""),
-        "source_material_index": scan_data.get("source_material_index", {}),
+        "documented_sections": sorted(smi.keys()) if isinstance(smi, dict) else [],
         "gap_analysis": scan_data.get("gap_analysis", {}),
     }
 

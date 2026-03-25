@@ -407,30 +407,48 @@ A flat array of verification findings produced by the verifier agent during the 
 ```json
 [
   {
-    "document": "string -- document name matching config (e.g., OPERATIONS)",
+    "document": "string -- document name matching config, without .md extension (e.g., OPERATIONS)",
     "section": "string -- section slug (e.g., deployment-pipeline)",
     "audience": "string -- audience key (e.g., devops)",
     "severity": "string -- critical | high | medium | low | info",
-    "check": "string -- which check found this (reference-integrity | cross-doc | diataxis | completeness | example-validity | link-integrity)",
+    "check": "string -- which check found this (see valid values below)",
     "description": "string -- what is wrong",
-    "suggestion": "string -- how to fix it"
+    "suggestion": "string -- how to fix it",
+    "group_id": "string -- computed: document/section (e.g., OPERATIONS/deployment-pipeline)"
   }
 ]
 ```
 
 ### Required Fields
 
-All 7 fields are required per finding. The `add-verify-finding.py` script validates these before appending.
+All 7 input fields are required per finding. The `add-verify-finding.py` script validates these before appending and computes `group_id` automatically (8 fields total in output).
 
 | Field | Type | Valid Values | Description |
 |-------|------|-------------|-------------|
-| `document` | `string` | Any document name from config | Document where the issue was found |
+| `document` | `string` | Any document name from config (without `.md` extension) | Document where the issue was found. `.md` extension is stripped automatically. |
 | `section` | `string` | Section slug | Section within the document |
 | `audience` | `string` | Audience key | Target audience for the document |
 | `severity` | `string` | `critical`, `high`, `medium`, `low`, `info` | Impact level of the issue |
-| `check` | `string` | `reference-integrity`, `cross-doc`, `diataxis`, `completeness`, `example-validity`, `link-integrity` | Which verification check found this |
+| `check` | `string` | See valid check types below | Which verification check found this |
 | `description` | `string` | Free text | What is wrong |
 | `suggestion` | `string` | Free text | How to fix it |
+| `group_id` | `string` | Computed: `{document}/{section}` | Groups related findings about the same document section. Added automatically by `add-verify-finding.py`. |
+
+### Valid Check Types
+
+**Mechanical checks (6):** `reference-integrity`, `cross-doc`, `diataxis`, `completeness`, `example-validity`, `link-integrity`
+
+**Editorial checks — universal (8):** `filler-content`, `heading-content-mismatch`, `inconsistent-granularity`, `dangling-prose-reference`, `unexplained-code-block`, `internal-contradiction`, `malformed-table`, `placeholder-content`
+
+**Editorial checks — end-user (4):** `end-user-jargon`, `end-user-missing-expected-result`, `end-user-implementation-leak`, `end-user-missing-goal`
+
+**Editorial checks — developer (3):** `developer-abstract-architecture`, `developer-missing-types`, `developer-adr-missing-alternatives`
+
+**Editorial checks — agent (3):** `agent-ambiguous-constraint`, `agent-missing-negative-examples`, `agent-missing-consequences`
+
+**Editorial checks — devops (3):** `devops-missing-expected-output`, `devops-missing-rollback`, `devops-placeholder-in-command`
+
+**Editorial checks — shared (1):** `overview-missing-audience`
 
 ### Example
 
@@ -443,7 +461,8 @@ All 7 fields are required per finding. The `add-verify-finding.py` script valida
     "severity": "high",
     "check": "reference-integrity",
     "description": "File path src/deploy/old-pipeline.sh referenced in section does not exist",
-    "suggestion": "Update reference to src/deploy/pipeline.sh (renamed in commit abc1234)"
+    "suggestion": "Update reference to src/deploy/pipeline.sh (renamed in commit abc1234)",
+    "group_id": "OPERATIONS/deployment-pipeline"
   },
   {
     "document": "ARCHITECTURE",
@@ -452,7 +471,8 @@ All 7 fields are required per finding. The `add-verify-finding.py` script valida
     "severity": "medium",
     "check": "diataxis",
     "description": "Reference section contains step-by-step tutorial instructions (lines 45-62)",
-    "suggestion": "Move procedural content to DEVELOPER_GUIDE/database-setup how-to section"
+    "suggestion": "Move procedural content to DEVELOPER_GUIDE/database-setup how-to section",
+    "group_id": "ARCHITECTURE/data-model"
   }
 ]
 ```

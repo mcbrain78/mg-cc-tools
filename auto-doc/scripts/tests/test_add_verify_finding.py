@@ -266,6 +266,106 @@ class TestAddVerifyFindingEditorialChecks:
                 assert data[0]["check"] == check
 
 
+class TestAddVerifyFindingNormalization:
+    """Document normalization and group_id computation."""
+
+    def test_md_extension_stripped(self):
+        """Input with document: 'OPERATIONS.md' → stored as 'OPERATIONS'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            finding = _valid_finding()
+            finding["document"] = "OPERATIONS.md"
+            with open(input_file, "w") as f:
+                json.dump(finding, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert len(data) == 1
+            assert data[0]["document"] == "OPERATIONS"
+
+    def test_document_without_md_unchanged(self):
+        """Input with document: 'OPERATIONS' (no .md) → stored unchanged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            finding = _valid_finding()
+            with open(input_file, "w") as f:
+                json.dump(finding, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert data[0]["document"] == "OPERATIONS"
+
+    def test_group_id_always_present(self):
+        """Every finding has group_id = '{document}/{section}'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            finding = _valid_finding()
+            with open(input_file, "w") as f:
+                json.dump(finding, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert data[0]["group_id"] == "OPERATIONS/deployment-pipeline"
+
+    def test_group_id_uses_normalized_document(self):
+        """group_id uses the normalized (stripped) document name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            finding = _valid_finding()
+            finding["document"] = "ARCHITECTURE.md"
+            with open(input_file, "w") as f:
+                json.dump(finding, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert data[0]["document"] == "ARCHITECTURE"
+            assert data[0]["group_id"] == "ARCHITECTURE/deployment-pipeline"
+
+
 class TestAddVerifyFindingCLI:
     """CLI argument validation."""
 

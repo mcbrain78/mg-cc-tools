@@ -132,7 +132,7 @@ If any tier has zero items, omit that tier's section from the overview (but alwa
   Approve: all / none / specific numbers (e.g., "1,2,4")
   ```
 
-  Group by document name first, then list staleness sections and findings together under each document with unified numbering (staleness items numbered first, then findings continue the sequence). One approval per document covers both staleness and findings.
+  Group by document name first, then list staleness sections and findings together under each document with unified numbering (staleness items numbered first, then findings continue the sequence). One approval per document covers both staleness and findings. When multiple findings share a `group_id`, show one line per group with the highest severity and a "(+ N related)" suffix. All findings in the group are approved/rejected together.
 
   To get per-document findings for the drill-in, run:
   ```bash

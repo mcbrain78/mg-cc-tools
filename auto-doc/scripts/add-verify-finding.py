@@ -15,6 +15,9 @@ Usage:
 Input JSON must contain:
     document, section, audience, severity, check, description, suggestion
 
+Output adds computed fields:
+    group_id (document/section) for grouping related findings
+
 Atomic writes via lib/json_io.py. Zero external dependencies.
 """
 
@@ -72,6 +75,11 @@ def validate_finding(finding):
     for field in REQUIRED_FIELDS:
         if field not in finding:
             return False, f"Missing required field: {field}"
+
+    # Normalize document name — strip .md extension for consistency
+    doc = finding["document"]
+    if doc.endswith(".md"):
+        finding["document"] = doc[:-3]
 
     if finding["severity"] not in VALID_SEVERITIES:
         return False, f"Invalid severity: {finding['severity']} (valid: {', '.join(VALID_SEVERITIES)})"
@@ -135,6 +143,9 @@ def main():
     if not is_valid:
         save_rejected(input_path, error)
         sys.exit(1)
+
+    # Compute group_id for grouping related findings
+    input_data["group_id"] = f"{input_data['document']}/{input_data['section']}"
 
     # Load existing, append, save atomically
     findings = load_json(findings_path, default=[])
