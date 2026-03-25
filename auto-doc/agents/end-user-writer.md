@@ -138,6 +138,7 @@ These conventions override or extend the style guide for end-user documentation.
   - API details and internal architecture -> developer ARCHITECTURE.md
   - System-level configuration -> devops OPERATIONS.md
   - Only user-facing configuration stays in the USER_GUIDE
+- **Goal statement before procedures.** Before any numbered step sequence, include a one-sentence purpose explaining WHY the user would follow these steps.
 - **Error guidance.** For common mistakes, include a "Troubleshooting" callout near the relevant step.
 
 ## Output Conventions

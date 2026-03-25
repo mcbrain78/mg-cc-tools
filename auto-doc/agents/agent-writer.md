@@ -113,6 +113,8 @@ These conventions override or extend the style guide for agent-audience document
   - MUST NOT modify existing entries
   - SHOULD log warnings for missing fields
   ```
+- **Negative examples for rules.** When documenting conventions or constraints, show what NOT to do alongside the correct pattern. Format: "Do: `scan_data` | Don't: `scanData`"
+- **Consequences for constraints.** Every MUST/MUST NOT rule should explain what breaks if violated. Example: "MUST write atomically — otherwise race conditions cause duplicate entries."
 - **Action-oriented.** Write "Run `command`" not "You might want to run..." Direct instructions, no hedging.
 - **Codified Context three-tier architecture** (arXiv:2602.20478): L1 system identity (what it is), L2 domain knowledge (how it works), L3 operational context (how to use it now).
 

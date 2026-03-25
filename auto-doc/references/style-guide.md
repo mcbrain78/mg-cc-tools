@@ -258,6 +258,25 @@ Use blockquote-based admonitions with bold labels:
 - Align columns for readability in the source markdown (optional but preferred).
 - Keep cell content concise. Use footnotes or separate sections for lengthy descriptions.
 
+## 6. Quality Checks
+
+These checks prevent common issues caught during verification.
+
+### Heading-Content Alignment
+Before closing a section, re-read the heading. If the heading says "Configuration" but the content only lists file paths with no configuration instructions, rewrite to match.
+
+### Consistent Section Depth
+Sections at the same heading level should have comparable depth. If one peer section is 3 sentences and another is 3 paragraphs, expand the thin one or condense the long one.
+
+### Verify Cross-References
+Search for "see below", "as described above", "the following section" — verify the target exists in the document. If not, rewrite without the dangling reference.
+
+### No Internal Contradictions
+Scan for conflicting statements: version requirements, naming, parameter types, ordering. If two claims could conflict, verify against source material.
+
+### No Placeholder Content
+Remove all: TODOs, `{placeholder}` tokens, `TBD`, leftover template comments (`<!-- PURPOSE:`, `<!-- EXAMPLE:`, `<!-- AUDIENCE:`), `lorem ipsum`.
+
 ---
 
 *This style guide is referenced by writer agents during documentation generation. Updates to these conventions affect all future document generation runs.*

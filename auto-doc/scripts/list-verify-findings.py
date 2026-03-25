@@ -128,6 +128,49 @@ def build_summary(findings):
     return summary
 
 
+def build_grouped(findings):
+    """Group findings by group_id for the approval UI.
+
+    Returns:
+        List of group dicts, sorted by highest severity then group_id.
+        Each group contains:
+        - group_id, document, section, count, highest_severity
+        - representative: the highest-severity finding in the group
+        - findings: all findings in the group
+    """
+    groups = {}
+    for f in findings:
+        gid = f.get("group_id", f"{f.get('document', '')}/{f.get('section', '')}")
+        if gid not in groups:
+            groups[gid] = []
+        groups[gid].append(f)
+
+    result = []
+    for gid, group_findings in groups.items():
+        # Pick highest severity as representative
+        best = min(
+            group_findings,
+            key=lambda x: SEVERITY_ORDER.index(x.get("severity", "info")),
+        )
+        result.append({
+            "group_id": gid,
+            "document": best.get("document", ""),
+            "section": best.get("section", ""),
+            "count": len(group_findings),
+            "highest_severity": best.get("severity", "info"),
+            "representative": best,
+            "findings": group_findings,
+        })
+
+    # Sort by severity (most severe first), then group_id
+    result.sort(key=lambda g: (
+        SEVERITY_ORDER.index(g["highest_severity"]),
+        g["group_id"],
+    ))
+
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Filter and query verify findings"
@@ -155,6 +198,10 @@ def main():
     parser.add_argument(
         "--summary", action="store_true",
         help="Produce summary counts instead of filtered list",
+    )
+    parser.add_argument(
+        "--grouped", action="store_true",
+        help="Group findings by group_id for approval UI display",
     )
     parser.add_argument(
         "--document", default=None,
@@ -215,6 +262,8 @@ def main():
     # Build output
     if args.summary:
         result = build_summary(filtered)
+    elif args.grouped:
+        result = build_grouped(filtered)
     else:
         result = filtered
 

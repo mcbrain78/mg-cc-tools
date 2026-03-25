@@ -365,6 +365,63 @@ class TestAddVerifyFindingNormalization:
             assert data[0]["document"] == "ARCHITECTURE"
             assert data[0]["group_id"] == "ARCHITECTURE/deployment-pipeline"
 
+    def test_singular_audience_normalized_to_plural(self):
+        """Singular audience values are normalized to plural config keys."""
+        cases = [
+            ("end-user", "end-users"),
+            ("developer", "developers"),
+            ("agent", "agents"),
+        ]
+        for singular, expected_plural in cases:
+            with tempfile.TemporaryDirectory() as tmp:
+                findings_file = os.path.join(tmp, "findings.json")
+                input_file = os.path.join(tmp, "input.json")
+
+                finding = _valid_finding()
+                finding["audience"] = singular
+                with open(input_file, "w") as f:
+                    json.dump(finding, f)
+
+                result = subprocess.run(
+                    [sys.executable, SCRIPT_PATH,
+                     "--input", input_file,
+                     "--findings-file", findings_file],
+                    capture_output=True, text=True,
+                )
+                assert result.returncode == 0, f"Failed for {singular}: {result.stderr}"
+
+                with open(findings_file) as f:
+                    data = json.load(f)
+
+                assert data[0]["audience"] == expected_plural, (
+                    f"Expected '{expected_plural}' but got '{data[0]['audience']}' for input '{singular}'"
+                )
+
+    def test_plural_audience_unchanged(self):
+        """Plural audience values pass through unchanged."""
+        for audience in ["end-users", "developers", "agents", "devops", "shared", "all"]:
+            with tempfile.TemporaryDirectory() as tmp:
+                findings_file = os.path.join(tmp, "findings.json")
+                input_file = os.path.join(tmp, "input.json")
+
+                finding = _valid_finding()
+                finding["audience"] = audience
+                with open(input_file, "w") as f:
+                    json.dump(finding, f)
+
+                result = subprocess.run(
+                    [sys.executable, SCRIPT_PATH,
+                     "--input", input_file,
+                     "--findings-file", findings_file],
+                    capture_output=True, text=True,
+                )
+                assert result.returncode == 0
+
+                with open(findings_file) as f:
+                    data = json.load(f)
+
+                assert data[0]["audience"] == audience
+
 
 class TestAddVerifyFindingCLI:
     """CLI argument validation."""

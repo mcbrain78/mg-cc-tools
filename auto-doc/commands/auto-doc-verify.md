@@ -191,6 +191,8 @@ After both agents complete, merge their isolated findings and generate the verif
 
 Group issues by severity (critical first). Within each severity group, list issues in the order they were found. **Skip findings already fully described in a Systemic Issues group** — instead include a one-line back-reference: `See Systemic Issue #N above (K findings)`. Include document path, section name, check type, description, and an actionable suggestion for every non-systemic issue. Omit empty severity sections.
 
+**Completeness finding adjustments:** When reporting completeness findings for missing sections, check whether the section heading in the template is marked `<!-- OPTIONAL -->`. If so, downgrade the finding from high to **info** severity and note it was an optional section the writer chose to skip. For section name mismatches (e.g., `documented_sections` says `adding-a-new-scoring-model` but the actual heading is `adding-a-new-finance-metric`), note the mismatch but downgrade to **medium** — the content exists under a different name.
+
 ### Step 4: Present Results
 
 1. **Read the report** you just wrote: `{project_root}/.mg/docs/docs-verify-report.md`.

@@ -38,7 +38,7 @@ For each review file:
 
 1. **Read the file** in full.
 
-2. **Use the manifest `audience` field** if present. If null, detect from the `<!-- AUDIENCE: ... -->` comment near the top. Valid audiences: `end-user`, `developer`, `agent`, `devops`. If the file is `OVERVIEW.md` or `GLOSSARY.md`, treat audience as `shared`. If no audience found, apply only universal criteria. Use the manifest `source` basename **without extension** (e.g., `OPERATIONS` not `OPERATIONS.md`) as the `document` field in findings.
+2. **Use the manifest `audience` field** if present. If null, detect from the `<!-- AUDIENCE: ... -->` comment near the top. Valid audiences: `end-users`, `developers`, `agents`, `devops`. If the file is `OVERVIEW.md` or `GLOSSARY.md`, treat audience as `shared`. If no audience found, apply only universal criteria. Use the manifest `source` basename **without extension** (e.g., `OPERATIONS` not `OPERATIONS.md`) as the `document` field in findings.
 
 3. **Apply universal criteria** (8 checks -- apply to every document regardless of audience).
 

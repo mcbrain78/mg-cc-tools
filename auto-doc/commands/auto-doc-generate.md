@@ -139,9 +139,10 @@ If any tier has zero items, omit that tier's section from the overview (but alwa
   python3 {SCRIPTS_DIR}/list-verify-findings.py \
     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
     --document {DOCUMENT} \
+    --grouped \
     --output {TMP_DIR}/findings-{DOCUMENT}.json
   ```
-  Read the output file to get findings for that document.
+  Read the output file. It returns an array of group objects, each with `group_id`, `count`, `highest_severity`, and `representative` (the finding to display). For groups with `count > 1`, show the representative with a "(+ N related)" suffix where N = count - 1. For groups with `count == 1`, show the finding normally. All findings in a group are approved/rejected together.
 
 - **If "Select by severity" (option 3):** Use AskUserQuestion to ask for the minimum severity level:
 

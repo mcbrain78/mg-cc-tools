@@ -256,6 +256,173 @@ class TestListVerifyFindingsSummary:
             assert summary["by_document"] == {}
 
 
+class TestListVerifyFindingsGrouped:
+    """--grouped mode behavior."""
+
+    def test_grouped_single_finding_per_group(self):
+        """Each finding with unique group_id becomes its own group with count=1."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            findings = _sample_findings()
+            for f in findings:
+                f["group_id"] = f"{f['document']}/{f['section']}"
+
+            with open(findings_file, "w") as f:
+                json.dump(findings, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--grouped",
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                groups = json.load(f)
+
+            assert len(groups) == 5
+            for g in groups:
+                assert g["count"] == 1
+                assert "group_id" in g
+                assert "representative" in g
+                assert "findings" in g
+                assert len(g["findings"]) == 1
+
+    def test_grouped_merges_same_group_id(self):
+        """Multiple findings with same group_id merge into one group."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            findings = [
+                {
+                    "document": "OPS", "section": "deploy",
+                    "audience": "devops", "severity": "medium",
+                    "check": "diataxis", "description": "issue A",
+                    "suggestion": "fix A", "group_id": "OPS/deploy",
+                },
+                {
+                    "document": "OPS", "section": "deploy",
+                    "audience": "devops", "severity": "high",
+                    "check": "reference-integrity", "description": "issue B",
+                    "suggestion": "fix B", "group_id": "OPS/deploy",
+                },
+                {
+                    "document": "ARCH", "section": "overview",
+                    "audience": "developers", "severity": "low",
+                    "check": "cross-doc", "description": "issue C",
+                    "suggestion": "fix C", "group_id": "ARCH/overview",
+                },
+            ]
+            with open(findings_file, "w") as f:
+                json.dump(findings, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--grouped",
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                groups = json.load(f)
+
+            assert len(groups) == 2
+
+            # First group should be OPS/deploy (highest severity = high)
+            ops = groups[0]
+            assert ops["group_id"] == "OPS/deploy"
+            assert ops["count"] == 2
+            assert ops["highest_severity"] == "high"
+            assert ops["representative"]["check"] == "reference-integrity"
+            assert len(ops["findings"]) == 2
+
+            # Second group should be ARCH/overview (severity = low)
+            arch = groups[1]
+            assert arch["group_id"] == "ARCH/overview"
+            assert arch["count"] == 1
+            assert arch["highest_severity"] == "low"
+
+    def test_grouped_sorted_by_severity(self):
+        """Groups are sorted by highest severity (most severe first)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            findings = [
+                {
+                    "document": "A", "section": "s1",
+                    "audience": "devops", "severity": "low",
+                    "check": "cross-doc", "description": "d1",
+                    "suggestion": "s1", "group_id": "A/s1",
+                },
+                {
+                    "document": "B", "section": "s2",
+                    "audience": "devops", "severity": "critical",
+                    "check": "reference-integrity", "description": "d2",
+                    "suggestion": "s2", "group_id": "B/s2",
+                },
+                {
+                    "document": "C", "section": "s3",
+                    "audience": "devops", "severity": "medium",
+                    "check": "diataxis", "description": "d3",
+                    "suggestion": "s3", "group_id": "C/s3",
+                },
+            ]
+            with open(findings_file, "w") as f:
+                json.dump(findings, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--grouped",
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                groups = json.load(f)
+
+            severities = [g["highest_severity"] for g in groups]
+            assert severities == ["critical", "medium", "low"]
+
+    def test_grouped_with_document_filter(self):
+        """--grouped combined with --document filters before grouping."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            findings = _sample_findings()
+            for f in findings:
+                f["group_id"] = f"{f['document']}/{f['section']}"
+
+            with open(findings_file, "w") as f:
+                json.dump(findings, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--document", "OPERATIONS",
+                 "--grouped",
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                groups = json.load(f)
+
+            assert len(groups) == 2
+            assert all(g["document"] == "OPERATIONS" for g in groups)
+
+
 class TestListVerifyFindingsFilter:
     """Filtering behavior."""
 

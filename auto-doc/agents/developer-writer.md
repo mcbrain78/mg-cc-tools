@@ -107,6 +107,7 @@ These conventions override or extend the style guide for developer documentation
   | Add a new script | `scripts/` | Stdlib-only, use `json_io.py` |
 
 - **Type signatures.** Include parameter types, return types, and exception types for all documented functions and methods.
+- **Alternatives for design decisions.** When describing an architectural choice or ADR, include what alternatives were considered and why this approach was chosen.
 - **Show edge cases.** Document what happens with empty input, missing files, invalid data, and error conditions.
 
 ## Output Conventions

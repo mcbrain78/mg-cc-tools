@@ -131,7 +131,7 @@ def build_file_cache(file_paths, project_root):
 
 
 def _make_finding(document, section, audience, severity, description, suggestion):
-    """Create a finding dict with all 7 required fields."""
+    """Create a finding dict with all required fields plus group_id."""
     return {
         "document": document,
         "section": section,
@@ -140,6 +140,7 @@ def _make_finding(document, section, audience, severity, description, suggestion
         "check": "reference-integrity",
         "description": description,
         "suggestion": suggestion,
+        "group_id": f"{document}/{section}",
     }
 
 
@@ -183,11 +184,13 @@ def check_manifest(manifest, file_cache, source_material_index):
                     suggestion="Update references to current paths or remove from documentation",
                 ))
 
-            # Symbol verification — uses scan source_material_index
+            # Symbol verification — scan source_files + manifest file_paths
             if entry_symbols:
                 scan_key = f"{doc_name}/{section_name}"
                 scan_entry = source_material_index.get(scan_key, {})
-                check_paths = scan_entry.get("source_files", [])
+                scan_paths = scan_entry.get("source_files", [])
+                # Merge scan source_files with manifest file_paths (dedup, order-preserving)
+                check_paths = list(dict.fromkeys(scan_paths + entry_file_paths))
 
                 # Collect symbol sets from source files (skip missing)
                 symbol_sets = []

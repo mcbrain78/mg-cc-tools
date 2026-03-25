@@ -81,6 +81,15 @@ def validate_finding(finding):
     if doc.endswith(".md"):
         finding["document"] = doc[:-3]
 
+    # Normalize audience — editorial agent uses singular, config uses plural
+    _AUDIENCE_ALIASES = {
+        "end-user": "end-users",
+        "developer": "developers",
+        "agent": "agents",
+    }
+    audience = finding["audience"]
+    finding["audience"] = _AUDIENCE_ALIASES.get(audience, audience)
+
     if finding["severity"] not in VALID_SEVERITIES:
         return False, f"Invalid severity: {finding['severity']} (valid: {', '.join(VALID_SEVERITIES)})"
 

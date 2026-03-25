@@ -337,9 +337,9 @@ class TestVerifyReferencesHappyPath:
             high = [f for f in data if f["severity"] == "high"]
             assert len(high) == 0
 
-    def test_scan_key_missing_skips_symbols(self):
+    def test_scan_key_missing_uses_manifest_fallback(self):
         """Manifest has entry with symbols but scan has no matching key →
-        symbol check skipped, 0 high findings."""
+        symbol resolved via manifest file_paths fallback, 0 high findings."""
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "project")
             os.makedirs(project)
@@ -366,6 +366,53 @@ class TestVerifyReferencesHappyPath:
 
             # Scan has NO key for API_REF/endpoints
             _write_scan(scan, {})
+
+            result = _run(manifests, project, findings, scan)
+            assert result.returncode == 0
+
+            data = _load(findings)
+            high = [f for f in data if f["severity"] == "high"]
+            assert len(high) == 0
+
+    def test_symbol_found_via_manifest_fallback(self):
+        """Symbol in manifest file_paths but not scan source_files → 0 findings.
+
+        Scan source_files point to files that DON'T define the symbol,
+        but manifest file_paths point to the file that DOES. The merged
+        check_paths resolves the symbol via the manifest fallback.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "project")
+            os.makedirs(project)
+            manifests = os.path.join(project, "manifests")
+            os.makedirs(manifests)
+            findings = os.path.join(tmp, "findings.json")
+            scan = os.path.join(tmp, "scan.json")
+
+            src = os.path.join(project, "src")
+            os.makedirs(src)
+            # Scan source file — defines OtherClass, NOT TargetClass
+            with open(os.path.join(src, "other.py"), "w") as f:
+                f.write("class OtherClass:\n    pass\n")
+            # Manifest file_path — defines TargetClass
+            with open(os.path.join(src, "target.py"), "w") as f:
+                f.write("class TargetClass:\n    pass\n")
+
+            manifest = _make_manifest("developers", {
+                "ARCHITECTURE": {
+                    "overview": {
+                        "symbols": ["TargetClass"],
+                        "file_paths": ["src/target.py"],
+                    }
+                }
+            })
+            with open(os.path.join(manifests, "devs.json"), "w") as f:
+                json.dump(manifest, f)
+
+            # Scan points to different file that does NOT define TargetClass
+            _write_scan(scan, {
+                "ARCHITECTURE/overview": {"source_files": ["src/other.py"]},
+            })
 
             result = _run(manifests, project, findings, scan)
             assert result.returncode == 0
@@ -451,6 +498,7 @@ class TestVerifyReferencesFindings:
             assert f["severity"] == "high"
             assert "nonexistent_handler" in f["description"]
             assert "1 undefined symbol" in f["description"]
+            assert f["group_id"] == "API_REF/endpoints"
 
     def test_non_python_file_skips_symbol_check(self):
         """Existing non-.py file with symbols listed → 0 findings (symbol check skipped)."""
