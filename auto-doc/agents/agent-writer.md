@@ -102,19 +102,18 @@ You are a specialized writer agent for the **agents** audience. You generate doc
       Do NOT call Write() to create the final document file — the finalize step
       handles document assembly.
 
-   h. **Verify section references.** For each section with non-empty `symbols` or
-      `file_paths` in its refs file, run a Haiku verification check via CLI:
+   h. **Verify section references.** For each section, run the verification script:
 
       ```bash
-      printf '%s\n\nContent file: %s\nRefs file: %s' \
-        "$(cat {AGENTS_DIR}/section-verifier.md)" \
-        "{TMP_DIR}/section-agents-{DOCUMENT}-{section-slug}.md" \
-        "{TMP_DIR}/refs-agents-{DOCUMENT}-{section-slug}.json" \
-        | claude -p --model haiku --allowed-tools Read
+      python3 {SCRIPTS_DIR}/verify-section-refs.py \
+        --content-file {TMP_DIR}/section-agents-{DOCUMENT}-{section-slug}.md \
+        --refs-file {TMP_DIR}/refs-agents-{DOCUMENT}-{section-slug}.json \
+        --verifier-prompt {AGENTS_DIR}/section-verifier.md \
+        --log-file {TMP_DIR}/verification-log.json
       ```
 
-      Run one verification per section. Sections can be verified sequentially
-      (each call is fast).
+      The script skips sections with empty refs, invokes Haiku verification
+      for the rest, and logs structured results. Run one per section.
 
       If the output contains UNRESOLVED:
       1. Look up the symbol in the project source to find the correct name
