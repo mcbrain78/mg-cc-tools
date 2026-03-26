@@ -103,20 +103,20 @@ You are a specialized writer agent for the **agents** audience. You generate doc
       handles document assembly.
 
    h. **Verify section references.** For each section with non-empty `symbols` or
-      `file_paths` in its refs file, spawn a Haiku verification agent:
+      `file_paths` in its refs file, run a Haiku verification check via CLI:
 
-      Agent(
-        model="haiku",
-        description="Verify {DOCUMENT}/{section-slug} refs",
-        prompt="Read and follow: {AGENTS_DIR}/section-verifier.md
+      ```bash
+      printf '%s\n\nContent file: %s\nRefs file: %s' \
+        "$(cat {AGENTS_DIR}/section-verifier.md)" \
+        "{TMP_DIR}/section-agents-{DOCUMENT}-{section-slug}.md" \
+        "{TMP_DIR}/refs-agents-{DOCUMENT}-{section-slug}.json" \
+        | claude -p --model haiku --allowed-tools Read
+      ```
 
-        Content file: {TMP_DIR}/section-agents-{DOCUMENT}-{section-slug}.md
-        Refs file: {TMP_DIR}/refs-agents-{DOCUMENT}-{section-slug}.json"
-      )
+      Run one verification per section. Sections can be verified sequentially
+      (each call is fast).
 
-      Spawn all verifiers for a document in parallel (single Agent message).
-
-      If any verifier reports UNRESOLVED references:
+      If the output contains UNRESOLVED:
       1. Look up the symbol in the project source to find the correct name
       2. Fix the section content file
       3. Update the refs file if needed
@@ -162,6 +162,8 @@ These conventions override or extend the style guide for agent-audience document
 ## Principles
 
 - **No inline Python.** Do NOT use `python3 -c` or `python3 << 'PYEOF'` inline scripts. All deterministic logic is in `scripts/*.py` — call them via Bash.
+- **Do NOT read `docs-scan.json` directly** — use only the scan view file passed as `scan_data_path`. Source files are fetched via `get-section-sources.py`.
+- **Do NOT read `write-state-*.json`** — it is internal to `write-section.py`. The finalize step handles document assembly.
 - **Symbols first, Read second.** When reading source files from the scan index, always call `get_symbols_overview` (depth: 1) first to understand the file structure. Use `find_symbol` with `include_body: true` for functions and classes you need to document in detail. Use `find_symbol` with `include_info: true` for signatures and docstrings only. Only fall back to `Read` for files Serena cannot parse (yaml, toml, config, markdown, shell scripts, SQL, Dockerfile, .env.example). Never read an entire source file blind. Prefer `include_body: true` for precise function signatures, class hierarchies, and constraint documentation.
 - **Source material over inference.** Generate from what the scan found in source files. Do not invent capabilities or behaviors.
 - **Follow the style guide.** It defines voice, formatting, and conventions. When in doubt, the style guide is authoritative.
