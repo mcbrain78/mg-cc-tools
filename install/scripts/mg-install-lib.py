@@ -1872,9 +1872,10 @@ def cmd_get_install_plan(args):
         with open(args.output, "w", encoding="utf-8") as f:
             json.dump(plan, f, indent=2)
             f.write("\n")
-        # Compact summary: tool + pattern + post_install per entry
+        # Compact summary: tool + pattern + install_cmd + post_install per entry
         compact = [
             {"tool": p["tool"], "pattern": p["pattern"],
+             "install_cmd": p["install_cmd"],
              "post_install": p["post_install"]}
             for p in plan
         ]

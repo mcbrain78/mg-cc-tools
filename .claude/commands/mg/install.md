@@ -1,12 +1,13 @@
 ---
 name: mg:install
 description: Install, update, and manage mg-cc-tools in target projects
+argument-hint: "[target] [tool1,tool2,...]"
 allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, Agent
 ---
 
 # mg:install -- Unified Tool Installer & Manager
 
-You are the **mg-cc-tools installer**. You run an interactive 8-step flow: scan, select, preflight, install, validate, summarize. You always run from the mg-cc-tools directory.
+You are the **mg-cc-tools installer**. You always run from the mg-cc-tools directory.
 
 ## Prerequisites
 
@@ -21,6 +22,37 @@ MG_INSTALL_LIB="./install/scripts/mg-install-lib.py"
 ## Display Rule
 
 **CRITICAL INSTRUCTION:** All `render-*` subcommands wrap their output in `<verbatim>` tags. You MUST reproduce EVERY line between `<verbatim>` and `</verbatim>` exactly as-is in your response text. Do not drop, truncate, reformat, or summarize ANY line — this includes legends, footnotes, and separators. Bash tool output is collapsed in the UI and invisible to the user; your response text is the ONLY way they see this content. All other subcommand output is machine-readable JSON — do NOT echo to the user. Parse it for the next step.
+
+---
+
+## Mode Detection
+
+Parse `$ARGUMENTS` into space-separated tokens:
+
+- **0 tokens** → **interactive mode** (full 8-step flow below)
+- **1 token** → treat as `TARGET_PATH`, interactive mode for tool selection (Steps 2-3)
+- **2 tokens** → **quick mode**: first token = `TARGET_PATH`, second token = comma-separated tool names
+
+**Quick mode** skips Steps 1 and 3 (target selection and action menus). All other steps run normally:
+
+1. Validate the target path exists. If it does not have a `.claude/` directory:
+   ```bash
+   mkdir -p "$TARGET_PATH/.claude/commands/mg"
+   ```
+2. Set up TMP directory:
+   ```bash
+   MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")" && mkdir -p "$TMP" && rm -f "$TMP"/*.json
+   ```
+3. Run Step 2 (scan-status) — but do NOT render the status table.
+4. Resolve the tool names directly:
+   ```bash
+   python3 "$MG_INSTALL_LIB" resolve-tool-selection --input "$TMP/scan-status.json" --selection "<tool_names>"
+   ```
+   If `"error"` is returned: STOP. Show the error message.
+   If `"tools"` is returned: proceed to Step 4 (preflight) with that list.
+5. Continue with Steps 4 → 5 → 6 → 7 → 8 as normal.
+
+For **interactive mode**, proceed with Steps 1-8 below.
 
 ---
 
@@ -174,16 +206,14 @@ Get the install plan:
 python3 "$MG_INSTALL_LIB" get-install-plan --input "$TMP/scan-status.json" --tools "tool1,tool2" --output "$TMP/install-plan.json"
 ```
 
-The compact stdout JSON contains an array of `{tool, pattern, post_install}` entries. For each tool in order:
+The compact stdout JSON contains an array of `{tool, pattern, install_cmd, post_install}` entries. For each tool in order:
 
 **copy_only pattern** (has install.sh, no post-install):
-```bash
-bash ./<tool>/install.sh --project "$TARGET_PATH"
-```
+Run the `install_cmd` from the plan entry exactly as-is.
 If exit code != 0: STOP.
 
 **copy_configure pattern** (has install.sh + post-install):
-1. Run install.sh (same as copy_only). If exit code != 0: STOP.
+1. Run `install_cmd` from the plan entry. If exit code != 0: STOP.
 2. Read the post-install file: `cat ./<tool>/<post_install>`
 3. Spawn Agent with prompt: `"Target project: $TARGET_PATH\nSource directory: ./\n\n<post-install.md contents>"`
 4. Check Agent output for markers:
