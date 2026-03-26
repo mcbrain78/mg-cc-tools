@@ -92,7 +92,6 @@ def classify(text):
     sorted_audiences = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
     top_audience, top_score = sorted_audiences[0]
-    second_score = sorted_audiences[1][1] if len(sorted_audiences) > 1 else 0
 
     # Compute confidence based on dominance of top score over all others
     total_score = sum(s for _, s in sorted_audiences)

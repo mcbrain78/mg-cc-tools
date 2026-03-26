@@ -45,6 +45,16 @@ def _make_scan_data():
                 "ci": "github-actions",
                 "config_files": ["pyproject.toml"],
             },
+            "database": {
+                "orm_framework": "SQLAlchemy 2.0",
+                "migration_tool": "Alembic",
+                "schemas": {
+                    "public": {
+                        "tables": ["users", "sessions"],
+                        "migration_chain": "alembic_main",
+                    }
+                },
+            },
         },
         "gsd_context": {
             "milestone": "v1.0",
@@ -858,3 +868,34 @@ class TestProjectModelExtraction:
             assert "project_model" not in view
             expected_keys = {"gsd_context", "source_material_index", "gap_analysis"}
             assert set(view.keys()) == expected_keys
+
+    def test_preserves_database_field_in_project_model(self):
+        """Database field is preserved (not stripped) in slimmed project model."""
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE",
+                    "--project-model-output", pm_path,
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(pm_path) as f:
+                pm = json.load(f)
+
+            assert "database" in pm
+            assert pm["database"]["orm_framework"] == "SQLAlchemy 2.0"
+            assert "public" in pm["database"]["schemas"]
+            assert pm["database"]["schemas"]["public"]["tables"] == ["users", "sessions"]

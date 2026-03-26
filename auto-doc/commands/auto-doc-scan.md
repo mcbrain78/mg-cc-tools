@@ -88,7 +88,17 @@ GSD integration: {true|false}
    - Database schemas, API contracts, configuration files
    - Environment files: .env.example, config templates (never read .env — may contain secrets)
 
-2. **Detect user interfaces.** Apply heuristics:
+2. **Database schema extraction.** If ORM models are detected (SQLAlchemy, Django, Prisma, etc.):
+   a. Find all model definition files (Glob for models.py, models/*.py, schema.prisma, etc.)
+   b. Use get_symbols_overview to identify model classes
+   c. For each model class, use find_symbol to read its table/schema configuration
+      (SQLAlchemy: __tablename__ and __table_args__["schema"];
+       Django: Meta.db_table; Prisma: @@map and schema)
+   d. Find migration configurations (alembic.ini, alembic/env.py, django settings)
+   e. Build the database field mapping each schema to its tables and migration chain
+   f. If no ORM detected, set database to null
+
+3. **Detect user interfaces.** Apply heuristics:
    - Front-end frameworks with routes/templates (React, Vue, Next.js, Flask+templates, Django+templates) -> type: web
    - CLI frameworks/argument parsers (argparse, click, commander, clap, cobra) -> type: cli
    - API-only frameworks (FastAPI without templates, Express without views) -> type: api
@@ -96,7 +106,7 @@ GSD integration: {true|false}
    - Mark strongest signal as primary: true, others as primary: false
    - For each, provide name (e.g. 'React Dashboard') and url_pattern (for web) or null
 
-3. **Load GSD context** (only if GSD integration is true AND .planning/ directory exists):
+4. **Load GSD context** (only if GSD integration is true AND .planning/ directory exists):
    - Read .planning/STATE.md, .planning/REQUIREMENTS.md
    - Glob .planning/phases/**/*-SUMMARY.md — extract phase names, deviations, decisions
    - Glob .planning/phases/**/*-VERIFICATION.md — extract gaps
@@ -104,14 +114,14 @@ GSD integration: {true|false}
    - Build gsd_context object: milestone, completed_phases, deviations, new_requirements_completed
    If GSD integration is false or .planning/ missing, set gsd_context to null.
 
-4. **Read config** from the config path. Check the user_interfaces field:
+5. **Read config** from the config path. Check the user_interfaces field:
    - If user_interfaces exists AND is a non-empty array: include it in project_model as-is (Priority 1 — already confirmed)
-   - If absent or empty: include your detected interfaces (from step 2) but mark them as unconfirmed
+   - If absent or empty: include your detected interfaces (from step 3) but mark them as unconfirmed
 
-5. **Write scan-orientation.md** to {project_root}/.mg/docs/scan-logs/scan-orientation.md
+6. **Write scan-orientation.md** to {project_root}/.mg/docs/scan-logs/scan-orientation.md
    Include: project name, structure overview, languages/frameworks, entry points, components, deployment artifacts, existing documentation, environment files, config loaded, python3 version.
 
-6. **Write scan-project.json** to {project_root}/.mg/docs/scan-logs/scan-project.json
+7. **Write scan-project.json** to {project_root}/.mg/docs/scan-logs/scan-project.json
    Format:
    {
      'project_model': {
@@ -119,20 +129,22 @@ GSD integration: {true|false}
        'entry_points': [{'path': '...', 'type': '...', 'description': '...'}],
        'components': [{'name': '...', 'path': '...', 'purpose': '...', 'public_api': [...], 'dependencies': [...], 'database_tables': [...]}],
        'infrastructure': {'deployment': '...', 'ci': '...', 'config_files': [...]},
-       'user_interfaces': [...]  // from step 4
+       'user_interfaces': [...],  // from step 5
+       'database': {...}  // from step 2 (null if no ORM detected)
      },
      'gsd_context': {...} or null
    }
    This file participates in the merge — project_model MUST be present (Pitfall 3).
 
-7. **Return a brief summary** (this is what the orchestrator sees):
+8. **Return a brief summary** (this is what the orchestrator sees):
    ORIENT COMPLETE
    tech_stack_count: N
    component_count: N
    entry_point_count: N
    gsd_loaded: true|false
    interfaces_confirmed: true|false
-   detected_interfaces: [{type, name, primary}] or []"
+   detected_interfaces: [{type, name, primary}] or []
+   database_schemas: N (or 'none')"
 )
 ```
 

@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.json_io import save_json
-from lib.git_helpers import git_file_changed_since, git_last_modified
+from lib.git_helpers import git_file_changed_since
 
 
 # ── Constants ────────────────────────────────────────────────────────────────

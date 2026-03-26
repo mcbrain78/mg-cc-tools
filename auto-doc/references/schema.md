@@ -156,6 +156,37 @@ Each component object:
 | `ci` | `string` | yes | CI/CD system in use (or `"none"`) |
 | `config_files` | `array of string` | yes | Configuration files in the project |
 
+### `project_model.database`
+
+- **Type:** `object or null`
+- **Required:** yes
+- **Description:** Database schema information extracted from ORM model definitions. `null` if the project has no database.
+
+```json
+"database": {
+  "orm_framework": "SQLAlchemy 2.0",
+  "migration_tool": "Alembic",
+  "schemas": {
+    "road_runner": {
+      "tables": ["etl_runs", "stocks", "data_drift_warnings"],
+      "migration_chain": "alembic_road_runner"
+    },
+    "raw_fmp": {
+      "tables": ["raw_fmp_income_statements", "raw_fmp_balance_sheets"],
+      "migration_chain": "alembic_road_runner"
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `database.orm_framework` | `string` | yes | ORM framework name and version |
+| `database.migration_tool` | `string` | yes | Migration tool (or `"none"`) |
+| `database.schemas` | `object` | yes | Map of schema name to schema details |
+| `database.schemas.{name}.tables` | `array of string` | yes | Tables in this schema |
+| `database.schemas.{name}.migration_chain` | `string` | yes | Which migration chain manages this schema |
+
 ### `project_model.user_interfaces`
 
 - **Type:** `array of object` (optional -- field may be absent)
@@ -372,7 +403,8 @@ A minimal valid `docs-scan.json` for an initial scan of a small project:
       "ci": "none",
       "config_files": ["pyproject.toml"]
     },
-    "user_interfaces": []
+    "user_interfaces": [],
+    "database": null
   },
   "source_material_index": {},
   "staleness_report": [],
