@@ -45,3 +45,21 @@ def save_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False)
         f.write("\n")
     os.replace(tmp, path)
+
+
+def save_text(path, text):
+    """Atomic write text to path via temp file + os.replace.
+
+    Creates parent directories if they don't exist. Writes to a
+    temporary file first, then atomically replaces the target to
+    prevent corruption from interrupted writes.
+
+    Args:
+        path: Destination file path.
+        text: String content to write.
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
