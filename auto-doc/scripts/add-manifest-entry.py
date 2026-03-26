@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Validate and upsert a single manifest entry to a reference manifest file.
+"""Validate and upsert manifest entries to a reference manifest file.
 
-Called by writer agents after writing each document section. The agent
-writes entry data to a temp file (via Write tool), then invokes this
-script with --input pointing to that file. The script validates required
-fields, rejects invalid input to a .rejected file, and upserts the entry
-atomically into the manifest file keyed by (document, section).
+Called by writer agents after writing document sections. The agent
+writes entry data to temp files (via Write tool), then invokes this
+script with --input pointing to each file. Multiple --input flags
+can be passed to batch entries in a single call.
 
 Usage:
     python3 add-manifest-entry.py \
         --input {TMP_DIR}/entry-001.json \
+        --input {TMP_DIR}/entry-002.json \
         --manifest .mg/docs/reference-manifests/developers.json
 
 Input JSON must contain:
@@ -27,6 +27,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
+from lib.symbols import extract_python_symbols
 
 REQUIRED_FIELDS = ["document", "section"]
 
@@ -115,51 +116,131 @@ def upsert_manifest(manifest, entry):
     return manifest
 
 
+def check_symbols(entry, project_root):
+    """Check that symbols in the entry exist in the referenced file_paths.
+
+    Advisory only -- prints warnings to stderr, never affects exit code.
+    Skips if: no symbols, metadata entry, no .py files in file_paths,
+    or file doesn't exist.
+    """
+    if entry.get("section") == "_written_sections":
+        return
+
+    symbols = entry.get("symbols", [])
+    if not symbols:
+        return
+
+    file_paths = entry.get("file_paths", [])
+    if not file_paths:
+        return
+
+    # Only check .py files -- can't extract symbols from yaml, md, etc.
+    py_paths = [fp for fp in file_paths if fp.endswith(".py")]
+    if not py_paths:
+        return
+
+    # Build union of all symbols from .py files
+    all_defined = set()
+    for rel_path in py_paths:
+        abs_path = os.path.join(project_root, rel_path)
+        if not os.path.isfile(abs_path):
+            continue
+        try:
+            with open(abs_path, "r", encoding="utf-8") as f:
+                source = f.read()
+        except OSError:
+            continue
+        all_defined.update(extract_python_symbols(source))
+
+    # If no symbols could be extracted (all files missing or empty), skip
+    if not all_defined:
+        return
+
+    # Check each symbol
+    for symbol in symbols:
+        if symbol not in all_defined:
+            paths_str = ", ".join(py_paths)
+            print(
+                f"WARNING: symbol '{symbol}' not found in file_paths [{paths_str}]. "
+                f"Add the file that defines it.",
+                file=sys.stderr,
+            )
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Validate and upsert a manifest entry"
+        description="Validate and upsert manifest entries"
     )
     parser.add_argument(
-        "--input", required=True, dest="input_file",
-        help="Path to temp file with entry JSON",
+        "--input", required=True, dest="input_files",
+        action="append",
+        help="Path to temp file with entry JSON (repeatable)",
     )
     parser.add_argument(
         "--manifest", required=True,
         help="Path to reference manifest JSON file",
     )
+    parser.add_argument(
+        "--project-root", default=None,
+        help="Absolute path to project root for resolving file paths (enables symbol validation)",
+    )
 
     args = parser.parse_args()
-    input_path = os.path.abspath(args.input_file)
     manifest_path = os.path.abspath(args.manifest)
+    project_root = os.path.abspath(args.project_root) if args.project_root else None
 
-    # Read input from temp file
-    try:
-        input_data = load_json(input_path)
-    except json.JSONDecodeError as e:
-        save_rejected(input_path, f"Invalid JSON: {e}")
-        sys.exit(1)
-
-    if input_data is None:
-        save_rejected(input_path, "Input file not found or empty")
-        sys.exit(1)
-
-    # Validate
-    is_valid, error = validate_entry(input_data)
-    if not is_valid:
-        save_rejected(input_path, error)
-        sys.exit(1)
-
-    # Load existing manifest, upsert, save atomically
+    # Load existing manifest once
     manifest = load_json(manifest_path, default={})
-    upsert_manifest(manifest, input_data)
-    save_json(manifest_path, manifest)
 
-    doc = input_data["document"]
-    section = input_data["section"]
+    added = 0
+    rejected = 0
+
+    for input_file in args.input_files:
+        input_path = os.path.abspath(input_file)
+
+        # Read input from temp file
+        try:
+            input_data = load_json(input_path)
+        except json.JSONDecodeError as e:
+            save_rejected(input_path, f"Invalid JSON: {e}")
+            rejected += 1
+            continue
+
+        if input_data is None:
+            save_rejected(input_path, "Input file not found or empty")
+            rejected += 1
+            continue
+
+        # Validate
+        is_valid, error = validate_entry(input_data)
+        if not is_valid:
+            save_rejected(input_path, error)
+            rejected += 1
+            continue
+
+        # Advisory symbol check (warnings only, before upsert)
+        if project_root:
+            check_symbols(input_data, project_root)
+
+        # Upsert into manifest
+        upsert_manifest(manifest, input_data)
+        added += 1
+
+    # Single atomic write after all entries processed
+    if added > 0:
+        save_json(manifest_path, manifest)
+
+    audience = os.path.splitext(os.path.basename(manifest_path))[0]
     print(
-        f"Added manifest entry: {doc}/{section}",
+        f"Added {added} manifest entries to {audience}",
         file=sys.stderr,
     )
+
+    if rejected > 0:
+        print(
+            f"Rejected {rejected} invalid entries (see .rejected files)",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

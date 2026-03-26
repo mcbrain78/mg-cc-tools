@@ -193,7 +193,7 @@ class TestAddManifestEntryBasic:
             assert data["generated"] == "2026-03-22T12:00:00Z"
 
     def test_confirmation_message_on_stderr(self):
-        """Confirmation message printed to stderr with document and section."""
+        """Confirmation message printed to stderr with count."""
         with tempfile.TemporaryDirectory() as tmp:
             manifest_file = os.path.join(tmp, "manifest.json")
             input_file = os.path.join(tmp, "input.json")
@@ -208,8 +208,7 @@ class TestAddManifestEntryBasic:
                 capture_output=True, text=True,
             )
             assert result.returncode == 0
-            assert "ARCHITECTURE" in result.stderr
-            assert "overview" in result.stderr
+            assert "Added 1 manifest entries" in result.stderr
 
 
 class TestAddManifestEntryUpsert:
@@ -280,7 +279,8 @@ class TestAddManifestEntryRejection:
                  "--manifest", manifest_file],
                 capture_output=True, text=True,
             )
-            assert result.returncode != 0
+            assert result.returncode == 0
+            assert "Rejected 1" in result.stderr
 
             rejected_path = input_file + ".rejected"
             assert os.path.exists(rejected_path)
@@ -302,7 +302,8 @@ class TestAddManifestEntryRejection:
                  "--manifest", manifest_file],
                 capture_output=True, text=True,
             )
-            assert result.returncode != 0
+            assert result.returncode == 0
+            assert "Rejected 1" in result.stderr
 
             rejected_path = input_file + ".rejected"
             assert os.path.exists(rejected_path)
@@ -326,7 +327,8 @@ class TestAddManifestEntryRejection:
                  "--manifest", manifest_file],
                 capture_output=True, text=True,
             )
-            assert result.returncode != 0
+            assert result.returncode == 0
+            assert "Rejected 1" in result.stderr
 
             rejected_path = input_file + ".rejected"
             assert os.path.exists(rejected_path)
@@ -393,3 +395,290 @@ class TestAddManifestEntryMetadata:
 
             section = data["documents"]["ARCHITECTURE"]["_written_sections"]
             assert section["sections_written"] == ["overview", "data-model", "auth-flow"]
+
+
+class TestAddManifestEntryBatch:
+    """Multiple --input flags for batch processing."""
+
+    def test_multiple_inputs_single_call(self):
+        """Multiple --input flags upsert all entries in one call."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            entries = [
+                {
+                    "document": "ARCHITECTURE",
+                    "section": "overview",
+                    "symbols": ["load_json"],
+                    "file_paths": ["lib/json_io.py"],
+                },
+                {
+                    "document": "ARCHITECTURE",
+                    "section": "data-model",
+                    "symbols": ["User", "Session"],
+                    "file_paths": ["models.py"],
+                },
+                {
+                    "document": "API_REFERENCE",
+                    "section": "endpoints",
+                    "symbols": ["get_user"],
+                    "file_paths": ["api.py"],
+                },
+            ]
+
+            input_files = []
+            cmd = [sys.executable, SCRIPT_PATH, "--manifest", manifest_file]
+            for i, entry in enumerate(entries):
+                path = os.path.join(tmp, f"entry-{i}.json")
+                with open(path, "w") as f:
+                    json.dump(entry, f)
+                input_files.append(path)
+                cmd.extend(["--input", path])
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            assert result.returncode == 0
+            assert "Added 3 manifest entries" in result.stderr
+
+            with open(manifest_file) as f:
+                data = json.load(f)
+
+            assert "overview" in data["documents"]["ARCHITECTURE"]
+            assert "data-model" in data["documents"]["ARCHITECTURE"]
+            assert "endpoints" in data["documents"]["API_REFERENCE"]
+
+    def test_partial_failure_continues(self):
+        """One invalid + one valid input: valid is upserted, invalid rejected, exit 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            # Invalid entry (no symbols or file_paths)
+            invalid_path = os.path.join(tmp, "invalid.json")
+            with open(invalid_path, "w") as f:
+                json.dump({
+                    "document": "DOC",
+                    "section": "bad",
+                    "symbols": [],
+                    "file_paths": [],
+                }, f)
+
+            # Valid entry
+            valid_path = os.path.join(tmp, "valid.json")
+            with open(valid_path, "w") as f:
+                json.dump(_valid_entry(), f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", invalid_path,
+                 "--input", valid_path,
+                 "--manifest", manifest_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            # Valid entry was saved
+            with open(manifest_file) as f:
+                data = json.load(f)
+            assert "ARCHITECTURE" in data["documents"]
+            assert "overview" in data["documents"]["ARCHITECTURE"]
+
+            # Invalid entry was rejected
+            assert os.path.exists(invalid_path + ".rejected")
+            assert "Added 1 manifest entries" in result.stderr
+            assert "Rejected 1" in result.stderr
+
+    def test_single_input_backward_compat(self):
+        """Single --input flag still works (backward compatibility)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            with open(input_file, "w") as f:
+                json.dump(_valid_entry(), f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(manifest_file) as f:
+                data = json.load(f)
+
+            assert "ARCHITECTURE" in data["documents"]
+            assert "Added 1 manifest entries" in result.stderr
+
+
+class TestAddManifestEntrySymbolValidation:
+    """Advisory symbol validation with --project-root."""
+
+    def test_symbol_found_no_warning(self):
+        """Entry with symbols matching file_paths produces no WARNING."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            # Create a Python file with the symbols
+            src_dir = os.path.join(tmp, "src")
+            os.makedirs(src_dir)
+            with open(os.path.join(src_dir, "models.py"), "w") as f:
+                f.write("class User:\n    pass\n\nclass Session:\n    pass\n")
+
+            entry = {
+                "document": "ARCHITECTURE",
+                "section": "data-model",
+                "symbols": ["User", "Session"],
+                "file_paths": ["src/models.py"],
+            }
+            with open(input_file, "w") as f:
+                json.dump(entry, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file,
+                 "--project-root", tmp],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "WARNING" not in result.stderr
+
+    def test_symbol_not_found_warns(self):
+        """Symbol not found in any file_path produces WARNING on stderr."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            # Create a Python file WITHOUT the referenced symbol
+            src_dir = os.path.join(tmp, "src")
+            os.makedirs(src_dir)
+            with open(os.path.join(src_dir, "models.py"), "w") as f:
+                f.write("class User:\n    pass\n")
+
+            entry = {
+                "document": "ARCHITECTURE",
+                "section": "data-model",
+                "symbols": ["User", "ArchiveBase"],
+                "file_paths": ["src/models.py"],
+            }
+            with open(input_file, "w") as f:
+                json.dump(entry, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file,
+                 "--project-root", tmp],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "WARNING" in result.stderr
+            assert "ArchiveBase" in result.stderr
+            # Entry should still be upserted (advisory only)
+            assert "Added 1 manifest entries" in result.stderr
+
+    def test_non_python_files_skip_check(self):
+        """Only .yaml in file_paths skips symbol check (no warning)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            # Create a YAML file
+            with open(os.path.join(tmp, "config.yaml"), "w") as f:
+                f.write("key: value\n")
+
+            entry = {
+                "document": "OPERATIONS",
+                "section": "config",
+                "symbols": ["some_symbol"],
+                "file_paths": ["config.yaml"],
+            }
+            with open(input_file, "w") as f:
+                json.dump(entry, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file,
+                 "--project-root", tmp],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "WARNING" not in result.stderr
+
+    def test_metadata_entry_skips_check(self):
+        """_written_sections metadata entry skips symbol check."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            entry = {
+                "document": "ARCHITECTURE",
+                "section": "_written_sections",
+                "symbols": [],
+                "file_paths": [],
+                "sections_written": ["overview"],
+            }
+            with open(input_file, "w") as f:
+                json.dump(entry, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file,
+                 "--project-root", tmp],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "WARNING" not in result.stderr
+
+    def test_missing_file_no_crash(self):
+        """file_path that doesn't exist causes no crash and no warning."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            entry = {
+                "document": "ARCHITECTURE",
+                "section": "overview",
+                "symbols": ["load_json"],
+                "file_paths": ["nonexistent/file.py"],
+            }
+            with open(input_file, "w") as f:
+                json.dump(entry, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file,
+                 "--project-root", tmp],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            # No crash, and no WARNING (no symbols extracted = skip check)
+            assert "WARNING" not in result.stderr
+
+    def test_no_project_root_skips_check(self):
+        """Without --project-root, no symbol check is performed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            entry = {
+                "document": "ARCHITECTURE",
+                "section": "data-model",
+                "symbols": ["NonexistentSymbol"],
+                "file_paths": ["src/models.py"],
+            }
+            with open(input_file, "w") as f:
+                json.dump(entry, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "WARNING" not in result.stderr

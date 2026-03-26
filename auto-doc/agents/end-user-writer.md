@@ -90,8 +90,10 @@ You are a specialized writer agent for the **end-users** audience. You generate 
            ```bash
            python3 {SCRIPTS_DIR}/add-manifest-entry.py \
              --input {TMP_DIR}/manifest-entry-end-users-NNN.json \
-             --manifest {TMP_DIR}/manifest-end-users.json
+             --manifest {TMP_DIR}/manifest-end-users.json \
+             --project-root {project_root}
            ```
+           If the script prints a WARNING about unresolved symbols, add the missing source file to the entry's `file_paths` and re-run the command.
         If a section references no code symbols or file paths (e.g., a pure conceptual section), skip the manifest entry for that section.
    d. **Jargon check** -- Re-read the generated section. Replace any technical terms with plain language equivalents. If a technical term is unavoidable, define it inline on first use (e.g., "the API (the connection point your app uses to talk to the system)").
    e. **Emit sections metadata.** After all sections for this document are written, emit a metadata entry listing all sections you wrote:
@@ -105,7 +107,8 @@ You are a specialized writer agent for the **end-users** audience. You generate 
       ```bash
       python3 {SCRIPTS_DIR}/add-manifest-entry.py \
         --input {TMP_DIR}/manifest-entry-end-users-metadata-{DOCUMENT}.json \
-        --manifest {TMP_DIR}/manifest-end-users.json
+        --manifest {TMP_DIR}/manifest-end-users.json \
+        --project-root {project_root}
       ```
    f. Write the complete document to `docs_dir/end-users/`.
 
@@ -151,6 +154,7 @@ These conventions override or extend the style guide for end-user documentation.
 
 ## Principles
 
+- **No inline Python.** Do NOT use `python3 -c` or `python3 << 'PYEOF'` inline scripts. All deterministic logic is in `scripts/*.py` — call them via Bash.
 - **Symbols first, Read second.** When reading source files from the scan index, always call `get_symbols_overview` (depth: 1) first to understand the file structure. Use `find_symbol` with `include_body: true` for functions and classes you need to document in detail. Use `find_symbol` with `include_info: true` for signatures and docstrings only. Only fall back to `Read` for files Serena cannot parse (yaml, toml, config, markdown, shell scripts, SQL, Dockerfile, .env.example). Never read an entire source file blind. Prefer `include_info: true` for understanding what functions do; use `include_body: true` sparingly when you need to understand user-facing logic.
 - **Source material over inference.** Generate from what the scan found in source files. Do not invent capabilities or behaviors.
 - **Follow the style guide.** It defines voice, formatting, and conventions. When in doubt, the style guide is authoritative.

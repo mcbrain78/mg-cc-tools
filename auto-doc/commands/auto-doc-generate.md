@@ -26,14 +26,15 @@ This tells you the JSON format of `docs-scan.json` -- the input produced by the 
    - `audiences` (which are enabled and their document lists)
    - `shared_documents` (e.g., `["OVERVIEW", "GLOSSARY"]`)
 
-2. **Read scan data.** Load `.mg/docs/docs-scan.json`. If this file does not exist, abort with:
+2. **Read scan data.** Use the Read tool to read the first 5 lines of `.mg/docs/docs-scan.json`. If this file does not exist, abort with:
    ```
    Error: No scan data found at .mg/docs/docs-scan.json.
    Run /mg:auto-doc-scan first to analyze the project.
    ```
+   Find the `root_path` field value and store as `project_root`. (The full scan is processed by scripts in later steps -- do not load the entire file.)
 
 3. **Extract runtime paths:**
-   - `project_root`: from scan data `root_path` field
+   - `project_root`: from the `root_path` field read above
    - `scan_data_path`: `{project_root}/.mg/docs/docs-scan.json`
    - `docs_dir_abs`: `{project_root}/{docs_dir}` (absolute path to output directory)
 
@@ -364,33 +365,16 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
 ### Manifest Merge
 
-After all writer agents complete, merge their temp manifests into persisted location.
+After all writer agents complete, merge their temp manifests into persisted location:
 
-For each audience that had a writer agent run (i.e., each audience that was spawned in Stage 2):
+```bash
+uv run {SCRIPTS_DIR}/merge-manifests.py \
+    --tmp-dir {TMP_DIR} \
+    --output-dir {project_root}/.mg/docs/reference-manifests \
+    --audiences end-users,developers,agents,devops
+```
 
-1. Check if `{TMP_DIR}/manifest-{audience}.json` exists. If not, skip this audience (agent produced no manifest entries).
-
-2. Read the temp manifest: `{TMP_DIR}/manifest-{audience}.json`
-
-3. Read persisted manifest (if it exists): `{project_root}/.mg/docs/reference-manifests/{audience}.json`
-   If it does not exist, start with an empty manifest: `{"audience": "{audience}", "generated": "", "documents": {}}`
-
-4. **Process _written_sections metadata for stale cleanup.** For each document in the temp manifest:
-   - Look for an entry with section key `_written_sections`
-   - If found, read its `sections_written` list
-   - In the persisted manifest for that document, remove any section entries whose slug is NOT in `sections_written` (these are stale sections that were dropped during regeneration)
-   - Delete the `_written_sections` entry from the temp manifest (do not persist metadata)
-
-5. **Overlay temp entries onto persisted manifest.** For each document -> section in the temp manifest, replace the matching (document, section) entry in the persisted manifest. Preserve entries in the persisted manifest that are not in the temp manifest (sections that were not regenerated).
-
-6. **Update timestamp.** Set `generated` to the current ISO timestamp.
-
-7. **Write merged manifest** to `{project_root}/.mg/docs/reference-manifests/{audience}.json`.
-
-This merge logic ensures:
-- Initial mode: persisted manifests were cleared in Step 3, so merge equals copy
-- Update mode: only regenerated sections are upserted, all other sections preserved
-- Stale sections from dropped headings are cleaned up via _written_sections metadata
+This handles: reading temp manifests, overlaying onto persisted manifests, cleaning up stale sections via `_written_sections` metadata, setting timestamps, and writing atomically. Audiences with no temp manifest are skipped.
 
 ### Stage 3: Reconcile Glossary
 

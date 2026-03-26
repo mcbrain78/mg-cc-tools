@@ -138,3 +138,70 @@ class TestExtractVerifyContext:
             )
             assert result.returncode != 0
             assert "not found" in result.stderr
+
+
+class TestExtractVerifyContextOptionalSections:
+    """Optional sections via --templates-dir."""
+
+    def test_optional_sections_included(self):
+        """Templates with OPTIONAL markers produce optional_sections in output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_file = os.path.join(tmp, "docs-scan.json")
+            output_file = os.path.join(tmp, "context.json")
+            templates_dir = os.path.join(tmp, "templates")
+            os.makedirs(templates_dir)
+
+            # Write scan data
+            with open(scan_file, "w") as f:
+                json.dump({"root_path": "/project"}, f)
+
+            # Write template with OPTIONAL markers
+            with open(os.path.join(templates_dir, "OPERATIONS.template.md"), "w") as f:
+                f.write(
+                    "## Deployment\n"
+                    "<!-- PURPOSE: deploy -->\n\n"
+                    "## Monitoring\n"
+                    "<!-- OPTIONAL -- delete if not applicable -->\n\n"
+                    "## Backup\n"
+                    "<!-- OPTIONAL -- delete if not applicable -->\n"
+                )
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-file", scan_file,
+                 "--output", output_file,
+                 "--templates-dir", templates_dir],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                context = json.load(f)
+
+            assert "optional_sections" in context
+            assert len(context["optional_sections"]) == 2
+            slugs = {s.split("/", 1)[1] for s in context["optional_sections"]}
+            assert "monitoring" in slugs
+            assert "backup" in slugs
+
+    def test_no_templates_dir_omits_field(self):
+        """Without --templates-dir, output has no optional_sections key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_file = os.path.join(tmp, "docs-scan.json")
+            output_file = os.path.join(tmp, "context.json")
+
+            with open(scan_file, "w") as f:
+                json.dump({"root_path": "/project"}, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-file", scan_file,
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                context = json.load(f)
+
+            assert "optional_sections" not in context

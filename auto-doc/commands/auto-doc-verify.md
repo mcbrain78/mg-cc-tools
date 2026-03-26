@@ -43,9 +43,7 @@ If either prerequisite fails, abort with the corresponding message and do not pr
    - `docs_dir` (default: `docs/auto-doc`)
    - `audiences` (which are enabled and their document lists)
 
-2. **Read scan data.** Load `.mg/docs/docs-scan.json`. Extract:
-   - `root_path` as `project_root`
-   - `source_material_index` (needed for completeness checks)
+2. **Read scan data.** Use the Read tool to read the first 5 lines of `.mg/docs/docs-scan.json`. Find the `root_path` field value and store as `project_root`. (The full scan is processed by scripts in later steps -- do not load the entire file.)
 
 3. **Build runtime paths:**
    - `docs_dir_abs` = `{project_root}/{docs_dir}`
@@ -66,11 +64,12 @@ If either prerequisite fails, abort with the corresponding message and do not pr
    ```
    This ensures each verify run produces findings reflecting the current documentation state. Generate reads findings but never clears them -- only verify clears (per finding lifecycle convention).
 
-6. **Extract verify context.** Extract the 3 fields the verifier needs from the full scan data:
+6. **Extract verify context.** Extract the fields the verifier needs from the full scan data:
    ```bash
    python3 {SCRIPTS_DIR}/extract-verify-context.py \
      --scan-file {project_root}/.mg/docs/docs-scan.json \
-     --output {project_root}/.mg/docs/tmp/verify-scan-context.json
+     --output {project_root}/.mg/docs/tmp/verify-scan-context.json \
+     --templates-dir {TEMPLATES_DIR}
    ```
 
 7. **Prepare doc review manifest.** Split large docs into chunks and produce a manifest for all docs:
@@ -190,8 +189,6 @@ After both agents complete, merge their isolated findings and generate the verif
 ```
 
 Group issues by severity (critical first). Within each severity group, list issues in the order they were found. **Skip findings already fully described in a Systemic Issues group** — instead include a one-line back-reference: `See Systemic Issue #N above (K findings)`. Include document path, section name, check type, description, and an actionable suggestion for every non-systemic issue. Omit empty severity sections.
-
-**Completeness finding adjustments:** When reporting completeness findings for missing sections, check whether the section heading in the template is marked `<!-- OPTIONAL -->`. If so, downgrade the finding from high to **info** severity and note it was an optional section the writer chose to skip. For section name mismatches (e.g., `documented_sections` says `adding-a-new-scoring-model` but the actual heading is `adding-a-new-finance-metric`), note the mismatch but downgrade to **medium** — the content exists under a different name.
 
 ### Step 4: Present Results
 

@@ -59,8 +59,10 @@ You are a specialized writer agent for the **developers** audience. You generate
            ```bash
            python3 {SCRIPTS_DIR}/add-manifest-entry.py \
              --input {TMP_DIR}/manifest-entry-developers-NNN.json \
-             --manifest {TMP_DIR}/manifest-developers.json
+             --manifest {TMP_DIR}/manifest-developers.json \
+             --project-root {project_root}
            ```
+           If the script prints a WARNING about unresolved symbols, add the missing source file to the entry's `file_paths` and re-run the command.
         If a section references no code symbols or file paths (e.g., a pure conceptual section), skip the manifest entry for that section.
    d. **Code example review** -- For each code example in the generated content:
       - Verify it uses the correct language tag (e.g., `python`, `bash`, `json`).
@@ -79,7 +81,8 @@ You are a specialized writer agent for the **developers** audience. You generate
       ```bash
       python3 {SCRIPTS_DIR}/add-manifest-entry.py \
         --input {TMP_DIR}/manifest-entry-developers-metadata-{DOCUMENT}.json \
-        --manifest {TMP_DIR}/manifest-developers.json
+        --manifest {TMP_DIR}/manifest-developers.json \
+        --project-root {project_root}
       ```
    h. Write the complete document to `docs_dir/developers/`.
 
@@ -120,6 +123,7 @@ These conventions override or extend the style guide for developer documentation
 
 ## Principles
 
+- **No inline Python.** Do NOT use `python3 -c` or `python3 << 'PYEOF'` inline scripts. All deterministic logic is in `scripts/*.py` — call them via Bash.
 - **Symbols first, Read second.** When reading source files from the scan index, always call `get_symbols_overview` (depth: 1) first to understand the file structure. Use `find_symbol` with `include_body: true` for functions and classes you need to document in detail. Use `find_symbol` with `include_info: true` for signatures and docstrings only. Only fall back to `Read` for files Serena cannot parse (yaml, toml, config, markdown, shell scripts, SQL, Dockerfile, .env.example). Never read an entire source file blind. Prefer `include_body: true` for code examples and type signatures that will appear in documentation.
 - **Source material over inference.** Generate from what the scan found in source files. Do not invent capabilities or behaviors.
 - **Follow the style guide.** It defines voice, formatting, and conventions. When in doubt, the style guide is authoritative.

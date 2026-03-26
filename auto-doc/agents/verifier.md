@@ -114,6 +114,7 @@ Severity: **medium** for minor mixing (a few sentences), **high** for structural
 Compare the `documented_sections` list from the extracted scan context (at `scan_context_path`) against the manifest entries:
 
 - For each section key in the `documented_sections` list, verify a corresponding documentation section exists in the review files.
+- **Skip sections whose key appears in `optional_sections`** (from the scan context). These are template sections marked OPTIONAL that writers may legitimately skip. Do not flag them as missing.
 - Flag sections present in the list but missing from the generated documentation.
 - Flag audience-specific gaps from `gap_analysis.missing_for_audience`.
 - Severity: **high** for undocumented core components, **medium** for supporting components.
