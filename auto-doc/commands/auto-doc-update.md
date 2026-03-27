@@ -121,7 +121,7 @@ Handle user response:
 
 ### Step 5: Execute Fixes
 
-Group FIX items by document. Write each document's items to a temp JSON file, then spawn one doc-fixer agent per document. Run fix agents **in parallel**:
+Group FIX items by document. Write each document's items to a temp JSON file, then spawn one doc-fixer agent per document. Run fix agents as **parallel foreground** (do NOT set `run_in_background`) so their output is visible inline and errors are immediately apparent:
 
 1. **Write fix items per document.** For each document, write its fix items array to `{TMP_DIR}/fix-items-{DOCUMENT}.json`. Each item follows one of these formats:
 
@@ -135,7 +135,7 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
    {"type": "note", "section": "auth-flow", "note_text": "...", "note_id": "NOTE-003"}
    ```
 
-2. **Spawn agents.** One per document, all in parallel:
+2. **Spawn agents.** One per document, all in a single message (parallel foreground — do NOT set `run_in_background`):
 
    ```
    Agent(
