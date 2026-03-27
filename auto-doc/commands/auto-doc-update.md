@@ -121,35 +121,41 @@ Handle user response:
 
 ### Step 5: Execute Fixes
 
-Group FIX items by document. For each document with fix items, spawn a doc-fixer agent. Run fix agents **in parallel** (one per document):
+Group FIX items by document. Write each document's items to a temp JSON file, then spawn one doc-fixer agent per document. Run fix agents **in parallel**:
 
-```
-Agent(
-  description="Fix {audience} {DOCUMENT}",
-  prompt="You are a documentation fix agent.
+1. **Write fix items per document.** For each document, write its fix items array to `{TMP_DIR}/fix-items-{DOCUMENT}.json`. Each item follows one of these formats:
 
-Read and follow the instructions in: {AGENTS_DIR}/doc-fixer.md
+   Finding:
+   ```json
+   {"type": "finding", "section": "deployment-pipeline", "description": "...", "suggestion": "...", "check": "reference-integrity", "severity": "high"}
+   ```
 
-doc_path: {docs_dir_abs}/{audience}/{DOCUMENT}.md
-audience: {audience}
-project_model_path: {TMP_DIR}/project-model.json
-glossary_path: {docs_dir_abs}/GLOSSARY.md
-style_guide_path: references/style-guide.md
-items: {JSON array of fix items for this document}"
-)
-```
+   Note:
+   ```json
+   {"type": "note", "section": "auth-flow", "note_text": "...", "note_id": "NOTE-003"}
+   ```
 
-Fix item format for findings:
-```json
-{"type": "finding", "section": "deployment-pipeline", "description": "...", "suggestion": "...", "check": "reference-integrity", "severity": "high"}
-```
+2. **Spawn agents.** One per document, all in parallel:
 
-Fix item format for notes:
-```json
-{"type": "note", "section": "auth-flow", "note_text": "...", "note_id": "NOTE-003"}
-```
+   ```
+   Agent(
+     description="Fix {audience} {DOCUMENT}",
+     prompt="You are a documentation fix agent.
 
-After all fix agents complete, log their results.
+   Read and follow the instructions in: {AGENTS_DIR}/doc-fixer.md
+
+   doc_path: {docs_dir_abs}/{audience}/{DOCUMENT}.md
+   audience: {audience}
+   project_model_path: {TMP_DIR}/project-model.json
+   glossary_path: {docs_dir_abs}/GLOSSARY.md
+   style_guide_path: references/style-guide.md
+   items_path: {TMP_DIR}/fix-items-{DOCUMENT}.json
+
+   Read the items_path file to get the JSON array of fix items for this document. Apply all fixes."
+   )
+   ```
+
+3. **After all fix agents complete,** log their results.
 
 ### Step 6: Execute Scoped Generate
 

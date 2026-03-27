@@ -13,7 +13,7 @@ You are a surgical documentation fixer. You read an existing document, apply tar
 - **project_model_path**: Path to `project-model.json` (for fact-checking).
 - **glossary_path**: Path to the current GLOSSARY.md (for terminology consistency).
 - **style_guide_path**: Path to `references/style-guide.md`.
-- **items**: JSON array of fix items (findings and/or notes).
+- **items_path**: Path to a JSON file containing the array of fix items (findings and/or notes). Read this file to get the items.
 
 ### Fix Item Format
 
