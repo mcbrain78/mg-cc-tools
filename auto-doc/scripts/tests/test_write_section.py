@@ -25,9 +25,11 @@ def _write_content(tmp, name, text):
     return path
 
 
-def _write_refs(tmp, name, symbols=None, file_paths=None):
+def _write_refs(tmp, name, symbols=None, file_paths=None, calls=None):
     """Write a refs JSON file and return its path."""
     refs = {"symbols": symbols or [], "file_paths": file_paths or []}
+    if calls is not None:
+        refs["calls"] = calls
     path = os.path.join(tmp, name)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(refs, f)
@@ -36,13 +38,13 @@ def _write_refs(tmp, name, symbols=None, file_paths=None):
 
 def _run_section(tmp, state_file, document, section, content_text,
                  symbols=None, file_paths=None, header_text=None,
-                 project_root=None):
+                 project_root=None, calls=None):
     """Helper: write content + refs files and call write-section.py in section mode."""
     content_file = _write_content(
         tmp, f"section-{document}-{section}.md", content_text
     )
     refs_file = _write_refs(
-        tmp, f"refs-{document}-{section}.json", symbols, file_paths
+        tmp, f"refs-{document}-{section}.json", symbols, file_paths, calls
     )
     cmd = [
         sys.executable, SCRIPT_PATH,
@@ -181,6 +183,42 @@ class TestSectionWrite:
                 state = json.load(f)
 
             assert state["documents"]["ARCHITECTURE"]["header"] == header
+
+    def test_calls_stored_in_state(self):
+        """Refs with calls field stores it in state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            calls = [{"symbol": "load_json", "kwargs": ["path", "default"]}]
+            result = _run_section(
+                tmp, state_file, "ARCHITECTURE", "overview",
+                "## Overview\n\nText\n",
+                symbols=["load_json"], file_paths=["lib/json_io.py"],
+                calls=calls,
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            section = state["documents"]["ARCHITECTURE"]["sections"]["overview"]
+            assert section["calls"] == calls
+
+    def test_calls_absent_defaults_empty(self):
+        """Refs without calls field defaults to empty list in state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            result = _run_section(
+                tmp, state_file, "ARCHITECTURE", "overview",
+                "## Overview\n\nText\n",
+                symbols=["Sym"], file_paths=["a.py"],
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            section = state["documents"]["ARCHITECTURE"]["sections"]["overview"]
+            assert section["calls"] == []
 
     def test_missing_content_file_exits_1(self):
         """Content file absent exits 1."""
@@ -395,6 +433,59 @@ class TestFinalize:
             arch = manifest["documents"]["ARCHITECTURE"]
             assert "overview" in arch
             assert "concepts" not in arch
+
+    def test_finalize_emits_calls_in_manifest(self):
+        """Sections with calls emit them in manifest."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            calls = [{"symbol": "load_json", "kwargs": ["path", "default"]}]
+            state = {
+                "documents": {
+                    "ARCHITECTURE": {
+                        "header": "# Arch\n",
+                        "sections_order": ["overview"],
+                        "sections": {
+                            "overview": {
+                                "content": "## Overview\n\nText",
+                                "symbols": ["load_json"],
+                                "file_paths": ["lib/json_io.py"],
+                                "calls": calls,
+                            }
+                        },
+                    }
+                }
+            }
+            with open(state_file, "w", encoding="utf-8") as f:
+                json.dump(state, f)
+
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(state_file, docs_dir, "developers", manifest_file)
+            assert result.returncode == 0
+
+            with open(manifest_file) as f:
+                manifest = json.load(f)
+
+            assert manifest["documents"]["ARCHITECTURE"]["overview"]["calls"] == calls
+
+    def test_finalize_omits_empty_calls_from_manifest(self):
+        """Sections without calls don't have calls key in manifest."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sections = [
+                ("overview", "## Overview\n\nText", ["Sym"], ["a.py"]),
+            ]
+            state_file = self._build_state(tmp, sections)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            _run_finalize(state_file, docs_dir, "developers", manifest_file,
+                          mode="update")
+
+            with open(manifest_file) as f:
+                manifest = json.load(f)
+
+            assert "calls" not in manifest["documents"]["ARCHITECTURE"]["overview"]
 
     def test_finalize_cleans_state_file(self):
         """State file deleted after finalize."""

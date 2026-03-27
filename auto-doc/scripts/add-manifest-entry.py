@@ -105,6 +105,9 @@ def upsert_manifest(manifest, entry):
         "symbols": entry.get("symbols", []),
         "file_paths": entry.get("file_paths", []),
     }
+    calls = entry.get("calls", [])
+    if calls:
+        section_data["calls"] = calls
 
     # Preserve sections_written for metadata entries
     if "sections_written" in entry:

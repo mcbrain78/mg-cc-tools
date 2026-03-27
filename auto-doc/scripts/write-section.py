@@ -152,6 +152,7 @@ def section_write(args):
         "content": content,
         "symbols": refs["symbols"],
         "file_paths": refs["file_paths"],
+        "calls": refs.get("calls", []),
     }
 
     # Advisory symbol check if --project-root provided
@@ -285,10 +286,11 @@ def finalize(args):
             if symbols or file_paths:
                 if doc_name not in manifest["documents"]:
                     manifest["documents"][doc_name] = {}
-                manifest["documents"][doc_name][section_slug] = {
-                    "symbols": symbols,
-                    "file_paths": file_paths,
-                }
+                entry = {"symbols": symbols, "file_paths": file_paths}
+                calls = section.get("calls", [])
+                if calls:
+                    entry["calls"] = calls
+                manifest["documents"][doc_name][section_slug] = entry
 
         # _written_sections metadata: initial mode only
         if mode == "initial":

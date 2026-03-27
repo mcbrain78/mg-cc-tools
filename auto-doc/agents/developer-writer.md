@@ -73,10 +73,11 @@ You are a specialized writer agent for the **developers** audience. You generate
          (include the `## Heading`, `<!-- docs-meta: ... -->` comment, and all body content)
       2. Write references to `{TMP_DIR}/refs-developers-{DOCUMENT}-{section-slug}.json`:
          ```json
-         {"symbols": ["sym1", "sym2"], "file_paths": ["src/file.py"]}
+         {"symbols": ["sym1", "sym2"], "file_paths": ["src/file.py"], "calls": [{"symbol": "sym1", "kwargs": ["param1", "param2"]}]}
          ```
          For each symbol, include the file you read it from in `file_paths`. If you read
          `ArchiveBase` from `src/llm/archive_models.py`, that file MUST be in `file_paths`.
+         For each function call shown in a code example with keyword arguments, also record it in `calls`: `{"symbol": "func_name", "kwargs": ["param1", "param2"]}`. Only include calls where specific keyword arguments are used. Omit `calls` if the section has no code examples with function calls.
          For sections with no code references, use empty arrays.
       3. Call:
          ```bash

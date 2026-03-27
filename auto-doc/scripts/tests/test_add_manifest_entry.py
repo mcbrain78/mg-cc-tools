@@ -211,6 +211,64 @@ class TestAddManifestEntryBasic:
             assert "Added 1 manifest entries" in result.stderr
 
 
+class TestAddManifestEntryCalls:
+    """calls field passthrough in manifest entries."""
+
+    def test_calls_preserved_in_manifest(self):
+        """Entry with calls field preserves it in manifest."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            entry = {
+                "document": "ARCHITECTURE",
+                "section": "overview",
+                "symbols": ["load_json"],
+                "file_paths": ["lib/json_io.py"],
+                "calls": [{"symbol": "load_json", "kwargs": ["path", "default"]}],
+            }
+            with open(input_file, "w") as f:
+                json.dump(entry, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(manifest_file) as f:
+                data = json.load(f)
+
+            section = data["documents"]["ARCHITECTURE"]["overview"]
+            assert section["calls"] == [{"symbol": "load_json", "kwargs": ["path", "default"]}]
+
+    def test_no_calls_omitted_from_manifest(self):
+        """Entry without calls field doesn't add calls key to manifest."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_file = os.path.join(tmp, "manifest.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            entry = _valid_entry()  # No calls field
+            with open(input_file, "w") as f:
+                json.dump(entry, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--manifest", manifest_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(manifest_file) as f:
+                data = json.load(f)
+
+            section = data["documents"]["ARCHITECTURE"]["overview"]
+            assert "calls" not in section
+
+
 class TestAddManifestEntryUpsert:
     """Upsert replaces existing (document, section) entry."""
 
