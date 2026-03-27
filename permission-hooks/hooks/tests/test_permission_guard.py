@@ -262,6 +262,12 @@ class TestDestructiveFilesystem:
         assert_allowed("rm file.txt")
         assert_allowed("rm -f file.txt")
 
+    def test_allow_rm_f_in_compound_command_with_r_in_paths(self):
+        """rm -f must not false-positive when unrelated tokens contain -r."""
+        assert_allowed('rm -f "$TMP"/*.json')
+        assert_allowed('DIR=/tmp/road-runner && rm -f "$DIR"/*.log')
+        assert_allowed('mkdir -p /tmp/foo && rm -f /tmp/foo/bar.txt')
+
     def test_block_chmod(self):
         assert_blocked("chmod 755 script.sh", self.CAT)
         assert_blocked("chmod +x script.sh", self.CAT)
