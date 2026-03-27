@@ -79,7 +79,7 @@ RUNTIME_PLACEHOLDERS = {
 
 # Absolute path detection: lines containing paths like /home/... or /usr/...
 # We look for paths that were meant to be sed-resolved
-ABS_PATH_RE = re.compile(r"(?:^|[\s\"'])(/(?:home|usr|opt|tmp|var|etc|nix)[^\s\"']+)")
+ABS_PATH_RE = re.compile(r"(?:^|[\s\"'`])(/(?:home|usr|opt|tmp|var|etc|nix)[^\s\"'`()\[\]]+)")
 
 # ============================================================
 # Preflight checks registry

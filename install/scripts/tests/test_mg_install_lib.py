@@ -1409,6 +1409,38 @@ class TestValidate:
             path_issues = [i for i in data["issues"] if i["type"] == "missing_path"]
             assert len(path_issues) > 0
 
+    def test_strips_markdown_delimiters_from_paths(self):
+        """Paths wrapped in backticks/parens are extracted cleanly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            real_file = os.path.join(tmp, "real-file.md")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            # Create the file so the path is valid
+            with open(real_file, "w") as f:
+                f.write("content\n")
+
+            # Paths wrapped in markdown formatting that actually exist on disk
+            # should NOT be flagged -- the regex must strip delimiters
+            with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
+                f.write(
+                    f"Read instructions in: `{real_file}`)\n"
+                    f"See [{real_file}] for details\n"
+                    f"Located at ({real_file})\n"
+                )
+
+            result = _run([
+                "validate", "--target", target,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            path_issues = [i for i in data["issues"] if i["type"] == "missing_path"]
+            assert len(path_issues) == 0, (
+                f"Markdown-wrapped paths should not be flagged: {path_issues}"
+            )
+
     def test_skips_runtime_tmp_paths(self):
         """Paths under .mg/*/tmp/ are runtime files -- not flagged as missing."""
         with tempfile.TemporaryDirectory() as tmp:
