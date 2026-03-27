@@ -1107,3 +1107,367 @@ class TestExitCodeMasking:
         cmd = "git commit -m \"$(cat <<'EOF'\npytest | tail -20\nEOF\n)\""
         result = check_exit_code_masking(cmd)
         assert result is None
+
+
+# ── LLM evaluator imports ─────────────────────────────────────────────────────
+
+from unittest.mock import patch
+
+_gate_rm_variable_cleanup = guard._gate_rm_variable_cleanup
+_parse_verdict = guard._parse_verdict
+_extract_transcript_context = guard._extract_transcript_context
+_resolve_project_root = guard._resolve_project_root
+_prompt_rm_variable_cleanup = guard._prompt_rm_variable_cleanup
+run_evaluators = guard.run_evaluators
+
+
+# ── Gate: rm with variable substitution ───────────────────────────────────────
+
+class TestRmVariableGate:
+
+    def test_match_rm_rf_dollar_var(self):
+        assert _gate_rm_variable_cleanup('rm -rf "$TMPDIR/build"', {}) is True
+
+    def test_match_rm_rf_brace_var(self):
+        assert _gate_rm_variable_cleanup('rm -rf ${BUILD_DIR}/out', {}) is True
+
+    def test_match_rm_rf_subshell(self):
+        assert _gate_rm_variable_cleanup('rm -rf $(mktemp -d)', {}) is True
+
+    def test_match_rm_r_dollar_var(self):
+        assert _gate_rm_variable_cleanup('rm -r $WORKDIR', {}) is True
+
+    def test_reject_rm_rf_literal_path(self):
+        """Literal paths should not trigger the gate (handled by _is_safe_rm or regex)."""
+        assert _gate_rm_variable_cleanup('rm -rf src/', {}) is False
+
+    def test_reject_ls_with_variable(self):
+        """Non-rm commands with variables should not match."""
+        assert _gate_rm_variable_cleanup('ls $VAR', {}) is False
+
+    def test_reject_rm_nonrecursive_variable(self):
+        """rm without -r flag should not match (non-recursive is less dangerous)."""
+        assert _gate_rm_variable_cleanup('rm $TMPFILE', {}) is False
+
+    def test_skip_when_is_safe_rm_handles(self):
+        """If _is_safe_rm already approves (e.g. rm -rf /tmp/$VAR), gate should return False."""
+        assert _gate_rm_variable_cleanup('rm -rf /tmp/$VAR', {}) is False
+
+    def test_match_rm_rf_with_multiple_flags(self):
+        assert _gate_rm_variable_cleanup('rm -f -r $DIR', {}) is True
+
+
+# ── Verdict parsing ───────────────────────────────────────────────────────────
+
+class TestParseVerdict:
+
+    def test_safe_json(self):
+        assert _parse_verdict('{"verdict": "SAFE", "reason": "targets /tmp/"}') == "SAFE"
+
+    def test_unsure_json(self):
+        assert _parse_verdict('{"verdict": "UNSURE", "reason": "cannot resolve"}') == "UNSURE"
+
+    def test_deny_json(self):
+        assert _parse_verdict('{"verdict": "DENY", "reason": "targets home"}') == "DENY"
+
+    def test_case_insensitive_verdict(self):
+        assert _parse_verdict('{"verdict": "safe", "reason": "ok"}') == "SAFE"
+
+    def test_invalid_json_returns_none(self):
+        """Non-JSON response falls through to user prompt."""
+        assert _parse_verdict("SAFE — targets temporary build dir") is None
+
+    def test_prose_with_safe_returns_none(self):
+        """Prose mentioning 'safe' must not match — only valid JSON counts."""
+        assert _parse_verdict("This is outside safe directories") is None
+
+    def test_empty_string(self):
+        assert _parse_verdict("") is None
+
+    def test_none(self):
+        assert _parse_verdict(None) is None
+
+    def test_garbage(self):
+        assert _parse_verdict("I don't know what to say") is None
+
+    def test_missing_verdict_field(self):
+        assert _parse_verdict('{"reason": "no verdict here"}') is None
+
+    def test_invalid_verdict_value(self):
+        assert _parse_verdict('{"verdict": "MAYBE", "reason": "hm"}') is None
+
+    def test_json_array_returns_none(self):
+        assert _parse_verdict('[{"verdict": "SAFE"}]') is None
+
+    def test_markdown_fenced_json(self):
+        """Haiku often wraps JSON in ```json ... ``` fences."""
+        resp = '```json\n{"verdict": "SAFE", "reason": "ok"}\n```'
+        assert _parse_verdict(resp) == "SAFE"
+
+    def test_markdown_fenced_deny(self):
+        resp = '```json\n{"verdict": "DENY", "reason": "outside safe dirs"}\n```'
+        assert _parse_verdict(resp) == "DENY"
+
+
+# ── run_evaluators integration ────────────────────────────────────────────────
+
+class TestRunEvaluators:
+
+    def test_safe_returns_allow(self):
+        resp = '{"verdict": "SAFE", "resolved_path": "/tmp/build", "reason": "temp cleanup"}'
+        with patch.object(guard, "_call_haiku", return_value=resp):
+            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert result is not None
+        assert "safe" in result.lower()
+
+    def test_unsure_returns_none(self):
+        resp = '{"verdict": "UNSURE", "reason": "cannot resolve"}'
+        with patch.object(guard, "_call_haiku", return_value=resp):
+            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert result is None
+
+    def test_deny_returns_none(self):
+        """DENY never auto-denies — falls through to existing pipeline."""
+        resp = '{"verdict": "DENY", "resolved_path": "/home/user", "reason": "targets home"}'
+        with patch.object(guard, "_call_haiku", return_value=resp):
+            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert result is None
+
+    def test_invalid_json_returns_none(self):
+        """Haiku returning prose instead of JSON falls through to user prompt."""
+        with patch.object(guard, "_call_haiku", return_value="SAFE — looks fine"):
+            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert result is None
+
+    def test_timeout_returns_none(self):
+        with patch.object(guard, "_call_haiku", return_value=None):
+            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert result is None
+
+    def test_no_claude_returns_none(self):
+        with patch.object(guard, "_call_haiku", return_value=None):
+            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert result is None
+
+    def test_nonmatching_gate_no_subprocess(self):
+        """If the gate doesn't match, _call_haiku should never be called."""
+        with patch.object(guard, "_call_haiku") as mock_haiku:
+            result = run_evaluators("ls -la", {})
+        assert result is None
+        mock_haiku.assert_not_called()
+
+    def test_literal_rm_no_subprocess(self):
+        """rm -rf with literal path — gate doesn't match, no haiku call."""
+        with patch.object(guard, "_call_haiku") as mock_haiku:
+            result = run_evaluators("rm -rf src/", {})
+        assert result is None
+        mock_haiku.assert_not_called()
+
+
+# ── Transcript context extraction ─────────────────────────────────────────────
+
+class TestTranscriptContext:
+
+    def test_extracts_user_and_assistant(self, tmp_path):
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text(
+            '{"role": "user", "content": "Clean up the build dir"}\n'
+            '{"role": "assistant", "content": "I will remove the temp files."}\n'
+        )
+        ctx = _extract_transcript_context({"transcript_path": str(transcript)})
+        assert "user: Clean up the build dir" in ctx
+        assert "assistant: I will remove the temp files." in ctx
+
+    def test_skips_tool_use_blocks(self, tmp_path):
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text(
+            '{"role": "user", "content": "do it"}\n'
+            '{"role": "assistant", "content": [{"type": "tool_use", "name": "Bash"}]}\n'
+            '{"role": "assistant", "content": [{"type": "text", "text": "Done."}]}\n'
+        )
+        ctx = _extract_transcript_context({"transcript_path": str(transcript)})
+        assert "tool_use" not in ctx
+        assert "assistant: Done." in ctx
+
+    def test_truncates_long_messages(self, tmp_path):
+        transcript = tmp_path / "transcript.jsonl"
+        long_msg = "x" * 500
+        transcript.write_text(
+            f'{{"role": "user", "content": "{long_msg}"}}\n'
+        )
+        ctx = _extract_transcript_context({"transcript_path": str(transcript)})
+        assert len(ctx.split("user: ")[1]) <= 200
+
+    def test_missing_file_returns_empty(self):
+        ctx = _extract_transcript_context({"transcript_path": "/nonexistent/path.jsonl"})
+        assert ctx == ""
+
+    def test_empty_transcript_path(self):
+        ctx = _extract_transcript_context({})
+        assert ctx == ""
+
+    def test_limits_to_last_n_messages(self, tmp_path):
+        transcript = tmp_path / "transcript.jsonl"
+        lines = [f'{{"role": "user", "content": "msg {i}"}}\n' for i in range(20)]
+        transcript.write_text("".join(lines))
+        ctx = _extract_transcript_context({"transcript_path": str(transcript)})
+        # Should only have last TRANSCRIPT_CONTEXT_LINES messages
+        assert "msg 10" in ctx
+        assert "msg 19" in ctx
+        assert "msg 0" not in ctx
+
+
+# ── Project root resolution ───────────────────────────────────────────────────
+
+class TestResolveProjectRoot:
+
+    def test_uses_cwd_when_placeholder_unresolved(self):
+        """Source file has literal '{PROJECT_ROOT}' — should fall back to event cwd."""
+        with patch.object(guard, "PROJECT_ROOT", "{PROJECT_ROOT}"):
+            assert _resolve_project_root({"cwd": "/home/user/myproject"}) == "/home/user/myproject"
+
+    def test_uses_cwd_when_empty(self):
+        with patch.object(guard, "PROJECT_ROOT", ""):
+            assert _resolve_project_root({"cwd": "/home/user/myproject"}) == "/home/user/myproject"
+
+    def test_uses_project_root_when_resolved(self):
+        with patch.object(guard, "PROJECT_ROOT", "/home/user/myproject"):
+            assert _resolve_project_root({}) == "/home/user/myproject"
+
+    def test_empty_when_nothing_available(self):
+        with patch.object(guard, "PROJECT_ROOT", "{PROJECT_ROOT}"):
+            assert _resolve_project_root({}) == ""
+
+
+# ── Prompt content: safe directories ──────────────────────────────────────────
+
+class TestPromptSafeDirectories:
+    """Verify the prompt sent to Haiku includes correct safe directories."""
+    PROJECT = "/home/user/myproject"
+
+    def test_prompt_includes_tmp(self):
+        with patch.object(guard, "PROJECT_ROOT", self.PROJECT):
+            prompt = _prompt_rm_variable_cleanup('rm -rf "$DIR"', "", {})
+        assert "/tmp/" in prompt
+
+    def test_prompt_includes_project_root(self):
+        with patch.object(guard, "PROJECT_ROOT", self.PROJECT):
+            prompt = _prompt_rm_variable_cleanup('rm -rf "$DIR"', "", {})
+        assert self.PROJECT in prompt
+
+    def test_prompt_contains_command(self):
+        cmd = 'DIR=/tmp/foo && rm -rf "$DIR"'
+        with patch.object(guard, "PROJECT_ROOT", self.PROJECT):
+            prompt = _prompt_rm_variable_cleanup(cmd, "", {})
+        assert cmd in prompt
+
+    def test_prompt_includes_context_when_provided(self):
+        ctx = "user: clean up the build directory"
+        with patch.object(guard, "PROJECT_ROOT", self.PROJECT):
+            prompt = _prompt_rm_variable_cleanup('rm -rf "$DIR"', ctx, {})
+        assert ctx in prompt
+
+    def test_prompt_only_tmp_when_no_project_root(self):
+        """When project root is unavailable, only /tmp/ is listed as safe."""
+        with patch.object(guard, "PROJECT_ROOT", ""):
+            prompt = _prompt_rm_variable_cleanup('rm -rf "$DIR"', "", {})
+        assert "/tmp/" in prompt
+        assert "and " not in prompt.split("/tmp/")[1].split("\n")[0]
+
+
+# ── End-to-end: prompt correctness per target directory ───────────────────────
+
+class TestEvaluatorPromptByTarget:
+    """Verify the prompt Haiku receives contains the right safe dirs for each scenario."""
+    PROJECT = "/home/user/myproject"
+
+    SAFE_JSON = '{"verdict": "SAFE", "resolved_path": "/tmp/x", "reason": "ok"}'
+    DENY_JSON = '{"verdict": "DENY", "resolved_path": "/home/dummy", "reason": "outside"}'
+
+    def test_tmp_target_prompt_has_safe_dirs(self):
+        """rm -rf in /tmp/ — prompt should list /tmp/ as safe."""
+        cmd = 'DIR=/tmp/build-out && rm -rf "$DIR"'
+        with patch.object(guard, "PROJECT_ROOT", self.PROJECT):
+            with patch.object(guard, "_call_haiku", return_value=self.SAFE_JSON) as mock:
+                run_evaluators(cmd, {})
+        prompt_sent = mock.call_args[0][0]
+        assert "/tmp/" in prompt_sent
+        assert self.PROJECT in prompt_sent
+
+    def test_project_target_prompt_has_safe_dirs(self):
+        """rm -rf in project dir — prompt should list project root as safe."""
+        cmd = f'DIR={self.PROJECT}/dist && rm -rf "$DIR"'
+        with patch.object(guard, "PROJECT_ROOT", self.PROJECT):
+            with patch.object(guard, "_call_haiku", return_value=self.SAFE_JSON) as mock:
+                run_evaluators(cmd, {})
+        prompt_sent = mock.call_args[0][0]
+        assert self.PROJECT in prompt_sent
+
+    def test_home_target_prompt_has_safe_dirs(self):
+        """rm -rf in /home/dummy — safe dirs should be /tmp/ and project, not /home/dummy."""
+        cmd = 'DIR=/home/dummy && rm -rf "$DIR/files"'
+        with patch.object(guard, "PROJECT_ROOT", self.PROJECT):
+            with patch.object(guard, "_call_haiku", return_value=self.DENY_JSON) as mock:
+                run_evaluators(cmd, {})
+        prompt_sent = mock.call_args[0][0]
+        # Extract the safe directories line from the prompt
+        safe_line = [l for l in prompt_sent.splitlines()
+                     if "safe directories:" in l.lower() or "SAFE —" in l][0]
+        assert "/tmp/" in safe_line
+        assert self.PROJECT in safe_line
+        assert "/home/dummy" not in safe_line
+
+
+# ── Live Haiku integration tests ─────────────────────────────────────────────
+# These call the real Haiku model via claude CLI to verify end-to-end behavior.
+# Skipped automatically when claude CLI is not available.
+
+import shutil
+
+_has_claude = shutil.which("claude") is not None
+requires_claude = pytest.mark.skipif(not _has_claude, reason="claude CLI not available")
+
+_call_haiku = guard._call_haiku
+
+
+@requires_claude
+class TestHaikuLiveVerdicts:
+    PROJECT = "/home/user/myproject"
+
+    def _get_live_verdict(self, cmd):
+        """Build prompt and call real Haiku, return parsed verdict."""
+        with patch.object(guard, "PROJECT_ROOT", self.PROJECT):
+            prompt = _prompt_rm_variable_cleanup(cmd, "", {})
+        response = _call_haiku(prompt)
+        assert response is not None, "Haiku call failed"
+        verdict = _parse_verdict(response)
+        assert verdict is not None, f"Failed to parse Haiku response as JSON: {response!r}"
+        return verdict
+
+    def test_tmp_target_is_safe(self):
+        """rm -rf with variable resolving to /tmp/ should be SAFE."""
+        verdict = self._get_live_verdict(
+            'DIR=/tmp/build-out && rm -rf "$DIR"'
+        )
+        assert verdict == "SAFE", f"Expected SAFE for /tmp/ target, got {verdict}"
+
+    def test_project_target_is_safe(self):
+        """rm -rf with variable resolving to project dir should be SAFE."""
+        verdict = self._get_live_verdict(
+            f'DIR={self.PROJECT}/dist && rm -rf "$DIR"'
+        )
+        assert verdict == "SAFE", f"Expected SAFE for project target, got {verdict}"
+
+    def test_home_target_is_not_safe(self):
+        """rm -rf with variable resolving to /home/dummy should NOT be SAFE."""
+        verdict = self._get_live_verdict(
+            'DIR=/home/dummy && rm -rf "$DIR/files"'
+        )
+        assert verdict != "SAFE", f"Expected UNSURE or DENY for /home/ target, got {verdict}"
+
+    def test_unresolvable_variable_is_not_safe(self):
+        """rm -rf with unresolvable variable should NOT be SAFE."""
+        verdict = self._get_live_verdict(
+            'rm -rf "$UNKNOWN_VAR"'
+        )
+        assert verdict != "SAFE", f"Expected UNSURE for unresolvable var, got {verdict}"

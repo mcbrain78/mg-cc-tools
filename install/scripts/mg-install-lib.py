@@ -40,20 +40,14 @@ from pathlib import Path
 
 MANIFEST_FILENAME = "mg-cc-tools.manifest.json"
 
-CHECKSUM_INCLUDE = [
-    "commands/*",
-    "scripts/*.py",
-    "scripts/lib/*.py",
-    "agents/*.md",
-    "references/**/*",
-    "patches/**/*.md",
-]
+CHECKSUM_INCLUDE_EXTENSIONS = {".md", ".py", ".sh"}
 
 CHECKSUM_EXCLUDE_PATTERNS = [
     "tests/",
     "__pycache__",
     ".pyc",
     ".pytest_cache",
+    "tool.toml",
 ]
 
 # Workspace directories that certain tools scaffold during --project install
@@ -275,31 +269,22 @@ def _is_excluded(rel_path):
 
 
 def compute_tool_checksums(tool_dir):
-    """Compute SHA256 checksums for all source files in scope.
+    """Compute SHA256 checksums for all .md, .py, .sh files in tool_dir.
 
-    Include patterns: commands/*, scripts/*.py, scripts/lib/*.py,
-                      agents/*.md, references/**/*, patches/**/*.md
-    Also always includes install.sh and post-install.md at root.
-    Exclude: tool.toml, tests/, __pycache__/, .pyc, .pytest_cache/
+    Walks all subdirectories. Excludes tests/, __pycache__/, .pyc, .pytest_cache/, tool.toml.
     """
     checksums = {}
     tool_path = Path(tool_dir)
 
-    # Include hardcoded root files
-    for root_file in ["install.sh", "post-install.md"]:
-        path = tool_path / root_file
-        if path.is_file():
-            checksums[root_file] = sha256_file(str(path))
-
-    # Glob each include pattern
-    for pattern in CHECKSUM_INCLUDE:
-        for path in sorted(tool_path.glob(pattern)):
-            if not path.is_file():
-                continue
-            rel = str(path.relative_to(tool_path))
-            if _is_excluded(rel):
-                continue
-            checksums[rel] = sha256_file(str(path))
+    for path in sorted(tool_path.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix not in CHECKSUM_INCLUDE_EXTENSIONS:
+            continue
+        rel = str(path.relative_to(tool_path))
+        if _is_excluded(rel):
+            continue
+        checksums[rel] = sha256_file(str(path))
 
     return checksums
 

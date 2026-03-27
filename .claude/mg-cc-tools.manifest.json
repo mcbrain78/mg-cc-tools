@@ -18,10 +18,19 @@
         "references/discuss-methodology.snapshot.md": "sha256:b9489288e6b7968d8725f49075594e92220d23c6c6224cb337981a3688724fc5",
         "references/requirement-generator.md": "sha256:da00751ac9dcfbd2615f9448c41538cfd627e9cf272614cbd15013d65466befe"
       }
+    },
+    "permission-hooks": {
+      "version": "0.1.0",
+      "installed_at": "2026-03-27T12:02:26.327791+00:00",
+      "commands": [],
+      "source_checksums": {
+        "install.sh": "sha256:558c0853ef0bc8d708eab6c1d37ae54045fa485d1e114a9c90bef761e57e5fd2",
+        "post-install.md": "sha256:34ba9a3fdb69d8724b2320ceaafa8afb2c649104008487dadfbe5966ad299f33"
+      }
     }
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools",
-  "last_updated": "2026-03-23T08:27:19.869455+00:00"
+  "last_updated": "2026-03-27T12:02:26.326951+00:00"
 }

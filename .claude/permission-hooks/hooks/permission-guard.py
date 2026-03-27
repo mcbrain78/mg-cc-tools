@@ -15,7 +15,10 @@ it's empty and falls back to cwd from the hook event.
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+from collections import namedtuple
 
 PROJECT_ROOT = "/home/mcbrain/mg_projects/mg-cc-tools"
 
@@ -131,25 +134,45 @@ def _strip_heredocs(command):
     return _HEREDOC_RE.sub("", command)
 
 
+# ── LLM evaluator constants ─────────────────────────────────────────────────
+HAIKU_TIMEOUT_S = 12
+HAIKU_MODEL = "haiku"
+TRANSCRIPT_CONTEXT_LINES = 10
+TRANSCRIPT_MSG_MAX_CHARS = 200
+
 # Paths where recursive rm is considered safe (temp/test cleanup)
 SAFE_RM_PATH_PREFIXES = ("temp/", "./temp/", "/tmp/")
 
 
 def _is_safe_rm(command):
-    """Return True if command is a simple rm targeting only temp directories."""
-    # Reject compound commands — they need full checking
-    if re.search(r'[;&|]', command):
+    """Return True if every rm segment in *command* targets only temp directories.
+
+    Compound commands joined by ``&&``, ``||``, or ``;`` are split into
+    segments.  Only segments containing an ``rm`` invocation are examined —
+    non-rm segments are irrelevant.  If no segment contains ``rm``, return
+    False (this function is specifically about rm safety).
+    """
+    # Split on shell compound operators (&&, ||, ;)
+    segments = re.split(r'\s*(?:&&|\|\||;)\s*', command)
+
+    rm_segments = [seg for seg in segments if re.match(r'^\s*rm\s', seg.strip())]
+
+    # Must have at least one rm segment
+    if not rm_segments:
         return False
-    if not re.match(r'^\s*rm\s', command):
-        return False
-    tokens = command.split()
-    paths = [t.strip("'\"") for t in tokens[1:] if not t.startswith('-')]
-    if not paths:
-        return False
-    return all(
-        any(p.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES)
-        for p in paths
-    )
+
+    for seg in rm_segments:
+        tokens = seg.split()
+        paths = [t.strip("'\"") for t in tokens[1:] if not t.startswith('-')]
+        if not paths:
+            return False
+        if not all(
+            any(p.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES)
+            for p in paths
+        ):
+            return False
+
+    return True
 
 # ── Sensitive file patterns (for Read/Edit/Write tool guards) ───────────────
 # Each is (compiled_regex, description). Matched against the file_path.
@@ -353,6 +376,211 @@ def check_exit_code_masking(command):
     return None
 
 
+# ── LLM evaluator framework ──────────────────────────────────────────────────
+Evaluator = namedtuple("Evaluator", ["name", "gate", "prompt_builder"])
+
+
+def _extract_transcript_context(event):
+    """Parse the JSONL transcript and return last N user/assistant text messages.
+
+    Returns a formatted string. Returns empty string on any failure.
+    """
+    transcript_path = event.get("transcript_path", "")
+    if not transcript_path:
+        return ""
+    try:
+        with open(transcript_path) as f:
+            lines = f.readlines()
+    except (OSError, IOError):
+        return ""
+
+    messages = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        role = entry.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        # Extract text content, skip tool_use/tool_result
+        content = entry.get("content", "")
+        if isinstance(content, list):
+            text_parts = [
+                block.get("text", "")
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            ]
+            content = " ".join(text_parts)
+        if not isinstance(content, str) or not content.strip():
+            continue
+        truncated = content.strip()[:TRANSCRIPT_MSG_MAX_CHARS]
+        messages.append(f"{role}: {truncated}")
+
+    return "\n".join(messages[-TRANSCRIPT_CONTEXT_LINES:])
+
+
+def _find_claude_cli():
+    """Locate the claude CLI binary, checking PATH and common install locations."""
+    found = shutil.which("claude")
+    if found:
+        return found
+    # Hook subprocesses may have a stripped PATH — check common locations
+    for candidate in [
+        os.path.expanduser("~/.local/bin/claude"),
+        os.path.expanduser("~/.claude/local/claude"),
+        "/usr/local/bin/claude",
+    ]:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def _call_haiku(prompt):
+    """Call the claude CLI with Haiku model. Returns response text or None."""
+    claude_bin = _find_claude_cli()
+    if not claude_bin:
+        return None
+    try:
+        result = subprocess.run(
+            [claude_bin, "-p", "--model", HAIKU_MODEL, "--output-format", "json"],
+            input=prompt,
+            capture_output=True,
+            text=True,
+            timeout=HAIKU_TIMEOUT_S,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    if data.get("is_error"):
+        return None
+    return data.get("result", "")
+
+
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
+
+
+def _parse_verdict(response_text):
+    """Parse JSON verdict from Haiku response.
+
+    Expects {"verdict": "SAFE|UNSURE|DENY", "reason": "..."}.
+    Strips markdown code fences if present.
+    Returns None if JSON doesn't parse or verdict field is missing/invalid
+    — caller treats None as "fall through to user prompt".
+    """
+    if not response_text:
+        return None
+    text = response_text.strip()
+    # Strip markdown code fences (```json ... ```)
+    fence_match = _JSON_FENCE_RE.search(text)
+    if fence_match:
+        text = fence_match.group(1).strip()
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    verdict = data.get("verdict", "").upper() if isinstance(data, dict) else None
+    if verdict in ("SAFE", "UNSURE", "DENY"):
+        return verdict
+    return None
+
+
+def run_evaluators(command, event):
+    """Run narrowly-scoped LLM evaluators on the command.
+
+    Returns a reason string if an evaluator says SAFE, or None to fall through
+    to the existing pipeline.
+    """
+    for evaluator in EVALUATORS:
+        if not evaluator.gate(command, event):
+            continue
+        ctx = _extract_transcript_context(event)
+        prompt = evaluator.prompt_builder(command, ctx, event)
+        response = _call_haiku(prompt)
+        verdict = _parse_verdict(response)
+        if verdict == "SAFE":
+            return f"[permission-guard] LLM evaluator '{evaluator.name}': safe"
+        # UNSURE or DENY — fall through to existing pipeline
+        return None
+    return None
+
+
+# ── Evaluator definitions ────────────────────────────────────────────────────
+
+_RM_VARIABLE_RE = re.compile(
+    r'\brm\s+(-\S+\s+)*-\S*[rR]\S*\s+.*(\$\w+|\$\{[^}]+\}|\$\([^)]+\))'
+)
+
+
+def _gate_rm_variable_cleanup(command, event):
+    """True if command has recursive rm with shell variables that _is_safe_rm can't resolve."""
+    if not _RM_VARIABLE_RE.search(command):
+        return False
+    # If _is_safe_rm already handles it, no need for LLM
+    if _is_safe_rm(command):
+        return False
+    return True
+
+
+def _resolve_project_root(event):
+    """Return the resolved project root, or empty string if unavailable."""
+    root = PROJECT_ROOT
+    # Skip unresolved install-time placeholder
+    if not root or root.startswith("{"):
+        root = event.get("cwd", "")
+    return root
+
+
+def _prompt_rm_variable_cleanup(command, ctx, event):
+    """Build a prompt asking Haiku to resolve rm target paths from context."""
+    project_root = _resolve_project_root(event)
+
+    safe_dirs = "/tmp/"
+    if project_root:
+        safe_dirs += f" and {project_root}"
+
+    prompt = f"""You are a security reviewer for a CLI coding assistant. A command contains `rm` with shell variable substitutions. The deterministic safety check could not resolve the variables.
+
+Your job: resolve the shell variables in the rm command to determine the ACTUAL path being deleted. Only answer SAFE if the resolved path is inside one of these safe directories: {safe_dirs}
+
+Command: {command}
+
+"""
+    if ctx:
+        prompt += f"""Recent conversation context:
+{ctx}
+
+"""
+    prompt += f"""Instructions:
+1. Look at the command for variable assignments (e.g. DIR=/tmp/foo && rm -rf $DIR)
+2. Look at the conversation context for variable definitions
+3. Resolve the rm target path from the evidence you find
+
+Verdicts:
+- SAFE — the resolved path is inside: {safe_dirs}
+- UNSURE — you cannot resolve the variable, or cannot confirm the resolved path is inside a safe directory
+- DENY — the resolved path is clearly outside the safe directories listed above
+
+Default to UNSURE if there is any doubt.
+
+Respond with ONLY a JSON object, no other text:
+{{"verdict": "SAFE|UNSURE|DENY", "resolved_path": "/the/resolved/path", "reason": "brief explanation"}}"""
+    return prompt
+
+
+EVALUATORS = [
+    Evaluator("rm-variable-cleanup", _gate_rm_variable_cleanup, _prompt_rm_variable_cleanup),
+]
+
+
 def _decide(reason, decision="ask"):
     """Print a permissionDecision response and exit."""
     output = {
@@ -412,6 +640,12 @@ def main():
 
     # 0. Allow rm targeting only temp directories
     if _is_safe_rm(command):
+        return
+
+    # 0a. LLM evaluator layer (narrowly-scoped Haiku checks)
+    allow_reason = run_evaluators(command, event)
+    if allow_reason is not None:
+        _decide(allow_reason, "allow")
         return
 
     # 0b. Block exit code masking (pytest piped to tail/head/grep etc.)
