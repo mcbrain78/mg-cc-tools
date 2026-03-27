@@ -291,23 +291,15 @@ Each staleness entry:
 
 ## note_classifications
 
-Notes captured via `/mg:auto-doc-add` that have been classified by audience, document, and section.
+**Deprecated.** This field is always an empty array going forward. Notes are now read directly from `notes-inbox.json` by the generate and update commands via `list-notes.py`. The scan step no longer classifies notes.
 
 ```json
-"note_classifications": [
-  {
-    "note_id": "NOTE-001",
-    "audience": "developers",
-    "document": "ARCHITECTURE",
-    "section": "auth-flow",
-    "confidence": 0.85
-  }
-]
+"note_classifications": []
 ```
 
 - **Type:** `array of object`
-- **Required:** yes (empty array if no notes)
-- **Description:** Each entry maps a note to its target location in the documentation.
+- **Required:** yes (always empty array)
+- **Description:** Previously mapped notes to their target documentation locations. Now deprecated -- notes are read directly from the inbox by generate and update commands.
 
 Each classification entry:
 

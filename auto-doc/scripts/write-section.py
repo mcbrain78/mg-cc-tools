@@ -31,11 +31,20 @@ Atomic writes via lib/json_io.py. Zero external dependencies.
 import argparse
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json, save_text
 from lib.symbols import extract_python_symbols
+
+
+def slugify_heading(heading):
+    """Convert a heading to a slug: lowercase, spaces to hyphens, strip non-alnum."""
+    slug = heading.strip().lower()
+    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+    slug = re.sub(r"[\s]+", "-", slug)
+    return slug.strip("-")
 
 
 def check_symbols(symbols, file_paths, project_root):
@@ -162,6 +171,30 @@ def section_write(args):
     )
 
 
+def parse_existing_sections(content):
+    """Parse a markdown document into header + ordered sections by ## headings.
+
+    Returns (header_text, [(slug, heading_line, section_body), ...]).
+    """
+    parts = re.split(r"(?=^## )", content, flags=re.MULTILINE)
+    header = ""
+    sections = []
+
+    for i, part in enumerate(parts):
+        if i == 0 and not part.startswith("## "):
+            header = part
+        else:
+            lines = part.split("\n", 1)
+            heading_line = lines[0]
+            body = lines[1] if len(lines) > 1 else ""
+            # Extract heading text after "## "
+            heading_text = heading_line[3:].strip()
+            slug = slugify_heading(heading_text)
+            sections.append((slug, heading_line, body))
+
+    return header, sections
+
+
 def finalize(args):
     """Assemble documents from state, generate manifests, write files."""
     # Load state file. Exit 1 if missing.
@@ -171,27 +204,69 @@ def finalize(args):
 
     state = load_json(args.state_file, default={"documents": {}})
     mode = args.mode or "initial"
+    merge = getattr(args, "merge", False)
 
     # For each document in state: assemble and write
     docs_written = []
     for doc_name, doc_data in state.get("documents", {}).items():
-        # Assemble: header + sections in order, separated by \n\n
-        parts = []
-        header = doc_data.get("header", "")
-        if header:
-            parts.append(header.rstrip("\n"))
-
-        for section_slug in doc_data.get("sections_order", []):
-            section = doc_data["sections"].get(section_slug)
-            if section:
-                parts.append(section["content"].rstrip("\n"))
-
-        assembled = "\n\n".join(parts) + "\n"
-
-        # Write to {docs_dir}/{audience}/{DOCUMENT}.md atomically
         doc_dir = os.path.join(args.docs_dir, args.audience)
         os.makedirs(doc_dir, exist_ok=True)
         doc_path = os.path.join(doc_dir, f"{doc_name}.md")
+
+        if merge and os.path.isfile(doc_path):
+            # Merge mode: read existing doc, replace/append sections from state
+            with open(doc_path, "r", encoding="utf-8") as f:
+                existing_content = f.read()
+
+            existing_header, existing_sections = parse_existing_sections(
+                existing_content
+            )
+
+            # Build lookup of new sections from state
+            new_sections = {}
+            for section_slug in doc_data.get("sections_order", []):
+                section = doc_data["sections"].get(section_slug)
+                if section:
+                    new_sections[section_slug] = section["content"]
+
+            # Replace matching sections, preserve unmodified ones
+            result_parts = []
+            if existing_header:
+                result_parts.append(existing_header.rstrip("\n"))
+
+            seen_slugs = set()
+            for slug, heading_line, body in existing_sections:
+                seen_slugs.add(slug)
+                if slug in new_sections:
+                    result_parts.append(new_sections[slug].rstrip("\n"))
+                else:
+                    # Preserve original section verbatim
+                    result_parts.append(
+                        (heading_line + "\n" + body).rstrip("\n")
+                    )
+
+            # Append new sections not in existing doc
+            for section_slug in doc_data.get("sections_order", []):
+                if section_slug not in seen_slugs:
+                    section = doc_data["sections"].get(section_slug)
+                    if section:
+                        result_parts.append(section["content"].rstrip("\n"))
+
+            assembled = "\n\n".join(result_parts) + "\n"
+        else:
+            # Standard assembly: header + sections in order
+            parts = []
+            header = doc_data.get("header", "")
+            if header:
+                parts.append(header.rstrip("\n"))
+
+            for section_slug in doc_data.get("sections_order", []):
+                section = doc_data["sections"].get(section_slug)
+                if section:
+                    parts.append(section["content"].rstrip("\n"))
+
+            assembled = "\n\n".join(parts) + "\n"
+
         save_text(doc_path, assembled)
         docs_written.append(doc_name)
 
@@ -279,6 +354,11 @@ def main():
     parser.add_argument("--manifest-file", help="Path to write temp manifest JSON")
     parser.add_argument(
         "--mode", default="initial", help="initial (default) or update"
+    )
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="Merge new sections into existing document (preserves unmodified sections)",
     )
 
     args = parser.parse_args()

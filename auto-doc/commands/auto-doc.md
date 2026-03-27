@@ -53,8 +53,13 @@ Run these checks IN ORDER:
 
 6. **Are there unresolved verify findings?**
    Check if `.mg/docs/docs-verify-findings.json` exists. If it does, read it and check if the array is non-empty.
-   - YES (findings exist and array is non-empty) -> Route E (findings need resolution)
-   - NO (file missing, empty, or empty array) -> Route D (pipeline complete)
+   - YES (findings exist and array is non-empty) -> Route E (findings need update)
+   - NO -> continue to check 7
+
+7. **Are there pending notes?**
+   Check if `.mg/docs/notes-inbox.json` exists. If it does, read it and check if any notes have a non-null `classification` field.
+   - YES (classified notes exist) -> Route F (notes pending, suggest update)
+   - NO -> Route D (pipeline complete)
 
 ### Route A: No scan yet (or fresh start)
 
@@ -124,7 +129,7 @@ Options:
   - Add notes: /mg:auto-doc-add "your note"   (capture documentation notes)
 ```
 
-### Route E: Verify found issues -- needs re-generation
+### Route E: Verify found issues -- needs update
 
 Read `docs-verify-findings.json` and count findings by severity:
 
@@ -133,10 +138,23 @@ Verify found quality issues in the documentation.
 
   {N} critical, {N} high, {N} medium, {N} low, {N} info
 
-Run /mg:auto-doc-generate to address verify findings.
-The generator will present findings as an approval tier alongside staleness and notes.
+Run /mg:auto-doc-update to surgically fix findings and integrate pending notes.
 
 Or re-verify first:  /mg:auto-doc-verify  (re-check after manual fixes)
+```
+
+### Route F: Notes pending -- suggest update
+
+Read `notes-inbox.json` and count classified notes:
+
+```
+Pipeline complete -- no verify findings outstanding.
+
+  {N} pending notes in inbox
+
+Run /mg:auto-doc-update to integrate notes into existing documentation.
+
+Or add more notes:  /mg:auto-doc-add "your note"
 ```
 
 ## Important

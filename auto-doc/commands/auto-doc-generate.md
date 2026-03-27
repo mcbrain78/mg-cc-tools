@@ -51,161 +51,19 @@ This tells you the JSON format of `docs-scan.json` -- the input produced by the 
    Docs directory: {docs_dir_abs}
    ```
 
-### Step 2: Update Approval Flow (update mode only)
+### Step 2: Load Standing Notes
 
-If mode is `"initial"`, skip this step entirely and proceed to Step 3.
+Load notes from the inbox so they can be passed to writer agents as standing instructions.
 
-#### 2a. Parse Staleness Data
-
-1. Read the `staleness_report` array from `docs-scan.json`. Group entries by `document` name. For each document, count sections per severity level (`high`, `medium`, `low`).
-
-2. Read the `note_classifications` array from `docs-scan.json`. Filter for pending notes only -- notes whose `note_id` does NOT already have `"status": "integrated"` in `.mg/docs/notes-inbox.json`. Count pending notes.
-
-3. Load verify findings. Run:
+1. **Read notes inbox.** Run:
    ```bash
-   python3 {SCRIPTS_DIR}/list-verify-findings.py \
-     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
-     --summary \
-     --output {TMP_DIR}/findings-summary.json
+   uv run {SCRIPTS_DIR}/list-notes.py \
+     --inbox {project_root}/.mg/docs/notes-inbox.json \
+     --output {TMP_DIR}/all-notes.json
    ```
-   Read the output file. Extract total findings count and per-document/per-severity breakdowns. If the findings file does not exist or is empty, treat as zero findings.
+   Read the output file. This returns all classified notes (regardless of status).
 
-4. If the staleness report is empty AND there are no pending notes AND there are no verify findings, print:
-   ```
-   No stale sections, verify findings, or pending notes found. Nothing to update.
-   ```
-   Then exit gracefully (no generation needed).
-
-#### 2b. Present Level 1 Overview
-
-Use AskUserQuestion to present a document-level summary:
-
-```
-Documentation Update Report:
-
-Staleness:
-  ARCHITECTURE.md:    3 stale sections (2 high, 1 medium)
-  DEVELOPER_GUIDE.md: 1 stale section (1 low)
-  SYSTEM_MAP.md:      2 stale sections (2 high)
-
-Verify findings:
-  OPERATIONS.md:      2 issues (1 high, 1 medium)
-  ARCHITECTURE.md:    1 issue (1 medium)
-  Total: 3 findings from last verification run
-
-Inbox notes: 2 pending (1 for ARCHITECTURE, 1 for USER_GUIDE)
-
-How would you like to proceed?
-  1. Approve all -- update all stale sections, address all findings, and integrate all notes
-  2. Select by document -- choose which documents to update
-  3. Select by severity -- approve by minimum severity level
-  4. Cancel -- exit without changes
-```
-
-If any tier has zero items, omit that tier's section from the overview (but always show at least the tiers that have items). The 4 approval options are uniform across all 3 tiers -- the same options regardless of which tiers are present.
-
-#### 2c. Handle User Selection
-
-- **If "Cancel" (option 4):** Exit with message: `"No sections approved for update. Run again when ready."`
-
-- **If "Approve all" (option 1):** Approve all stale sections from the staleness report, all verify findings, and all pending notes. Build the `approved_sections` dict from the full staleness report and all verify findings.
-
-- **If "Select by document" (option 2):** For each document that has stale sections OR verify findings (or both), use AskUserQuestion to show section details and verify findings **merged per document** with unified numbering. One approval per document covers both staleness and findings:
-
-  ```
-  OPERATIONS.md -- 0 stale sections, 2 verify findings:
-    Verify findings:
-      1. deployment-pipeline -- broken file reference (high)
-      2. monitoring-setup -- Diataxis mixing (medium)
-
-  Approve: all / none / specific numbers (e.g., "1,2")
-  ```
-
-  ```
-  ARCHITECTURE.md -- 3 stale sections, 1 verify finding:
-    Stale sections:
-      1. system-overview -- src/app.ts changed (2026-03-15) [high]
-      2. data-model -- schema.prisma changed (2026-03-14) [high]
-      3. component-map -- lib/utils.py changed (2026-03-10) [medium]
-    Verify findings:
-      4. data-model -- Diataxis mixing (medium)
-
-  Approve: all / none / specific numbers (e.g., "1,2,4")
-  ```
-
-  Group by document name first, then list staleness sections and findings together under each document with unified numbering (staleness items numbered first, then findings continue the sequence). One approval per document covers both staleness and findings. When multiple findings share a `group_id`, show one line per group with the highest severity and a "(+ N related)" suffix. All findings in the group are approved/rejected together.
-
-  To get per-document findings for the drill-in, run:
-  ```bash
-  python3 {SCRIPTS_DIR}/list-verify-findings.py \
-    --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
-    --document {DOCUMENT} \
-    --grouped \
-    --output {TMP_DIR}/findings-{DOCUMENT}.json
-  ```
-  Read the output file. It returns an array of group objects, each with `group_id`, `count`, `highest_severity`, and `representative` (the finding to display). For groups with `count > 1`, show the representative with a "(+ N related)" suffix where N = count - 1. For groups with `count == 1`, show the finding normally. All findings in a group are approved/rejected together.
-
-- **If "Select by severity" (option 3):** Use AskUserQuestion to ask for the minimum severity level:
-
-  ```
-  Approve by severity:
-    1. High only ({N} sections + findings)
-    2. High + Medium ({N} sections + findings)
-    3. All severities ({N} sections + findings)
-  ```
-  Approve all staleness sections AND verify findings at or above the selected severity level. The severity filter applies uniformly to both staleness sections and verify findings.
-
-#### 2d. Notes Approval
-
-After staleness approval is complete, present pending inbox notes as a **separate group**:
-
-```
-Pending inbox notes:
-  NOTE-003: "Add auth flow documentation" -> ARCHITECTURE/auth-flow [confidence: 0.85]
-  NOTE-005: "Document the new CLI flags" -> USER_GUIDE/getting-started [confidence: 0.72]
-
-Approve: all / none / specific IDs (e.g., "NOTE-003")
-```
-
-Use AskUserQuestion for this approval. Approved notes will be expanded into their classified document/section during generation by the relevant writer agent.
-
-#### 2e. Build Approved Sections Dict
-
-Combine staleness approvals, findings approvals, and note approvals into a single `approved_sections` dict:
-
-```json
-{
-  "developers": ["system-overview", "data-model"],
-  "agents": ["tool-registry"],
-  "end-users": ["getting-started"],
-  "devops": ["deployment-pipeline", "monitoring-setup"]
-}
-```
-
-**Normalize section identifiers to slug format:** Template headings use Title Case (e.g., "System Overview"), but `source_material_index` and `staleness_report` use lowercased-hyphenated slugs (e.g., `system-overview`). Always convert to slug format when building `approved_sections`. Writer agents match by slug.
-
-For approved verify findings: add the finding's `section` slug to the appropriate audience's list in `approved_sections`. A finding's `audience` field determines which audience list it belongs to.
-
-For approved findings, also build a separate `approved_findings` structure so writer agents receive the specific finding details (not just section names):
-```json
-{
-  "devops": {
-    "deployment-pipeline": [
-      {"check": "reference-integrity", "severity": "high", "description": "...", "suggestion": "..."}
-    ],
-    "monitoring-setup": [
-      {"check": "diataxis", "severity": "medium", "description": "...", "suggestion": "..."}
-    ]
-  },
-  "developers": {
-    "data-model": [
-      {"check": "diataxis", "severity": "medium", "description": "...", "suggestion": "..."}
-    ]
-  }
-}
-```
-
-For notes: add the note's classified `section` slug to the appropriate audience's list in `approved_sections` (so the writer agent regenerates that section and includes the note's expanded content).
+2. **Group notes by audience.** For each note, use its `classification.audience` field to build a dict mapping audience → list of notes. Store this for use when spawning writer agents in Stage 2.
 
 ### Step 3: Prepare Workspace
 
@@ -315,21 +173,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    - `agents` -> `agents/agent-writer.md`
    - `devops` -> `agents/devops-writer.md`
 
-2. **In update mode:** Only spawn agents for audiences that have approved sections. If an audience has no sections in the `approved_sections` dict from Step 2, skip it entirely to save subagent cost.
-
-3. **Spawn one Agent call per enabled audience in a SINGLE message** (parallel foreground — do NOT set `run_in_background`). Each subagent reads its own instructions. For each audience:
-
-   **In update mode, before spawning each writer:** If the audience has approved findings (entries in the `approved_findings` dict from Step 2e), load the relevant findings for that audience. For each document that the audience will update, run:
-   ```bash
-   python3 {SCRIPTS_DIR}/list-verify-findings.py \
-     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
-     --document {DOCUMENT} \
-     --audience {audience} \
-     --output {TMP_DIR}/findings-{audience}-{DOCUMENT}.json
-   ```
-   Read the output file to get findings for that audience/document combination.
-
-   Then spawn the Agent:
+2. **Spawn one Agent call per enabled audience in a SINGLE message** (parallel foreground — do NOT set `run_in_background`). Each subagent reads its own instructions. For each audience:
 
    ```
    Agent(
@@ -347,18 +191,19 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    Glossary path: {docs_dir_abs}/GLOSSARY.md
    Documents: {document_list from config}
    Mode: {mode}
-   Update sections: {approved_sections_for_audience or empty list}
 
-   Verify findings for your sections (fix these issues from the previous version):
-   [paste findings from the output files -- each has description and suggestion]"
+   Standing notes (incorporate into relevant sections):
+   {notes for this audience from Step 2, or 'None' if empty}"
    )
    ```
 
-   Only include findings for sections that were approved. If a finding's section was not approved, omit it. If the audience has no approved findings, omit the "Verify findings" block from the prompt entirely.
+   For standing notes: if the audience has notes from Step 2, format each as:
+   `- {note_id} ({document}/{section}): "{note_text}"`
+   If no notes exist for this audience, set to `None`.
 
    The `{audience}` in the templates dir path uses the CONFIG KEY (e.g., `developers/`, `end-users/`, `agents/`, `devops/`).
 
-4. **After all agents complete,** verify output files exist in each audience subdirectory:
+3. **After all agents complete,** verify output files exist in each audience subdirectory:
    ```
    Glob pattern: {docs_dir_abs}/**/*.md
    ```
@@ -477,67 +322,38 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
    ```
    If the file does not exist, log a warning. The pipeline can still complete without OVERVIEW.
 
-### Step 4: Notes Integration
+### Step 4: Summary and Next Steps
 
-After all generation stages complete, update the notes inbox to mark integrated notes.
+After all generation is complete, present a generation report.
 
-**Only run this step if** notes were approved during Step 2 (update mode) AND writer agents integrated them during generation.
-
-1. **Read the notes inbox:**
-   ```
-   Read {project_root}/.mg/docs/notes-inbox.json
-   ```
-
-2. **For each approved and integrated note,** update its entry in the `notes` array:
-   - Set `"status": "integrated"`
-   - Add `"integrated_date": "YYYY-MM-DD"` (today's date)
-   - Preserve all other fields (`note_id`, `text`, `classified`, `audience`, `document`, `section`, `confidence`, `expansion_outline`)
-
-3. **Write the full updated inbox** back as a single atomic write:
-   ```
-   Write the complete notes-inbox.json with all notes (integrated and non-integrated)
-   to: {project_root}/.mg/docs/notes-inbox.json
-   ```
-   Do NOT write notes one at a time. Read the full file, update all integrated notes in memory, and write the complete file once. This prevents partial-update corruption.
-
-### Step 5: Summary and Next Steps
-
-After all generation and notes integration is complete, present a generation report.
-
-1. **Collect stats for each generated or updated file.** For every `.md` file in `{docs_dir_abs}` (including subdirectories):
+1. **Collect stats for each generated file.** For every `.md` file in `{docs_dir_abs}` (including subdirectories):
    - Count sections (`## ` headings)
    - Count words (approximate: split by whitespace, excluding HTML comments and frontmatter)
-   - Determine status:
-     - `Generated` -- file was created in this run (initial mode, or new file in update mode)
-     - `Updated` -- file existed before and was modified in this run (update mode)
-     - `Unchanged` -- file existed before and was not modified (update mode, no approved sections)
 
 2. **Present the summary table:**
 
    ```
    Generation Summary:
 
-   | File                              | Sections | Words  | Status    |
-   |-----------------------------------|----------|--------|-----------|
-   | GLOSSARY.md                       | 5        | 820    | Generated |
-   | end-users/USER_GUIDE.md           | 6        | 1,450  | Generated |
-   | developers/ARCHITECTURE.md        | 7        | 2,100  | Generated |
-   | developers/DEVELOPER_GUIDE.md     | 5        | 1,800  | Generated |
-   | developers/QUICK_REFERENCE.md     | 4        | 650    | Generated |
-   | agents/SYSTEM_MAP.md              | 6        | 1,200  | Generated |
-   | agents/CONVENTIONS.md             | 4        | 900    | Generated |
-   | agents/GOTCHAS.md                 | 3        | 500    | Generated |
-   | agents/TESTING.md                 | 4        | 700    | Generated |
-   | devops/OPERATIONS.md              | 5        | 1,100  | Generated |
-   | devops/TROUBLESHOOTING.md         | 4        | 800    | Generated |
-   | OVERVIEW.md                       | 4        | 450    | Generated |
+   | File                              | Sections | Words  |
+   |-----------------------------------|----------|--------|
+   | GLOSSARY.md                       | 5        | 820    |
+   | end-users/USER_GUIDE.md           | 6        | 1,450  |
+   | developers/ARCHITECTURE.md        | 7        | 2,100  |
+   | developers/DEVELOPER_GUIDE.md     | 5        | 1,800  |
+   | developers/QUICK_REFERENCE.md     | 4        | 650    |
+   | agents/SYSTEM_MAP.md              | 6        | 1,200  |
+   | agents/CONVENTIONS.md             | 4        | 900    |
+   | agents/GOTCHAS.md                 | 3        | 500    |
+   | agents/TESTING.md                 | 4        | 700    |
+   | devops/OPERATIONS.md              | 5        | 1,100  |
+   | devops/TROUBLESHOOTING.md         | 4        | 800    |
+   | OVERVIEW.md                       | 4        | 450    |
 
    Total: 12 files, 57 sections, ~12,470 words
    ```
 
 3. **Show additional stats** (if applicable):
-   - If verify findings were addressed: `"Verify findings addressed: {count} ({severity breakdown, e.g., 1 high, 2 medium})"`
-   - If notes were integrated: `"Notes integrated: {count} ({note_id list})"`
    - If glossary reconciliation added terms: `"New glossary terms: {count} added during reconciliation"` (read from `.mg/docs/scan-logs/glossary-reconciliation.log` if it exists)
 
 4. **Suggest next step:**
@@ -610,7 +426,7 @@ Examples: `ARCHITECTURE/system-overview`, `USER_GUIDE/getting-started`, `OPERATI
 
 ## Important Principles
 
-- **Agents receive file paths only; they read files themselves.** Do not paste source material, templates, or scan data content into subagent prompts. Pass paths as strings. The locked decision says: "Agents receive file paths only, read files themselves." This prevents context limit blowouts on large projects.
+- **Agents receive file paths only; they read files themselves.** Do not paste source material, templates, or scan data content into subagent prompts. Pass paths as strings. This prevents context limit blowouts on large projects.
 
 - **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: agents/{name}.md`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
 
@@ -622,16 +438,12 @@ Examples: `ARCHITECTURE/system-overview`, `USER_GUIDE/getting-started`, `OPERATI
 
 - **Glossary runs first even in update mode.** Even if GLOSSARY.md exists from a prior run, the glossary agent re-runs its initial pass to catch new terms from updated scan data. Skipping it risks terminology drift.
 
-- **Only spawn writer agents for audiences with approved sections in update mode.** If a user only approves developer doc updates, do not spawn end-user, agent, or devops writers. This saves subagent cost and avoids unnecessary work.
-
 - **File ownership header goes at the very TOP.** Before DIATAXIS comments, before AUDIENCE comments, before the H1 heading. This is the first thing in every generated file. It tells users and tools that the file is machine-owned.
-
-- **No memory of rejections between runs.** If a user rejects a stale section during the approval flow, it reappears on the next update run. The generate command does not track rejection history. This is intentional -- the user may change their mind, and the staleness data may change.
 
 - **Normalize section identifiers to slug format.** Template headings use Title Case ("System Overview"), but source_material_index and staleness_report use lowercased-hyphenated slugs ("system-overview"). Always convert to slug format when matching sections.
 
-- **Generate reads verify findings but NEVER clears docs-verify-findings.json.** Only the verify command clears findings (at the start of each verify run). Findings the user skips in the approval flow reappear on the next verify run -- this is correct behavior, not a bug.
+- **Notes are standing instructions.** Both generate and update read all notes from the inbox regardless of status. Notes persist until the user explicitly deletes them. Generate passes notes to writer agents per audience; update routes notes to the fix agent or scoped generate.
 
-- **Tier ordering is staleness -> verify findings -> notes.** This follows logical severity ordering: code changes first, quality issues second, user knowledge third.
+- **Generate is for full generation, update is for surgical fixes.** Generate always runs all writers for all audiences. For fixing verify findings or integrating notes into existing docs, use `/mg:auto-doc-update` instead.
 
-- **Subagents receive audience-specific view files, not full scan data.** The orchestrator splits `docs-scan.json` into per-audience view files (Step 3 substep 6) and passes view file paths as `scan_data_path` in Agent() prompts. The project model is extracted to a separate `project-model.json` file (passed as `project_model_path`) to avoid duplicating it in every view. The orchestrator itself continues to read the full `docs-scan.json` for its own Step 1/Step 2 processing (staleness report, note classifications, mode detection). Do not reference view file paths in orchestrator logic outside of Agent() prompts.
+- **Subagents receive audience-specific view files, not full scan data.** The orchestrator splits `docs-scan.json` into per-audience view files (Step 3 substep 6) and passes view file paths as `scan_data_path` in Agent() prompts. The project model is extracted to a separate `project-model.json` file (passed as `project_model_path`) to avoid duplicating it in every view.

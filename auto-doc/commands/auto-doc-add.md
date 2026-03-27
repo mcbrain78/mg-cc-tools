@@ -105,7 +105,7 @@ Then use AskUserQuestion to let the user accept or correct the classification:
 
 **If "Accept":** Done. Print:
 ```
-Note saved. It will be processed on next /mg:auto-doc-generate run.
+Note saved. It will be used by /mg:auto-doc-update and /mg:auto-doc-generate.
 ```
 
 **If "Correct":** Ask the user for the correct values via a follow-up AskUserQuestion with these fields:
@@ -121,7 +121,7 @@ Then update the note in the inbox:
 
 Print:
 ```
-Classification updated. Note saved. It will be processed on next /mg:auto-doc-generate run.
+Classification updated. Note saved. It will be used by /mg:auto-doc-update and /mg:auto-doc-generate.
 ```
 
 ## Important Principles

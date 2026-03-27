@@ -60,7 +60,8 @@ def _run_section(tmp, state_file, document, section, content_text,
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
-def _run_finalize(state_file, docs_dir, audience, manifest_file, mode="initial"):
+def _run_finalize(state_file, docs_dir, audience, manifest_file, mode="initial",
+                   merge=False):
     """Helper: call write-section.py in finalize mode."""
     cmd = [
         sys.executable, SCRIPT_PATH,
@@ -71,6 +72,8 @@ def _run_finalize(state_file, docs_dir, audience, manifest_file, mode="initial")
         "--manifest-file", manifest_file,
         "--mode", mode,
     ]
+    if merge:
+        cmd.append("--merge")
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -514,3 +517,184 @@ class TestSymbolValidation:
             assert "ArchiveBase" in result.stderr
             # State should still be written (advisory only)
             assert os.path.isfile(state_file)
+
+
+class TestMergeMode:
+    """Finalize with --merge: merge new sections into existing documents."""
+
+    def _build_state(self, tmp, sections, header="", doc_name="ARCHITECTURE"):
+        """Build a state file with given sections, return state_file path."""
+        state_file = os.path.join(tmp, "state.json")
+        state = {
+            "documents": {
+                doc_name: {
+                    "header": header,
+                    "sections_order": [s[0] for s in sections],
+                    "sections": {
+                        slug: {
+                            "content": content,
+                            "symbols": symbols,
+                            "file_paths": fps,
+                        }
+                        for slug, content, symbols, fps in sections
+                    },
+                }
+            }
+        }
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        return state_file
+
+    def _write_existing_doc(self, tmp, audience, doc_name, content):
+        """Write an existing document file and return its path."""
+        doc_dir = os.path.join(tmp, "docs", audience)
+        os.makedirs(doc_dir, exist_ok=True)
+        doc_path = os.path.join(doc_dir, f"{doc_name}.md")
+        with open(doc_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return doc_path
+
+    def test_merge_replaces_matching_section(self):
+        """Existing section replaced, others preserved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            existing_content = (
+                "<!-- auto-generated -->\n# Architecture\n\n"
+                "## Overview\n\nOld overview text\n\n"
+                "## Data Model\n\nExisting data model\n\n"
+                "## Auth Flow\n\nExisting auth flow\n\n"
+                "## Config\n\nExisting config\n\n"
+                "## Deployment\n\nExisting deployment\n"
+            )
+            self._write_existing_doc(
+                tmp, "developers", "ARCHITECTURE", existing_content,
+            )
+
+            # State has 1 replacement (overview) + 1 new section (testing)
+            sections = [
+                ("overview", "## Overview\n<!-- docs-meta: ... -->\n\nUpdated overview text",
+                 ["Sym1"], ["a.py"]),
+                ("testing", "## Testing\n<!-- docs-meta: ... -->\n\nBrand new testing section",
+                 ["Sym2"], ["b.py"]),
+            ]
+            state_file = self._build_state(tmp, sections)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "developers", manifest_file,
+                mode="update", merge=True,
+            )
+            assert result.returncode == 0
+
+            doc_path = os.path.join(docs_dir, "developers", "ARCHITECTURE.md")
+            with open(doc_path) as f:
+                content = f.read()
+
+            # Header preserved
+            assert "<!-- auto-generated -->" in content
+            assert "# Architecture" in content
+            # Replaced section has new content
+            assert "Updated overview text" in content
+            assert "Old overview text" not in content
+            # Unmodified sections preserved
+            assert "Existing data model" in content
+            assert "Existing auth flow" in content
+            assert "Existing config" in content
+            assert "Existing deployment" in content
+            # New section appended
+            assert "Brand new testing section" in content
+            # Total: 6 sections (5 existing + 1 new)
+            assert content.count("\n## ") == 6
+
+    def test_merge_preserves_order(self):
+        """Section order from existing doc preserved, new sections appended."""
+        with tempfile.TemporaryDirectory() as tmp:
+            existing_content = (
+                "# Doc\n\n"
+                "## Alpha\n\nAlpha content\n\n"
+                "## Beta\n\nBeta content\n\n"
+                "## Gamma\n\nGamma content\n"
+            )
+            self._write_existing_doc(
+                tmp, "developers", "ARCHITECTURE", existing_content,
+            )
+
+            sections = [
+                ("beta", "## Beta\n\nUpdated Beta", [], []),
+                ("delta", "## Delta\n\nNew Delta", [], []),
+            ]
+            state_file = self._build_state(tmp, sections)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "developers", manifest_file,
+                mode="update", merge=True,
+            )
+            assert result.returncode == 0
+
+            doc_path = os.path.join(docs_dir, "developers", "ARCHITECTURE.md")
+            with open(doc_path) as f:
+                content = f.read()
+
+            # Check order: Alpha < Beta < Gamma < Delta
+            assert content.index("## Alpha") < content.index("## Beta")
+            assert content.index("## Beta") < content.index("## Gamma")
+            assert content.index("## Gamma") < content.index("## Delta")
+            # Beta has updated content
+            assert "Updated Beta" in content
+            assert "Beta content" not in content
+
+    def test_merge_no_existing_doc_falls_back_to_assembly(self):
+        """When no existing doc, merge behaves like standard assembly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            header = "# Architecture\n"
+            sections = [
+                ("overview", "## Overview\n\nNew overview", ["S"], ["a.py"]),
+            ]
+            state_file = self._build_state(tmp, sections, header)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "developers", manifest_file,
+                mode="update", merge=True,
+            )
+            assert result.returncode == 0
+
+            doc_path = os.path.join(docs_dir, "developers", "ARCHITECTURE.md")
+            assert os.path.isfile(doc_path)
+            with open(doc_path) as f:
+                content = f.read()
+            assert "# Architecture" in content
+            assert "New overview" in content
+
+    def test_merge_generates_manifest(self):
+        """Merge mode still produces correct manifest."""
+        with tempfile.TemporaryDirectory() as tmp:
+            existing_content = (
+                "# Doc\n\n"
+                "## Overview\n\nOld content\n"
+            )
+            self._write_existing_doc(
+                tmp, "developers", "ARCHITECTURE", existing_content,
+            )
+
+            sections = [
+                ("overview", "## Overview\n\nNew content",
+                 ["Pipeline"], ["src/app.ts"]),
+            ]
+            state_file = self._build_state(tmp, sections)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            _run_finalize(
+                state_file, docs_dir, "developers", manifest_file,
+                mode="update", merge=True,
+            )
+
+            with open(manifest_file) as f:
+                manifest = json.load(f)
+
+            assert "ARCHITECTURE" in manifest["documents"]
+            assert manifest["documents"]["ARCHITECTURE"]["overview"]["symbols"] == ["Pipeline"]

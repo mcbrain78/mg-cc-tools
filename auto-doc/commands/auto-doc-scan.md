@@ -236,54 +236,7 @@ If mode is `"initial"`, skip this step entirely.
 
 4. Review script output for errors. If a script fails, log the error and continue -- partial staleness data is better than none.
 
-### Step 5: Notes Classification
-
-**Only run this step if** `.mg/docs/notes-inbox.json` exists AND has pending notes (notes where `classified` is false or the field is missing).
-
-1. **Read `notes-inbox.json`** from `<project_root>/.mg/docs/notes-inbox.json`.
-
-2. **For each pending note** (where `classified` is false or missing), run:
-   ```bash
-   python3 {SCRIPTS_DIR}/classify-note.py \
-       --text "<note_text>" \
-       --note-id <note_id> \
-       --inbox <project_root>/.mg/docs/notes-inbox.json
-   ```
-   The script writes classification data back to the inbox file AND prints the classification JSON to stdout. Capture the stdout JSON for each note.
-
-3. **Collect classification results** from stdout. Each result has: `note_id`, `audience`, `document`, `section`, `confidence`.
-
-4. **Generate expansion outlines (SCN-06 requirement).** For each classified note, generate a proposed expansion outline -- 3 to 5 bullet points describing how the note's content should be expanded into the target document section. Consider:
-   - The note's original text
-   - The target audience (what level of detail do they need?)
-   - The target document and section (what kind of content belongs there?)
-   - The project context from orientation
-
-   Add the outline as an `"expansion_outline"` array of strings to each classification entry:
-   ```json
-   {
-     "note_id": "NOTE-001",
-     "audience": "developers",
-     "document": "ARCHITECTURE",
-     "section": "auth-flow",
-     "confidence": 0.85,
-     "expansion_outline": [
-       "Describe the JWT token flow from login to API access",
-       "Document the refresh token rotation strategy",
-       "Add sequence diagram showing auth middleware chain",
-       "List environment variables required for auth configuration",
-       "Note the rate limiting applied to auth endpoints"
-     ]
-   }
-   ```
-
-5. **Write combined classifications** to scan-logs for merge:
-   ```bash
-   Write to: <project_root>/.mg/docs/scan-logs/note-classifications.json
-   ```
-   Format: `{ "note_classifications": [ ... ] }` -- an object with a `note_classifications` array containing all classified entries with expansion outlines.
-
-### Step 6: Per-Audience Scan (parallel foreground)
+### Step 5: Per-Audience Scan (parallel foreground)
 
 For each enabled audience in the config, spawn a scan subagent via the Agent tool. All agents run as parallel foreground (do NOT set `run_in_background`) so progress is visible inline.
 
@@ -352,7 +305,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
 
    The scan-audience agent writes its output to a temp file first, then validates it via `write-scan-output.py` before writing to the output path. If validation fails, the agent retries once. If it fails again, the merge handles missing audience data gracefully.
 
-### Step 7: Merge and Present
+### Step 6: Merge and Present
 
 1. **Run merge-scan.py** to combine all partial results into the final scan output:
    ```bash

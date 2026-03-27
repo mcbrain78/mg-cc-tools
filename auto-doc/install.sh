@@ -25,6 +25,7 @@ COMMANDS=(
   auto-doc
   auto-doc-scan
   auto-doc-generate
+  auto-doc-update
   auto-doc-verify
   auto-doc-add
   auto-doc-script
@@ -71,6 +72,7 @@ while [[ $# -gt 0 ]]; do
       echo "  /mg:auto-doc           <- router (guides you through the pipeline)"
       echo "  /mg:auto-doc-scan      <- step 1: scan"
       echo "  /mg:auto-doc-generate  <- step 2: generate"
+      echo "  /mg:auto-doc-update    <- fix findings + integrate notes"
       echo "  /mg:auto-doc-verify    <- step 3: verify"
       echo "  /mg:auto-doc-add          <- capture notes"
       echo "  /mg:auto-doc-script       <- generate README for a standalone script"
@@ -382,6 +384,7 @@ echo "Invoke with:"
 echo "  /mg:auto-doc              <- start here (guides you through the pipeline)"
 echo "  /mg:auto-doc-scan         <- step 1: scan"
 echo "  /mg:auto-doc-generate     <- step 2: generate"
+echo "  /mg:auto-doc-update       <- fix findings + integrate notes"
 echo "  /mg:auto-doc-verify       <- step 3: verify"
 echo "  /mg:auto-doc-add          <- capture documentation notes"
 echo "  /mg:auto-doc-script       <- generate README for a standalone script"
