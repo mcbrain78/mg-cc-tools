@@ -38,3 +38,29 @@ def extract_python_symbols(source):
             for alias in node.names:
                 names.add(alias.asname if alias.asname else alias.name)
     return names
+
+
+def extract_function_signatures(source):
+    """Extract function/method parameter names from Python source via ast.
+
+    Returns dict mapping function name -> list of parameter names
+    (excluding 'self' and 'cls'). Includes FunctionDef and AsyncFunctionDef
+    at any nesting level.
+
+    Returns empty dict on SyntaxError.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+
+    signatures = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            params = []
+            for arg in node.args.args + node.args.kwonlyargs:
+                name = arg.arg
+                if name not in ("self", "cls"):
+                    params.append(name)
+            signatures[node.name] = params
+    return signatures

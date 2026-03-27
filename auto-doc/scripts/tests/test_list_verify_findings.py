@@ -578,7 +578,7 @@ class TestListVerifyFindingsClean:
     """--clean mode behavior."""
 
     def test_clean_removes_all_verify_artifacts(self):
-        """--clean removes all verify artifacts that exist."""
+        """--clean removes all static verify artifacts that exist."""
         with tempfile.TemporaryDirectory() as tmp:
             # Create the docs dir structure with all verify artifacts
             scan_logs = os.path.join(tmp, "scan-logs")
@@ -592,6 +592,10 @@ class TestListVerifyFindingsClean:
                 os.path.join(scan_logs, "verify-refs.json"),
                 os.path.join(tmp, "docs-verify-findings-mechanical.json"),
                 os.path.join(tmp, "docs-verify-findings-editorial.json"),
+                os.path.join(tmp, "docs-verify-findings-code-example.json"),
+                os.path.join(tmp, "docs-verify-findings-data-model.json"),
+                os.path.join(tmp, "docs-verify-findings-cross-doc.json"),
+                os.path.join(tmp, "docs-verify-findings-completeness.json"),
             ]
             for path in artifacts:
                 with open(path, "w") as f:
@@ -614,6 +618,44 @@ class TestListVerifyFindingsClean:
             # Stderr should mention each removed file
             for path in artifacts:
                 assert path in result.stderr
+
+    def test_clean_removes_dynamic_editorial_files(self):
+        """--clean removes per-document editorial findings files (editorial-*.json)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_logs = os.path.join(tmp, "scan-logs")
+            os.makedirs(scan_logs)
+
+            # Create per-document editorial files
+            editorial_files = [
+                os.path.join(tmp, "docs-verify-findings-editorial-OPERATIONS.json"),
+                os.path.join(tmp, "docs-verify-findings-editorial-ARCHITECTURE.json"),
+                os.path.join(tmp, "docs-verify-findings-editorial-GETTING-STARTED.json"),
+            ]
+            for path in editorial_files:
+                with open(path, "w") as f:
+                    f.write("[]")
+
+            # Also create a non-editorial file to verify it's preserved
+            other_file = os.path.join(tmp, "docs-scan.json")
+            with open(other_file, "w") as f:
+                f.write("{}")
+
+            findings_file = os.path.join(tmp, "docs-verify-findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--clean",
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            # All editorial files should be gone
+            for path in editorial_files:
+                assert not os.path.exists(path), f"Expected removed: {path}"
+
+            # Non-editorial file should be preserved
+            assert os.path.exists(other_file)
 
     def test_clean_succeeds_when_no_artifacts_exist(self):
         """--clean exits 0 when no verify artifacts exist (no error)."""

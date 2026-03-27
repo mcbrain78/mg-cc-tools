@@ -690,6 +690,7 @@ Each section entry within a document:
 |-------|------|----------|-------------|
 | `symbols` | `array of string` | yes | Unqualified code identifiers (function names, class names, constants). Never dotted paths -- `load_json` not `lib.json_io.load_json`. |
 | `file_paths` | `array of string` | yes | Files and directories referenced, relative to project root. |
+| `calls` | `array of object` | no | Function calls used in doc examples. Each: `{"symbol": "name", "kwargs": ["param1", "param2"]}`. Verified by `verify-references.py` against actual function signatures via `ast.parse()`. |
 
 ### Upsert Key
 

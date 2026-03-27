@@ -27,7 +27,7 @@ Before proceeding, confirm these exist:
    Run /mg:auto-doc-scan first to analyze the project.
    ```
 
-2. **Generated docs directory exists:** The docs directory (from config `docs_dir`, default `docs/auto-doc`) must exist. Check with a simple directory existence test (e.g., `test -d`), NOT by listing files -- the verifier agent handles its own doc file discovery. If missing:
+2. **Generated docs directory exists:** The docs directory (from config `docs_dir`, default `docs/auto-doc`) must exist. Check with a simple directory existence test (e.g., `test -d`), NOT by listing files -- the verifier agents handle their own doc file discovery. If missing:
    ```
    Error: No generated documentation found in {docs_dir}.
    Run /mg:auto-doc-generate first to create documentation.
@@ -51,9 +51,9 @@ If either prerequisite fails, abort with the corresponding message and do not pr
    - `output_report_path` = `{project_root}/.mg/docs/docs-verify-report.md`
    - `findings_file` = `{project_root}/.mg/docs/docs-verify-findings.json`
 
-4. **Ensure scan-logs directory exists:**
+4. **Ensure workspace directories exist:**
    ```bash
-   mkdir -p {project_root}/.mg/docs/scan-logs
+   mkdir -p {project_root}/.mg/docs/scan-logs {project_root}/.mg/docs/tmp
    ```
 
 5. **Clear prior verify artifacts.** Remove all verify artifacts from prior runs to start fresh:
@@ -80,73 +80,151 @@ If either prerequisite fails, abort with the corresponding message and do not pr
      --token-limit 5000
    ```
 
-8. **Init agent-specific findings files.** Each agent gets its own isolated findings file:
-   ```bash
-   python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
-     --findings-file {project_root}/.mg/docs/docs-verify-findings-mechanical.json
-   python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
-     --findings-file {project_root}/.mg/docs/docs-verify-findings-editorial.json
-   ```
+### Step 2: Run Mechanical Script
 
-### Step 2: Spawn Verification Agents
+Run the deterministic reference integrity checker directly (not in an agent):
+```bash
+python3 {SCRIPTS_DIR}/verify-references.py \
+    --manifests-dir {project_root}/.mg/docs/reference-manifests \
+    --project-root {project_root} \
+    --scan-file {project_root}/.mg/docs/docs-scan.json \
+    --findings-file {project_root}/.mg/docs/docs-verify-findings.json
+```
 
-Spawn **two** verification agents in parallel via the Agent tool. Each agent writes to its own isolated findings file. The orchestrator merges them after both complete.
+This checks file paths, symbols, and function call signatures in reference manifests. Findings are written directly to the main findings file. If the script exits non-zero (e.g., no reference-manifests directory yet), log the error and continue to Step 3 -- other agents can still produce useful findings.
+
+### Step 3: Init Agent Findings Files
+
+Each agent gets its own isolated findings file. Read the review manifest to determine the per-document editorial files:
+
+```bash
+# 4 fact-checker files
+python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+  --findings-file {project_root}/.mg/docs/docs-verify-findings-code-example.json
+python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+  --findings-file {project_root}/.mg/docs/docs-verify-findings-data-model.json
+python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+  --findings-file {project_root}/.mg/docs/docs-verify-findings-cross-doc.json
+python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+  --findings-file {project_root}/.mg/docs/docs-verify-findings-completeness.json
+```
+
+Read the manifest JSON at `{project_root}/.mg/docs/tmp/review-chunks/manifest.json`. For each entry, compute `doc_name` = basename of `source` without `.md` extension. Init one editorial findings file per document:
+```bash
+python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+  --findings-file {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name}.json
+```
+
+### Step 4: Spawn All Agents in Parallel
+
+Spawn all agents in a **single message** via the Agent tool (parallel foreground -- do NOT set `run_in_background`). Each agent writes to its own isolated findings file.
+
+**4 fact-checker agents** (one each):
 
 ```
 Agent(
-  description="Verify documentation quality (6 mechanical checks)",
-  prompt="You are the documentation verifier agent.
+  description="Verify code examples in documentation",
+  prompt="You are the code example verifier agent.
 
-Read and follow the instructions in: {AGENTS_DIR}/verifier.md
+Read and follow the instructions in: {AGENTS_DIR}/code-example-verifier.md
+
+Parameters:
+- project_root: {project_root}
+- review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
+- findings_file: {project_root}/.mg/docs/docs-verify-findings-code-example.json"
+)
+
+Agent(
+  description="Verify data model claims in documentation",
+  prompt="You are the data model verifier agent.
+
+Read and follow the instructions in: {AGENTS_DIR}/data-model-verifier.md
 
 Parameters:
 - project_root: {project_root}
 - review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
 - scan_context_path: {project_root}/.mg/docs/tmp/verify-scan-context.json
-- glossary_path: {docs_dir_abs}/GLOSSARY.md
-- style_guide_path: references/style-guide.md
-- findings_file: {project_root}/.mg/docs/docs-verify-findings-mechanical.json"
+- findings_file: {project_root}/.mg/docs/docs-verify-findings-data-model.json"
 )
 
 Agent(
-  description="Editorial review of documentation quality",
-  prompt="You are the editorial review agent.
+  description="Check cross-document consistency",
+  prompt="You are the cross-document checker agent.
 
-Read and follow the instructions in: {AGENTS_DIR}/editorial-reviewer.md
+Read and follow the instructions in: {AGENTS_DIR}/cross-doc-checker.md
 
 Parameters:
 - project_root: {project_root}
 - review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
-- style_guide_path: references/style-guide.md
-- findings_file: {project_root}/.mg/docs/docs-verify-findings-editorial.json"
+- glossary_path: {docs_dir_abs}/GLOSSARY.md
+- findings_file: {project_root}/.mg/docs/docs-verify-findings-cross-doc.json"
+)
+
+Agent(
+  description="Check documentation completeness",
+  prompt="You are the completeness checker agent.
+
+Read and follow the instructions in: {AGENTS_DIR}/completeness-checker.md
+
+Parameters:
+- project_root: {project_root}
+- review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
+- scan_context_path: {project_root}/.mg/docs/tmp/verify-scan-context.json
+- findings_file: {project_root}/.mg/docs/docs-verify-findings-completeness.json"
 )
 ```
 
-Wait for **both** agents to complete before proceeding.
+**N per-document editorial agents** (one per manifest entry):
 
-### Step 3: Generate Report
+For each entry in the manifest, spawn:
+```
+Agent(
+  description="Editorial review of {doc_name}",
+  prompt="You are the editorial review agent for {doc_name}.
 
-After both agents complete, merge their isolated findings and generate the verification report:
+Read and follow the instructions in: {AGENTS_DIR}/per-doc-editorial.md
 
-1. **Merge agent findings:**
-   ```bash
-   python3 {SCRIPTS_DIR}/list-verify-findings.py \
-     --merge-from {project_root}/.mg/docs/docs-verify-findings-mechanical.json \
-     --merge-from {project_root}/.mg/docs/docs-verify-findings-editorial.json \
-     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
-     --output {TMP_DIR}/all-findings.json
-   ```
+Parameters:
+- project_root: {project_root}
+- doc_source: {entry.source}
+- doc_audience: {entry.audience}
+- review_files: {JSON array of entry.review_files}
+- style_guide_path: references/style-guide.md
+- findings_file: {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name}.json"
+)
+```
 
-2. **Read** `{TMP_DIR}/all-findings.json` to get all recorded findings (both mechanical and editorial).
+All agents (4 fact-checkers + N editorial) must be spawned in a **single Agent message** so they run in parallel. Wait for all to complete before proceeding.
 
-3. **Identify systemic issues.** Look for patterns across findings:
+### Step 5: Merge Findings
+
+Build the `--merge-from` list dynamically from the 4 fact-checker files plus N per-document editorial files:
+
+```bash
+python3 {SCRIPTS_DIR}/list-verify-findings.py \
+  --merge-from {project_root}/.mg/docs/docs-verify-findings-code-example.json \
+  --merge-from {project_root}/.mg/docs/docs-verify-findings-data-model.json \
+  --merge-from {project_root}/.mg/docs/docs-verify-findings-cross-doc.json \
+  --merge-from {project_root}/.mg/docs/docs-verify-findings-completeness.json \
+  --merge-from {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name_1}.json \
+  --merge-from {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name_2}.json \
+  ... (one --merge-from per document) \
+  --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
+  --output {TMP_DIR}/all-findings.json
+```
+
+### Step 6: Generate Report
+
+1. **Read** `{TMP_DIR}/all-findings.json` to get all recorded findings.
+
+2. **Identify systemic issues.** Look for patterns across findings:
    - Same broken reference appearing in multiple documents
    - Same glossary term misused across documents
    - Repeated Diataxis mixing patterns in documents of the same type
    - Same editorial issue (e.g., filler content) appearing across multiple documents
    Group these as systemic issues rather than listing each occurrence separately.
 
-4. **Write** `docs-verify-report.md` to `{project_root}/.mg/docs/docs-verify-report.md` with this structure:
+3. **Write** `docs-verify-report.md` to `{project_root}/.mg/docs/docs-verify-report.md` with this structure:
 
 ```markdown
 # Documentation Verification Report
@@ -188,9 +266,9 @@ After both agents complete, merge their isolated findings and generate the verif
 ...
 ```
 
-Group issues by severity (critical first). Within each severity group, list issues in the order they were found. **Skip findings already fully described in a Systemic Issues group** — instead include a one-line back-reference: `See Systemic Issue #N above (K findings)`. Include document path, section name, check type, description, and an actionable suggestion for every non-systemic issue. Omit empty severity sections.
+Group issues by severity (critical first). Within each severity group, list issues in the order they were found. **Skip findings already fully described in a Systemic Issues group** -- instead include a one-line back-reference: `See Systemic Issue #N above (K findings)`. Include document path, section name, check type, description, and an actionable suggestion for every non-systemic issue. Omit empty severity sections.
 
-### Step 4: Present Results
+### Step 7: Present Results
 
 1. **Read the report** you just wrote: `{project_root}/.mg/docs/docs-verify-report.md`.
 
@@ -220,7 +298,7 @@ Group issues by severity (critical first). Within each severity group, list issu
    ```
    (Where N comes from completeness check issues in the report. If zero gaps, omit this line.)
 
-### Step 5: Suggest Next Steps
+### Step 8: Suggest Next Steps
 
 - If this is the last pipeline step:
   ```
@@ -236,11 +314,11 @@ Group issues by severity (critical first). Within each severity group, list issu
 
 - **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `docs-verify-report.md`, `docs-verify-findings.json`.
 - **Subagents read their own instructions via file path.** The Agent prompt passes a reference (`Read and follow the instructions in: agents/...`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
-- **Two agents run in parallel with isolated findings.** The mechanical verifier (6 checks) and editorial reviewer (22 criteria) each write to their own findings file. The orchestrator merges them after both complete — agents never touch the shared findings file directly.
-- **Reference integrity uses `ast.parse()` via a deterministic script (`verify-references.py`).** The agent calls the script as its first step.
-- **Reference integrity is manifest-based.** The verifier reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
-- **5-tier severity model:** critical, high, medium, low, info. This matches the verifier agent's definition and the report output format.
-- **Prefer false negatives over false positives.** Same principle as the verifier agent -- only flag issues with high confidence. A noisy report trains users to ignore it.
+- **Focused agents with isolated findings.** Each agent has a narrow scope and writes to its own findings file. The orchestrator merges all findings after agents complete. Agents never touch the shared findings file directly.
+- **Reference integrity runs in the orchestrator.** The `verify-references.py` script is deterministic and fast -- it runs directly without an agent wrapper.
+- **Reference integrity is manifest-based.** The script reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
+- **5-tier severity model:** critical, high, medium, low, info. This matches the agent definitions and the report output format.
+- **Prefer false negatives over false positives.** Same principle across all agents -- only flag issues with high confidence. A noisy report trains users to ignore it.
 - **Verify clears all verify artifacts before each run** via `list-verify-findings.py --clean`. Generate reads findings but never clears them. This ensures each verify run reflects the current documentation state.
 - **Use `{SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
 - **Use `{GLOBAL_CONFIG}` placeholder for default config path** -- resolved by install.sh at install time.

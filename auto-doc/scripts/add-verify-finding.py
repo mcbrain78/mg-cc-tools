@@ -59,6 +59,10 @@ VALID_CHECKS = [
     "devops-placeholder-in-command",
     # Editorial checks -- shared (1)
     "overview-missing-audience",
+    # Fact-checker checks (verify pipeline restructure)
+    "code-example-fact-check",
+    "data-model-fact-check",
+    "cross-doc-inconsistency",
 ]
 
 

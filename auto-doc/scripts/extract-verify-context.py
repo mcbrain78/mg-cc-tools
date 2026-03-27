@@ -110,6 +110,7 @@ def main():
         "root_path": scan_data.get("root_path", ""),
         "documented_sections": sorted(smi.keys()) if isinstance(smi, dict) else [],
         "gap_analysis": scan_data.get("gap_analysis", {}),
+        "project_model": scan_data.get("project_model", {}),
     }
 
     if args.templates_dir:

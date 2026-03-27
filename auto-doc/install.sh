@@ -245,6 +245,9 @@ if ls "${SCRIPT_DIR}"/agents/*.md &>/dev/null 2>&1; then
   cp "${SCRIPT_DIR}"/agents/*.md "${SUPPORT_DIR}/agents/"
 fi
 
+# Clean up old agent files from prior installs (verify pipeline restructure)
+rm -f "${SUPPORT_DIR}/agents/verifier.md" "${SUPPORT_DIR}/agents/editorial-reviewer.md"
+
 # Make scripts executable
 chmod +x "${SUPPORT_DIR}/scripts/"*.py
 

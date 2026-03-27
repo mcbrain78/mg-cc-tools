@@ -26,22 +26,24 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
-from lib.symbols import extract_python_symbols
+from lib.symbols import extract_function_signatures, extract_python_symbols
 
 
 def build_file_cache(file_paths, project_root):
-    """Build a cache of file existence and symbol sets.
+    """Build a cache of file existence, symbol sets, and function signatures.
 
     Args:
         file_paths: Set of relative file paths to check.
         project_root: Absolute path to resolve relative paths against.
 
     Returns:
-        (cache, parse_errors) where:
+        (cache, signature_cache, parse_errors) where:
         - cache: dict mapping relative path -> set of symbols (or None if missing)
+        - signature_cache: dict mapping relative path -> dict of func_name -> [param_names]
         - parse_errors: list of (path, error_message) for .py files with SyntaxError
     """
     cache = {}
+    signature_cache = {}
     parse_errors = []
 
     for rel_path in file_paths:
@@ -50,6 +52,7 @@ def build_file_cache(file_paths, project_root):
         if os.path.isdir(abs_path):
             # Recurse into directory, parse all .py files, union their symbols
             dir_symbols = set()
+            dir_signatures = {}
             for dirpath, _dirnames, filenames in os.walk(abs_path):
                 for fname in filenames:
                     if fname.endswith(".py"):
@@ -70,7 +73,9 @@ def build_file_cache(file_paths, project_root):
                                 parse_errors.append((py_rel, str(e)))
                         else:
                             dir_symbols.update(symbols)
+                            dir_signatures.update(extract_function_signatures(source))
             cache[rel_path] = dir_symbols
+            signature_cache[rel_path] = dir_signatures
         elif not os.path.exists(abs_path):
             cache[rel_path] = None
         elif rel_path.endswith(".py"):
@@ -93,11 +98,12 @@ def build_file_cache(file_paths, project_root):
                     parse_errors.append((rel_path, str(e)))
             else:
                 cache[rel_path] = symbols
+                signature_cache[rel_path] = extract_function_signatures(source)
         else:
             # Non-.py file: existence confirmed, no symbol extraction
             cache[rel_path] = set()
 
-    return cache, parse_errors
+    return cache, signature_cache, parse_errors
 
 
 def _make_finding(document, section, audience, severity, description, suggestion):
@@ -114,12 +120,13 @@ def _make_finding(document, section, audience, severity, description, suggestion
     }
 
 
-def check_manifest(manifest, file_cache, source_material_index):
+def check_manifest(manifest, file_cache, signature_cache, source_material_index):
     """Check a single manifest for reference integrity issues.
 
     Args:
         manifest: Parsed manifest dict with 'audience' and 'documents'.
         file_cache: Dict mapping relative path -> symbol set or None.
+        signature_cache: Dict mapping relative path -> dict of func_name -> [param_names].
         source_material_index: Dict mapping "doc/section" -> {"source_files": [...]}.
 
     Returns:
@@ -155,13 +162,13 @@ def check_manifest(manifest, file_cache, source_material_index):
                 ))
 
             # Symbol verification — scan source_files + manifest file_paths
-            if entry_symbols:
-                scan_key = f"{doc_name}/{section_name}"
-                scan_entry = source_material_index.get(scan_key, {})
-                scan_paths = scan_entry.get("source_files", [])
-                # Merge scan source_files with manifest file_paths (dedup, order-preserving)
-                check_paths = list(dict.fromkeys(scan_paths + entry_file_paths))
+            scan_key = f"{doc_name}/{section_name}"
+            scan_entry = source_material_index.get(scan_key, {})
+            scan_paths = scan_entry.get("source_files", [])
+            # Merge scan source_files with manifest file_paths (dedup, order-preserving)
+            check_paths = list(dict.fromkeys(scan_paths + entry_file_paths))
 
+            if entry_symbols:
                 # Collect symbol sets from source files (skip missing)
                 symbol_sets = []
                 for path in check_paths:
@@ -171,33 +178,68 @@ def check_manifest(manifest, file_cache, source_material_index):
 
                 # No source files to check symbols against → skip
                 if not symbol_sets:
-                    continue
-
+                    pass
                 # All symbol sets empty (non-py files or parse errors) → skip
-                if all(len(s) == 0 for _, s in symbol_sets):
-                    continue
+                elif all(len(s) == 0 for _, s in symbol_sets):
+                    pass
+                else:
+                    all_symbols = set()
+                    for _, s in symbol_sets:
+                        all_symbols.update(s)
 
-                all_symbols = set()
-                for _, s in symbol_sets:
-                    all_symbols.update(s)
+                    # Collect all undefined symbols, emit one finding
+                    undefined_symbols = []
+                    for symbol in entry_symbols:
+                        if symbol not in all_symbols:
+                            undefined_symbols.append(symbol)
 
-                # Collect all undefined symbols, emit one finding
-                undefined_symbols = []
-                for symbol in entry_symbols:
-                    if symbol not in all_symbols:
-                        undefined_symbols.append(symbol)
+                    if undefined_symbols:
+                        file_list = ", ".join(p for p, _ in symbol_sets)
+                        syms_str = ", ".join(undefined_symbols)
+                        findings.append(_make_finding(
+                            document=doc_name,
+                            section=section_name,
+                            audience=audience,
+                            severity="high",
+                            description=f"{len(undefined_symbols)} undefined symbol(s): {syms_str} (checked in {file_list})",
+                            suggestion="Re-generate this section to pick up current symbol names",
+                        ))
 
-                if undefined_symbols:
-                    file_list = ", ".join(p for p, _ in symbol_sets)
-                    syms_str = ", ".join(undefined_symbols)
-                    findings.append(_make_finding(
-                        document=doc_name,
-                        section=section_name,
-                        audience=audience,
-                        severity="high",
-                        description=f"{len(undefined_symbols)} undefined symbol(s): {syms_str} (checked in {file_list})",
-                        suggestion="Re-generate this section to pick up current symbol names",
-                    ))
+            # Calls verification — check kwargs against actual function signatures
+            entry_calls = entry.get("calls", [])
+            if entry_calls:
+                # Build merged signature dict from all source files
+                all_signatures = {}
+                for path in check_paths:
+                    sigs = signature_cache.get(path, {})
+                    all_signatures.update(sigs)
+
+                for call in entry_calls:
+                    symbol = call.get("symbol", "")
+                    kwargs = call.get("kwargs", [])
+                    if not symbol or not kwargs:
+                        continue
+
+                    actual_params = all_signatures.get(symbol)
+                    if actual_params is None:
+                        # Function not found in signatures — skip gracefully
+                        continue
+
+                    bad_kwargs = [k for k in kwargs if k not in actual_params]
+                    if bad_kwargs:
+                        bad_str = ", ".join(bad_kwargs)
+                        actual_str = ", ".join(actual_params)
+                        findings.append(_make_finding(
+                            document=doc_name,
+                            section=section_name,
+                            audience=audience,
+                            severity="high",
+                            description=(
+                                f"Call to {symbol}() uses invalid keyword(s): {bad_str}. "
+                                f"Actual parameters: {actual_str}"
+                            ),
+                            suggestion="Re-generate this section to pick up current function signature",
+                        ))
 
     return findings
 
@@ -267,7 +309,7 @@ def main():
             all_file_paths.add(fp)
 
     # Build file cache once
-    file_cache, parse_errors = build_file_cache(all_file_paths, project_root)
+    file_cache, signature_cache, parse_errors = build_file_cache(all_file_paths, project_root)
 
     # Generate info findings for parse errors
     new_findings = []
@@ -283,7 +325,7 @@ def main():
 
     # Check each manifest
     for manifest in manifests:
-        new_findings.extend(check_manifest(manifest, file_cache, source_material_index))
+        new_findings.extend(check_manifest(manifest, file_cache, signature_cache, source_material_index))
 
     # Load existing findings, extend, save atomically
     existing = load_json(findings_file, default=[])

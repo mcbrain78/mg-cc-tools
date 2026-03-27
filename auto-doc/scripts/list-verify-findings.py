@@ -52,6 +52,11 @@ _VERIFY_ARTIFACTS = [
     "scan-logs/verify-refs.json",  # old format, may linger
     "docs-verify-findings-mechanical.json",
     "docs-verify-findings-editorial.json",
+    # Fact-checker findings files (verify pipeline restructure)
+    "docs-verify-findings-code-example.json",
+    "docs-verify-findings-data-model.json",
+    "docs-verify-findings-cross-doc.json",
+    "docs-verify-findings-completeness.json",
 ]
 
 
@@ -61,11 +66,19 @@ def clean_verify_artifacts(docs_dir):
     Args:
         docs_dir: The docs directory (parent of findings file).
 
-    Removes each artifact if it exists, prints removed files to stderr.
+    Removes static artifacts and dynamic per-document editorial files
+    (docs-verify-findings-editorial-*.json).
     """
     for rel_path in _VERIFY_ARTIFACTS:
         full_path = os.path.join(docs_dir, rel_path)
         if os.path.exists(full_path):
+            os.remove(full_path)
+            print(f"Removed: {full_path}", file=sys.stderr)
+
+    # Dynamic cleanup: per-document editorial findings files
+    for fname in os.listdir(docs_dir):
+        if fname.startswith("docs-verify-findings-editorial-") and fname.endswith(".json"):
+            full_path = os.path.join(docs_dir, fname)
             os.remove(full_path)
             print(f"Removed: {full_path}", file=sys.stderr)
 

@@ -75,8 +75,9 @@ class TestExtractVerifyContext:
             assert "src/main.py" in context["documented_sections"]
             assert "src/utils.py" in context["documented_sections"]
             assert "missing_for_audience" in context["gap_analysis"]
-            # Only 3 keys in output
-            assert set(context.keys()) == {"root_path", "documented_sections", "gap_analysis"}
+            assert context["project_model"] == {"name": "test-project", "version": "1.0"}
+            # Only 4 keys in output (before --templates-dir adds optional_sections)
+            assert set(context.keys()) == {"root_path", "documented_sections", "gap_analysis", "project_model"}
 
     def test_output_smaller_than_input(self):
         """Output file size is smaller than input file size."""
@@ -100,7 +101,7 @@ class TestExtractVerifyContext:
             assert output_size < input_size
 
     def test_missing_optional_fields(self):
-        """Scan data without gap_analysis produces empty dict for that field."""
+        """Scan data without gap_analysis/project_model produces empty dicts."""
         with tempfile.TemporaryDirectory() as tmp:
             scan_file = os.path.join(tmp, "docs-scan.json")
             output_file = os.path.join(tmp, "context.json")
@@ -123,6 +124,7 @@ class TestExtractVerifyContext:
             assert context["root_path"] == "/home/user/project"
             assert context["documented_sections"] == []
             assert context["gap_analysis"] == {}
+            assert context["project_model"] == {}
 
     def test_missing_scan_file_exits_nonzero(self):
         """Missing scan file exits non-zero with error message."""

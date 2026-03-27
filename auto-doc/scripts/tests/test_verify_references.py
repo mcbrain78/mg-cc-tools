@@ -1023,3 +1023,165 @@ class TestVerifyReferencesEdgeCases:
 
             data = _load(findings)
             assert len(data) == 0
+
+
+class TestVerifyReferencesCallsChecking:
+    """Calls field verification against actual function signatures."""
+
+    def test_valid_calls_no_finding(self):
+        """Calls with correct kwargs produce 0 findings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "project")
+            os.makedirs(project)
+            manifests = os.path.join(project, "manifests")
+            os.makedirs(manifests)
+            findings = os.path.join(tmp, "findings.json")
+            scan = os.path.join(tmp, "scan.json")
+
+            src = os.path.join(project, "src")
+            os.makedirs(src)
+            with open(os.path.join(src, "helpers.py"), "w") as f:
+                f.write("def cache_or_call(prompt, model, ttl):\n    pass\n")
+
+            manifest = _make_manifest("developers", {
+                "ARCHITECTURE": {
+                    "caching": {
+                        "symbols": ["cache_or_call"],
+                        "file_paths": ["src/helpers.py"],
+                        "calls": [
+                            {"symbol": "cache_or_call", "kwargs": ["prompt", "model"]}
+                        ],
+                    }
+                }
+            })
+            with open(os.path.join(manifests, "devs.json"), "w") as f:
+                json.dump(manifest, f)
+
+            _write_scan(scan, {
+                "ARCHITECTURE/caching": {"source_files": ["src/helpers.py"]},
+            })
+
+            result = _run(manifests, project, findings, scan)
+            assert result.returncode == 0
+
+            data = _load(findings)
+            assert len(data) == 0
+
+    def test_invalid_kwargs_flagged(self):
+        """Calls with non-existent kwargs produce high finding."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "project")
+            os.makedirs(project)
+            manifests = os.path.join(project, "manifests")
+            os.makedirs(manifests)
+            findings = os.path.join(tmp, "findings.json")
+            scan = os.path.join(tmp, "scan.json")
+
+            src = os.path.join(project, "src")
+            os.makedirs(src)
+            with open(os.path.join(src, "helpers.py"), "w") as f:
+                f.write("def cache_or_call(prompt, model, ttl):\n    pass\n")
+
+            manifest = _make_manifest("developers", {
+                "ARCHITECTURE": {
+                    "caching": {
+                        "symbols": ["cache_or_call"],
+                        "file_paths": ["src/helpers.py"],
+                        "calls": [
+                            {"symbol": "cache_or_call", "kwargs": ["prompt", "timeout", "retries"]}
+                        ],
+                    }
+                }
+            })
+            with open(os.path.join(manifests, "devs.json"), "w") as f:
+                json.dump(manifest, f)
+
+            _write_scan(scan, {
+                "ARCHITECTURE/caching": {"source_files": ["src/helpers.py"]},
+            })
+
+            result = _run(manifests, project, findings, scan)
+            assert result.returncode == 0
+
+            data = _load(findings)
+            call_findings = [f for f in data if "invalid keyword" in f["description"]]
+            assert len(call_findings) == 1
+            assert call_findings[0]["severity"] == "high"
+            assert "timeout" in call_findings[0]["description"]
+            assert "retries" in call_findings[0]["description"]
+
+    def test_missing_function_skipped_gracefully(self):
+        """Calls referencing a function not in source are skipped (no finding)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "project")
+            os.makedirs(project)
+            manifests = os.path.join(project, "manifests")
+            os.makedirs(manifests)
+            findings = os.path.join(tmp, "findings.json")
+            scan = os.path.join(tmp, "scan.json")
+
+            src = os.path.join(project, "src")
+            os.makedirs(src)
+            with open(os.path.join(src, "helpers.py"), "w") as f:
+                f.write("def other_func():\n    pass\n")
+
+            manifest = _make_manifest("developers", {
+                "ARCHITECTURE": {
+                    "caching": {
+                        "symbols": [],
+                        "file_paths": ["src/helpers.py"],
+                        "calls": [
+                            {"symbol": "nonexistent_func", "kwargs": ["x"]}
+                        ],
+                    }
+                }
+            })
+            with open(os.path.join(manifests, "devs.json"), "w") as f:
+                json.dump(manifest, f)
+
+            _write_scan(scan, {
+                "ARCHITECTURE/caching": {"source_files": ["src/helpers.py"]},
+            })
+
+            result = _run(manifests, project, findings, scan)
+            assert result.returncode == 0
+
+            data = _load(findings)
+            assert len(data) == 0
+
+    def test_calls_absent_backwards_compatible(self):
+        """Manifest without calls field produces no calls findings (backwards compat)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "project")
+            os.makedirs(project)
+            manifests = os.path.join(project, "manifests")
+            os.makedirs(manifests)
+            findings = os.path.join(tmp, "findings.json")
+            scan = os.path.join(tmp, "scan.json")
+
+            src = os.path.join(project, "src")
+            os.makedirs(src)
+            with open(os.path.join(src, "models.py"), "w") as f:
+                f.write("class User:\n    pass\n")
+
+            # No calls field at all
+            manifest = _make_manifest("developers", {
+                "ARCHITECTURE": {
+                    "overview": {
+                        "symbols": ["User"],
+                        "file_paths": ["src/models.py"],
+                    }
+                }
+            })
+            with open(os.path.join(manifests, "devs.json"), "w") as f:
+                json.dump(manifest, f)
+
+            _write_scan(scan, {
+                "ARCHITECTURE/overview": {"source_files": ["src/models.py"]},
+            })
+
+            result = _run(manifests, project, findings, scan)
+            assert result.returncode == 0
+
+            data = _load(findings)
+            assert len(data) == 0
