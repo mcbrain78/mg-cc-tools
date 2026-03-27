@@ -576,8 +576,67 @@ Respond with ONLY a JSON object, no other text:
     return prompt
 
 
+_RM_RECURSIVE_RE = re.compile(r'\brm\s+(-\S+\s+)*-\S*[rR]')
+
+
+def _gate_rm_user_approved(command, event):
+    """True if command has recursive rm with literal paths (no variables).
+
+    The rm-variable-cleanup evaluator handles the variable case.
+    This evaluator handles literal in-project paths where the user may have
+    explicitly approved the deletion in conversation.
+    """
+    if not _RM_RECURSIVE_RE.search(command):
+        return False
+    # Variable paths are handled by rm-variable-cleanup
+    if _RM_VARIABLE_RE.search(command):
+        return False
+    # Already safe (temp dirs)
+    if _is_safe_rm(command):
+        return False
+    # Only fire if we have transcript context to check
+    if not event.get("transcript_path"):
+        return False
+    return True
+
+
+def _prompt_rm_user_approved(command, ctx, event):
+    """Build prompt asking Haiku if user explicitly approved this deletion."""
+    project_root = _resolve_project_root(event)
+
+    prompt = f"""You are a security reviewer for a CLI coding assistant. A recursive rm command is about to execute. The deterministic safety check flagged it because the target is not a known temp directory.
+
+Your job: check the conversation context to determine if the USER explicitly requested or confirmed this deletion.
+
+Command: {command}
+Project root: {project_root}
+
+"""
+    if ctx:
+        prompt += f"""Recent conversation context:
+{ctx}
+
+"""
+    prompt += """Instructions:
+1. Check if the user explicitly asked for files/directories to be deleted
+2. Check if the assistant listed what would be deleted and the user confirmed (e.g. "yes", "go ahead", "do it")
+3. Verify the rm targets match what the user approved
+
+Verdicts:
+- SAFE — the user explicitly requested or confirmed this exact deletion
+- UNSURE — no clear user approval, or the targets don't match what was discussed
+- DENY — the deletion contradicts what the user asked for
+
+Default to UNSURE if there is any doubt.
+
+Respond with ONLY a JSON object, no other text:
+{"verdict": "SAFE|UNSURE|DENY", "reason": "brief explanation"}"""
+    return prompt
+
+
 EVALUATORS = [
     Evaluator("rm-variable-cleanup", _gate_rm_variable_cleanup, _prompt_rm_variable_cleanup),
+    Evaluator("rm-user-approved", _gate_rm_user_approved, _prompt_rm_user_approved),
 ]
 
 

@@ -218,7 +218,7 @@ if not guard.PROJECT_ROOT or guard.PROJECT_ROOT == '{' + 'PROJECT_ROOT' + '}':
 Pipe a known-dangerous command through the hook to verify it works:
 
 ```bash
-echo '{"tool_name":"Bash","tool_input":{"command":"sudo rm -rf /"}}' | python3 "<TARGET_HOOKS_DIR>/permission-guard.py"
+echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf ~/fake-smoke-test-dir"}}' | python3 "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
 **If output contains `"permissionDecision": "ask"`:** Report `Smoke test: PASS`
