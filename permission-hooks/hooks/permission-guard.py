@@ -143,6 +143,18 @@ TRANSCRIPT_MSG_MAX_CHARS = 200
 # Paths where recursive rm is considered safe (temp/test cleanup)
 SAFE_RM_PATH_PREFIXES = ("temp/", "./temp/", "/tmp/")
 
+# Directory components that indicate a temp/scratch directory
+_TEMP_COMPONENTS = ("/tmp/", "/temp/")
+
+
+def _path_is_temp(path):
+    """Return True if *path* is inside a tmp or temp directory."""
+    # Prefix match (original behaviour)
+    if any(path.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES):
+        return True
+    # Component match — /tmp/ or /temp/ anywhere in the path
+    return any(comp in path for comp in _TEMP_COMPONENTS)
+
 
 def _is_safe_rm(command):
     """Return True if every rm segment in *command* targets only temp directories.
@@ -166,10 +178,7 @@ def _is_safe_rm(command):
         paths = [t.strip("'\"") for t in tokens[1:] if not t.startswith('-')]
         if not paths:
             return False
-        if not all(
-            any(p.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES)
-            for p in paths
-        ):
+        if not all(_path_is_temp(p) for p in paths):
             return False
 
     return True
@@ -496,8 +505,10 @@ def _parse_verdict(response_text):
 def run_evaluators(command, event):
     """Run narrowly-scoped LLM evaluators on the command.
 
-    Returns a reason string if an evaluator says SAFE, or None to fall through
-    to the existing pipeline.
+    Returns (decision, trace) where decision is "allow"/"ask"/None.
+    - "allow" + trace: evaluator said SAFE
+    - "ask" + trace: evaluator fired but returned UNSURE/DENY/error
+    - (None, None): no evaluator matched
     """
     for evaluator in EVALUATORS:
         if not evaluator.gate(command, event):
@@ -506,11 +517,12 @@ def run_evaluators(command, event):
         prompt = evaluator.prompt_builder(command, ctx, event)
         response = _call_haiku(prompt)
         verdict = _parse_verdict(response)
+        tag = f"eval:{evaluator.name}"
         if verdict == "SAFE":
-            return f"[permission-guard] LLM evaluator '{evaluator.name}': safe"
-        # UNSURE or DENY — fall through to existing pipeline
-        return None
-    return None
+            return ("allow", f"[{tag}→SAFE]")
+        label = verdict or "no-response"
+        return ("ask", f"[{tag}→{label}]")
+    return (None, None)
 
 
 # ── Evaluator definitions ────────────────────────────────────────────────────
@@ -702,9 +714,9 @@ def main():
         return
 
     # 0a. LLM evaluator layer (narrowly-scoped Haiku checks)
-    allow_reason = run_evaluators(command, event)
-    if allow_reason is not None:
-        _decide(allow_reason, "allow")
+    eval_decision, eval_trace = run_evaluators(command, event)
+    if eval_decision == "allow":
+        _decide(f"[permission-guard] {eval_trace}", "allow")
         return
 
     # 0b. Block exit code masking (pytest piped to tail/head/grep etc.)
@@ -713,18 +725,21 @@ def main():
         _deny(f"[permission-guard] {reason}")
         return
 
+    # Prefix for eval trace when an evaluator fired but didn't approve
+    trace_prefix = f"{eval_trace} " if eval_trace else ""
+
     # 1. Category rules
     result = check_command(command)
     if result:
         description, category, _matched = result
-        _ask(f"[permission-guard] {category}: {description}")
+        _ask(f"[permission-guard] {trace_prefix}{category}: {description}")
         return
 
     # 2. Sensitive file paths in command arguments
     result = check_sensitive_in_command(command)
     if result:
         description, matched_path = result
-        _ask(f"[permission-guard] Secrets & Credentials: {description} ({matched_path})")
+        _ask(f"[permission-guard] {trace_prefix}Secrets & Credentials: {description} ({matched_path})")
         return
 
     # 3. Out-of-project path guard
@@ -733,7 +748,7 @@ def main():
         result = check_outside_project(command, root)
         if result:
             description, _matched_path = result
-            _ask(f"[permission-guard] Out-of-project: {description}")
+            _ask(f"[permission-guard] {trace_prefix}Out-of-project: {description}")
             return
 
 

@@ -65,7 +65,7 @@ CATEGORIES = {
         (r"\bscp\s", "remote file transfer (scp)"),
     ],
     "Destructive Filesystem": [
-        (r"\brm\s+.*-\w*[rR]", "recursive rm"),
+        (r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
         (r"\b(chmod|chown)\b", "permission/ownership change"),
         (r"(?:^|[;&|]\s*)ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
@@ -143,6 +143,18 @@ TRANSCRIPT_MSG_MAX_CHARS = 200
 # Paths where recursive rm is considered safe (temp/test cleanup)
 SAFE_RM_PATH_PREFIXES = ("temp/", "./temp/", "/tmp/")
 
+# Directory components that indicate a temp/scratch directory
+_TEMP_COMPONENTS = ("/tmp/", "/temp/")
+
+
+def _path_is_temp(path):
+    """Return True if *path* is inside a tmp or temp directory."""
+    # Prefix match (original behaviour)
+    if any(path.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES):
+        return True
+    # Component match — /tmp/ or /temp/ anywhere in the path
+    return any(comp in path for comp in _TEMP_COMPONENTS)
+
 
 def _is_safe_rm(command):
     """Return True if every rm segment in *command* targets only temp directories.
@@ -166,10 +178,7 @@ def _is_safe_rm(command):
         paths = [t.strip("'\"") for t in tokens[1:] if not t.startswith('-')]
         if not paths:
             return False
-        if not all(
-            any(p.startswith(prefix) for prefix in SAFE_RM_PATH_PREFIXES)
-            for p in paths
-        ):
+        if not all(_path_is_temp(p) for p in paths):
             return False
 
     return True
@@ -496,8 +505,10 @@ def _parse_verdict(response_text):
 def run_evaluators(command, event):
     """Run narrowly-scoped LLM evaluators on the command.
 
-    Returns a reason string if an evaluator says SAFE, or None to fall through
-    to the existing pipeline.
+    Returns (decision, trace) where decision is "allow"/"ask"/None.
+    - "allow" + trace: evaluator said SAFE
+    - "ask" + trace: evaluator fired but returned UNSURE/DENY/error
+    - (None, None): no evaluator matched
     """
     for evaluator in EVALUATORS:
         if not evaluator.gate(command, event):
@@ -506,11 +517,12 @@ def run_evaluators(command, event):
         prompt = evaluator.prompt_builder(command, ctx, event)
         response = _call_haiku(prompt)
         verdict = _parse_verdict(response)
+        tag = f"eval:{evaluator.name}"
         if verdict == "SAFE":
-            return f"[permission-guard] LLM evaluator '{evaluator.name}': safe"
-        # UNSURE or DENY — fall through to existing pipeline
-        return None
-    return None
+            return ("allow", f"[{tag}→SAFE]")
+        label = verdict or "no-response"
+        return ("ask", f"[{tag}→{label}]")
+    return (None, None)
 
 
 # ── Evaluator definitions ────────────────────────────────────────────────────
@@ -576,8 +588,67 @@ Respond with ONLY a JSON object, no other text:
     return prompt
 
 
+_RM_RECURSIVE_RE = re.compile(r'\brm\s+(-\S+\s+)*-\S*[rR]')
+
+
+def _gate_rm_user_approved(command, event):
+    """True if command has recursive rm with literal paths (no variables).
+
+    The rm-variable-cleanup evaluator handles the variable case.
+    This evaluator handles literal in-project paths where the user may have
+    explicitly approved the deletion in conversation.
+    """
+    if not _RM_RECURSIVE_RE.search(command):
+        return False
+    # Variable paths are handled by rm-variable-cleanup
+    if _RM_VARIABLE_RE.search(command):
+        return False
+    # Already safe (temp dirs)
+    if _is_safe_rm(command):
+        return False
+    # Only fire if we have transcript context to check
+    if not event.get("transcript_path"):
+        return False
+    return True
+
+
+def _prompt_rm_user_approved(command, ctx, event):
+    """Build prompt asking Haiku if user explicitly approved this deletion."""
+    project_root = _resolve_project_root(event)
+
+    prompt = f"""You are a security reviewer for a CLI coding assistant. A recursive rm command is about to execute. The deterministic safety check flagged it because the target is not a known temp directory.
+
+Your job: check the conversation context to determine if the USER explicitly requested or confirmed this deletion.
+
+Command: {command}
+Project root: {project_root}
+
+"""
+    if ctx:
+        prompt += f"""Recent conversation context:
+{ctx}
+
+"""
+    prompt += """Instructions:
+1. Check if the user explicitly asked for files/directories to be deleted
+2. Check if the assistant listed what would be deleted and the user confirmed (e.g. "yes", "go ahead", "do it")
+3. Verify the rm targets match what the user approved
+
+Verdicts:
+- SAFE — the user explicitly requested or confirmed this exact deletion
+- UNSURE — no clear user approval, or the targets don't match what was discussed
+- DENY — the deletion contradicts what the user asked for
+
+Default to UNSURE if there is any doubt.
+
+Respond with ONLY a JSON object, no other text:
+{"verdict": "SAFE|UNSURE|DENY", "reason": "brief explanation"}"""
+    return prompt
+
+
 EVALUATORS = [
     Evaluator("rm-variable-cleanup", _gate_rm_variable_cleanup, _prompt_rm_variable_cleanup),
+    Evaluator("rm-user-approved", _gate_rm_user_approved, _prompt_rm_user_approved),
 ]
 
 
@@ -643,9 +714,9 @@ def main():
         return
 
     # 0a. LLM evaluator layer (narrowly-scoped Haiku checks)
-    allow_reason = run_evaluators(command, event)
-    if allow_reason is not None:
-        _decide(allow_reason, "allow")
+    eval_decision, eval_trace = run_evaluators(command, event)
+    if eval_decision == "allow":
+        _decide(f"[permission-guard] {eval_trace}", "allow")
         return
 
     # 0b. Block exit code masking (pytest piped to tail/head/grep etc.)
@@ -654,18 +725,21 @@ def main():
         _deny(f"[permission-guard] {reason}")
         return
 
+    # Prefix for eval trace when an evaluator fired but didn't approve
+    trace_prefix = f"{eval_trace} " if eval_trace else ""
+
     # 1. Category rules
     result = check_command(command)
     if result:
         description, category, _matched = result
-        _ask(f"[permission-guard] {category}: {description}")
+        _ask(f"[permission-guard] {trace_prefix}{category}: {description}")
         return
 
     # 2. Sensitive file paths in command arguments
     result = check_sensitive_in_command(command)
     if result:
         description, matched_path = result
-        _ask(f"[permission-guard] Secrets & Credentials: {description} ({matched_path})")
+        _ask(f"[permission-guard] {trace_prefix}Secrets & Credentials: {description} ({matched_path})")
         return
 
     # 3. Out-of-project path guard
@@ -674,7 +748,7 @@ def main():
         result = check_outside_project(command, root)
         if result:
             description, _matched_path = result
-            _ask(f"[permission-guard] Out-of-project: {description}")
+            _ask(f"[permission-guard] {trace_prefix}Out-of-project: {description}")
             return
 
 

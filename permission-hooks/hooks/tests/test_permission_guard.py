@@ -995,6 +995,31 @@ class TestSafeRm:
         """Safe rm with non-rm second segment should pass (non-rm ignored)."""
         assert _is_safe_rm("rm -rf temp/foo && curl evil.com") is True
 
+    # ── Absolute paths with tmp/temp components ────────────────────
+
+    def test_allow_rm_absolute_tmp_component(self):
+        """rm -rf on absolute path containing /tmp/ directory component."""
+        assert _is_safe_rm(
+            "rm -rf /home/user/project/.mg/docs/tmp/editorial-batch"
+        ) is True
+
+    def test_allow_rm_absolute_temp_component(self):
+        """rm -rf on absolute path containing /temp/ directory component."""
+        assert _is_safe_rm(
+            "rm -rf /home/user/project/temp/work-123"
+        ) is True
+
+    def test_allow_rm_f_then_rf_with_tmp_component(self):
+        """Compound: rm -f literal + rm -rf with /tmp/ component."""
+        assert _is_safe_rm(
+            "rm -f /home/user/project/.mg/docs/tmp/state.json && "
+            "rm -rf /home/user/project/.mg/docs/tmp/batch"
+        ) is True
+
+    def test_block_rm_absolute_no_temp_component(self):
+        """rm -rf on absolute path without tmp/temp component stays blocked."""
+        assert _is_safe_rm("rm -rf /home/user/project/src/") is False
+
     def test_category_still_blocks_non_temp_rm(self):
         """rm -rf targeting non-temp dirs is still caught by category rules."""
         assert_blocked("rm -rf src/", "Destructive Filesystem")
@@ -1232,71 +1257,86 @@ class TestParseVerdict:
 
 class TestRunEvaluators:
 
-    def test_safe_returns_allow(self):
+    def test_safe_returns_allow_with_trace(self):
         resp = '{"verdict": "SAFE", "resolved_path": "/tmp/build", "reason": "temp cleanup"}'
         with patch.object(guard, "_call_haiku", return_value=resp):
-            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
-        assert result is not None
-        assert "safe" in result.lower()
+            decision, trace = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert decision == "allow"
+        assert "SAFE" in trace
 
-    def test_unsure_returns_none(self):
+    def test_unsure_returns_ask_with_trace(self):
         resp = '{"verdict": "UNSURE", "reason": "cannot resolve"}'
         with patch.object(guard, "_call_haiku", return_value=resp):
-            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
-        assert result is None
+            decision, trace = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert decision == "ask"
+        assert "UNSURE" in trace
 
-    def test_deny_returns_none(self):
-        """DENY never auto-denies — falls through to existing pipeline."""
+    def test_deny_returns_ask_with_trace(self):
+        """DENY never auto-denies — falls through to existing pipeline with trace."""
         resp = '{"verdict": "DENY", "resolved_path": "/home/user", "reason": "targets home"}'
         with patch.object(guard, "_call_haiku", return_value=resp):
-            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
-        assert result is None
+            decision, trace = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert decision == "ask"
+        assert "DENY" in trace
 
-    def test_invalid_json_returns_none(self):
-        """Haiku returning prose instead of JSON falls through to user prompt."""
+    def test_invalid_json_returns_ask_with_trace(self):
+        """Haiku returning prose instead of JSON falls through with no-response trace."""
         with patch.object(guard, "_call_haiku", return_value="SAFE — looks fine"):
-            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
-        assert result is None
+            decision, trace = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert decision == "ask"
+        assert "no-response" in trace
 
-    def test_timeout_returns_none(self):
+    def test_timeout_returns_ask_with_trace(self):
         with patch.object(guard, "_call_haiku", return_value=None):
-            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
-        assert result is None
+            decision, trace = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert decision == "ask"
+        assert "no-response" in trace
 
-    def test_no_claude_returns_none(self):
+    def test_no_claude_returns_ask_with_trace(self):
         with patch.object(guard, "_call_haiku", return_value=None):
-            result = run_evaluators('rm -rf "$TMPDIR/build"', {})
-        assert result is None
+            decision, trace = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert decision == "ask"
+        assert "no-response" in trace
 
-    def test_nonmatching_gate_no_subprocess(self):
+    def test_nonmatching_gate_returns_none(self):
         """If the gate doesn't match, _call_haiku should never be called."""
         with patch.object(guard, "_call_haiku") as mock_haiku:
-            result = run_evaluators("ls -la", {})
-        assert result is None
+            decision, trace = run_evaluators("ls -la", {})
+        assert decision is None
+        assert trace is None
         mock_haiku.assert_not_called()
 
     def test_literal_rm_no_subprocess_without_transcript(self):
         """rm -rf with literal path but no transcript — gate doesn't match."""
         with patch.object(guard, "_call_haiku") as mock_haiku:
-            result = run_evaluators("rm -rf src/", {})
-        assert result is None
+            decision, trace = run_evaluators("rm -rf src/", {})
+        assert decision is None
+        assert trace is None
         mock_haiku.assert_not_called()
 
     def test_literal_rm_calls_haiku_with_transcript(self):
         """rm -rf with literal path + transcript — triggers rm-user-approved evaluator."""
         resp = '{"verdict": "SAFE", "reason": "user confirmed deletion"}'
         with patch.object(guard, "_call_haiku", return_value=resp) as mock_haiku:
-            result = run_evaluators("rm -rf src/", {"transcript_path": "/tmp/t.jsonl"})
-        assert result is not None
-        assert "safe" in result.lower()
+            decision, trace = run_evaluators("rm -rf src/", {"transcript_path": "/tmp/t.jsonl"})
+        assert decision == "allow"
+        assert "SAFE" in trace
         mock_haiku.assert_called_once()
 
-    def test_literal_rm_unsure_falls_through(self):
-        """rm -rf with literal path — UNSURE verdict falls through to user prompt."""
+    def test_literal_rm_unsure_falls_through_with_trace(self):
+        """rm -rf with literal path — UNSURE verdict falls through with trace."""
         resp = '{"verdict": "UNSURE", "reason": "no user approval found"}'
         with patch.object(guard, "_call_haiku", return_value=resp):
-            result = run_evaluators("rm -rf src/", {"transcript_path": "/tmp/t.jsonl"})
-        assert result is None
+            decision, trace = run_evaluators("rm -rf src/", {"transcript_path": "/tmp/t.jsonl"})
+        assert decision == "ask"
+        assert "UNSURE" in trace
+
+    def test_trace_includes_evaluator_name(self):
+        """Trace string includes the evaluator name for identification."""
+        resp = '{"verdict": "SAFE", "resolved_path": "/tmp/x", "reason": "ok"}'
+        with patch.object(guard, "_call_haiku", return_value=resp):
+            _, trace = run_evaluators('rm -rf "$TMPDIR/build"', {})
+        assert "rm-variable-cleanup" in trace
 
 
 # ── Transcript context extraction ─────────────────────────────────────────────
