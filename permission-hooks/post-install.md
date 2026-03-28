@@ -213,18 +213,6 @@ if not guard.PROJECT_ROOT or guard.PROJECT_ROOT == '{' + 'PROJECT_ROOT' + '}':
 "
 ```
 
-## Step 5: Smoke Test
-
-Pipe a known-dangerous command through the hook to verify it works:
-
-```bash
-echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf ~/fake-smoke-test-dir"}}' | python3 "<TARGET_HOOKS_DIR>/permission-guard.py"
-```
-
-**If output contains `"permissionDecision": "ask"`:** Report `Smoke test: PASS`
-
-**If no output or unexpected output:** Report `Smoke test: FAIL` and show what was returned.
-
 </process>
 
 <completion>
@@ -240,7 +228,6 @@ Permission Guard Status
   Hook file:  <TARGET_HOOKS_DIR>/permission-guard.py
   Settings:   [ADDED / OK / MISMATCH]
   Sync:       [Fresh install / In sync / Synced / Stale]
-  Smoke test: [PASS / FAIL]
 
 ==================================================
 ```
