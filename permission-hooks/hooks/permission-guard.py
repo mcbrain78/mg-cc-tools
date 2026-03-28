@@ -51,7 +51,7 @@ CATEGORIES = {
         (r"\bgh\s+pr\s+(merge|close)\b", "PR merge/close"),
         (r"\bgh\s+repo\s+(create|delete|fork|archive)\b", "repo management"),
         (r"\bgh\s+release\s+(create|delete)\b", "release management"),
-        (r"\bgh\s+api\b", "GitHub API call"),
+        (r"\bgh\s+api\b.*(-X\s*(POST|PUT|PATCH|DELETE)|--method\s*(POST|PUT|PATCH|DELETE)|-f\s|-F\s|--field\s|--raw-field\s|--input\s)", "GitHub API mutation"),
         (r"\bgh\s+auth\b", "GitHub auth"),
         (r"\bgh\s+secret\b", "GitHub secret management"),
     ],

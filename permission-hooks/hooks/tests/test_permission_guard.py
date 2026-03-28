@@ -201,8 +201,19 @@ class TestGitHubCLI:
         assert_blocked("gh release create v1.0", self.CAT)
         assert_blocked("gh release delete v1.0", self.CAT)
 
-    def test_block_api(self):
-        assert_blocked("gh api repos/owner/repo", self.CAT)
+    def test_allow_api_read(self):
+        assert_allowed("gh api repos/owner/repo")
+        assert_allowed("gh api repos/owner/repo/git/trees/main --jq '.tree[].path'")
+
+    def test_block_api_mutation(self):
+        assert_blocked("gh api repos/owner/repo -X POST", self.CAT)
+        assert_blocked("gh api repos/owner/repo -X DELETE", self.CAT)
+        assert_blocked("gh api repos/owner/repo --method PUT", self.CAT)
+        assert_blocked("gh api repos/owner/repo -f name=value", self.CAT)
+        assert_blocked("gh api repos/owner/repo -F name=@file", self.CAT)
+        assert_blocked("gh api repos/owner/repo --field name=value", self.CAT)
+        assert_blocked("gh api repos/owner/repo --raw-field name=value", self.CAT)
+        assert_blocked("gh api repos/owner/repo --input body.json", self.CAT)
 
     def test_block_auth(self):
         assert_blocked("gh auth login", self.CAT)
