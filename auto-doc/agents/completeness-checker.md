@@ -42,22 +42,16 @@ For each manifest entry, read each file in `review_files`. Parse `## ` headings 
 3. Flag missing sections as `completeness` findings.
 4. Flag audience-specific gaps from `gap_analysis.missing_for_audience`.
 
-**Severity guide:**
-- Missing core component documentation: **high**
-- Missing supporting component: **medium**
-- Audience-specific gap: **medium**
-
 ### Per-Finding Recording
 
 For each issue discovered:
 
-1. Write a temp JSON file containing the finding data with all 7 required fields:
+1. Write a temp JSON file containing the finding data with all 6 required fields:
    ```json
    {
      "document": "DOCUMENT_NAME",
      "section": "section-slug",
      "audience": "audience-key",
-     "severity": "high|medium",
      "check": "completeness",
      "description": "What is missing",
      "suggestion": "How to add it"

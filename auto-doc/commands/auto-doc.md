@@ -115,11 +115,7 @@ When ready, verify documentation quality:
 Read `docs-verify-report.md` and show a brief summary:
 
 ```
-Pipeline complete -- last verification results:
-
-  {severity summary from report: N critical, N high, N medium, N low, N info}
-
-No outstanding verify findings.
+Pipeline complete -- no outstanding verify findings.
 
 Review the verification report: .mg/docs/docs-verify-report.md
 
@@ -131,12 +127,10 @@ Options:
 
 ### Route E: Verify found issues -- needs update
 
-Read `docs-verify-findings.json` and count findings by severity:
+Read `docs-verify-findings.json` and count total findings:
 
 ```
-Verify found quality issues in the documentation.
-
-  {N} critical, {N} high, {N} medium, {N} low, {N} info
+Verify found {N} quality issues in the documentation.
 
 Run /mg:auto-doc-update to surgically fix findings and integrate pending notes.
 

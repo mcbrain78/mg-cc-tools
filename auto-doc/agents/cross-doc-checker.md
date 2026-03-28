@@ -36,33 +36,32 @@ Read ALL review files across ALL manifest entries. You need a full cross-documen
 ### Step 3: Terminology Consistency
 
 For each document, check that glossary terms are used consistently:
-- Flag when a document uses a synonym instead of the canonical glossary term. Check type: `cross-doc`, severity: **medium**.
-- Flag undefined terms that appear in multiple documents but are not in the glossary. Check type: `cross-doc`, severity: **low**.
+- Flag when a document uses a synonym instead of the canonical glossary term. Check type: `cross-doc`.
+- Flag undefined terms that appear in multiple documents but are not in the glossary. Check type: `cross-doc`.
 
 ### Step 4: Factual Consistency
 
 Track numeric claims and named references per topic across documents. Flag contradictions:
-- "15 tables" in one document vs "18 tables" in another. Check type: `cross-doc-inconsistency`, severity: **high**.
-- Different function signatures described for the same function. Check type: `cross-doc-inconsistency`, severity: **high**.
-- Conflicting version requirements across documents. Check type: `cross-doc-inconsistency`, severity: **high**.
+- "15 tables" in one document vs "18 tables" in another. Check type: `cross-doc-inconsistency`.
+- Different function signatures described for the same function. Check type: `cross-doc-inconsistency`.
+- Conflicting version requirements across documents. Check type: `cross-doc-inconsistency`.
 
 **Two-document findings:** When a contradiction spans two documents, create one finding per document involved. Use that document's name as the `document` field and reference the other document in the `description` (e.g., "Says 15 tables, but ARCHITECTURE says 18 tables").
 
 ### Step 5: Glossary Reconciliation Log
 
-Read `{project_root}/.mg/docs/scan-logs/glossary-reconciliation.log` if it exists. Surface flagged terms as **medium**-severity `cross-doc` findings. This captures terminology inconsistencies identified during the generate pipeline's reconciliation pass.
+Read `{project_root}/.mg/docs/scan-logs/glossary-reconciliation.log` if it exists. Surface flagged terms as `cross-doc` findings. This captures terminology inconsistencies identified during the generate pipeline's reconciliation pass.
 
 ### Per-Finding Recording
 
 For each issue discovered:
 
-1. Write a temp JSON file containing the finding data with all 7 required fields:
+1. Write a temp JSON file containing the finding data with all 6 required fields:
    ```json
    {
      "document": "DOCUMENT_NAME",
      "section": "section-slug",
      "audience": "audience-key",
-     "severity": "high|medium|low",
      "check": "cross-doc|cross-doc-inconsistency",
      "description": "What is wrong",
      "suggestion": "How to fix it"

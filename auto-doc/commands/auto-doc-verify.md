@@ -233,63 +233,42 @@ python3 {SCRIPTS_DIR}/list-verify-findings.py \
 **Documents checked:** {count}
 **Total issues:** {count}
 
-## Summary
-
-| Severity | Count |
-|----------|-------|
-| Critical | N |
-| High     | N |
-| Medium   | N |
-| Low      | N |
-| Info     | N |
-
 ## Systemic Issues
 
 {Group related findings that share a root cause. Example: "The function `processData` was renamed to `handleData` -- references are broken in 4 documents." List the affected documents and sections.}
 
-## Critical Issues
+## By Document
 
-### {Issue title}
-- **Document:** {file path}
+### {DOCUMENT_NAME} ({N} issues)
+
+#### {Issue title}
 - **Section:** {section name}
 - **Check:** {which check found this}
 - **Description:** {what's wrong}
 - **Suggestion:** {how to fix it}
 
-## High Issues
-...
-
-## Medium Issues
-...
-
-## Low Issues
 ...
 ```
 
-Group issues by severity (critical first). Within each severity group, list issues in the order they were found. **Skip findings already fully described in a Systemic Issues group** -- instead include a one-line back-reference: `See Systemic Issue #N above (K findings)`. Include document path, section name, check type, description, and an actionable suggestion for every non-systemic issue. Omit empty severity sections.
+List systemic issues first (patterns that span multiple documents). Then group remaining findings by document. **Skip findings already fully described in a Systemic Issues group** -- instead include a one-line back-reference: `See Systemic Issue #N above (K findings)`. Within each document group, list issues in the order they were found. Include section name, check type, description, and an actionable suggestion for every non-systemic issue. Omit documents with no issues.
 
 ### Step 7: Present Results
 
 1. **Read the report** you just wrote: `{project_root}/.mg/docs/docs-verify-report.md`.
 
-2. **Parse the severity summary table.** Extract counts for each severity level.
+2. **Count total findings** from the merged findings data.
 
 3. **Present a concise summary:**
    ```
    Verification complete -- {total} issues found.
-     {N} critical, {N} high, {N} medium, {N} low, {N} info
 
    Full report: .mg/docs/docs-verify-report.md
    ```
 
 4. **Conditional guidance:**
-   - If critical or high issues exist:
+   - If any findings exist:
      ```
      Run /mg:auto-doc-generate to address verify findings. The generator will present findings as an approval tier alongside staleness and notes.
-     ```
-   - If no critical or high issues:
-     ```
-     Documentation quality looks good.
      ```
 
 5. **Documentation gaps note:**
@@ -317,7 +296,6 @@ Group issues by severity (critical first). Within each severity group, list issu
 - **Focused agents with isolated findings.** Each agent has a narrow scope and writes to its own findings file. The orchestrator merges all findings after agents complete. Agents never touch the shared findings file directly.
 - **Reference integrity runs in the orchestrator.** The `verify-references.py` script is deterministic and fast -- it runs directly without an agent wrapper.
 - **Reference integrity is manifest-based.** The script reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
-- **5-tier severity model:** critical, high, medium, low, info. This matches the agent definitions and the report output format.
 - **Prefer false negatives over false positives.** Same principle across all agents -- only flag issues with high confidence. A noisy report trains users to ignore it.
 - **Verify clears all verify artifacts before each run** via `list-verify-findings.py --clean`. Generate reads findings but never clears them. This ensures each verify run reflects the current documentation state.
 - **Use `{SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.

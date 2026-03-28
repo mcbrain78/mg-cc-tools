@@ -334,8 +334,7 @@ class TestVerifyReferencesHappyPath:
             assert result.returncode == 0
 
             data = _load(findings)
-            high = [f for f in data if f["severity"] == "high"]
-            assert len(high) == 0
+            assert len(data) == 0
 
     def test_scan_key_missing_uses_manifest_fallback(self):
         """Manifest has entry with symbols but scan has no matching key →
@@ -371,8 +370,7 @@ class TestVerifyReferencesHappyPath:
             assert result.returncode == 0
 
             data = _load(findings)
-            high = [f for f in data if f["severity"] == "high"]
-            assert len(high) == 0
+            assert len(data) == 0
 
     def test_symbol_found_via_manifest_fallback(self):
         """Symbol in manifest file_paths but not scan source_files → 0 findings.
@@ -418,8 +416,7 @@ class TestVerifyReferencesHappyPath:
             assert result.returncode == 0
 
             data = _load(findings)
-            high = [f for f in data if f["severity"] == "high"]
-            assert len(high) == 0
+            assert len(data) == 0
 
 
 class TestVerifyReferencesFindings:
@@ -454,7 +451,6 @@ class TestVerifyReferencesFindings:
             data = _load(findings)
             assert len(data) == 1
             f = data[0]
-            assert f["severity"] == "high"
             assert f["check"] == "reference-integrity"
             assert "scripts/old-deploy.sh" in f["description"]
             assert "1 missing file" in f["description"]
@@ -495,7 +491,6 @@ class TestVerifyReferencesFindings:
             data = _load(findings)
             assert len(data) == 1
             f = data[0]
-            assert f["severity"] == "high"
             assert "nonexistent_handler" in f["description"]
             assert "1 undefined symbol" in f["description"]
             assert f["group_id"] == "API_REF/endpoints"
@@ -565,7 +560,6 @@ class TestVerifyReferencesFindings:
 
             data = _load(findings)
             assert len(data) == 1
-            assert data[0]["severity"] == "high"
             assert "Dockerfile" in data[0]["description"]
             assert "1 missing file" in data[0]["description"]
 
@@ -604,7 +598,6 @@ class TestVerifyReferencesFindings:
 
             data = _load(findings)
             assert len(data) == 1
-            assert data[0]["severity"] == "high"
             assert "NonExistentMiddleware" in data[0]["description"]
             assert "1 undefined symbol" in data[0]["description"]
 
@@ -646,8 +639,8 @@ class TestVerifyReferencesFindings:
 
             data = _load(findings)
             # 1 info finding for broken.py SyntaxError, 0 high findings
-            info_findings = [f for f in data if f["severity"] == "info"]
-            high_findings = [f for f in data if f["severity"] == "high"]
+            info_findings = [f for f in data if "SyntaxError" in f["description"]]
+            high_findings = [f for f in data if "SyntaxError" not in f["description"]]
             assert len(info_findings) == 1
             assert "broken.py" in info_findings[0]["description"]
             assert "SyntaxError" in info_findings[0]["description"]
@@ -689,7 +682,6 @@ class TestVerifyReferencesFindings:
             data = _load(findings)
             # Should have info finding for SyntaxError, NOT high for undefined symbol
             assert len(data) == 1
-            assert data[0]["severity"] == "info"
             assert "SyntaxError" in data[0]["description"]
             assert "broken.py" in data[0]["description"]
 
@@ -729,9 +721,8 @@ class TestVerifyReferencesFindings:
             assert result.returncode == 0
 
             data = _load(findings)
-            high = [f for f in data if f["severity"] == "high"]
             # Missing file finding for deploy/config.yaml + undefined symbol finding
-            symbol_findings = [f for f in high if "MissingClass" in f["description"]]
+            symbol_findings = [f for f in data if "undefined symbol" in f["description"]]
             assert len(symbol_findings) == 1
             assert "1 undefined symbol" in symbol_findings[0]["description"]
 
@@ -823,7 +814,6 @@ class TestVerifyReferencesConsolidation:
             # Should be exactly 1 consolidated finding, not 3
             assert len(data) == 1
             f = data[0]
-            assert f["severity"] == "high"
             assert "3 undefined symbol" in f["description"]
             assert "missing_one" in f["description"]
             assert "missing_two" in f["description"]
@@ -863,7 +853,6 @@ class TestVerifyReferencesConsolidation:
             # Should be exactly 1 consolidated finding, not 3
             assert len(data) == 1
             f = data[0]
-            assert f["severity"] == "high"
             assert "3 missing file" in f["description"]
             assert "scripts/deploy.sh" in f["description"]
             assert "scripts/rollback.sh" in f["description"]
@@ -957,12 +946,12 @@ class TestVerifyReferencesEdgeCases:
             existing = [
                 {
                     "document": "PREV1", "section": "s1", "audience": "dev",
-                    "severity": "low", "check": "link-integrity",
+                    "check": "link-integrity",
                     "description": "old1", "suggestion": "fix1",
                 },
                 {
                     "document": "PREV2", "section": "s2", "audience": "dev",
-                    "severity": "medium", "check": "cross-doc",
+                    "check": "cross-doc",
                     "description": "old2", "suggestion": "fix2",
                 },
             ]
@@ -1106,7 +1095,6 @@ class TestVerifyReferencesCallsChecking:
             data = _load(findings)
             call_findings = [f for f in data if "invalid keyword" in f["description"]]
             assert len(call_findings) == 1
-            assert call_findings[0]["severity"] == "high"
             assert "timeout" in call_findings[0]["description"]
             assert "retries" in call_findings[0]["description"]
 

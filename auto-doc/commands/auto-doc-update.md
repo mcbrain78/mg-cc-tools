@@ -99,7 +99,7 @@ Use AskUserQuestion to present the update plan:
 Documentation Update Plan:
 
 Surgical fixes (doc-fixer agent):
-  OPERATIONS.md: 2 findings (1 high, 1 medium)
+  OPERATIONS.md: 2 findings
   ARCHITECTURE.md: 1 finding, 1 note
   Total: {N} findings + {N} notes
 
@@ -127,7 +127,7 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
    Finding:
    ```json
-   {"type": "finding", "section": "deployment-pipeline", "description": "...", "suggestion": "...", "check": "reference-integrity", "severity": "high"}
+   {"type": "finding", "section": "deployment-pipeline", "description": "...", "suggestion": "...", "check": "reference-integrity"}
    ```
 
    Note:

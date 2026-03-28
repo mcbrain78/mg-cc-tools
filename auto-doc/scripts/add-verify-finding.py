@@ -3,7 +3,7 @@
 
 Called by the verifier agent during each check. The agent writes finding
 data to a temp file (via Write tool), then invokes this script with
---input pointing to that file. The script validates 7 required fields,
+--input pointing to that file. The script validates 6 required fields,
 rejects invalid input to a .rejected file, and appends valid findings
 atomically to the consolidated findings file.
 
@@ -13,7 +13,7 @@ Usage:
         --findings-file .mg/docs/docs-verify-findings.json
 
 Input JSON must contain:
-    document, section, audience, severity, check, description, suggestion
+    document, section, audience, check, description, suggestion
 
 Output adds computed fields:
     group_id (document/section) for grouping related findings
@@ -30,11 +30,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
 
 REQUIRED_FIELDS = [
-    "document", "section", "audience", "severity",
+    "document", "section", "audience",
     "check", "description", "suggestion",
 ]
-
-VALID_SEVERITIES = ["critical", "high", "medium", "low", "info"]
 
 VALID_CHECKS = [
     # Mechanical checks (1-6)
@@ -93,9 +91,6 @@ def validate_finding(finding):
     }
     audience = finding["audience"]
     finding["audience"] = _AUDIENCE_ALIASES.get(audience, audience)
-
-    if finding["severity"] not in VALID_SEVERITIES:
-        return False, f"Invalid severity: {finding['severity']} (valid: {', '.join(VALID_SEVERITIES)})"
 
     if finding["check"] not in VALID_CHECKS:
         return False, f"Invalid check type: {finding['check']} (valid: {', '.join(VALID_CHECKS)})"
@@ -168,9 +163,8 @@ def main():
     doc = input_data["document"]
     section = input_data["section"]
     check = input_data["check"]
-    severity = input_data["severity"]
     print(
-        f"Added finding: {doc}/{section} ({check}, {severity})",
+        f"Added finding: {doc}/{section} ({check})",
         file=sys.stderr,
     )
 

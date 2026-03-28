@@ -73,13 +73,12 @@ For each Python code block, identify function/method calls (look for `function_n
 
 For each issue discovered:
 
-1. Write a temp JSON file containing the finding data with all 7 required fields:
+1. Write a temp JSON file containing the finding data with all 6 required fields:
    ```json
    {
      "document": "DOCUMENT_NAME",
      "section": "section-slug",
      "audience": "audience-key",
-     "severity": "low|high",
      "check": "example-validity|code-example-fact-check",
      "description": "What is wrong",
      "suggestion": "How to fix it"
@@ -101,10 +100,6 @@ For each issue discovered:
    ```
 
 3. If the script exits non-zero, log a warning and continue.
-
-**Severity guide:**
-- `example-validity` (syntax errors): **low** -- these are warnings, not blocking
-- `code-example-fact-check` (wrong parameter names): **high** -- these mislead users
 
 ## Principles
 

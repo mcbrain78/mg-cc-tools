@@ -434,7 +434,6 @@ A flat array of verification findings produced by the verifier agent during the 
     "document": "string -- document name matching config, without .md extension (e.g., OPERATIONS)",
     "section": "string -- section slug (e.g., deployment-pipeline)",
     "audience": "string -- audience key (e.g., devops)",
-    "severity": "string -- critical | high | medium | low | info",
     "check": "string -- which check found this (see valid values below)",
     "description": "string -- what is wrong",
     "suggestion": "string -- how to fix it",
@@ -445,14 +444,13 @@ A flat array of verification findings produced by the verifier agent during the 
 
 ### Required Fields
 
-All 7 input fields are required per finding. The `add-verify-finding.py` script validates these before appending and computes `group_id` automatically (8 fields total in output).
+All 6 input fields are required per finding. The `add-verify-finding.py` script validates these before appending and computes `group_id` automatically (7 fields total in output).
 
 | Field | Type | Valid Values | Description |
 |-------|------|-------------|-------------|
 | `document` | `string` | Any document name from config (without `.md` extension) | Document where the issue was found. `.md` extension is stripped automatically. |
 | `section` | `string` | Section slug | Section within the document |
 | `audience` | `string` | Audience key | Target audience for the document |
-| `severity` | `string` | `critical`, `high`, `medium`, `low`, `info` | Impact level of the issue |
 | `check` | `string` | See valid check types below | Which verification check found this |
 | `description` | `string` | Free text | What is wrong |
 | `suggestion` | `string` | Free text | How to fix it |
@@ -482,7 +480,6 @@ All 7 input fields are required per finding. The `add-verify-finding.py` script 
     "document": "OPERATIONS",
     "section": "deployment-pipeline",
     "audience": "devops",
-    "severity": "high",
     "check": "reference-integrity",
     "description": "File path src/deploy/old-pipeline.sh referenced in section does not exist",
     "suggestion": "Update reference to src/deploy/pipeline.sh (renamed in commit abc1234)",
@@ -492,7 +489,6 @@ All 7 input fields are required per finding. The `add-verify-finding.py` script 
     "document": "ARCHITECTURE",
     "section": "data-model",
     "audience": "developers",
-    "severity": "medium",
     "check": "diataxis",
     "description": "Reference section contains step-by-step tutorial instructions (lines 45-62)",
     "suggestion": "Move procedural content to DEVELOPER_GUIDE/database-setup how-to section",

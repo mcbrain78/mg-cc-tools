@@ -50,13 +50,12 @@ Record `data-model-fact-check` findings for mismatches.
 
 For each issue discovered:
 
-1. Write a temp JSON file containing the finding data with all 7 required fields:
+1. Write a temp JSON file containing the finding data with all 6 required fields:
    ```json
    {
      "document": "DOCUMENT_NAME",
      "section": "section-slug",
      "audience": "audience-key",
-     "severity": "high|medium",
      "check": "data-model-fact-check",
      "description": "What is wrong",
      "suggestion": "How to fix it"
@@ -77,11 +76,6 @@ For each issue discovered:
    ```
 
 3. If the script exits non-zero, log a warning and continue.
-
-**Severity guide:**
-- Wrong count (e.g., "15 tables" when there are 12): **high**
-- Non-existent model class name: **high**
-- Outdated schema name: **medium**
 
 ## Principles
 

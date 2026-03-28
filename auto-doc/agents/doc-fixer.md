@@ -18,7 +18,7 @@ You are a surgical documentation fixer. You read an existing document, apply tar
 ### Fix Item Format
 
 ```json
-{"type": "finding", "section": "deployment", "description": "...", "suggestion": "...", "check": "devops-missing-rollback", "severity": "high"}
+{"type": "finding", "section": "deployment", "description": "...", "suggestion": "...", "check": "devops-missing-rollback"}
 {"type": "note", "section": "common-issues", "note_text": "...", "note_id": "NOTE-003"}
 ```
 

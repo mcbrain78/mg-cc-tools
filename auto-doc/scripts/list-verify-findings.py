@@ -2,9 +2,9 @@
 """Filter and query verify findings from docs-verify-findings.json.
 
 Provides filtered views of accumulated verify findings for the generate
-command and writer agents. Supports summary mode (counts by severity
-and document), filtering by document, audience, and minimum severity,
-and a --clean mode that removes all verify artifacts.
+command and writer agents. Supports summary mode (counts by document),
+filtering by document and audience, and a --clean mode that removes all
+verify artifacts.
 
 Usage:
     # Summary mode (for generate's approval UI):
@@ -18,12 +18,6 @@ Usage:
         --findings-file .mg/docs/docs-verify-findings.json \
         --document OPERATIONS --audience devops \
         --output {TMP_DIR}/findings-ops.json
-
-    # Filter by minimum severity:
-    python3 list-verify-findings.py \
-        --findings-file .mg/docs/docs-verify-findings.json \
-        --severity high \
-        --output {TMP_DIR}/findings-high.json
 
     # Clean all verify artifacts:
     python3 list-verify-findings.py \
@@ -39,9 +33,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
-
-# Index 0 = most severe. Used for "at or above" severity filtering.
-SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
 
 # Verify artifacts relative to the docs directory (parent of findings file).
 _VERIFY_ARTIFACTS = [
@@ -83,15 +74,13 @@ def clean_verify_artifacts(docs_dir):
             print(f"Removed: {full_path}", file=sys.stderr)
 
 
-def filter_findings(findings, document=None, audience=None, severity=None):
+def filter_findings(findings, document=None, audience=None):
     """Filter findings by optional criteria.
 
     Args:
         findings: List of finding dicts.
         document: If set, include only findings for this document.
         audience: If set, include only findings for this audience.
-        severity: If set, include findings at or above this severity
-            level (rank-based, not exact match).
 
     Returns:
         Filtered list of finding dicts.
@@ -104,34 +93,23 @@ def filter_findings(findings, document=None, audience=None, severity=None):
     if audience:
         result = [f for f in result if f.get("audience") == audience]
 
-    if severity:
-        min_rank = SEVERITY_ORDER.index(severity)
-        result = [
-            f for f in result
-            if f.get("severity") in SEVERITY_ORDER
-            and SEVERITY_ORDER.index(f["severity"]) <= min_rank
-        ]
-
     return result
 
 
 def build_summary(findings):
-    """Build summary dict with counts by severity and document.
+    """Build summary dict with counts by document.
 
     Returns:
-        Dict with keys: total, by_severity, by_document.
+        Dict with keys: total, by_document, distinct_groups.
     """
     summary = {
         "total": len(findings),
-        "by_severity": {},
         "by_document": {},
     }
 
     groups = set()
     for f in findings:
-        sev = f.get("severity", "unknown")
         doc = f.get("document", "unknown")
-        summary["by_severity"][sev] = summary["by_severity"].get(sev, 0) + 1
         summary["by_document"][doc] = summary["by_document"].get(doc, 0) + 1
         gid = f.get("group_id", f"{doc}/{f.get('section', '')}")
         groups.add(gid)
@@ -145,10 +123,10 @@ def build_grouped(findings):
     """Group findings by group_id for the approval UI.
 
     Returns:
-        List of group dicts, sorted by highest severity then group_id.
+        List of group dicts, sorted by count descending then group_id.
         Each group contains:
-        - group_id, document, section, count, highest_severity
-        - representative: the highest-severity finding in the group
+        - group_id, document, section, count
+        - representative: the first finding in the group
         - findings: all findings in the group
     """
     groups = {}
@@ -160,26 +138,18 @@ def build_grouped(findings):
 
     result = []
     for gid, group_findings in groups.items():
-        # Pick highest severity as representative
-        best = min(
-            group_findings,
-            key=lambda x: SEVERITY_ORDER.index(x.get("severity", "info")),
-        )
+        representative = group_findings[0]
         result.append({
             "group_id": gid,
-            "document": best.get("document", ""),
-            "section": best.get("section", ""),
+            "document": representative.get("document", ""),
+            "section": representative.get("section", ""),
             "count": len(group_findings),
-            "highest_severity": best.get("severity", "info"),
-            "representative": best,
+            "representative": representative,
             "findings": group_findings,
         })
 
-    # Sort by severity (most severe first), then group_id
-    result.sort(key=lambda g: (
-        SEVERITY_ORDER.index(g["highest_severity"]),
-        g["group_id"],
-    ))
+    # Sort by count descending, then group_id alphabetically
+    result.sort(key=lambda g: (-g["count"], g["group_id"]))
 
     return result
 
@@ -224,11 +194,6 @@ def main():
         "--audience", default=None,
         help="Filter by audience (e.g., devops)",
     )
-    parser.add_argument(
-        "--severity", default=None,
-        help="Filter by minimum severity (includes this level and above)",
-    )
-
     args = parser.parse_args()
     findings_path = os.path.abspath(args.findings_file)
     docs_dir = os.path.dirname(findings_path)
@@ -269,7 +234,6 @@ def main():
         findings,
         document=args.document,
         audience=args.audience,
-        severity=args.severity,
     )
 
     # Build output

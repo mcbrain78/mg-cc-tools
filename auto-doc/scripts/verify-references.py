@@ -106,13 +106,12 @@ def build_file_cache(file_paths, project_root):
     return cache, signature_cache, parse_errors
 
 
-def _make_finding(document, section, audience, severity, description, suggestion):
+def _make_finding(document, section, audience, description, suggestion):
     """Create a finding dict with all required fields plus group_id."""
     return {
         "document": document,
         "section": section,
         "audience": audience,
-        "severity": severity,
         "check": "reference-integrity",
         "description": description,
         "suggestion": suggestion,
@@ -156,7 +155,6 @@ def check_manifest(manifest, file_cache, signature_cache, source_material_index)
                     document=doc_name,
                     section=section_name,
                     audience=audience,
-                    severity="high",
                     description=f"{len(missing_files)} missing file(s): {paths_str}",
                     suggestion="Update references to current paths or remove from documentation",
                 ))
@@ -200,7 +198,6 @@ def check_manifest(manifest, file_cache, signature_cache, source_material_index)
                             document=doc_name,
                             section=section_name,
                             audience=audience,
-                            severity="high",
                             description=f"{len(undefined_symbols)} undefined symbol(s): {syms_str} (checked in {file_list})",
                             suggestion="Re-generate this section to pick up current symbol names",
                         ))
@@ -233,7 +230,6 @@ def check_manifest(manifest, file_cache, signature_cache, source_material_index)
                             document=doc_name,
                             section=section_name,
                             audience=audience,
-                            severity="high",
                             description=(
                                 f"Call to {symbol}() uses invalid keyword(s): {bad_str}. "
                                 f"Actual parameters: {actual_str}"
@@ -311,14 +307,13 @@ def main():
     # Build file cache once
     file_cache, signature_cache, parse_errors = build_file_cache(all_file_paths, project_root)
 
-    # Generate info findings for parse errors
+    # Generate findings for parse errors
     new_findings = []
     for path, error in parse_errors:
         new_findings.append(_make_finding(
             document="(verify-references)",
             section="file-cache",
             audience="all",
-            severity="info",
             description=f"SyntaxError in {path}: {error}",
             suggestion="Fix the syntax error or accept that symbol verification is skipped for this file",
         ))
@@ -334,10 +329,8 @@ def main():
 
     # Summary to stderr
     n = len(new_findings)
-    high_count = sum(1 for f in new_findings if f["severity"] == "high")
-    info_count = sum(1 for f in new_findings if f["severity"] == "info")
     print(
-        f"Reference integrity: {n} findings ({high_count} high, {info_count} info)",
+        f"Reference integrity: {n} findings",
         file=sys.stderr,
     )
 

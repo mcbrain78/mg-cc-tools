@@ -24,7 +24,6 @@ def _sample_findings():
             "document": "OPERATIONS",
             "section": "deployment-pipeline",
             "audience": "devops",
-            "severity": "critical",
             "check": "reference-integrity",
             "description": "Broken file reference in deployment section",
             "suggestion": "Update path to current location",
@@ -33,7 +32,6 @@ def _sample_findings():
             "document": "OPERATIONS",
             "section": "monitoring-setup",
             "audience": "devops",
-            "severity": "high",
             "check": "completeness",
             "description": "Missing monitoring configuration details",
             "suggestion": "Add Prometheus config example",
@@ -42,7 +40,6 @@ def _sample_findings():
             "document": "ARCHITECTURE",
             "section": "overview",
             "audience": "developers",
-            "severity": "medium",
             "check": "diataxis",
             "description": "Section mixes tutorial and reference styles",
             "suggestion": "Split into separate sections",
@@ -51,7 +48,6 @@ def _sample_findings():
             "document": "ARCHITECTURE",
             "section": "data-model",
             "audience": "developers",
-            "severity": "low",
             "check": "cross-doc",
             "description": "Redundant explanation also in OPERATIONS",
             "suggestion": "Cross-reference instead of duplicating",
@@ -60,7 +56,6 @@ def _sample_findings():
             "document": "GETTING_STARTED",
             "section": "installation",
             "audience": "developers",
-            "severity": "info",
             "check": "example-validity",
             "description": "Example uses deprecated flag",
             "suggestion": "Update to current CLI syntax",
@@ -71,8 +66,8 @@ def _sample_findings():
 class TestListVerifyFindingsSummary:
     """Summary mode behavior."""
 
-    def test_summary_mode_counts_by_severity_and_document(self):
-        """--summary mode produces counts by severity and document with total."""
+    def test_summary_mode_counts_by_document(self):
+        """--summary mode produces counts by document with total."""
         with tempfile.TemporaryDirectory() as tmp:
             findings_file = os.path.join(tmp, "findings.json")
             output_file = os.path.join(tmp, "output.json")
@@ -93,11 +88,7 @@ class TestListVerifyFindingsSummary:
                 summary = json.load(f)
 
             assert summary["total"] == 5
-            assert summary["by_severity"]["critical"] == 1
-            assert summary["by_severity"]["high"] == 1
-            assert summary["by_severity"]["medium"] == 1
-            assert summary["by_severity"]["low"] == 1
-            assert summary["by_severity"]["info"] == 1
+            assert "by_severity" not in summary
             assert summary["by_document"]["OPERATIONS"] == 2
             assert summary["by_document"]["ARCHITECTURE"] == 2
             assert summary["by_document"]["GETTING_STARTED"] == 1
@@ -143,7 +134,6 @@ class TestListVerifyFindingsSummary:
                     "document": "OPERATIONS",
                     "section": "deploy",
                     "audience": "devops",
-                    "severity": "high",
                     "check": "reference-integrity",
                     "description": "issue 1",
                     "suggestion": "fix 1",
@@ -153,7 +143,6 @@ class TestListVerifyFindingsSummary:
                     "document": "OPERATIONS",
                     "section": "deploy",
                     "audience": "devops",
-                    "severity": "medium",
                     "check": "diataxis",
                     "description": "issue 2",
                     "suggestion": "fix 2",
@@ -163,7 +152,6 @@ class TestListVerifyFindingsSummary:
                     "document": "ARCHITECTURE",
                     "section": "overview",
                     "audience": "developers",
-                    "severity": "low",
                     "check": "cross-doc",
                     "description": "issue 3",
                     "suggestion": "fix 3",
@@ -200,7 +188,6 @@ class TestListVerifyFindingsSummary:
                     "document": "OPERATIONS",
                     "section": "deploy",
                     "audience": "devops",
-                    "severity": "high",
                     "check": "reference-integrity",
                     "description": "issue 1",
                     "suggestion": "fix 1",
@@ -209,7 +196,6 @@ class TestListVerifyFindingsSummary:
                     "document": "OPERATIONS",
                     "section": "deploy",
                     "audience": "devops",
-                    "severity": "medium",
                     "check": "diataxis",
                     "description": "issue 2",
                     "suggestion": "fix 2",
@@ -252,7 +238,6 @@ class TestListVerifyFindingsSummary:
                 summary = json.load(f)
 
             assert summary["total"] == 0
-            assert summary["by_severity"] == {}
             assert summary["by_document"] == {}
 
 
@@ -301,19 +286,19 @@ class TestListVerifyFindingsGrouped:
             findings = [
                 {
                     "document": "OPS", "section": "deploy",
-                    "audience": "devops", "severity": "medium",
+                    "audience": "devops",
                     "check": "diataxis", "description": "issue A",
                     "suggestion": "fix A", "group_id": "OPS/deploy",
                 },
                 {
                     "document": "OPS", "section": "deploy",
-                    "audience": "devops", "severity": "high",
+                    "audience": "devops",
                     "check": "reference-integrity", "description": "issue B",
                     "suggestion": "fix B", "group_id": "OPS/deploy",
                 },
                 {
                     "document": "ARCH", "section": "overview",
-                    "audience": "developers", "severity": "low",
+                    "audience": "developers",
                     "check": "cross-doc", "description": "issue C",
                     "suggestion": "fix C", "group_id": "ARCH/overview",
                 },
@@ -335,22 +320,20 @@ class TestListVerifyFindingsGrouped:
 
             assert len(groups) == 2
 
-            # First group should be OPS/deploy (highest severity = high)
+            # First group should be OPS/deploy (highest count = 2)
             ops = groups[0]
             assert ops["group_id"] == "OPS/deploy"
             assert ops["count"] == 2
-            assert ops["highest_severity"] == "high"
-            assert ops["representative"]["check"] == "reference-integrity"
+            assert ops["representative"]["check"] == "diataxis"
             assert len(ops["findings"]) == 2
 
-            # Second group should be ARCH/overview (severity = low)
+            # Second group should be ARCH/overview (count = 1)
             arch = groups[1]
             assert arch["group_id"] == "ARCH/overview"
             assert arch["count"] == 1
-            assert arch["highest_severity"] == "low"
 
-    def test_grouped_sorted_by_severity(self):
-        """Groups are sorted by highest severity (most severe first)."""
+    def test_grouped_sorted_by_count_desc(self):
+        """Groups are sorted by count descending, then group_id alphabetically."""
         with tempfile.TemporaryDirectory() as tmp:
             findings_file = os.path.join(tmp, "findings.json")
             output_file = os.path.join(tmp, "output.json")
@@ -358,21 +341,39 @@ class TestListVerifyFindingsGrouped:
             findings = [
                 {
                     "document": "A", "section": "s1",
-                    "audience": "devops", "severity": "low",
+                    "audience": "devops",
                     "check": "cross-doc", "description": "d1",
                     "suggestion": "s1", "group_id": "A/s1",
                 },
                 {
                     "document": "B", "section": "s2",
-                    "audience": "devops", "severity": "critical",
+                    "audience": "devops",
                     "check": "reference-integrity", "description": "d2",
                     "suggestion": "s2", "group_id": "B/s2",
                 },
                 {
-                    "document": "C", "section": "s3",
-                    "audience": "devops", "severity": "medium",
+                    "document": "B", "section": "s2",
+                    "audience": "devops",
                     "check": "diataxis", "description": "d3",
-                    "suggestion": "s3", "group_id": "C/s3",
+                    "suggestion": "s3", "group_id": "B/s2",
+                },
+                {
+                    "document": "B", "section": "s2",
+                    "audience": "devops",
+                    "check": "completeness", "description": "d4",
+                    "suggestion": "s4", "group_id": "B/s2",
+                },
+                {
+                    "document": "C", "section": "s3",
+                    "audience": "devops",
+                    "check": "diataxis", "description": "d5",
+                    "suggestion": "s5", "group_id": "C/s3",
+                },
+                {
+                    "document": "C", "section": "s3",
+                    "audience": "devops",
+                    "check": "completeness", "description": "d6",
+                    "suggestion": "s6", "group_id": "C/s3",
                 },
             ]
             with open(findings_file, "w") as f:
@@ -390,8 +391,10 @@ class TestListVerifyFindingsGrouped:
             with open(output_file) as f:
                 groups = json.load(f)
 
-            severities = [g["highest_severity"] for g in groups]
-            assert severities == ["critical", "medium", "low"]
+            # B/s2 has 3 findings, C/s3 has 2, A/s1 has 1
+            group_ids = [g["group_id"] for g in groups]
+            assert group_ids == ["B/s2", "C/s3", "A/s1"]
+            assert [g["count"] for g in groups] == [3, 2, 1]
 
     def test_grouped_with_document_filter(self):
         """--grouped combined with --document filters before grouping."""
@@ -499,56 +502,6 @@ class TestListVerifyFindingsFilter:
             assert len(data) == 2
             assert all(f["document"] == "ARCHITECTURE" for f in data)
             assert all(f["audience"] == "developers" for f in data)
-
-    def test_severity_high_returns_high_and_critical(self):
-        """--severity high returns high AND critical (not just high)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            findings_file = os.path.join(tmp, "findings.json")
-            output_file = os.path.join(tmp, "output.json")
-
-            with open(findings_file, "w") as f:
-                json.dump(_sample_findings(), f)
-
-            result = subprocess.run(
-                [sys.executable, SCRIPT_PATH,
-                 "--findings-file", findings_file,
-                 "--severity", "high",
-                 "--output", output_file],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 0
-
-            with open(output_file) as f:
-                data = json.load(f)
-
-            severities = {f["severity"] for f in data}
-            assert severities == {"critical", "high"}
-            assert len(data) == 2
-
-    def test_severity_medium_returns_medium_high_critical(self):
-        """--severity medium returns medium, high, and critical."""
-        with tempfile.TemporaryDirectory() as tmp:
-            findings_file = os.path.join(tmp, "findings.json")
-            output_file = os.path.join(tmp, "output.json")
-
-            with open(findings_file, "w") as f:
-                json.dump(_sample_findings(), f)
-
-            result = subprocess.run(
-                [sys.executable, SCRIPT_PATH,
-                 "--findings-file", findings_file,
-                 "--severity", "medium",
-                 "--output", output_file],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 0
-
-            with open(output_file) as f:
-                data = json.load(f)
-
-            severities = {f["severity"] for f in data}
-            assert severities == {"critical", "high", "medium"}
-            assert len(data) == 3
 
     def test_empty_findings_file_produces_empty_results(self):
         """Empty findings file produces empty results (not error)."""
@@ -768,7 +721,7 @@ class TestListVerifyFindingsInit:
 
             # Seed with existing data
             with open(findings_file, "w") as f:
-                json.dump([{"document": "OLD", "severity": "high"}], f)
+                json.dump([{"document": "OLD", "check": "diataxis"}], f)
 
             result = subprocess.run(
                 [sys.executable, SCRIPT_PATH,

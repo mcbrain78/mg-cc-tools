@@ -18,12 +18,11 @@ SCRIPT_PATH = os.path.join(
 
 
 def _valid_finding():
-    """Return a valid finding dict with all 7 required fields."""
+    """Return a valid finding dict with all 6 required fields."""
     return {
         "document": "OPERATIONS",
         "section": "deployment-pipeline",
         "audience": "devops",
-        "severity": "high",
         "check": "reference-integrity",
         "description": "File path src/deploy/old-pipeline.sh referenced in section does not exist",
         "suggestion": "Update reference to src/deploy/pipeline.sh (renamed in commit abc1234)",
@@ -109,7 +108,6 @@ class TestAddVerifyFindingBasic:
             assert "OPERATIONS" in result.stderr
             assert "deployment-pipeline" in result.stderr
             assert "reference-integrity" in result.stderr
-            assert "high" in result.stderr
 
 
 class TestAddVerifyFindingRejection:
@@ -140,31 +138,6 @@ class TestAddVerifyFindingRejection:
                 rejected = json.load(f)
             assert "reason" in rejected
             assert "section" in rejected["reason"]
-
-    def test_invalid_severity_rejects(self):
-        """Invalid severity value (e.g., 'urgent') exits non-zero, saves .rejected file."""
-        with tempfile.TemporaryDirectory() as tmp:
-            findings_file = os.path.join(tmp, "findings.json")
-            input_file = os.path.join(tmp, "input.json")
-
-            finding = _valid_finding()
-            finding["severity"] = "urgent"
-            with open(input_file, "w") as f:
-                json.dump(finding, f)
-
-            result = subprocess.run(
-                [sys.executable, SCRIPT_PATH,
-                 "--input", input_file,
-                 "--findings-file", findings_file],
-                capture_output=True, text=True,
-            )
-            assert result.returncode != 0
-
-            rejected_path = input_file + ".rejected"
-            assert os.path.exists(rejected_path)
-            with open(rejected_path) as f:
-                rejected = json.load(f)
-            assert "severity" in rejected["reason"].lower()
 
     def test_invalid_check_rejects(self):
         """Invalid check value (e.g., 'spelling') exits non-zero, saves .rejected file."""
