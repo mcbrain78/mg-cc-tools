@@ -222,6 +222,8 @@ def check_manifest(manifest, file_cache, signature_cache, source_material_index)
                         # Function not found in signatures — skip gracefully
                         continue
 
+                    if "**" in actual_params:
+                        continue  # accepts **kwargs, any keyword is valid
                     bad_kwargs = [k for k in kwargs if k not in actual_params]
                     if bad_kwargs:
                         bad_str = ", ".join(bad_kwargs)

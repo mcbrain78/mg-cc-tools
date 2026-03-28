@@ -1137,6 +1137,45 @@ class TestVerifyReferencesCallsChecking:
             data = _load(findings)
             assert len(data) == 0
 
+    def test_var_kwargs_skips_validation(self):
+        """Functions accepting **kwargs skip keyword validation — any kwarg is valid."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "project")
+            os.makedirs(project)
+            manifests = os.path.join(project, "manifests")
+            os.makedirs(manifests)
+            findings = os.path.join(tmp, "findings.json")
+            scan = os.path.join(tmp, "scan.json")
+
+            src = os.path.join(project, "tests")
+            os.makedirs(src)
+            with open(os.path.join(src, "db_helpers.py"), "w") as f:
+                f.write("def make_income_statement(db, **kw):\n    pass\n")
+
+            manifest = _make_manifest("agents", {
+                "TESTING": {
+                    "test-data": {
+                        "symbols": ["make_income_statement"],
+                        "file_paths": ["tests/db_helpers.py"],
+                        "calls": [
+                            {"symbol": "make_income_statement", "kwargs": ["ticker", "period_date"]}
+                        ],
+                    }
+                }
+            })
+            with open(os.path.join(manifests, "agents.json"), "w") as f:
+                json.dump(manifest, f)
+
+            _write_scan(scan, {
+                "TESTING/test-data": {"source_files": ["tests/db_helpers.py"]},
+            })
+
+            result = _run(manifests, project, findings, scan)
+            assert result.returncode == 0
+
+            data = _load(findings)
+            assert len(data) == 0
+
     def test_calls_absent_backwards_compatible(self):
         """Manifest without calls field produces no calls findings (backwards compat)."""
         with tempfile.TemporaryDirectory() as tmp:

@@ -62,5 +62,7 @@ def extract_function_signatures(source):
                 name = arg.arg
                 if name not in ("self", "cls"):
                     params.append(name)
+            if node.args.kwarg:
+                params.append("**")
             signatures[node.name] = params
     return signatures

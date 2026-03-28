@@ -95,3 +95,15 @@ class TestExtractFunctionSignatures:
         )
         sigs = extract_function_signatures(source)
         assert sigs == {"method": []}
+
+    def test_var_keyword_kwargs(self):
+        """Function with **kwargs includes '**' sentinel in params."""
+        source = "def make_row(db, **kw):\n    pass\n"
+        sigs = extract_function_signatures(source)
+        assert sigs == {"make_row": ["db", "**"]}
+
+    def test_var_keyword_only(self):
+        """Function with only **kwargs still gets sentinel."""
+        source = "def flexible(**kwargs):\n    pass\n"
+        sigs = extract_function_signatures(source)
+        assert sigs == {"flexible": ["**"]}

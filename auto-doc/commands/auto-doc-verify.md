@@ -268,7 +268,7 @@ List systemic issues first (patterns that span multiple documents). Then group r
 4. **Conditional guidance:**
    - If any findings exist:
      ```
-     Run /mg:auto-doc-generate to address verify findings. The generator will present findings as an approval tier alongside staleness and notes.
+     Run /mg:auto-doc-update to fix verify findings. The updater will present findings as an approval tier alongside staleness and notes.
      ```
 
 5. **Documentation gaps note:**
