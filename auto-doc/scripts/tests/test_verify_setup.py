@@ -66,8 +66,12 @@ def _make_config(tmp, docs_dir="docs/auto-doc"):
     return config_path
 
 
-def _make_project(tmp):
+def _make_project(tmp, multi_audience=False):
     """Create a minimal project structure for full-run tests.
+
+    Args:
+        tmp: Temp directory.
+        multi_audience: If True, create docs for devops, developer, end-user.
 
     Returns (project_root, scan_path, config_path).
     """
@@ -78,9 +82,14 @@ def _make_project(tmp):
     os.makedirs(docs_dir)
     os.makedirs(mg_docs)
 
-    # Create a minimal doc file so prepare-doc-review has something to process
-    with open(os.path.join(docs_dir, "TEST.md"), "w") as f:
-        f.write("# Test\n\nSome content.\n")
+    if multi_audience:
+        for aud in ["devops", "developer", "end-user"]:
+            with open(os.path.join(docs_dir, f"{aud.upper()}.md"), "w") as f:
+                f.write(f"# {aud.title()} Doc\n<!-- AUDIENCE: {aud} -->\n\nContent.\n")
+    else:
+        # Create a minimal doc file so prepare-doc-review has something to process
+        with open(os.path.join(docs_dir, "TEST.md"), "w") as f:
+            f.write("# Test\n\nSome content.\n")
 
     scan_path = os.path.join(mg_docs, "docs-scan.json")
     _write_json(scan_path, {
@@ -351,3 +360,23 @@ class TestFullRun:
                 assert os.path.isfile(fpath), f"Missing {key} findings: {fpath}"
                 data = _read_json(fpath)
                 assert data == [], f"Expected empty array for {key}"
+
+    def test_audience_passthrough_filters_manifest(self):
+        """--audience devops filters manifest to only devops docs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp, multi_audience=True)
+
+            stdout, _, _ = _run([
+                "--scan-file", scan_path,
+                "--config", config_path,
+                "--global-config", config_path,
+                "--checks-file", os.path.join(tmp, "checks.json"),
+                "--scripts-dir", SCRIPTS_DIR,
+                "--templates-dir", os.path.join(tmp, "templates"),
+                "--audience", "devops",
+            ])
+
+            result = json.loads(stdout)
+            manifest = _read_json(result["manifest"])
+            assert len(manifest) == 1
+            assert manifest[0]["audience"] == "devops"

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Turn-based question manager for per-document editorial verification.
+"""Question manager for per-document editorial verification.
 
 Manages question sets for a single document: initializes applicable sets
 based on audience, writes the first question set to a question file, and
-advances through sets one at a time via --advance.
+advances through sets one at a time via --advance with a finding-gate.
 
-The orchestrator calls --init once per document to set up state, then
-calls --advance after each SendMessage round to overwrite the question
-file with the next set. The agent reads the question file each round.
+The orchestrator calls --init once per document to set up state. The
+self-driven agent calls --advance after each evaluation round to get the
+next question set. A finding-gate ensures agents cannot skip evaluation.
 
 Two modes:
 
@@ -16,9 +16,10 @@ Two modes:
         --init --checks CHECKS --audience AUDIENCE \
         --state STATE --question-file QFILE
 
-    # Advance: overwrite question file with next set
+    # Advance: overwrite question file with next set (finding-gate)
     python3 editorial-questions.py \
-        --advance --state STATE --question-file QFILE
+        --advance --state STATE --question-file QFILE \
+        --findings-file FINDINGS  # or --no-findings
 
 Stdout (JSON):
     continue: {"status": "continue", "set_id": "universal-1", "remaining": 6}
@@ -97,12 +98,14 @@ def init_state(checks_path, audience, state_path, question_file):
         save_json(state_path, {
             "applicable_sets": [],
             "current_index": 0,
+            "findings_count": 0,
         })
         return {"status": "finished", "sets_evaluated": 0}
 
     state = {
         "applicable_sets": applicable,
         "current_index": 0,
+        "findings_count": 0,
     }
     save_json(state_path, state)
 
@@ -112,12 +115,17 @@ def init_state(checks_path, audience, state_path, question_file):
     return {"status": "continue", "set_id": applicable[0]["id"], "remaining": remaining}
 
 
-def advance_state(state_path, question_file):
+def advance_state(state_path, question_file, findings_file=None, no_findings=False):
     """Increment index and write next question set, or signal finished.
+
+    Enforces a finding-gate: the caller must prove evaluation happened by
+    passing --findings-file (with new entries) or --no-findings.
 
     Args:
         state_path: Path to the state file.
         question_file: Path to overwrite with next question set.
+        findings_file: Path to the doc's findings JSON (optional).
+        no_findings: If True, agent evaluated but found nothing.
 
     Returns:
         Status dict for stdout.
@@ -125,6 +133,31 @@ def advance_state(state_path, question_file):
     state = load_json(state_path)
     if state is None:
         print(f"Error: state file not found: {state_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Finding gate: require evidence of evaluation before advancing
+    stored_count = state.get("findings_count", 0)
+    if findings_file is not None:
+        findings_data = load_json(findings_file)
+        new_count = len(findings_data) if findings_data is not None else 0
+        if new_count > stored_count:
+            state["findings_count"] = new_count
+        elif no_findings:
+            pass  # Agent evaluated, found nothing new — OK
+        else:
+            print(
+                f"Error: findings file has {new_count} entries (stored: {stored_count}). "
+                "Must pass --findings-file (with new findings) or --no-findings",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    elif no_findings:
+        pass  # No findings file, agent says nothing found — OK
+    else:
+        print(
+            "Error: Must pass --findings-file (with new findings) or --no-findings",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     applicable = state["applicable_sets"]
@@ -170,6 +203,14 @@ def main():
         "--question-file", required=True,
         help="Path to question file (overwritten each round)",
     )
+    parser.add_argument(
+        "--findings-file", default=None,
+        help="Path to the doc's findings JSON (used with --advance for finding-gate)",
+    )
+    parser.add_argument(
+        "--no-findings", action="store_true",
+        help="Declare that evaluation found nothing (used with --advance for finding-gate)",
+    )
 
     args = parser.parse_args()
 
@@ -202,6 +243,8 @@ def main():
         result = advance_state(
             state_path=os.path.abspath(args.state),
             question_file=os.path.abspath(args.question_file),
+            findings_file=os.path.abspath(args.findings_file) if args.findings_file else None,
+            no_findings=args.no_findings,
         )
 
     print(json.dumps(result, indent=2))

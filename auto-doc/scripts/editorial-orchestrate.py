@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-"""Multi-doc editorial state machine for singledoc verify pipeline.
+"""Multi-doc editorial init for singledoc verify pipeline.
 
-Manages all documents in a single state file. Two modes:
+Reads manifest + checks, creates per-doc state files compatible with
+editorial-questions.py, writes first question files, and returns spawn
+targets. Each spawned agent drives its own question loop via
+editorial-questions.py --advance.
 
-    # Init: read manifest + checks, create state, write first question files
     python3 editorial-orchestrate.py --init \
         --manifest MANIFEST --checks CHECKS \
         --findings-prefix PREFIX --tmp-dir TMP \
         --state STATE
 
-    # Next: advance active docs, return send or done action
-    python3 editorial-orchestrate.py --next --state STATE
-
 Stdout (JSON):
-    init:  {"action": "spawn", "docs": [...]}
-    next:  {"action": "send", "targets": [...], "finished_this_round": [...]}
-    done:  {"action": "done", "docs_processed": N}
+    spawn: {"action": "spawn", "docs": [...]}
+    done:  {"action": "done", "docs_processed": 0}
 
 Atomic writes via lib/json_io.py. Zero external dependencies.
 """
@@ -107,19 +105,30 @@ def do_init(manifest_path, checks_path, findings_prefix, tmp_dir, state_path):
 
     docs = build_doc_entries(manifest, checks_data, findings_prefix, tmp_dir)
 
-    # Write first question file and create empty findings for each active doc
+    # Write first question file, create empty findings, and create per-doc state files
     active_docs = []
     for doc in docs:
         if not doc["active"]:
             continue
         write_question_file(doc["question_file"], doc["applicable_sets"][0])
         save_json(doc["findings_file"], [])
+
+        # Create per-doc state file compatible with editorial-questions.py
+        state_file = os.path.join(tmp_dir, f"ed-state-{doc['name']}.json")
+        save_json(state_file, {
+            "applicable_sets": doc["applicable_sets"],
+            "current_index": 0,
+            "findings_count": 0,
+        })
+        doc["state_file"] = state_file
+
         active_docs.append({
             "name": doc["name"],
             "source": doc["source"],
             "audience": doc["audience"],
             "question_file": doc["question_file"],
             "findings_file": doc["findings_file"],
+            "state_file": state_file,
         })
 
     save_json(state_path, {"docs": docs})
@@ -130,54 +139,6 @@ def do_init(manifest_path, checks_path, findings_prefix, tmp_dir, state_path):
     return {"action": "spawn", "docs": active_docs}
 
 
-def do_next(state_path):
-    """Advance active docs to next question set, return send or done.
-
-    Returns:
-        Dict with action, targets/finished for stdout.
-    """
-    state = load_json(state_path)
-    if state is None:
-        print(f"Error: state file not found: {state_path}", file=sys.stderr)
-        sys.exit(1)
-
-    docs = state["docs"]
-    targets = []
-    finished_this_round = []
-
-    for doc in docs:
-        if not doc["active"]:
-            continue
-
-        next_index = doc["current_index"] + 1
-        if next_index >= len(doc["applicable_sets"]):
-            doc["active"] = False
-            finished_this_round.append(doc["name"])
-        else:
-            doc["current_index"] = next_index
-            write_question_file(
-                doc["question_file"],
-                doc["applicable_sets"][next_index],
-            )
-            targets.append({
-                "name": doc["name"],
-                "question_file": doc["question_file"],
-                "findings_file": doc["findings_file"],
-            })
-
-    save_json(state_path, state)
-
-    if targets:
-        return {
-            "action": "send",
-            "targets": targets,
-            "finished_this_round": finished_this_round,
-        }
-
-    total_processed = sum(1 for d in docs if not d["active"])
-    return {"action": "done", "docs_processed": total_processed}
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Multi-doc editorial state machine"
@@ -185,10 +146,6 @@ def main():
     parser.add_argument(
         "--init", action="store_true",
         help="Initialize state from manifest + checks",
-    )
-    parser.add_argument(
-        "--next", action="store_true",
-        help="Advance active docs to next question set",
     )
     parser.add_argument(
         "--manifest", default=None,
@@ -213,32 +170,25 @@ def main():
 
     args = parser.parse_args()
 
-    if not args.init and not args.next:
-        print("Error: specify --init or --next", file=sys.stderr)
+    if not args.init:
+        print("Error: --init is required", file=sys.stderr)
         sys.exit(1)
 
-    if args.init and args.next:
-        print("Error: specify only one of --init or --next", file=sys.stderr)
-        sys.exit(1)
-
-    if args.init:
-        if not args.manifest or not args.checks or not args.findings_prefix or not args.tmp_dir:
-            print(
-                "Error: --manifest, --checks, --findings-prefix, and --tmp-dir "
-                "are required with --init",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-        result = do_init(
-            manifest_path=os.path.abspath(args.manifest),
-            checks_path=os.path.abspath(args.checks),
-            findings_prefix=os.path.abspath(args.findings_prefix),
-            tmp_dir=os.path.abspath(args.tmp_dir),
-            state_path=os.path.abspath(args.state),
+    if not args.manifest or not args.checks or not args.findings_prefix or not args.tmp_dir:
+        print(
+            "Error: --manifest, --checks, --findings-prefix, and --tmp-dir "
+            "are required with --init",
+            file=sys.stderr,
         )
-    else:
-        result = do_next(state_path=os.path.abspath(args.state))
+        sys.exit(1)
+
+    result = do_init(
+        manifest_path=os.path.abspath(args.manifest),
+        checks_path=os.path.abspath(args.checks),
+        findings_prefix=os.path.abspath(args.findings_prefix),
+        tmp_dir=os.path.abspath(args.tmp_dir),
+        state_path=os.path.abspath(args.state),
+    )
 
     print(json.dumps(result, indent=2))
 

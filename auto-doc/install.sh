@@ -77,7 +77,7 @@ while [[ $# -gt 0 ]]; do
       echo "  /mg:auto-doc-update       <- fix findings + integrate notes"
       echo "  /mg:auto-doc-verify       <- step 3: verify"
       echo "  /mg:auto-doc-verify-mini  <- step 3 alt: verify with Haiku editorial"
-      echo "  /mg:auto-doc-verify-singledoc  <- step 3 alt: verify with Sonnet SendMessage editorial"
+      echo "  /mg:auto-doc-verify-singledoc  <- step 3 alt: verify with self-driven Sonnet editorial"
       echo "  /mg:auto-doc-add          <- capture notes"
       echo "  /mg:auto-doc-script       <- generate README for a standalone script"
       exit 0

@@ -99,11 +99,16 @@ def main():
         "--token-limit", type=int, default=5000,
         help="Token limit for chunking (default: 5000)",
     )
+    parser.add_argument(
+        "--audience", default=None,
+        help="Comma-separated audience filter (e.g., 'devops,end-users'). Only include matching docs.",
+    )
 
     args = parser.parse_args()
     docs_dir = os.path.abspath(args.docs_dir)
     output_dir = os.path.abspath(args.output_dir)
     token_limit = args.token_limit
+    audience_filter = set(args.audience.split(",")) if args.audience else None
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -118,6 +123,11 @@ def main():
 
         tokens = count_tokens(content)
         audience = detect_audience(content)
+
+        # Skip docs that don't match the audience filter
+        if audience_filter is not None and audience not in audience_filter:
+            continue
+
         basename = os.path.splitext(os.path.basename(doc_path))[0]
 
         if tokens <= token_limit:

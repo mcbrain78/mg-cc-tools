@@ -187,7 +187,7 @@ class TestAdvanceMode:
             state_path, question_file, _ = _init(tmp)
 
             stdout, _, _ = _run([
-                "--advance",
+                "--advance", "--no-findings",
                 "--state", state_path,
                 "--question-file", question_file,
             ])
@@ -200,7 +200,7 @@ class TestAdvanceMode:
             state_path, question_file, _ = _init(tmp)
 
             _run([
-                "--advance",
+                "--advance", "--no-findings",
                 "--state", state_path,
                 "--question-file", question_file,
             ])
@@ -214,7 +214,7 @@ class TestAdvanceMode:
             # After init: remaining=2 (3 sets total)
 
             stdout, _, _ = _run([
-                "--advance",
+                "--advance", "--no-findings",
                 "--state", state_path,
                 "--question-file", question_file,
             ])
@@ -227,18 +227,18 @@ class TestAdvanceMode:
             # 3 sets: init writes first, need 2 advances
 
             _run([
-                "--advance",
+                "--advance", "--no-findings",
                 "--state", state_path,
                 "--question-file", question_file,
             ])
             _run([
-                "--advance",
+                "--advance", "--no-findings",
                 "--state", state_path,
                 "--question-file", question_file,
             ])
             # Now at index 2 (last), next advance should finish
             stdout, _, _ = _run([
-                "--advance",
+                "--advance", "--no-findings",
                 "--state", state_path,
                 "--question-file", question_file,
             ])
@@ -257,7 +257,7 @@ class TestAdvanceMode:
 
             while result["status"] == "continue":
                 stdout, _, _ = _run([
-                    "--advance",
+                    "--advance", "--no-findings",
                     "--state", state_path,
                     "--question-file", question_file,
                 ])
@@ -356,3 +356,105 @@ class TestEdgeCases:
                 "--question-file", os.path.join(tmp, "questions.json"),
             ], check=False)
             assert rc != 0
+
+    def test_init_state_has_findings_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path, _, _ = _init(tmp)
+            state = _read_json(state_path)
+            assert state["findings_count"] == 0
+
+
+# =============================================================================
+# Finding gate
+# =============================================================================
+
+class TestFindingGate:
+    """Finding-gate prevents advancing without evaluation evidence."""
+
+    def test_advance_without_gate_args_fails(self):
+        """No --findings-file, no --no-findings → exit 1."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path, question_file, _ = _init(tmp)
+
+            _, stderr, rc = _run([
+                "--advance",
+                "--state", state_path,
+                "--question-file", question_file,
+            ], check=False)
+            assert rc != 0
+            assert "must pass" in stderr.lower()
+
+    def test_advance_with_no_findings_flag_succeeds(self):
+        """--no-findings → advances normally."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path, question_file, _ = _init(tmp)
+
+            stdout, _, rc = _run([
+                "--advance", "--no-findings",
+                "--state", state_path,
+                "--question-file", question_file,
+            ])
+            assert rc == 0
+            result = json.loads(stdout)
+            assert result["status"] == "continue"
+
+    def test_advance_with_new_findings_succeeds(self):
+        """findings file has entries > stored count → advances."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path, question_file, _ = _init(tmp)
+            findings_file = os.path.join(tmp, "findings.json")
+            _write_json(findings_file, [{"check": "test", "description": "test finding"}])
+
+            stdout, _, rc = _run([
+                "--advance",
+                "--state", state_path,
+                "--question-file", question_file,
+                "--findings-file", findings_file,
+            ])
+            assert rc == 0
+            result = json.loads(stdout)
+            assert result["status"] == "continue"
+
+    def test_advance_with_unchanged_findings_fails(self):
+        """findings file count == stored count, no --no-findings → exit 1."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path, question_file, _ = _init(tmp)
+            findings_file = os.path.join(tmp, "findings.json")
+            # First advance with 1 finding — succeeds and stores count=1
+            _write_json(findings_file, [{"check": "test", "description": "finding 1"}])
+            _run([
+                "--advance",
+                "--state", state_path,
+                "--question-file", question_file,
+                "--findings-file", findings_file,
+            ])
+
+            # Second advance with same count (still 1) — should fail
+            _, stderr, rc = _run([
+                "--advance",
+                "--state", state_path,
+                "--question-file", question_file,
+                "--findings-file", findings_file,
+            ], check=False)
+            assert rc != 0
+            assert "findings file has 1 entries" in stderr.lower()
+
+    def test_findings_count_updates_in_state(self):
+        """After advance with findings, state has new count."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path, question_file, _ = _init(tmp)
+            findings_file = os.path.join(tmp, "findings.json")
+            _write_json(findings_file, [
+                {"check": "a", "description": "finding 1"},
+                {"check": "b", "description": "finding 2"},
+            ])
+
+            _run([
+                "--advance",
+                "--state", state_path,
+                "--question-file", question_file,
+                "--findings-file", findings_file,
+            ])
+
+            state = _read_json(state_path)
+            assert state["findings_count"] == 2

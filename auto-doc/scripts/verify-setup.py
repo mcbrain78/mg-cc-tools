@@ -170,7 +170,7 @@ def check_prereqs(scan_path, docs_dir_abs):
         sys.exit(1)
 
 
-def run_prep_scripts(paths, scripts_dir, templates_dir, scan_file):
+def run_prep_scripts(paths, scripts_dir, templates_dir, scan_file, audience=None):
     """Run the 4 prep scripts that set up the verify workspace.
 
     Args:
@@ -178,6 +178,7 @@ def run_prep_scripts(paths, scripts_dir, templates_dir, scan_file):
         scripts_dir: Absolute path to scripts directory.
         templates_dir: Absolute path to templates directory.
         scan_file: Absolute path to docs-scan.json.
+        audience: Optional comma-separated audience filter string.
 
     Raises:
         SystemExit: On critical prep script failure.
@@ -208,14 +209,15 @@ def run_prep_scripts(paths, scripts_dir, templates_dir, scan_file):
     )
 
     # 3. Prepare doc review manifest
-    _run_script(
-        [sys.executable, os.path.join(scripts_dir, "prepare-doc-review.py"),
-         "--docs-dir", paths["docs_dir_abs"],
-         "--output-dir", os.path.join(paths["tmp_dir"], "review-chunks"),
-         "--token-limit", "5000"],
-        label="prepare-doc-review",
-        critical=True,
-    )
+    prep_cmd = [
+        sys.executable, os.path.join(scripts_dir, "prepare-doc-review.py"),
+        "--docs-dir", paths["docs_dir_abs"],
+        "--output-dir", os.path.join(paths["tmp_dir"], "review-chunks"),
+        "--token-limit", "5000",
+    ]
+    if audience:
+        prep_cmd.extend(["--audience", audience])
+    _run_script(prep_cmd, label="prepare-doc-review", critical=True)
 
     # 4. Verify references (non-critical — log and continue)
     _run_script(
@@ -290,6 +292,10 @@ def main():
         "--findings-prefix", default="editorial-singledoc",
         help="Prefix for editorial findings files (default: editorial-singledoc)",
     )
+    parser.add_argument(
+        "--audience", default=None,
+        help="Comma-separated audience filter (e.g., 'devops,end-users'). Passed to prepare-doc-review.",
+    )
 
     args = parser.parse_args()
 
@@ -315,7 +321,7 @@ def main():
     paths = build_paths(project_root, docs_dir, checks_file, args.findings_prefix)
 
     # Run prep scripts
-    run_prep_scripts(paths, scripts_dir, templates_dir, scan_file)
+    run_prep_scripts(paths, scripts_dir, templates_dir, scan_file, audience=args.audience)
 
     # Output all paths as JSON
     print(json.dumps(paths, indent=2))

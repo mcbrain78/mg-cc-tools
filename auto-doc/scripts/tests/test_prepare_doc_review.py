@@ -227,6 +227,116 @@ class TestPrepareDocReviewAudience:
             assert manifest[0]["audience"] is None
 
 
+class TestAudienceFilter:
+    """--audience filter scopes which docs are included."""
+
+    def _create_multi_audience_docs(self, docs_dir):
+        """Create docs for devops, developer, and end-user audiences."""
+        for aud in ["devops", "developer", "end-user"]:
+            doc_path = os.path.join(docs_dir, f"{aud.upper()}.md")
+            with open(doc_path, "w") as f:
+                f.write(_small_doc(audience=aud))
+
+    def test_filter_single_audience(self):
+        """--audience devops includes only devops docs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = os.path.join(tmp, "docs")
+            output_dir = os.path.join(tmp, "chunks")
+            os.makedirs(docs_dir)
+            self._create_multi_audience_docs(docs_dir)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--docs-dir", docs_dir,
+                 "--output-dir", output_dir,
+                 "--token-limit", "5000",
+                 "--audience", "devops"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            manifest_path = os.path.join(output_dir, "manifest.json")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+
+            assert len(manifest) == 1
+            assert manifest[0]["audience"] == "devops"
+
+    def test_filter_multiple_audiences(self):
+        """--audience devops,end-user includes both."""
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = os.path.join(tmp, "docs")
+            output_dir = os.path.join(tmp, "chunks")
+            os.makedirs(docs_dir)
+            self._create_multi_audience_docs(docs_dir)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--docs-dir", docs_dir,
+                 "--output-dir", output_dir,
+                 "--token-limit", "5000",
+                 "--audience", "devops,end-user"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            manifest_path = os.path.join(output_dir, "manifest.json")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+
+            audiences = {e["audience"] for e in manifest}
+            assert audiences == {"devops", "end-user"}
+
+    def test_no_filter_includes_all(self):
+        """Omitting --audience includes everything."""
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = os.path.join(tmp, "docs")
+            output_dir = os.path.join(tmp, "chunks")
+            os.makedirs(docs_dir)
+            self._create_multi_audience_docs(docs_dir)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--docs-dir", docs_dir,
+                 "--output-dir", output_dir,
+                 "--token-limit", "5000"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            manifest_path = os.path.join(output_dir, "manifest.json")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+
+            assert len(manifest) == 3
+
+    def test_filter_excludes_non_matching(self):
+        """devops filter excludes developer docs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = os.path.join(tmp, "docs")
+            output_dir = os.path.join(tmp, "chunks")
+            os.makedirs(docs_dir)
+            self._create_multi_audience_docs(docs_dir)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--docs-dir", docs_dir,
+                 "--output-dir", output_dir,
+                 "--token-limit", "5000",
+                 "--audience", "devops"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            manifest_path = os.path.join(output_dir, "manifest.json")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+
+            audiences = {e["audience"] for e in manifest}
+            assert "developer" not in audiences
+            assert "end-user" not in audiences
+
+
 class TestPrepareDocReviewManifest:
     """Manifest structure."""
 

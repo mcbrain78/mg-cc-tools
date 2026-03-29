@@ -1,16 +1,20 @@
 ---
 name: mg:auto-doc-verify-singledoc
-description: Verify documentation quality using per-document Sonnet editorial checks with SendMessage turn-based question delivery
-allowed-tools: Bash, Read, Write, Glob, Grep, Agent, SendMessage
+description: Verify documentation quality using per-document self-driven editorial checks with audience filtering
+allowed-tools: Bash, Read, Write, Glob, Grep, Agent
 ---
 
 # Documentation Verifier (Single-Doc)
 
-You are the **Verifier (Single-Doc)** -- an alternative verify step that spawns one Sonnet agent per document for editorial checks. Each agent reads its document once, then receives question sets one at a time via SendMessage.
+You are the **Verifier (Single-Doc)** -- an alternative verify step that spawns one Sonnet agent per document for editorial checks. Each agent reads its document once, then drives its own question loop via `editorial-questions.py --advance`.
 
 Read the shared schema before starting: `Read references/schema.md`
 
 ## Process
+
+### Step 0: Parse Arguments
+
+Parse the user's input text for optional audience names. Example: user types `/mg:auto-doc-verify-singledoc devops end-users`. Extract audience names as a comma-separated string (e.g., `devops,end-users`). If no audience names provided, verify all docs.
 
 ### Step 1: Setup
 
@@ -23,8 +27,11 @@ python3 {SCRIPTS_DIR}/verify-setup.py \
   --checks-file {CHECKS_FILE} \
   --scripts-dir {SCRIPTS_DIR} \
   --templates-dir {TEMPLATES_DIR} \
-  --findings-prefix editorial-singledoc
+  --findings-prefix editorial-singledoc \
+  [--audience AUDIENCES]
 ```
+Add `--audience` only if the user specified audience names in Step 0.
+
 Parse the JSON output to get all runtime paths (`project_root`, `docs_dir_abs`, `glossary_path`, `findings_file`, `findings_prefix`, `manifest`, `scan_context_path`, `tmp_dir`, `fact_checker_findings`). If non-zero exit, print the error and abort.
 
 ### Step 2: Fact-Checkers
@@ -56,20 +63,11 @@ Parse the JSON. If action is "done", skip to Step 4.
 Agent(model="sonnet", description="Editorial: {name}",
   prompt="Read and follow: {AGENTS_DIR}/editorial-checker-singledoc.md
   Parameters: doc_file={source}, doc_source={source}, audience={audience},
-  findings_file={findings_file}, tmp_dir={tmp_dir}, question_file={question_file}")
+  findings_file={findings_file}, tmp_dir={tmp_dir}, question_file={question_file},
+  state_file={state_file}")
 ```
 
-**Turn loop:**
-```
-loop:
-  result = Bash("python3 {SCRIPTS_DIR}/editorial-orchestrate.py --next \
-    --state {tmp_dir}/ed-orchestrate-state.json")
-  Parse JSON.
-  If action is "done" → break.
-  For each target in "send": SendMessage to "Editorial: {name}":
-    "Read {question_file}. Evaluate checks against the document. Record findings to {findings_file}."
-  Wait for all responses.
-```
+Wait for all agents to complete. No turn loop needed — each agent drives its own question loop.
 
 ### Step 4: Merge
 
@@ -114,7 +112,7 @@ If completeness findings exist: `Found {N} documentation gaps. Consider adding t
 
 - **Read-only on documentation files.** Write only to `.mg/docs/` workspace files.
 - **Subagents read their own instructions via file path** — keeps agent definitions out of orchestrator context.
-- **Turn-based editorial minimizes token use** — each document is read once, question sets drip-fed via SendMessage.
+- **Self-driven editorial agents** — each agent loops through question sets independently, no orchestrator coordination needed.
 - **Focused agents with isolated findings** — orchestrator merges after all agents complete.
 - **Prefer false negatives over false positives** — a noisy report trains users to ignore it.
 - **Verify clears all artifacts before each run** via `list-verify-findings.py --clean`.

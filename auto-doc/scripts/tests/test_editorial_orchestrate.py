@@ -144,6 +144,7 @@ class TestInit:
                 assert "audience" in doc
                 assert "question_file" in doc
                 assert "findings_file" in doc
+                assert "state_file" in doc
 
     def test_writes_question_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -188,153 +189,29 @@ class TestInit:
             _init(tmp)
             assert not os.path.exists(stale)
 
-
-# =============================================================================
-# Next mode
-# =============================================================================
-
-class TestNext:
-    """--next returns send action, advances question files."""
-
-    def test_returns_send_action(self):
+    def test_creates_per_doc_state_files(self):
         with tempfile.TemporaryDirectory() as tmp:
-            state_path, _ = _init(tmp)
-            stdout, _, _ = _run(["--next", "--state", state_path])
-            result = json.loads(stdout)
-            assert result["action"] == "send"
+            _, result = _init(tmp)
+            for doc in result["docs"]:
+                assert os.path.isfile(doc["state_file"])
 
-    def test_advances_question_files(self):
+    def test_state_files_compatible_with_editorial_questions(self):
+        """State files have applicable_sets, current_index, findings_count."""
         with tempfile.TemporaryDirectory() as tmp:
-            state_path, init_result = _init(tmp)
+            _, result = _init(tmp)
+            for doc in result["docs"]:
+                state = _read_json(doc["state_file"])
+                assert "applicable_sets" in state
+                assert state["current_index"] == 0
+                assert state["findings_count"] == 0
+                assert len(state["applicable_sets"]) > 0
 
-            stdout, _, _ = _run(["--next", "--state", state_path])
-            result = json.loads(stdout)
-
-            # Question files should now have universal-2
-            for target in result["targets"]:
-                qdata = _read_json(target["question_file"])
-                assert qdata["set_id"] == "universal-2"
-
-    def test_targets_include_all_active_docs(self):
+    def test_spawn_includes_state_file_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
-            state_path, _ = _init(tmp)
-            stdout, _, _ = _run(["--next", "--state", state_path])
-            result = json.loads(stdout)
-            names = [t["name"] for t in result["targets"]]
-            assert "OPERATIONS" in names
-            assert "ARCHITECTURE" in names
-
-    def test_targets_have_required_fields(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            state_path, _ = _init(tmp)
-            stdout, _, _ = _run(["--next", "--state", state_path])
-            result = json.loads(stdout)
-            for target in result["targets"]:
-                assert "name" in target
-                assert "question_file" in target
-                assert "findings_file" in target
-
-
-# =============================================================================
-# Finishing behavior
-# =============================================================================
-
-class TestFinishing:
-    """Docs with fewer sets finish before others."""
-
-    def test_doc_finishes_when_no_more_sets(self):
-        """Use manifest where one doc has fewer applicable sets."""
-        with tempfile.TemporaryDirectory() as tmp:
-            # 1 doc with no audience-specific sets (2 universal only)
-            # 1 doc with devops (2 universal + 1 devops = 3)
-            manifest = [
-                {
-                    "source": "/fictitious/docs/shared/OVERVIEW.md",
-                    "audience": "shared",
-                    "review_files": ["/fictitious/docs/shared/OVERVIEW.md"],
-                },
-                {
-                    "source": "/fictitious/docs/devops/OPERATIONS.md",
-                    "audience": "devops",
-                    "review_files": ["/fictitious/docs/devops/OPERATIONS.md"],
-                },
-            ]
-            # Use checks with only 1 shared-specific set but no "shared" sets in our sample
-            # shared audience only gets universal sets (2), devops gets 3
-            state_path, _ = _init(tmp, manifest=manifest)
-
-            # After init: both at index 0 (universal-1)
-            # Next 1: both advance to universal-2 (index 1)
-            stdout, _, _ = _run(["--next", "--state", state_path])
-            r1 = json.loads(stdout)
-            assert r1["action"] == "send"
-            assert len(r1["targets"]) == 2
-
-            # Next 2: OVERVIEW finishes (only 2 sets), OPERATIONS advances to devops-1
-            stdout, _, _ = _run(["--next", "--state", state_path])
-            r2 = json.loads(stdout)
-            assert r2["action"] == "send"
-            assert "OVERVIEW" in r2["finished_this_round"]
-            target_names = [t["name"] for t in r2["targets"]]
-            assert "OPERATIONS" in target_names
-            assert "OVERVIEW" not in target_names
-
-            # Next 3: OPERATIONS finishes
-            stdout, _, _ = _run(["--next", "--state", state_path])
-            r3 = json.loads(stdout)
-            assert r3["action"] == "done"
-            assert r3["docs_processed"] == 2
-
-
-# =============================================================================
-# Full cycle
-# =============================================================================
-
-class TestFullCycle:
-    """Init + N next calls → all docs finish → done action."""
-
-    def test_full_cycle_completes(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            state_path, init_result = _init(tmp)
-            assert init_result["action"] == "spawn"
-
-            rounds = 0
-            while True:
-                stdout, _, _ = _run(["--next", "--state", state_path])
-                result = json.loads(stdout)
-                rounds += 1
-                if result["action"] == "done":
-                    break
-                assert result["action"] == "send"
-                assert rounds < 20, "Too many rounds — infinite loop?"
-
-            assert result["docs_processed"] == 2
-
-    def test_cycle_visits_all_question_sets(self):
-        """Track set_ids written to question files across rounds."""
-        with tempfile.TemporaryDirectory() as tmp:
-            state_path, init_result = _init(tmp)
-
-            # Collect set_ids from question files after init
-            ops_qfile = next(
-                d["question_file"] for d in init_result["docs"]
-                if d["name"] == "OPERATIONS"
-            )
-            seen_sets_ops = [_read_json(ops_qfile)["set_id"]]
-
-            while True:
-                stdout, _, _ = _run(["--next", "--state", state_path])
-                result = json.loads(stdout)
-                if result["action"] == "done":
-                    break
-                for target in result["targets"]:
-                    if target["name"] == "OPERATIONS":
-                        seen_sets_ops.append(
-                            _read_json(target["question_file"])["set_id"]
-                        )
-
-            # OPERATIONS (devops): universal-1, universal-2, devops-1
-            assert seen_sets_ops == ["universal-1", "universal-2", "devops-1"]
+            _, result = _init(tmp)
+            for doc in result["docs"]:
+                assert "state_file" in doc
+                assert doc["state_file"].endswith(f"ed-state-{doc['name']}.json")
 
 
 # =============================================================================
@@ -343,14 +220,6 @@ class TestFullCycle:
 
 class TestEdgeCases:
     """Error handling and boundary conditions."""
-
-    def test_next_without_init_fails(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            _, _, rc = _run([
-                "--next",
-                "--state", os.path.join(tmp, "nonexistent.json"),
-            ], check=False)
-            assert rc != 0
 
     def test_empty_manifest_returns_done(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -374,8 +243,8 @@ class TestEdgeCases:
             ], check=False)
             assert rc != 0
 
-    def test_single_doc_completes(self):
-        """Single doc manifest completes correctly."""
+    def test_single_doc_init(self):
+        """Single doc manifest inits correctly with state file."""
         with tempfile.TemporaryDirectory() as tmp:
             manifest = [
                 {
@@ -384,17 +253,7 @@ class TestEdgeCases:
                     "review_files": ["/fictitious/docs/devops/DEPLOY.md"],
                 },
             ]
-            state_path, init_result = _init(tmp, manifest=manifest)
+            _, init_result = _init(tmp, manifest=manifest)
             assert init_result["action"] == "spawn"
             assert len(init_result["docs"]) == 1
-
-            # Advance through all sets
-            rounds = 0
-            while True:
-                stdout, _, _ = _run(["--next", "--state", state_path])
-                result = json.loads(stdout)
-                rounds += 1
-                if result["action"] == "done":
-                    break
-
-            assert result["docs_processed"] == 1
+            assert os.path.isfile(init_result["docs"][0]["state_file"])
