@@ -125,9 +125,11 @@ def main():
         audience = detect_audience(content)
 
         # Skip docs that don't match the audience filter.
-        # Docs with no audience tag (audience=None) are shared/cross-audience
-        # (e.g. GLOSSARY) and should always be included.
-        if audience_filter is not None and audience is not None and audience not in audience_filter:
+        # Shared/cross-audience docs (no tag or AUDIENCE: all) are always included.
+        if (audience_filter is not None
+                and audience is not None
+                and audience != "all"
+                and audience not in audience_filter):
             continue
 
         basename = os.path.splitext(os.path.basename(doc_path))[0]

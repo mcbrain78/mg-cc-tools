@@ -344,10 +344,46 @@ class TestAudienceFilter:
             os.makedirs(docs_dir)
             self._create_multi_audience_docs(docs_dir)
 
-            # Add a shared doc with no audience tag (like GLOSSARY)
+            # Add a shared doc with no audience tag
+            plain_path = os.path.join(docs_dir, "PLAIN.md")
+            with open(plain_path, "w") as f:
+                f.write("# Plain\n\nNo audience comment.\n\n## Terms\n\nSome terms.\n")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--docs-dir", docs_dir,
+                 "--output-dir", output_dir,
+                 "--token-limit", "5000",
+                 "--audience", "devops"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            manifest_path = os.path.join(output_dir, "manifest.json")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+
+            sources = {os.path.basename(e["source"]) for e in manifest}
+            assert "PLAIN.md" in sources
+            assert "DEVOPS.md" in sources
+            assert "DEVELOPER.md" not in sources
+
+    def test_filter_includes_audience_all_docs(self):
+        """Docs tagged AUDIENCE: all (e.g. GLOSSARY) are included for any filter."""
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = os.path.join(tmp, "docs")
+            output_dir = os.path.join(tmp, "chunks")
+            os.makedirs(docs_dir)
+            self._create_multi_audience_docs(docs_dir)
+
+            # GLOSSARY template uses <!-- AUDIENCE: all -->
             glossary_path = os.path.join(docs_dir, "GLOSSARY.md")
             with open(glossary_path, "w") as f:
-                f.write("# Glossary\n\nNo audience comment.\n\n## Terms\n\nSome terms.\n")
+                f.write(
+                    "<!-- DIATAXIS: reference -->\n"
+                    "<!-- AUDIENCE: all -->\n\n"
+                    "# Glossary\n\n## Terms\n\nSome terms.\n"
+                )
 
             result = subprocess.run(
                 [sys.executable, SCRIPT_PATH,
