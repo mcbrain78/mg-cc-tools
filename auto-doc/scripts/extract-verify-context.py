@@ -40,6 +40,33 @@ def _slugify(heading):
     return slug.strip("-")
 
 
+def _get_inscope_docs(config_path, global_config_path, audience_str):
+    """Return set of in-scope document names, or None if no filter.
+
+    When audience_str is provided, returns the union of shared_documents
+    and the documents listed for each requested audience in config.
+    """
+    if not audience_str:
+        return None
+
+    global_cfg = load_json(global_config_path) or {}
+    project_cfg = load_json(config_path) or {}
+    config = {**global_cfg, **project_cfg}
+
+    audience_set = set(re.split(r"[,\s]+", audience_str.strip())) - {""}
+    docs = set()
+
+    for doc in config.get("shared_documents", []):
+        docs.add(doc)
+
+    for aud_key, aud_conf in config.get("audiences", {}).items():
+        if aud_key in audience_set:
+            for doc in aud_conf.get("documents", []):
+                docs.add(doc)
+
+    return docs
+
+
 def _find_optional_sections(templates_dir):
     """Find all optional sections across all templates.
 
@@ -95,6 +122,18 @@ def main():
         "--templates-dir", default=None,
         help="Path to templates directory (enables optional_sections in output)",
     )
+    parser.add_argument(
+        "--audience", default=None,
+        help="Comma/space-separated audience filter (e.g., 'devops,end-users')",
+    )
+    parser.add_argument(
+        "--config", default=None,
+        help="Path to project .docs.config.json (required with --audience)",
+    )
+    parser.add_argument(
+        "--global-config", default=None,
+        help="Path to global fallback .docs.config.json (required with --audience)",
+    )
 
     args = parser.parse_args()
     scan_path = os.path.abspath(args.scan_file)
@@ -112,6 +151,25 @@ def main():
         "gap_analysis": scan_data.get("gap_analysis", {}),
         "project_model": scan_data.get("project_model", {}),
     }
+
+    # Audience filtering — restrict sections and gaps to in-scope docs
+    inscope_docs = _get_inscope_docs(
+        os.path.abspath(args.config) if args.config else "",
+        os.path.abspath(args.global_config) if args.global_config else "",
+        args.audience,
+    )
+    if inscope_docs is not None:
+        context["documented_sections"] = [
+            key for key in context["documented_sections"]
+            if key.split("/")[0] in inscope_docs
+        ]
+        gap = context.get("gap_analysis", {})
+        mfa = gap.get("missing_for_audience")
+        if isinstance(mfa, dict):
+            audience_set = set(re.split(r"[,\s]+", args.audience.strip())) - {""}
+            gap["missing_for_audience"] = {
+                k: v for k, v in mfa.items() if k in audience_set
+            }
 
     if args.templates_dir:
         templates_dir = os.path.abspath(args.templates_dir)

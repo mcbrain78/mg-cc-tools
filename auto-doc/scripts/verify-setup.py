@@ -174,7 +174,10 @@ def check_prereqs(scan_path, docs_dir_abs):
         sys.exit(1)
 
 
-def run_prep_scripts(paths, scripts_dir, templates_dir, scan_file, audience=None):
+def run_prep_scripts(
+    paths, scripts_dir, templates_dir, scan_file,
+    audience=None, config_path=None, global_config_path=None,
+):
     """Run the 4 prep scripts that set up the verify workspace.
 
     Args:
@@ -183,6 +186,8 @@ def run_prep_scripts(paths, scripts_dir, templates_dir, scan_file, audience=None
         templates_dir: Absolute path to templates directory.
         scan_file: Absolute path to docs-scan.json.
         audience: Optional comma-separated audience filter string.
+        config_path: Absolute path to project config (for audience filtering).
+        global_config_path: Absolute path to global config (for audience filtering).
 
     Raises:
         SystemExit: On critical prep script failure.
@@ -203,14 +208,19 @@ def run_prep_scripts(paths, scripts_dir, templates_dir, scan_file, audience=None
     )
 
     # 2. Extract verify context
-    _run_script(
-        [sys.executable, os.path.join(scripts_dir, "extract-verify-context.py"),
-         "--scan-file", scan_file,
-         "--output", paths["scan_context_path"],
-         "--templates-dir", templates_dir],
-        label="extract-verify-context",
-        critical=True,
-    )
+    extract_cmd = [
+        sys.executable, os.path.join(scripts_dir, "extract-verify-context.py"),
+        "--scan-file", scan_file,
+        "--output", paths["scan_context_path"],
+        "--templates-dir", templates_dir,
+    ]
+    if audience and config_path and global_config_path:
+        extract_cmd.extend([
+            "--audience", audience,
+            "--config", config_path,
+            "--global-config", global_config_path,
+        ])
+    _run_script(extract_cmd, label="extract-verify-context", critical=True)
 
     # 3. Prepare doc review manifest
     prep_cmd = [
@@ -325,7 +335,12 @@ def main():
     paths = build_paths(project_root, docs_dir, checks_file, args.findings_prefix)
 
     # Run prep scripts
-    run_prep_scripts(paths, scripts_dir, templates_dir, scan_file, audience=args.audience)
+    run_prep_scripts(
+        paths, scripts_dir, templates_dir, scan_file,
+        audience=args.audience,
+        config_path=config_path,
+        global_config_path=global_config_path,
+    )
 
     # Output all paths as JSON
     print(json.dumps(paths, indent=2))

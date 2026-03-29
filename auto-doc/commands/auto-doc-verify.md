@@ -37,6 +37,10 @@ If either prerequisite fails, abort with the corresponding message and do not pr
 
 ## Process
 
+### Step 0: Parse Arguments
+
+Parse the user's input text for optional audience names. Example: user types `/mg:auto-doc-verify devops end-users`. Extract audience names as a comma-separated string (e.g., `devops,end-users`). If no audience names provided, verify all docs.
+
 ### Step 1: Load Context
 
 1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
@@ -69,16 +73,20 @@ If either prerequisite fails, abort with the corresponding message and do not pr
    python3 {SCRIPTS_DIR}/extract-verify-context.py \
      --scan-file {project_root}/.mg/docs/docs-scan.json \
      --output {project_root}/.mg/docs/tmp/verify-scan-context.json \
-     --templates-dir {TEMPLATES_DIR}
+     --templates-dir {TEMPLATES_DIR} \
+     [--audience AUDIENCES --config .mg/docs/.docs.config.json --global-config {GLOBAL_CONFIG}]
    ```
+   Add `--audience`, `--config`, and `--global-config` only if the user specified audience names in Step 0.
 
 7. **Prepare doc review manifest.** Split large docs into chunks and produce a manifest for all docs:
    ```bash
    python3 {SCRIPTS_DIR}/prepare-doc-review.py \
      --docs-dir {docs_dir_abs} \
      --output-dir {project_root}/.mg/docs/tmp/review-chunks \
-     --token-limit 5000
+     --token-limit 5000 \
+     [--audience AUDIENCES]
    ```
+   Add `--audience` only if the user specified audience names in Step 0.
 
 ### Step 2: Run Mechanical Script
 

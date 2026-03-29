@@ -142,6 +142,140 @@ class TestExtractVerifyContext:
             assert "not found" in result.stderr
 
 
+def _audience_scan_data():
+    """Scan data with document-scoped section keys (DOCUMENT/section)."""
+    return {
+        "root_path": "/home/user/project",
+        "source_material_index": {
+            "OPERATIONS/deployment": {"source_files": [], "staleness": "unknown"},
+            "OPERATIONS/monitoring": {"source_files": [], "staleness": "unknown"},
+            "TROUBLESHOOTING/common-errors": {"source_files": [], "staleness": "unknown"},
+            "OVERVIEW/introduction": {"source_files": [], "staleness": "unknown"},
+            "GLOSSARY/terms": {"source_files": [], "staleness": "unknown"},
+            "GETTING_STARTED/quickstart": {"source_files": [], "staleness": "unknown"},
+            "API_REFERENCE/endpoints": {"source_files": [], "staleness": "unknown"},
+        },
+        "gap_analysis": {
+            "missing_for_audience": {
+                "devops": ["alerting", "runbooks"],
+                "end-users": ["faq"],
+                "developers": ["contributing"],
+            }
+        },
+    }
+
+
+def _audience_config():
+    """Config with audiences and shared_documents."""
+    return {
+        "docs_dir": "docs/auto-doc",
+        "audiences": {
+            "devops": {"enabled": True, "documents": ["OPERATIONS", "TROUBLESHOOTING"]},
+            "end-users": {"enabled": True, "documents": ["GETTING_STARTED"]},
+            "developers": {"enabled": True, "documents": ["API_REFERENCE"]},
+        },
+        "shared_documents": ["OVERVIEW", "GLOSSARY"],
+    }
+
+
+class TestExtractVerifyContextAudienceFilter:
+    """Audience-scoped filtering of sections and gap_analysis."""
+
+    def test_audience_filter_keeps_inscope_sections(self):
+        """--audience devops keeps only devops docs + shared docs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_file = os.path.join(tmp, "docs-scan.json")
+            output_file = os.path.join(tmp, "context.json")
+            config_file = os.path.join(tmp, "config.json")
+            global_config_file = os.path.join(tmp, "global.json")
+
+            with open(scan_file, "w") as f:
+                json.dump(_audience_scan_data(), f)
+            with open(config_file, "w") as f:
+                json.dump(_audience_config(), f)
+            with open(global_config_file, "w") as f:
+                json.dump({}, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-file", scan_file,
+                 "--output", output_file,
+                 "--audience", "devops",
+                 "--config", config_file,
+                 "--global-config", global_config_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                context = json.load(f)
+
+            sections = context["documented_sections"]
+            doc_names = {s.split("/")[0] for s in sections}
+            # devops docs + shared docs
+            assert doc_names == {"OPERATIONS", "TROUBLESHOOTING", "OVERVIEW", "GLOSSARY"}
+            # Out-of-scope docs excluded
+            assert not any(s.startswith("GETTING_STARTED/") for s in sections)
+            assert not any(s.startswith("API_REFERENCE/") for s in sections)
+
+    def test_audience_filter_restricts_gap_analysis(self):
+        """--audience devops keeps only devops in missing_for_audience."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_file = os.path.join(tmp, "docs-scan.json")
+            output_file = os.path.join(tmp, "context.json")
+            config_file = os.path.join(tmp, "config.json")
+            global_config_file = os.path.join(tmp, "global.json")
+
+            with open(scan_file, "w") as f:
+                json.dump(_audience_scan_data(), f)
+            with open(config_file, "w") as f:
+                json.dump(_audience_config(), f)
+            with open(global_config_file, "w") as f:
+                json.dump({}, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-file", scan_file,
+                 "--output", output_file,
+                 "--audience", "devops",
+                 "--config", config_file,
+                 "--global-config", global_config_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                context = json.load(f)
+
+            mfa = context["gap_analysis"]["missing_for_audience"]
+            assert set(mfa.keys()) == {"devops"}
+            assert mfa["devops"] == ["alerting", "runbooks"]
+
+    def test_no_audience_filter_keeps_everything(self):
+        """Without --audience, all sections and gaps are preserved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_file = os.path.join(tmp, "docs-scan.json")
+            output_file = os.path.join(tmp, "context.json")
+
+            with open(scan_file, "w") as f:
+                json.dump(_audience_scan_data(), f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-file", scan_file,
+                 "--output", output_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                context = json.load(f)
+
+            assert len(context["documented_sections"]) == 7
+            mfa = context["gap_analysis"]["missing_for_audience"]
+            assert set(mfa.keys()) == {"devops", "end-users", "developers"}
+
+
 class TestExtractVerifyContextOptionalSections:
     """Optional sections via --templates-dir."""
 

@@ -380,3 +380,70 @@ class TestFullRun:
             manifest = _read_json(result["manifest"])
             assert len(manifest) == 1
             assert manifest[0]["audience"] == "devops"
+
+    def test_audience_passthrough_scopes_verify_context(self):
+        """--audience with config scopes extract-verify-context sections."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = os.path.join(tmp, "project")
+            docs_dir = os.path.join(project_root, "docs", "auto-doc")
+            mg_docs = os.path.join(project_root, ".mg", "docs")
+            os.makedirs(docs_dir)
+            os.makedirs(mg_docs)
+
+            # Create doc files for devops and end-users
+            with open(os.path.join(docs_dir, "OPERATIONS.md"), "w") as f:
+                f.write("# Operations\n<!-- AUDIENCE: devops -->\n\nContent.\n")
+            with open(os.path.join(docs_dir, "GETTING_STARTED.md"), "w") as f:
+                f.write("# Getting Started\n<!-- AUDIENCE: end-users -->\n\nContent.\n")
+
+            # Scan data with sections for both audiences
+            scan_path = os.path.join(mg_docs, "docs-scan.json")
+            _write_json(scan_path, {
+                "root_path": project_root,
+                "source_material_index": {
+                    "OPERATIONS/deployment": {"source_files": []},
+                    "GETTING_STARTED/quickstart": {"source_files": []},
+                    "OVERVIEW/intro": {"source_files": []},
+                },
+                "gap_analysis": {
+                    "missing_for_audience": {
+                        "devops": ["monitoring"],
+                        "end-users": ["faq"],
+                    }
+                },
+            })
+
+            # Config with audiences and shared docs
+            config_path = os.path.join(mg_docs, ".docs.config.json")
+            _write_json(config_path, {
+                "docs_dir": "docs/auto-doc",
+                "audiences": {
+                    "devops": {"enabled": True, "documents": ["OPERATIONS"]},
+                    "end-users": {"enabled": True, "documents": ["GETTING_STARTED"]},
+                },
+                "shared_documents": ["OVERVIEW"],
+            })
+
+            stdout, _, _ = _run([
+                "--scan-file", scan_path,
+                "--config", config_path,
+                "--global-config", config_path,
+                "--checks-file", os.path.join(tmp, "checks.json"),
+                "--scripts-dir", SCRIPTS_DIR,
+                "--templates-dir", os.path.join(tmp, "templates"),
+                "--audience", "devops",
+            ])
+
+            result = json.loads(stdout)
+            context = _read_json(result["scan_context_path"])
+
+            # Only devops + shared sections
+            doc_names = {s.split("/")[0] for s in context["documented_sections"]}
+            assert "OPERATIONS" in doc_names
+            assert "OVERVIEW" in doc_names
+            assert "GETTING_STARTED" not in doc_names
+
+            # Gap analysis scoped to devops only
+            mfa = context["gap_analysis"]["missing_for_audience"]
+            assert "devops" in mfa
+            assert "end-users" not in mfa
