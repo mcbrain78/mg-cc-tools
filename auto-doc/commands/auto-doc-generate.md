@@ -19,118 +19,37 @@ This tells you the JSON format of `docs-scan.json` -- the input produced by the 
 
 ## Process
 
-### Step 1: Load Context and Detect Mode
+### Step 1: Setup
 
-1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
-   - `docs_dir` (default: `docs/auto-doc`)
-   - `audiences` (which are enabled and their document lists)
-   - `shared_documents` (e.g., `["OVERVIEW", "GLOSSARY"]`)
+Parse the user's input text for optional audience names. Example: user types `/mg:auto-doc-generate end-users devops`. Extract as a comma-separated string for the `--audience` flag below. If no audience names provided, omit the flag (all enabled audiences).
 
-2. **Read scan data.** Use the Read tool to read the first 5 lines of `.mg/docs/docs-scan.json`. If this file does not exist, abort with:
-   ```
-   Error: No scan data found at .mg/docs/docs-scan.json.
-   Run /mg:auto-doc-scan first to analyze the project.
-   ```
-   Find the `root_path` field value and store as `project_root`. (The full scan is processed by scripts in later steps -- do not load the entire file.)
+Run the setup script to load config, detect mode, build paths, create directories, clean stale artifacts, split scan data, and load notes:
+```bash
+python3 {SCRIPTS_DIR}/generate-setup.py \
+  --scan-file .mg/docs/docs-scan.json \
+  --config .mg/docs/.docs.config.json \
+  --global-config {GLOBAL_CONFIG} \
+  --scripts-dir {SCRIPTS_DIR} \
+  [--audience AUDIENCES]
+```
+Add `--audience` only if the user specified audience names.
 
-3. **Extract runtime paths:**
-   - `project_root`: from the `root_path` field read above
-   - `scan_data_path`: `{project_root}/.mg/docs/docs-scan.json`
-   - `docs_dir_abs`: `{project_root}/{docs_dir}` (absolute path to output directory)
+Parse the JSON output to get all runtime values:
+- **Paths:** `project_root`, `docs_dir_abs`, `scan_data_path`, `tmp_dir`, `project_model_path`, `notes_file`, `manifests_dir`, `scan_logs_dir`
+- **Mode:** `mode` ("initial" or "update")
+- **Audiences:** `audiences` (dict of audience name → {documents: [...]})
+- **Audience filter:** `audience_filter_active` (boolean)
+- **Scan views:** `scan_views` (dict of audience/glossary → view file path)
+- **Notes:** `notes_by_audience` (dict of audience → list of notes)
 
-4. **Detect mode:**
-   - Use Glob to check if `{docs_dir}` contains any `.md` files
-   - If yes: `mode = "update"`
-   - If no: `mode = "initial"`
-   - Cross-check with the scan data `mode` field. If they disagree, trust the filesystem check (docs may have been added or removed since the scan).
+If non-zero exit, print the error and abort.
 
-5. **Print mode:**
-   ```
-   Mode: {mode}
-   Project: {project name from scan data}
-   Docs directory: {docs_dir_abs}
-   ```
-
-### Step 2: Load Standing Notes
-
-Load notes from the inbox so they can be passed to writer agents as standing instructions.
-
-1. **Read notes inbox.** Run:
-   ```bash
-   uv run {SCRIPTS_DIR}/list-notes.py \
-     --inbox {project_root}/.mg/docs/notes-inbox.json \
-     --output {TMP_DIR}/all-notes.json
-   ```
-   Read the output file. This returns all classified notes (regardless of status).
-
-2. **Group notes by audience.** For each note, use its `classification.audience` field to build a dict mapping audience → list of notes. Store this for use when spawning writer agents in Stage 2.
-
-### Step 3: Prepare Workspace
-
-1. **Create output directories.** Ensure the full directory tree exists before spawning any writer agents:
-   ```bash
-   mkdir -p {docs_dir_abs}/end-users {docs_dir_abs}/developers {docs_dir_abs}/agents {docs_dir_abs}/devops
-   ```
-
-2. **Clean stale term proposals.** Remove leftover `terms-*.json` files from prior runs to prevent the glossary reconciliation pass from re-adding already-reconciled terms:
-   ```bash
-   rm -f {project_root}/.mg/docs/scan-logs/terms-*.json
-   ```
-
-3. **Clean glossary reconciliation log** from prior runs:
-   ```bash
-   rm -f {project_root}/.mg/docs/scan-logs/glossary-reconciliation.log
-   ```
-
-4. **Prepare manifest workspace.**
-   ```bash
-   mkdir -p {project_root}/.mg/docs/reference-manifests
-   ```
-
-   In initial mode only, clear existing manifests for a clean slate:
-   ```bash
-   rm -f {project_root}/.mg/docs/reference-manifests/*.json
-   ```
-
-   Clean temp manifest and write-section files from prior runs:
-   ```bash
-   rm -f {TMP_DIR}/manifest-*.json {TMP_DIR}/manifest-entry-*.json
-   rm -f {TMP_DIR}/write-state-*.json {TMP_DIR}/section-*.md {TMP_DIR}/refs-*.json {TMP_DIR}/header-*.md
-   ```
-
-5. **Write last_generated timestamp.** Record the current time as the generation baseline for future incremental scans:
-   ```bash
-   python3 {SCRIPTS_DIR}/set-last-generated.py \
-       --scan-file {project_root}/.mg/docs/docs-scan.json
-   ```
-   This timestamp is written at pipeline START so the next incremental scan's diff window is over-inclusive (commits during this generation cycle will be re-scanned next time, which is harmless).
-
-6. **Split scan data into per-audience views.** Create lightweight view files so each writer agent reads only the scan entries relevant to its audience, instead of the full `docs-scan.json`.
-
-   For each enabled audience in the config (end-users, developers, agents, devops), run:
-   ```bash
-   python3 {SCRIPTS_DIR}/split-scan-by-audience.py \
-       --input {project_root}/.mg/docs/docs-scan.json \
-       --output {TMP_DIR}/scan-view-{audience}.json \
-       --mode audience \
-       --audience {audience} \
-       --documents {comma_separated_documents_from_config} \
-       --project-model-output {TMP_DIR}/project-model.json
-   ```
-
-   **Note:** `--project-model-output` is passed on **every** audience split call, but the script only writes the file on the first call (skips if already exists). This avoids needing to special-case which call goes first.
-
-   Then create the glossary view:
-   ```bash
-   python3 {SCRIPTS_DIR}/split-scan-by-audience.py \
-       --input {project_root}/.mg/docs/docs-scan.json \
-       --output {TMP_DIR}/scan-view-glossary.json \
-       --mode glossary
-   ```
-
-   The `{audience}` is the config key (e.g., `end-users`, `developers`, `agents`, `devops`). The `{documents}` is the comma-separated list from `audiences.{audience}.documents` in `.docs.config.json` (e.g., `ARCHITECTURE,DEVELOPER_GUIDE,QUICK_REFERENCE` for developers).
-
-   In update mode, all audience views are created eagerly (not filtered to approved audiences only). Views are tiny temp files -- no point complicating the orchestrator to filter.
+Print:
+```
+Mode: {mode}
+Docs directory: {docs_dir_abs}
+Audiences: {comma-separated audience names}
+```
 
 ### Stage 1: Build Glossary (initial pass)
 
@@ -147,8 +66,8 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {TMP_DIR}/scan-view-glossary.json
-   Project model path: {TMP_DIR}/project-model.json
+   Scan data path: {scan_views.glossary}
+   Project model path: {project_model_path}
    Glossary template path: {TEMPLATES_DIR}/GLOSSARY.template.md
    Style guide path: references/style-guide.md
    Mode: {mode}
@@ -173,7 +92,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    - `agents` -> `agents/agent-writer.md`
    - `devops` -> `agents/devops-writer.md`
 
-2. **Spawn one Agent call per enabled audience in a SINGLE message** (parallel foreground — do NOT set `run_in_background`). Each subagent reads its own instructions. For each audience:
+2. **Spawn one Agent call per audience in `audiences`** (from setup output) in a SINGLE message (parallel foreground — do NOT set `run_in_background`). Each subagent reads its own instructions. For each audience:
 
    ```
    Agent(
@@ -184,22 +103,20 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {TMP_DIR}/scan-view-{audience}.json
-   Project model path: {TMP_DIR}/project-model.json
+   Scan data path: {scan_views[audience]}
+   Project model path: {project_model_path}
    Templates dir: {TEMPLATES_DIR}/{audience}/
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
-   Documents: {document_list from config}
+   Documents: {audiences[audience].documents joined by comma}
    Mode: {mode}
 
    Standing notes (incorporate into relevant sections):
-   {notes for this audience from Step 2, or 'None' if empty}"
+   {notes_by_audience[audience] formatted, or 'None' if empty}"
    )
    ```
 
-   For standing notes: if the audience has notes from Step 2, format each as:
-   `- {note_id} ({document}/{section}): "{note_text}"`
-   If no notes exist for this audience, set to `None`.
+   For standing notes: format each as `- {note_id} ({document}/{section}): "{note_text}"`. If none, set to `None`.
 
    The `{audience}` in the templates dir path uses the CONFIG KEY (e.g., `developers/`, `end-users/`, `agents/`, `devops/`).
 
@@ -211,7 +128,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
 ### Finalize Documents
 
-After all writer agents complete, assemble documents from accumulated sections and generate temp manifests. For each enabled audience (end-users, developers, agents, devops):
+After all writer agents complete, assemble documents from accumulated sections and generate temp manifests. For each audience in `audiences` (from setup output):
 
 ```bash
 python3 {SCRIPTS_DIR}/write-section.py \
@@ -274,8 +191,8 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {TMP_DIR}/scan-view-glossary.json
-   Project model path: {TMP_DIR}/project-model.json
+   Scan data path: {scan_views.glossary}
+   Project model path: {project_model_path}
    Glossary template path: {TEMPLATES_DIR}/GLOSSARY.template.md
    Style guide path: references/style-guide.md
    Mode: {mode}
@@ -287,6 +204,10 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
 3. **Wait for completion.** The glossary-writer updates `{docs_dir_abs}/GLOSSARY.md` in place and writes a reconciliation log to `.mg/docs/scan-logs/glossary-reconciliation.log`.
 
 ### Stage 4: Generate OVERVIEW.md
+
+**Skip this stage if an audience filter was active in Step 0.** OVERVIEW.md summarizes all audiences and would be incomplete with partial generation. Print: `"Stage 4/4: Skipping OVERVIEW.md (audience filter active)"`
+
+If no audience filter (full generation):
 
 Print progress: `"Stage 4/4: Generating OVERVIEW.md..."`
 
@@ -394,56 +315,12 @@ Format: `<!-- docs-meta: last-updated: {YYYY-MM-DD}, sources: [{comma-separated 
 
 The staleness-check.py script in the scan step parses these comments to detect when source files have changed since the section was last generated.
 
-### Output Directory Layout
-
-```
-docs/auto-doc/
-  OVERVIEW.md          # Shared -- generated last (Stage 4)
-  GLOSSARY.md          # Shared -- generated first + reconciled (Stages 1, 3)
-  end-users/
-    USER_GUIDE.md
-  developers/
-    ARCHITECTURE.md
-    DEVELOPER_GUIDE.md
-    QUICK_REFERENCE.md
-  agents/
-    SYSTEM_MAP.md
-    CONVENTIONS.md
-    GOTCHAS.md
-    TESTING.md
-  devops/
-    OPERATIONS.md
-    TROUBLESHOOTING.md
-```
-
-### Source Material Index Key Format
-
-Keys in the `source_material_index` from scan data follow the format `{DOCUMENT_NAME}/{section-slug}`:
-- `DOCUMENT_NAME` matches config entries exactly (uppercase, e.g., `"ARCHITECTURE"`)
-- `section-slug` is the template heading lowercased with spaces replaced by hyphens (e.g., `"system-overview"`)
-
-Examples: `ARCHITECTURE/system-overview`, `USER_GUIDE/getting-started`, `OPERATIONS/deployment-pipeline`
-
 ## Important Principles
 
 - **Agents receive file paths only; they read files themselves.** Do not paste source material, templates, or scan data content into subagent prompts. Pass paths as strings. This prevents context limit blowouts on large projects.
-
-- **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: agents/{name}.md`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
-
-- **Create all output directories before spawning writers.** Writer agents assume their target directories exist. Create the full tree in Step 3 before any Stage runs. Failure to do this causes FileNotFoundError in subagents.
-
-- **Clean terms-*.json before each generation run.** Stale term proposal files from prior runs cause the glossary reconciliation to re-add already-reconciled terms. Always delete them in Step 3.
-
-- **OVERVIEW.md is always generated last.** It needs accurate knowledge of what each audience directory contains to build the routing table. Generating it before writers complete produces an inaccurate Audience Guide.
-
-- **Glossary runs first even in update mode.** Even if GLOSSARY.md exists from a prior run, the glossary agent re-runs its initial pass to catch new terms from updated scan data. Skipping it risks terminology drift.
-
-- **File ownership header goes at the very TOP.** Before DIATAXIS comments, before AUDIENCE comments, before the H1 heading. This is the first thing in every generated file. It tells users and tools that the file is machine-owned.
-
-- **Normalize section identifiers to slug format.** Template headings use Title Case ("System Overview"), but source_material_index and staleness_report use lowercased-hyphenated slugs ("system-overview"). Always convert to slug format when matching sections.
-
-- **Notes are standing instructions.** Both generate and update read all notes from the inbox regardless of status. Notes persist until the user explicitly deletes them. Generate passes notes to writer agents per audience; update routes notes to the fix agent or scoped generate.
-
-- **Generate is for full generation, update is for surgical fixes.** Generate always runs all writers for all audiences. For fixing verify findings or integrating notes into existing docs, use `/mg:auto-doc-update` instead.
-
-- **Subagents receive audience-specific view files, not full scan data.** The orchestrator splits `docs-scan.json` into per-audience view files (Step 3 substep 6) and passes view file paths as `scan_data_path` in Agent() prompts. The project model is extracted to a separate `project-model.json` file (passed as `project_model_path`) to avoid duplicating it in every view.
+- **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: agents/{name}.md`) rather than inlining the full agent definition.
+- **File ownership header goes at the very TOP.** Before DIATAXIS comments, before AUDIENCE comments, before the H1 heading.
+- **Normalize section identifiers to slug format.** Template headings use Title Case ("System Overview"), but source_material_index uses lowercased-hyphenated slugs ("system-overview"). Always convert to slug format when matching.
+- **Notes are standing instructions.** Generate passes notes to writer agents per audience. Notes persist until the user explicitly deletes them.
+- **Generate supports audience filtering** (e.g., `/mg:auto-doc-generate end-users devops`) to speed up iteration. OVERVIEW.md is skipped when filtering. For surgical fixes, use `/mg:auto-doc-update` instead.
+- **Directory layout, source material key format, and data contracts** are documented in `references/schema.md`. Workspace setup (directories, artifact cleanup, scan splitting) is handled by `generate-setup.py`.
