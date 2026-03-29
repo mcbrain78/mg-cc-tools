@@ -3990,3 +3990,72 @@ class TestRenderValidation:
             assert "WARNING" in result.stdout
             assert "Unresolved placeholder" in result.stdout
             assert "Resolved path not found" in result.stdout
+
+
+# ============================================================
+# resolve-target subcommand
+# ============================================================
+
+
+class TestResolveTarget:
+    """Tests for resolve-target subcommand."""
+
+    def test_bare_name_resolves_to_sibling(self):
+        """Bare name like 'myproject' resolves to ../myproject."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sibling = os.path.join(tmp, "projects", "myproject")
+            cwd = os.path.join(tmp, "projects", "mg-cc-tools")
+            os.makedirs(sibling)
+            os.makedirs(cwd)
+
+            result = _run(
+                ["resolve-target", "--target", "myproject"],
+                cwd=cwd,
+            )
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["target"] == os.path.realpath(sibling)
+
+    def test_bare_name_not_found(self):
+        """Bare name with no matching sibling returns error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = os.path.join(tmp, "projects", "mg-cc-tools")
+            os.makedirs(cwd)
+
+            result = _run(
+                ["resolve-target", "--target", "nonexistent"],
+                cwd=cwd,
+            )
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert "error" in data
+            assert "does not exist" in data["error"]
+
+    def test_relative_path_passthrough(self):
+        """Paths with '/' are used as-is."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "some", "path")
+            os.makedirs(target)
+
+            result = _run(
+                ["resolve-target", "--target", target],
+            )
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["target"] == os.path.realpath(target)
+
+    def test_relative_sibling_path(self):
+        """Explicit ../name also works."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sibling = os.path.join(tmp, "projects", "myproject")
+            cwd = os.path.join(tmp, "projects", "mg-cc-tools")
+            os.makedirs(sibling)
+            os.makedirs(cwd)
+
+            result = _run(
+                ["resolve-target", "--target", "../myproject"],
+                cwd=cwd,
+            )
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["target"] == os.path.realpath(sibling)

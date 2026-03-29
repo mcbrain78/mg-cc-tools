@@ -35,7 +35,12 @@ Parse `$ARGUMENTS` into space-separated tokens:
 
 **Quick mode** skips Steps 1 and 3 (target selection and action menus). All other steps run normally:
 
-1. Validate the target path exists. If it does not have a `.claude/` directory:
+1. Resolve the target path:
+   ```bash
+   python3 "$MG_INSTALL_LIB" resolve-target --target "<first_token>"
+   ```
+   If `"error"` is returned: STOP. Show the error message.
+   Otherwise, use the returned `"target"` value as `TARGET_PATH`. If it does not have a `.claude/` directory:
    ```bash
    mkdir -p "$TARGET_PATH/.claude/commands/mg"
    ```
@@ -58,14 +63,16 @@ For **interactive mode**, proceed with Steps 1-8 below.
 
 ## Step 1: Target Selection
 
-**If `$ARGUMENTS` contains a path**, use it directly:
+**If `$ARGUMENTS` contains a target**, resolve it:
 ```bash
-test -d "$TARGET_PATH" || echo "ERROR: Directory does not exist: $TARGET_PATH"
+python3 "$MG_INSTALL_LIB" resolve-target --target "<argument>"
 ```
+If `"error"` is returned: STOP. Show the error message.
+Otherwise, use the returned `"target"` value as `TARGET_PATH`.
 
-**Otherwise**, scan sibling directories (`../*/`) and present them via AskUserQuestion (header: "Target Project", multiSelect: false) with sibling paths (alphabetical) plus "Enter path manually". If no siblings found, offer only "Enter path manually". If user selects manual entry, ask for the path via a follow-up AskUserQuestion.
+**If no arguments**, scan sibling directories (`../*/`) and present them via AskUserQuestion (header: "Target Project", multiSelect: false) with sibling paths (alphabetical) plus "Enter path manually". If no siblings found, offer only "Enter path manually". If user selects manual entry, ask for the path via a follow-up AskUserQuestion. Then resolve the selected path with `resolve-target` as above.
 
-Validate the target path exists. If it does not have a `.claude/` directory:
+If `TARGET_PATH` does not have a `.claude/` directory:
    ```bash
    mkdir -p "$TARGET_PATH/.claude/commands/mg"
    ```

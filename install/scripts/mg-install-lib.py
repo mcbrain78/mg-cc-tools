@@ -1694,6 +1694,35 @@ def render_validation(validate_data):
 # ============================================================
 
 
+
+def resolve_target(target: str) -> dict:
+    """Resolve a target argument to an absolute directory path.
+
+    Bare names (no path separators) are treated as sibling directories (../<name>).
+    Paths containing '/' or starting with '~' are used as-is after expansion.
+    Returns {"target": "<absolute_path>"} or {"error": "<message>"}.
+    """
+    if "/" not in target and not target.startswith("~"):
+        # Bare project name → sibling directory
+        candidate = os.path.join("..", target)
+    else:
+        candidate = target
+
+    resolved = os.path.abspath(os.path.expanduser(candidate))
+
+    if not os.path.isdir(resolved):
+        return {"error": f"Directory does not exist: {resolved}"}
+
+    return {"target": resolved}
+
+
+def cmd_resolve_target(args):
+    """CLI handler for resolve-target."""
+    result = resolve_target(args.target)
+    json.dump(result, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
 def cmd_scan_status(args):
     """CLI handler for scan-status."""
     auto_adopted = []
@@ -1909,6 +1938,15 @@ def main():
         description="mg-cc-tools installer library",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    # resolve-target
+    p_resolve_target = sub.add_parser(
+        "resolve-target",
+        help="Resolve a target argument to an absolute directory path",
+    )
+    p_resolve_target.add_argument("--target", required=True,
+                                  help="Target argument (bare name or path)")
+    p_resolve_target.set_defaults(func=cmd_resolve_target)
 
     # scan-status
     p_scan = sub.add_parser(
