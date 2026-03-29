@@ -32,31 +32,35 @@ from lib.json_io import load_json
 
 
 def load_config(config_path, global_config_path):
-    """Load project config, falling back to global config.
+    """Load config by merging global defaults with project overrides.
+
+    Global config provides defaults (docs_dir, audiences, etc.).
+    Project config overrides specific keys.
 
     Args:
         config_path: Path to project-local .docs.config.json.
         global_config_path: Path to global fallback config.
 
     Returns:
-        Parsed config dict.
+        Merged config dict.
 
     Raises:
         SystemExit: If neither config file exists.
     """
-    config = load_json(config_path)
-    if config is not None:
-        return config
+    global_config = load_json(global_config_path)
+    project_config = load_json(config_path)
 
-    config = load_json(global_config_path)
-    if config is not None:
-        return config
+    if global_config is None and project_config is None:
+        print(
+            f"Error: no config found at {config_path} or {global_config_path}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    print(
-        f"Error: no config found at {config_path} or {global_config_path}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    base = global_config or {}
+    overlay = project_config or {}
+    merged = {**base, **overlay}
+    return merged
 
 
 def read_project_root(scan_path):

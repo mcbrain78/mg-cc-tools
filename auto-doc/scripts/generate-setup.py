@@ -33,20 +33,26 @@ from lib.json_io import load_json
 
 
 def load_config(config_path, global_config_path):
-    """Load project config, falling back to global config."""
-    config = load_json(config_path)
-    if config is not None:
-        return config
+    """Load config by merging global defaults with project overrides.
 
-    config = load_json(global_config_path)
-    if config is not None:
-        return config
+    Global config provides defaults (audiences, docs_dir, etc.).
+    Project config overrides specific keys. This ensures a project
+    config with only user_interfaces still gets audiences from global.
+    """
+    global_config = load_json(global_config_path)
+    project_config = load_json(config_path)
 
-    print(
-        f"Error: no config found at {config_path} or {global_config_path}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    if global_config is None and project_config is None:
+        print(
+            f"Error: no config found at {config_path} or {global_config_path}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    base = global_config or {}
+    overlay = project_config or {}
+    merged = {**base, **overlay}
+    return merged
 
 
 def read_project_root(scan_path):
