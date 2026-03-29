@@ -1,0 +1,180 @@
+{
+  "question_sets": [
+    {
+      "id": "universal-1",
+      "audience": null,
+      "checks": [
+        {
+          "check": "filler-content",
+          "description": "Marketing language, empty phrases ('it should be noted that', 'powerful', 'seamless', 'robust', 'leverage', 'utilize')."
+        },
+        {
+          "check": "placeholder-content",
+          "description": "TODOs, {placeholder} tokens, TBD, leftover template comments (<!-- PURPOSE:, <!-- EXAMPLE:, <!-- AUDIENCE:), lorem ipsum."
+        }
+      ]
+    },
+    {
+      "id": "universal-2",
+      "audience": null,
+      "checks": [
+        {
+          "check": "heading-content-mismatch",
+          "description": "Content doesn't deliver what the heading promises. A heading says 'Configuration' but the section only lists file paths with no configuration instructions."
+        }
+      ]
+    },
+    {
+      "id": "universal-3",
+      "audience": null,
+      "checks": [
+        {
+          "check": "dangling-prose-reference",
+          "description": "'see below', 'as described above', 'the following section' where the referenced target doesn't exist in the document."
+        },
+        {
+          "check": "internal-contradiction",
+          "description": "Conflicting statements within the same document (e.g., 'requires Python 3.10+' in one section, 'works with Python 3.8+' in another)."
+        }
+      ]
+    },
+    {
+      "id": "universal-4",
+      "audience": null,
+      "checks": [
+        {
+          "check": "unexplained-code-block",
+          "description": "Code block with no preceding or following explanation of what it does or when to use it."
+        },
+        {
+          "check": "malformed-table",
+          "description": "Column count mismatches between header and rows, unexplained empty cells, tables with only a header and no rows."
+        }
+      ]
+    },
+    {
+      "id": "end-users-1",
+      "audience": "end-users",
+      "checks": [
+        {
+          "check": "end-user-jargon",
+          "description": "Technical terms (API, JSON, schema, env var, runtime, endpoint, payload) used without a plain-language definition or link to glossary."
+        },
+        {
+          "check": "end-user-missing-expected-result",
+          "description": "Procedure/how-to with no success confirmation at the end -- user completes steps but doesn't know if it worked."
+        }
+      ]
+    },
+    {
+      "id": "end-users-2",
+      "audience": "end-users",
+      "checks": [
+        {
+          "check": "end-user-implementation-leak",
+          "description": "Database table names, file paths, function names, class names exposed to end users who don't need them."
+        },
+        {
+          "check": "end-user-missing-goal",
+          "description": "Procedural section starts with steps (numbered list) but has no goal/purpose statement explaining WHY to follow these steps."
+        }
+      ]
+    },
+    {
+      "id": "developers-1",
+      "audience": "developers",
+      "checks": [
+        {
+          "check": "developer-abstract-architecture",
+          "description": "Architecture described generically ('the service processes requests') without naming specific files, functions, or classes."
+        },
+        {
+          "check": "developer-missing-types",
+          "description": "API signatures, function descriptions, or parameter lists without parameter types or return types."
+        }
+      ]
+    },
+    {
+      "id": "developers-2",
+      "audience": "developers",
+      "checks": [
+        {
+          "check": "developer-adr-missing-alternatives",
+          "description": "Design decision or architectural choice presented without alternatives considered or rationale for why this approach was chosen."
+        }
+      ]
+    },
+    {
+      "id": "agents-1",
+      "audience": "agents",
+      "checks": [
+        {
+          "check": "agent-ambiguous-constraint",
+          "description": "Uses 'should', 'typically', 'usually', 'generally' where MUST/MUST NOT is intended. Agent docs need unambiguous constraints."
+        },
+        {
+          "check": "agent-missing-negative-examples",
+          "description": "Convention rules or constraints without incorrect counter-examples showing what NOT to do."
+        }
+      ]
+    },
+    {
+      "id": "agents-2",
+      "audience": "agents",
+      "checks": [
+        {
+          "check": "agent-missing-consequences",
+          "description": "Gotchas, constraints, or rules without a 'what breaks if violated' explanation."
+        }
+      ]
+    },
+    {
+      "id": "devops-1",
+      "audience": "devops",
+      "checks": [
+        {
+          "check": "devops-missing-expected-output",
+          "description": "Bash/shell command with no expected output shown -- operator can't verify the command succeeded."
+        },
+        {
+          "check": "devops-missing-rollback",
+          "description": "Change, deploy, or migration procedure with no rollback steps or recovery guidance."
+        }
+      ]
+    },
+    {
+      "id": "devops-2",
+      "audience": "devops",
+      "checks": [
+        {
+          "check": "devops-placeholder-in-command",
+          "description": "Commands containing <placeholder> tokens without substitution guidance explaining what value to use."
+        }
+      ]
+    },
+    {
+      "id": "shared-1",
+      "audience": "shared",
+      "checks": [
+        {
+          "check": "overview-missing-audience",
+          "description": "OVERVIEW audience guide table is missing an audience that has generated documentation in the docs directory."
+        }
+      ]
+    },
+    {
+      "id": "structural-1",
+      "audience": null,
+      "checks": [
+        {
+          "check": "diataxis",
+          "description": "Content contradicts its declared <!-- DIATAXIS: type --> classification. Reference docs with step-by-step instructions, how-to with lengthy rationale, tutorials as API tables, explanations with imperative commands."
+        },
+        {
+          "check": "link-integrity",
+          "description": "Internal markdown links ([text](path)) where the target file or heading does not exist. Resolve relative links from the original doc location, not chunk path."
+        }
+      ]
+    }
+  ]
+}

@@ -186,9 +186,9 @@ class TestAddVerifyFindingRejection:
 
 
 EDITORIAL_CHECKS = [
-    # Universal (8)
+    # Universal (7)
     "filler-content", "heading-content-mismatch",
-    "inconsistent-granularity", "dangling-prose-reference",
+    "dangling-prose-reference",
     "unexplained-code-block", "internal-contradiction",
     "malformed-table", "placeholder-content",
     # End-user (4)

@@ -460,7 +460,7 @@ All 6 input fields are required per finding. The `add-verify-finding.py` script 
 
 **Mechanical checks (6):** `reference-integrity`, `cross-doc`, `diataxis`, `completeness`, `example-validity`, `link-integrity`
 
-**Editorial checks — universal (8):** `filler-content`, `heading-content-mismatch`, `inconsistent-granularity`, `dangling-prose-reference`, `unexplained-code-block`, `internal-contradiction`, `malformed-table`, `placeholder-content`
+**Editorial checks — universal (7):** `filler-content`, `heading-content-mismatch`, `dangling-prose-reference`, `unexplained-code-block`, `internal-contradiction`, `malformed-table`, `placeholder-content`
 
 **Editorial checks — end-user (4):** `end-user-jargon`, `end-user-missing-expected-result`, `end-user-implementation-leak`, `end-user-missing-goal`
 

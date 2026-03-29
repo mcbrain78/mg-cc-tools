@@ -28,6 +28,7 @@ Atomic writes via lib/json_io.py. Zero external dependencies.
 """
 
 import argparse
+import glob
 import os
 import sys
 
@@ -179,6 +180,10 @@ def main():
         help="Path to agent-specific findings file to merge (repeatable)",
     )
     parser.add_argument(
+        "--merge-glob", action="append", default=[],
+        help="Glob pattern for findings files to merge (repeatable)",
+    )
+    parser.add_argument(
         "--summary", action="store_true",
         help="Produce summary counts instead of filtered list",
     )
@@ -210,23 +215,27 @@ def main():
         return
 
     # --output is required for non-init/clean modes
-    if not args.output and not args.merge_from:
+    has_merge = args.merge_from or args.merge_glob
+    if not args.output and not has_merge:
         parser.error("--output is required unless --clean or --init is used")
 
-    output_path = os.path.abspath(args.output)
+    output_path = os.path.abspath(args.output) if args.output else None
 
     # Load findings -- treat missing file as empty array
     findings = load_json(findings_path, default=[])
 
-    # --merge-from: load and append findings from agent-specific files
-    if args.merge_from:
-        for merge_path in args.merge_from:
+    # --merge-from / --merge-glob: load and append findings
+    if has_merge:
+        merge_paths = [os.path.abspath(p) for p in args.merge_from]
+        for pattern in args.merge_glob:
+            merge_paths.extend(sorted(glob.glob(pattern)))
+        for merge_path in merge_paths:
             merge_path = os.path.abspath(merge_path)
             agent_findings = load_json(merge_path, default=[])
             findings.extend(agent_findings)
         save_json(findings_path, findings)
 
-    if not args.output:
+    if not output_path:
         return
 
     # Apply filters (even in summary mode, filters apply first)

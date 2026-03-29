@@ -107,7 +107,8 @@ Documentation generated -- ready for verification.
   Audiences: {list enabled audiences from config}
 
 When ready, verify documentation quality:
-  /mg:auto-doc-verify
+  /mg:auto-doc-verify            (standard -- per-document editorial agents)
+  /mg:auto-doc-verify-mini       (alternative -- chunk-by-chunk Haiku editorial)
 ```
 
 ### Route D: Pipeline complete (no outstanding findings)
@@ -121,7 +122,8 @@ Review the verification report: .mg/docs/docs-verify-report.md
 
 Options:
   - Re-scan:   /mg:auto-doc-scan      (incremental -- scoped to changes since last generation)
-  - Re-verify: /mg:auto-doc-verify     (re-check documentation quality)
+  - Re-verify: /mg:auto-doc-verify      (re-check documentation quality)
+  - Re-verify: /mg:auto-doc-verify-mini (alternative -- Haiku editorial)
   - Add notes: /mg:auto-doc-add "your note"   (capture documentation notes)
 ```
 

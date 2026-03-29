@@ -38,9 +38,9 @@ VALID_CHECKS = [
     # Mechanical checks (1-6)
     "reference-integrity", "cross-doc", "diataxis",
     "completeness", "example-validity", "link-integrity",
-    # Editorial checks -- universal (8)
+    # Editorial checks -- universal (7)
     "filler-content", "heading-content-mismatch",
-    "inconsistent-granularity", "dangling-prose-reference",
+    "dangling-prose-reference",
     "unexplained-code-block", "internal-contradiction",
     "malformed-table", "placeholder-content",
     # Editorial checks -- end-user (4)

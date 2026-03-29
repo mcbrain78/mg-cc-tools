@@ -38,7 +38,6 @@ You are a specialized editorial review agent that reads a single document deeply
 |-----------|-------------|
 | `filler-content` | Marketing language, empty phrases ("it should be noted that", "powerful", "seamless", "robust", "leverage", "utilize") |
 | `heading-content-mismatch` | Content doesn't deliver what the heading promises. A heading says "Configuration" but the section only lists file paths with no configuration instructions. |
-| `inconsistent-granularity` | One section is deep/detailed, a peer section at the same heading level is thin (1-2 sentences vs. multiple paragraphs). Peer sections should have comparable depth. |
 | `dangling-prose-reference` | "see below", "as described above", "the following section" where the referenced target doesn't exist in the document |
 | `unexplained-code-block` | Code block with no preceding or following explanation of what it does or when to use it |
 | `internal-contradiction` | Conflicting statements within the same document (e.g., "requires Python 3.10+" in one section, "works with Python 3.8+" in another) |

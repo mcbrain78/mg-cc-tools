@@ -27,6 +27,8 @@ COMMANDS=(
   auto-doc-generate
   auto-doc-update
   auto-doc-verify
+  auto-doc-verify-mini
+  auto-doc-verify-singledoc
   auto-doc-add
   auto-doc-script
 )
@@ -69,11 +71,13 @@ while [[ $# -gt 0 ]]; do
       echo "  --target <path>    Install into a custom .claude/ directory"
       echo ""
       echo "Invoke with:"
-      echo "  /mg:auto-doc           <- router (guides you through the pipeline)"
-      echo "  /mg:auto-doc-scan      <- step 1: scan"
-      echo "  /mg:auto-doc-generate  <- step 2: generate"
-      echo "  /mg:auto-doc-update    <- fix findings + integrate notes"
-      echo "  /mg:auto-doc-verify    <- step 3: verify"
+      echo "  /mg:auto-doc              <- router (guides you through the pipeline)"
+      echo "  /mg:auto-doc-scan         <- step 1: scan"
+      echo "  /mg:auto-doc-generate     <- step 2: generate"
+      echo "  /mg:auto-doc-update       <- fix findings + integrate notes"
+      echo "  /mg:auto-doc-verify       <- step 3: verify"
+      echo "  /mg:auto-doc-verify-mini  <- step 3 alt: verify with Haiku editorial"
+      echo "  /mg:auto-doc-verify-singledoc  <- step 3 alt: verify with Sonnet SendMessage editorial"
       echo "  /mg:auto-doc-add          <- capture notes"
       echo "  /mg:auto-doc-script       <- generate README for a standalone script"
       exit 0
@@ -152,6 +156,11 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/references/.docs.config.json" ]]; then
   echo "Error: missing references/.docs.config.json"
+  exit 1
+fi
+
+if [[ ! -f "${SCRIPT_DIR}/references/verify-checks.json" ]]; then
+  echo "Error: missing references/verify-checks.json"
   exit 1
 fi
 
@@ -235,6 +244,7 @@ done
 cp "${SCRIPT_DIR}/references/schema.md" "${SUPPORT_DIR}/references/"
 cp "${SCRIPT_DIR}/references/style-guide.md" "${SUPPORT_DIR}/references/"
 cp "${SCRIPT_DIR}/references/.docs.config.json" "${SUPPORT_DIR}/references/"
+cp "${SCRIPT_DIR}/references/verify-checks.json" "${SUPPORT_DIR}/references/"
 
 # Copy templates (recursive -- preserves audience subdirectory structure)
 echo "  Templates  -> ${SUPPORT_DIR}/references/templates/"
@@ -262,6 +272,7 @@ CONFIG_ABS="${SUPPORT_DIR}/references/.docs.config.json"
 AGENTS_ABS="${SUPPORT_DIR}/agents"
 SCRIPTS_ABS="${SUPPORT_DIR}/scripts"
 TEMPLATES_ABS="${SUPPORT_DIR}/references/templates"
+CHECKS_ABS="${SUPPORT_DIR}/references/verify-checks.json"
 TMP_ABS="${PROJECT_ROOT}/.mg/docs/tmp"
 
 echo "  Resolving path placeholders in command files ..."
@@ -298,6 +309,10 @@ for cmd in "${COMMANDS[@]}"; do
   if grep -q '{AGENTS_DIR}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{AGENTS_DIR}|${AGENTS_ABS}|g" "$cmd_file"
   fi
+  # Resolve checks file placeholder
+  if grep -q '{CHECKS_FILE}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{CHECKS_FILE}|${CHECKS_ABS}|g" "$cmd_file"
+  fi
 done
 
 # Resolve placeholders in agent files (Phase 2 adds agents)
@@ -323,6 +338,9 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   fi
   if grep -q '{TMP_DIR}' "$agent_file" 2>/dev/null; then
     sed -i "s|{TMP_DIR}|${TMP_ABS}|g" "$agent_file"
+  fi
+  if grep -q '{CHECKS_FILE}' "$agent_file" 2>/dev/null; then
+    sed -i "s|{CHECKS_FILE}|${CHECKS_ABS}|g" "$agent_file"
   fi
 done
 
@@ -389,5 +407,7 @@ echo "  /mg:auto-doc-scan         <- step 1: scan"
 echo "  /mg:auto-doc-generate     <- step 2: generate"
 echo "  /mg:auto-doc-update       <- fix findings + integrate notes"
 echo "  /mg:auto-doc-verify       <- step 3: verify"
+echo "  /mg:auto-doc-verify-mini  <- step 3 alt: verify with Haiku editorial"
+echo "  /mg:auto-doc-verify-singledoc  <- step 3 alt: verify with Sonnet SendMessage editorial"
 echo "  /mg:auto-doc-add          <- capture documentation notes"
 echo "  /mg:auto-doc-script       <- generate README for a standalone script"
