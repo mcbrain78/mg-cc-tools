@@ -219,6 +219,7 @@ def run_prep_scripts(
             "--audience", audience,
             "--config", config_path,
             "--global-config", global_config_path,
+            "--docs-dir", paths["docs_dir_abs"],
         ])
     _run_script(extract_cmd, label="extract-verify-context", critical=True)
 

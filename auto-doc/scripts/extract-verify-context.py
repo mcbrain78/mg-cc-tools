@@ -23,6 +23,7 @@ Atomic writes via lib/json_io.py. Zero external dependencies.
 """
 
 import argparse
+import glob
 import os
 import re
 import sys
@@ -40,11 +41,16 @@ def _slugify(heading):
     return slug.strip("-")
 
 
-def _get_inscope_docs(config_path, global_config_path, audience_str):
+def _get_inscope_docs(config_path, global_config_path, audience_str,
+                      docs_dir=None):
     """Return set of in-scope document names, or None if no filter.
 
     When audience_str is provided, returns the union of shared_documents
     and the documents listed for each requested audience in config.
+
+    When docs_dir is provided and audience filter is active, shared_documents
+    that don't exist on disk are excluded (e.g. OVERVIEW is intentionally
+    skipped by generate when an audience filter is active).
     """
     if not audience_str:
         return None
@@ -63,6 +69,18 @@ def _get_inscope_docs(config_path, global_config_path, audience_str):
         if aud_key in audience_set:
             for doc in aud_conf.get("documents", []):
                 docs.add(doc)
+
+    # When audience-scoped, only keep shared_documents that actually exist
+    # on disk.  Generate intentionally skips some shared docs (e.g. OVERVIEW)
+    # when an audience filter is active; verify should mirror that.
+    if docs_dir:
+        for doc in list(config.get("shared_documents", [])):
+            if doc not in docs:
+                continue
+            if not glob.glob(
+                os.path.join(docs_dir, "**", f"{doc}.md"), recursive=True
+            ):
+                docs.discard(doc)
 
     return docs
 
@@ -134,6 +152,10 @@ def main():
         "--global-config", default=None,
         help="Path to global fallback .docs.config.json (required with --audience)",
     )
+    parser.add_argument(
+        "--docs-dir", default=None,
+        help="Path to generated docs directory (filters shared_documents to those on disk)",
+    )
 
     args = parser.parse_args()
     scan_path = os.path.abspath(args.scan_file)
@@ -157,6 +179,7 @@ def main():
         os.path.abspath(args.config) if args.config else "",
         os.path.abspath(args.global_config) if args.global_config else "",
         args.audience,
+        docs_dir=os.path.abspath(args.docs_dir) if args.docs_dir else None,
     )
     if inscope_docs is not None:
         context["documented_sections"] = [

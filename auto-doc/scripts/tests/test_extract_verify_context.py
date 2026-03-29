@@ -275,6 +275,87 @@ class TestExtractVerifyContextAudienceFilter:
             mfa = context["gap_analysis"]["missing_for_audience"]
             assert set(mfa.keys()) == {"devops", "end-users", "developers"}
 
+    def test_docs_dir_excludes_missing_shared_docs(self):
+        """--docs-dir filters out shared_documents that don't exist on disk."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_file = os.path.join(tmp, "docs-scan.json")
+            output_file = os.path.join(tmp, "context.json")
+            config_file = os.path.join(tmp, "config.json")
+            global_config_file = os.path.join(tmp, "global.json")
+            docs_dir = os.path.join(tmp, "docs")
+            os.makedirs(docs_dir)
+
+            # GLOSSARY exists on disk, OVERVIEW does not
+            with open(os.path.join(docs_dir, "GLOSSARY.md"), "w") as f:
+                f.write("# Glossary\n")
+
+            with open(scan_file, "w") as f:
+                json.dump(_audience_scan_data(), f)
+            with open(config_file, "w") as f:
+                json.dump(_audience_config(), f)
+            with open(global_config_file, "w") as f:
+                json.dump({}, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-file", scan_file,
+                 "--output", output_file,
+                 "--audience", "devops",
+                 "--config", config_file,
+                 "--global-config", global_config_file,
+                 "--docs-dir", docs_dir],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                context = json.load(f)
+
+            sections = context["documented_sections"]
+            doc_names = {s.split("/")[0] for s in sections}
+            # GLOSSARY exists on disk -> included
+            assert "GLOSSARY" in doc_names
+            # OVERVIEW does not exist on disk -> excluded
+            assert "OVERVIEW" not in doc_names
+            # Audience-specific docs still included
+            assert "OPERATIONS" in doc_names
+            assert "TROUBLESHOOTING" in doc_names
+
+    def test_no_docs_dir_keeps_all_shared_docs(self):
+        """Without --docs-dir, all shared_documents stay in scope (original behavior)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_file = os.path.join(tmp, "docs-scan.json")
+            output_file = os.path.join(tmp, "context.json")
+            config_file = os.path.join(tmp, "config.json")
+            global_config_file = os.path.join(tmp, "global.json")
+
+            with open(scan_file, "w") as f:
+                json.dump(_audience_scan_data(), f)
+            with open(config_file, "w") as f:
+                json.dump(_audience_config(), f)
+            with open(global_config_file, "w") as f:
+                json.dump({}, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-file", scan_file,
+                 "--output", output_file,
+                 "--audience", "devops",
+                 "--config", config_file,
+                 "--global-config", global_config_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output_file) as f:
+                context = json.load(f)
+
+            sections = context["documented_sections"]
+            doc_names = {s.split("/")[0] for s in sections}
+            # Without --docs-dir, both shared docs stay (backward compat)
+            assert "OVERVIEW" in doc_names
+            assert "GLOSSARY" in doc_names
+
 
 class TestExtractVerifyContextOptionalSections:
     """Optional sections via --templates-dir."""

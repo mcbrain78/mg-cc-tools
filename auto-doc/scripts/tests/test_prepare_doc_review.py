@@ -336,6 +336,38 @@ class TestAudienceFilter:
             assert "developer" not in audiences
             assert "end-user" not in audiences
 
+    def test_filter_includes_shared_docs_without_audience_tag(self):
+        """Docs with no AUDIENCE comment (shared docs) are included when filtering."""
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = os.path.join(tmp, "docs")
+            output_dir = os.path.join(tmp, "chunks")
+            os.makedirs(docs_dir)
+            self._create_multi_audience_docs(docs_dir)
+
+            # Add a shared doc with no audience tag (like GLOSSARY)
+            glossary_path = os.path.join(docs_dir, "GLOSSARY.md")
+            with open(glossary_path, "w") as f:
+                f.write("# Glossary\n\nNo audience comment.\n\n## Terms\n\nSome terms.\n")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--docs-dir", docs_dir,
+                 "--output-dir", output_dir,
+                 "--token-limit", "5000",
+                 "--audience", "devops"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            manifest_path = os.path.join(output_dir, "manifest.json")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+
+            sources = {os.path.basename(e["source"]) for e in manifest}
+            assert "GLOSSARY.md" in sources
+            assert "DEVOPS.md" in sources
+            assert "DEVELOPER.md" not in sources
+
 
 class TestPrepareDocReviewManifest:
     """Manifest structure."""

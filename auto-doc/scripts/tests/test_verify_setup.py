@@ -390,11 +390,13 @@ class TestFullRun:
             os.makedirs(docs_dir)
             os.makedirs(mg_docs)
 
-            # Create doc files for devops and end-users
+            # Create doc files for devops and end-users + OVERVIEW shared doc
             with open(os.path.join(docs_dir, "OPERATIONS.md"), "w") as f:
                 f.write("# Operations\n<!-- AUDIENCE: devops -->\n\nContent.\n")
             with open(os.path.join(docs_dir, "GETTING_STARTED.md"), "w") as f:
                 f.write("# Getting Started\n<!-- AUDIENCE: end-users -->\n\nContent.\n")
+            with open(os.path.join(docs_dir, "OVERVIEW.md"), "w") as f:
+                f.write("# Overview\n\nShared document.\n")
 
             # Scan data with sections for both audiences
             scan_path = os.path.join(mg_docs, "docs-scan.json")
@@ -404,6 +406,7 @@ class TestFullRun:
                     "OPERATIONS/deployment": {"source_files": []},
                     "GETTING_STARTED/quickstart": {"source_files": []},
                     "OVERVIEW/intro": {"source_files": []},
+                    "MISSING_SHARED/section": {"source_files": []},
                 },
                 "gap_analysis": {
                     "missing_for_audience": {
@@ -413,7 +416,7 @@ class TestFullRun:
                 },
             })
 
-            # Config with audiences and shared docs
+            # Config with audiences and shared docs (OVERVIEW exists, MISSING_SHARED does not)
             config_path = os.path.join(mg_docs, ".docs.config.json")
             _write_json(config_path, {
                 "docs_dir": "docs/auto-doc",
@@ -421,7 +424,7 @@ class TestFullRun:
                     "devops": {"enabled": True, "documents": ["OPERATIONS"]},
                     "end-users": {"enabled": True, "documents": ["GETTING_STARTED"]},
                 },
-                "shared_documents": ["OVERVIEW"],
+                "shared_documents": ["OVERVIEW", "MISSING_SHARED"],
             })
 
             stdout, _, _ = _run([
@@ -437,11 +440,12 @@ class TestFullRun:
             result = json.loads(stdout)
             context = _read_json(result["scan_context_path"])
 
-            # Only devops + shared sections
+            # Only devops + shared docs that exist on disk
             doc_names = {s.split("/")[0] for s in context["documented_sections"]}
             assert "OPERATIONS" in doc_names
-            assert "OVERVIEW" in doc_names
-            assert "GETTING_STARTED" not in doc_names
+            assert "OVERVIEW" in doc_names  # exists on disk
+            assert "MISSING_SHARED" not in doc_names  # not on disk -> excluded
+            assert "GETTING_STARTED" not in doc_names  # out-of-scope audience
 
             # Gap analysis scoped to devops only
             mfa = context["gap_analysis"]["missing_for_audience"]
