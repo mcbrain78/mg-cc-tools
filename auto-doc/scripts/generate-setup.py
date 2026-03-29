@@ -24,6 +24,7 @@ import argparse
 import glob as glob_mod
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -298,7 +299,7 @@ def main():
     config_path = os.path.abspath(args.config)
     global_config_path = os.path.abspath(args.global_config)
     scripts_dir = os.path.abspath(args.scripts_dir)
-    audience_filter = set(args.audience.split(",")) if args.audience else None
+    audience_filter = set(re.split(r"[,\s]+", args.audience.strip())) - {""} if args.audience else None
 
     # Load config
     config = load_config(config_path, global_config_path)

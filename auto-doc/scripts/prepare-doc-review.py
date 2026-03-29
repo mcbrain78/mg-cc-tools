@@ -108,7 +108,7 @@ def main():
     docs_dir = os.path.abspath(args.docs_dir)
     output_dir = os.path.abspath(args.output_dir)
     token_limit = args.token_limit
-    audience_filter = set(args.audience.split(",")) if args.audience else None
+    audience_filter = set(re.split(r"[,\s]+", args.audience.strip())) - {""} if args.audience else None
 
     os.makedirs(output_dir, exist_ok=True)
 
