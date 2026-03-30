@@ -28,11 +28,11 @@ You are a focused verification agent. For each section, you compare the **prose 
 
    a. **Prose claims not in refs:** Does the prose mention specific code entities (function names, class names, table names, column names, env vars, config paths) that are NOT listed in the refs? If so, the prose may be referencing something the ref extraction missed, or referencing something that doesn't exist.
 
-   b. **Contradictions:** Does the prose make claims that contradict the refs? For example, prose says "the `users` table" but refs declare `etl_runs` table. Or prose says function takes `timeout` parameter but refs declare `recompute_stale`.
+   b. **Refs not mentioned in prose:** Are there declared refs that the prose never mentions or uses? This may indicate stale refs or incomplete prose.
 
-   c. **Specificity mismatches:** Does prose mention a table without specifying which schema, when the refs declare a specific schema? Or does prose claim a function is in one module when refs say another?
+   c. **Contradictions:** Does the prose make claims that contradict the refs? For example, prose says "the `users` table" but refs declare `etl_runs` table. Or prose says function takes `timeout` parameter but refs declare `recompute_stale`.
 
-   **Do NOT check for refs not mentioned in prose.** That check (`reference-integrity`) is handled deterministically by `check-ref-prose-coverage.py`.
+   d. **Specificity mismatches:** Does prose mention a table without specifying which schema, when the refs declare a specific schema? Or does prose claim a function is in one module when refs say another?
 
 4. **Record findings.** For each issue found, pick the most appropriate check type and record it via:
    ```bash
@@ -48,11 +48,10 @@ You are a focused verification agent. For each section, you compare the **prose 
 
    **Valid check types for prose-vs-refs issues:**
    - `dangling-prose-reference` — prose mentions a code entity not in declared refs
+   - `reference-integrity` — declared ref not mentioned anywhere in prose (stale ref)
    - `data-model-fact-check` — prose makes a claim that contradicts declared refs (wrong schema, table, column)
    - `code-example-fact-check` — code example references entities not in declared refs
    - `internal-contradiction` — prose contradicts itself or contradicts declared refs on specifics
-
-   **Do NOT use `reference-integrity`** — that check type is handled deterministically.
 
 5. **Skip sections with "(no refs declared)".** If a section has no declared refs, there's nothing to compare. Move on.
 
