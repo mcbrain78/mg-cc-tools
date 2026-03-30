@@ -157,6 +157,25 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
 3. **After all fix agents complete,** log their results.
 
+4. **Sync fix edits to XML** (if XML sources exist). Check if `.mg/docs/xml-sources/` directory exists. If so, for each document that was fixed:
+
+   ```bash
+   python3 {SCRIPTS_DIR}/sync-edits-to-xml.py \
+       --md-file {docs_dir_abs}/{audience}/{DOCUMENT}.md \
+       --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
+       --changed-only
+   ```
+
+   Parse the JSON output (list of changed slugs). Then reassemble markdown from the updated XML:
+
+   ```bash
+   python3 {SCRIPTS_DIR}/assemble-markdown.py \
+       --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
+       --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
+   ```
+
+   Skip any document whose XML file does not exist (e.g., standalone docs that were fixed directly).
+
 ### Step 6: Execute Scoped Generate
 
 **Only run this step if** there are approved GENERATE items (new sections).

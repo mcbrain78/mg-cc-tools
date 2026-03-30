@@ -50,9 +50,9 @@ You are a specialized writer agent for the **devops** audience. You generate doc
    d. **Rollback verification** -- For every deployment or change procedure, verify a matching rollback section exists. If missing, generate one with clear undo steps.
    e. **Command output verification** -- For every command block, verify that expected output is documented for both success AND failure cases.
    f. **Placeholder check** -- Verify no command uses unexplained `<placeholder>` syntax. Every placeholder must have an inline explanation of what to substitute.
-   g. **Write sections and references.** For each section you generated, emit it
-      through the write-section tool. This bundles your prose with the symbols and
-      files you referenced, ensuring accurate reference tracking.
+   g. **Write sections and typed references.** For each section you generated, emit it
+      through the write-section tool. This bundles your prose with structured typed
+      references, ensuring accurate provenance tracking.
 
       First, write the document header (once per document, before the first section):
       Write to `{TMP_DIR}/header-devops-{DOCUMENT}.md`:
@@ -69,12 +69,30 @@ You are a specialized writer agent for the **devops** audience. You generate doc
          (include the `## Heading`, `<!-- docs-meta: ... -->` comment, and all body content)
       2. Write references to `{TMP_DIR}/refs-devops-{DOCUMENT}-{section-slug}.json`:
          ```json
-         {"symbols": ["sym1", "sym2"], "file_paths": ["src/file.py"], "calls": [{"symbol": "sym1", "kwargs": ["param1", "param2"]}]}
+         {"typed_refs": [
+           {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
+           {"type": "code", "kind": "function", "name": "compute_finance_metrics",
+            "module": "src/road_runner/flows/compute.py", "param": "recompute_stale"},
+           {"type": "code", "kind": "class", "name": "EtlRun",
+            "module": "src/road_runner/models.py"},
+           {"type": "flow", "name": "ingest-quarterly-finance-data"},
+           {"type": "env", "name": "WORKER_CONCURRENCY"},
+           {"type": "config", "path": "config/field-mapping.yaml"},
+           {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"}
+         ]}
          ```
-         For each symbol, include the file you read it from in `file_paths`. If you read
-         `ArchiveBase` from `src/llm/archive_models.py`, that file MUST be in `file_paths`.
-         For each function call shown in a code example with keyword arguments, also record it in `calls`: `{"symbol": "func_name", "kwargs": ["param1", "param2"]}`. Only include calls where specific keyword arguments are used. Omit `calls` if the section has no code examples with function calls.
-         For sections with no code references, use empty arrays.
+         **Ref type table** (required fields per type):
+         | type | required fields |
+         |------|----------------|
+         | `db` | `schema`, `table`, optionally `column` |
+         | `code` | `kind` (function/class), `name`, optionally `module`, `param` |
+         | `flow` | `name` |
+         | `env` | `name` |
+         | `config` | `path` |
+         | `enum` | `class`, `field`, `value` |
+
+         write-section.py derives `symbols` and `file_paths` automatically from typed_refs.
+         For sections with no code references, use `{"typed_refs": []}`.
       3. Call:
          ```bash
          python3 {SCRIPTS_DIR}/write-section.py \
@@ -89,29 +107,10 @@ You are a specialized writer agent for the **devops** audience. You generate doc
          Only pass `--header-file` on the first section of each document.
 
       If the script prints a WARNING about unresolved symbols, check which file you
-      read that symbol from, add it to the refs file's `file_paths`, and re-run.
+      read that symbol from, add the correct `module` to the code ref, and re-run.
 
       Do NOT call Write() to create the final document file — the finalize step
       handles document assembly.
-
-   h. **Verify section references.** For each section, run the verification script:
-
-      ```bash
-      python3 {SCRIPTS_DIR}/verify-section-refs.py \
-        --content-file {TMP_DIR}/section-devops-{DOCUMENT}-{section-slug}.md \
-        --refs-file {TMP_DIR}/refs-devops-{DOCUMENT}-{section-slug}.json \
-        --verifier-prompt {AGENTS_DIR}/section-verifier.md \
-        --log-file {TMP_DIR}/verification-log.json
-      ```
-
-      The script skips sections with empty refs, invokes Haiku verification
-      for the rest, and logs structured results. Run one per section.
-
-      If the output contains UNRESOLVED:
-      1. Look up the symbol in the project source to find the correct name
-      2. Fix the section content file
-      3. Update the refs file if needed
-      4. Re-run write-section.py for that section
 
 3. **Propose new terms** -- For any operational terms used in the generated content that are not already in the glossary, output a JSON array of term proposals:
    ```json

@@ -17,6 +17,8 @@ You are the glossary writer agent. You own GLOSSARY.md -- the single source of t
 - **mode**: `"initial"` or `"update"`.
 - **pass**: `"initial"` or `"reconciliation"` -- which execution pass this is.
 - **term_proposals_dir**: Path to `.mg/docs/scan-logs/` where `terms-{audience}.json` files are written by writer agents.
+- **tmp_dir**: Path to the shared tmp directory for write-section.py state and temp files.
+- **scripts_dir**: Path to `{SCRIPTS_DIR}` for invoking write-section.py.
 
 ## Process -- Initial Pass
 
@@ -35,15 +37,51 @@ The initial pass runs **before** the four writer agents. Its purpose is to estab
    - **Domain Terms**: Business or industry terminology (e.g., "portfolio", "rebalancing", "risk score")
    - **Technical Terms**: Implementation-level terms (e.g., "atomic write", "subagent", "frontmatter")
 
-4. **Generate GLOSSARY.md** -- Follow the glossary template structure. Write each term as a bold term followed by a sentence-form definition. Include an audience-relevance note indicating which audiences need this term.
+4. **Generate content** -- Follow the glossary template structure. Write each term as a bold term followed by a sentence-form definition. Include an audience-relevance note indicating which audiences need this term.
 
-5. **Write output** -- Write GLOSSARY.md to `{docs_dir}/GLOSSARY.md`.
+5. **Write output via write-section.py** -- Use the section-write workflow instead of writing GLOSSARY.md directly.
+
+   First, write the header file:
+   ```bash
+   # Write header to temp file
+   Write({TMP_DIR}/header-glossary-GLOSSARY.md)
+   ```
+   The header contains the ownership comment, DIATAXIS/AUDIENCE comments, and `# Glossary` heading (everything before the first `## `).
+
+   Then, for each `## ` section you generate (System Concepts, Domain Terms, Technical Terms, and any optional sections like API Terms or Infrastructure Terms):
+
+   a. Write the section content (the `## ` heading + body) to a temp file:
+   ```bash
+   Write({TMP_DIR}/section-glossary-GLOSSARY-{slug}.md)
+   ```
+
+   b. Write an empty refs JSON file (glossary is pure prose, no code references):
+   ```bash
+   Write({TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json)
+   ```
+   Content: `{"typed_refs": []}`
+   For terms that reference specific code entities (table names, class names, flows, env vars), emit typed_refs with appropriate type entries. Use `{"typed_refs": []}` for purely conceptual terms.
+
+   c. Call write-section.py:
+   ```bash
+   python3 {SCRIPTS_DIR}/write-section.py \
+       --state-file {TMP_DIR}/write-state-glossary.json \
+       --document GLOSSARY \
+       --section {slug} \
+       --content-file {TMP_DIR}/section-glossary-GLOSSARY-{slug}.md \
+       --refs-file {TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json \
+       --header-file {TMP_DIR}/header-glossary-GLOSSARY.md
+   ```
+
+   Only pass `--header-file` on the **first** section call. Omit it for subsequent sections.
+
+   **Do NOT call finalize or write GLOSSARY.md directly. The orchestrator handles finalize after this agent completes.**
 
 ## Process -- Reconciliation Pass
 
 The reconciliation pass runs **after** all four writer agents complete. Its purpose is to merge proposed terms from writers into the glossary.
 
-1. **Read current glossary** -- Load the GLOSSARY.md generated during the initial pass.
+1. **Read current glossary** -- Load the GLOSSARY.md generated during the initial pass (at `{docs_dir}/GLOSSARY.md`).
 
 2. **Read term proposals** -- Read all `terms-{audience}.json` files from `term_proposals_dir`. Each file contains an array of proposed terms:
    ```json
@@ -55,7 +93,33 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
    b. **Check for synonym conflicts** -- If the proposed term is a synonym for an existing term (e.g., "error" vs "finding"), do not add it. Instead, note the canonical term in the reconciliation log.
    c. **Add new terms** -- For genuinely new terms, write a proper definition following the glossary format. Categorize the term and include audience-relevance.
 
-4. **Update GLOSSARY.md** -- Write the updated glossary with new terms merged into their appropriate categories in alphabetical order.
+4. **Write updated sections via write-section.py** -- For each section that changed (has new or updated terms), write the updated section content through write-section.py, same as the initial pass:
+
+   a. Write the section content to a temp file:
+   ```bash
+   Write({TMP_DIR}/section-glossary-GLOSSARY-{slug}.md)
+   ```
+
+   b. Write the refs JSON file:
+   ```bash
+   Write({TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json)
+   ```
+   Content: `{"typed_refs": []}`
+   For terms that reference specific code entities (table names, class names, flows, env vars), emit typed_refs with appropriate type entries. Use `{"typed_refs": []}` for purely conceptual terms.
+
+   c. Call write-section.py:
+   ```bash
+   python3 {SCRIPTS_DIR}/write-section.py \
+       --state-file {TMP_DIR}/write-state-glossary.json \
+       --document GLOSSARY \
+       --section {slug} \
+       --content-file {TMP_DIR}/section-glossary-GLOSSARY-{slug}.md \
+       --refs-file {TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json
+   ```
+
+   Only write sections that actually changed. Unchanged sections are preserved by the `--merge` flag during finalize (handled by the orchestrator).
+
+   **Do NOT call finalize or write GLOSSARY.md directly. The orchestrator handles finalize with --merge after this agent completes.**
 
 5. **Write reconciliation log** -- Write a summary to `.mg/docs/scan-logs/glossary-reconciliation.log` documenting:
    - Terms added (with source audience)

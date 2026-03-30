@@ -72,15 +72,40 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
    Style guide path: references/style-guide.md
    Mode: {mode}
    Pass: initial
-   Term proposals dir: {project_root}/.mg/docs/scan-logs/"
+   Term proposals dir: {project_root}/.mg/docs/scan-logs/
+   Tmp dir: {tmp_dir}
+   Scripts dir: {SCRIPTS_DIR}"
    )
    ```
 
-3. **Wait for completion.** Verify `{docs_dir_abs}/GLOSSARY.md` was created:
+2. **After agent completes, finalize the glossary state.** Check that the state file exists before running:
+
+   ```bash
+   python3 {SCRIPTS_DIR}/write-section.py \
+       --finalize \
+       --state-file {TMP_DIR}/write-state-glossary.json \
+       --docs-dir {docs_dir_abs} \
+       --audience "" \
+       --manifest-file {TMP_DIR}/manifest-glossary.json \
+       --mode {mode} \
+       --xml-dir {project_root}/.mg/docs/xml-sources
+   ```
+
+   If the state file does not exist, log a warning and continue. Writers will proceed without a glossary baseline.
+
+3. **Assemble markdown.** If `{project_root}/.mg/docs/xml-sources/GLOSSARY.xml` exists:
+
+   ```bash
+   python3 {SCRIPTS_DIR}/assemble-markdown.py \
+       --xml-file {project_root}/.mg/docs/xml-sources/GLOSSARY.xml \
+       --output {docs_dir_abs}/GLOSSARY.md
+   ```
+
+4. **Verify** `{docs_dir_abs}/GLOSSARY.md` was created:
    ```
    Read {docs_dir_abs}/GLOSSARY.md
    ```
-   If the file does not exist, log a warning and continue. Writers will proceed without a glossary baseline.
+   If the file does not exist, log a warning and continue.
 
 ### Stage 2: Write Audience Documents (parallel)
 
@@ -137,12 +162,23 @@ python3 {SCRIPTS_DIR}/write-section.py \
     --docs-dir {docs_dir_abs} \
     --audience {audience} \
     --manifest-file {TMP_DIR}/manifest-{audience}.json \
-    --mode {mode}
+    --mode {mode} \
+    --xml-dir {project_root}/.mg/docs/xml-sources
 ```
 
 Skip any audience whose state file does not exist (writer was not spawned for that audience).
 
-This assembles documents from accumulated sections and generates temp manifests.
+This assembles documents from accumulated sections, generates temp manifests, and builds XML source files in `.mg/docs/xml-sources/{audience}/`.
+
+### Assemble & Polish
+
+After finalize, reassemble markdown from XML (which now has refs populated from writer-emitted typed_refs). For each XML file produced by finalize:
+
+```bash
+python3 {SCRIPTS_DIR}/assemble-markdown.py \
+    --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
+    --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
+```
 
 ### Polish Documents
 
@@ -162,6 +198,24 @@ Doc path: {docs_dir_abs}/{audience}/{DOCUMENT}.md"
 ```
 
 Spawn one polish agent per document. Run polish agents in parallel where possible. The polish step does not change symbols or file_paths, so manifests are unaffected.
+
+### Sync Polish Edits to XML
+
+After polish agents complete, sync their edits back to XML and reassemble. For each polished document:
+
+```bash
+python3 {SCRIPTS_DIR}/sync-edits-to-xml.py \
+    --md-file {docs_dir_abs}/{audience}/{DOCUMENT}.md \
+    --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml
+```
+
+Then reassemble the final markdown from synced XML:
+
+```bash
+python3 {SCRIPTS_DIR}/assemble-markdown.py \
+    --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
+    --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
+```
 
 ### Manifest Merge
 
@@ -197,11 +251,37 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
    Style guide path: references/style-guide.md
    Mode: {mode}
    Pass: reconciliation
-   Term proposals dir: {project_root}/.mg/docs/scan-logs/"
+   Term proposals dir: {project_root}/.mg/docs/scan-logs/
+   Tmp dir: {tmp_dir}
+   Scripts dir: {SCRIPTS_DIR}"
    )
    ```
 
-3. **Wait for completion.** The glossary-writer updates `{docs_dir_abs}/GLOSSARY.md` in place and writes a reconciliation log to `.mg/docs/scan-logs/glossary-reconciliation.log`.
+2. **After agent completes, finalize the reconciliation state.** Check that the state file exists before running:
+
+   ```bash
+   python3 {SCRIPTS_DIR}/write-section.py \
+       --finalize \
+       --state-file {TMP_DIR}/write-state-glossary.json \
+       --docs-dir {docs_dir_abs} \
+       --audience "" \
+       --manifest-file {TMP_DIR}/manifest-glossary.json \
+       --mode {mode} \
+       --merge \
+       --xml-dir {project_root}/.mg/docs/xml-sources
+   ```
+
+   If the state file does not exist, the reconciliation produced no changes — continue.
+
+3. **Reassemble.** If `{project_root}/.mg/docs/xml-sources/GLOSSARY.xml` exists:
+
+   ```bash
+   python3 {SCRIPTS_DIR}/assemble-markdown.py \
+       --xml-file {project_root}/.mg/docs/xml-sources/GLOSSARY.xml \
+       --output {docs_dir_abs}/GLOSSARY.md
+   ```
+
+   The reconciliation log is at `.mg/docs/scan-logs/glossary-reconciliation.log`.
 
 ### Stage 4: Generate OVERVIEW.md
 
@@ -233,11 +313,36 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
      Project model path: {TMP_DIR}/project-model.json
      Glossary path: {docs_dir_abs}/GLOSSARY.md
      OVERVIEW template: {TEMPLATES_DIR}/OVERVIEW.template.md
-     Style guide path: references/style-guide.md"
+     Style guide path: references/style-guide.md
+     Tmp dir: {tmp_dir}
+     Scripts dir: {SCRIPTS_DIR}"
    )
    ```
 
-3. **Verify OVERVIEW.md was created:**
+3. **After agent completes, finalize the overview state.** Check that the state file exists before running:
+
+   ```bash
+   python3 {SCRIPTS_DIR}/write-section.py \
+       --finalize \
+       --state-file {TMP_DIR}/write-state-overview.json \
+       --docs-dir {docs_dir_abs} \
+       --audience "" \
+       --manifest-file {TMP_DIR}/manifest-overview.json \
+       --mode {mode} \
+       --xml-dir {project_root}/.mg/docs/xml-sources
+   ```
+
+   If the state file does not exist, log a warning — the overview agent may have failed.
+
+4. **Reassemble.** If `{project_root}/.mg/docs/xml-sources/OVERVIEW.xml` exists:
+
+   ```bash
+   python3 {SCRIPTS_DIR}/assemble-markdown.py \
+       --xml-file {project_root}/.mg/docs/xml-sources/OVERVIEW.xml \
+       --output {docs_dir_abs}/OVERVIEW.md
+   ```
+
+5. **Verify OVERVIEW.md was created:**
    ```
    Read {docs_dir_abs}/OVERVIEW.md
    ```

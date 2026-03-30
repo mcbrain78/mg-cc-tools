@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Per-section write tool for auto-doc writer agents.
 
-Bundles section content + symbol/file references in a single call so
+Bundles section content + typed references in a single call so
 provenance is captured at the moment of writing, not reconstructed later.
 
 Two modes:
@@ -15,6 +15,9 @@ Section-write (called once per section):
         --refs-file /tmp/refs-developers-ARCHITECTURE-system-overview.json \
         --header-file /tmp/header-developers-ARCHITECTURE.md \
         --project-root /path/to/project
+
+    The refs file must contain a ``typed_refs`` key with a list of ref dicts.
+    ``symbols`` and ``file_paths`` are derived automatically from typed_refs.
 
 Finalize (called once per audience after all writers complete):
     python3 write-section.py \
@@ -37,6 +40,44 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json, save_text
 from lib.symbols import extract_python_symbols
+from lib.xml_doc import build_xml_doc, serialize_xml_doc, update_section_refs
+
+
+def _derive_symbols_and_file_paths(typed_refs):
+    """Derive symbols and file_paths lists from typed_refs.
+
+    symbols  = names from code refs (deduplicated, order-preserved)
+    file_paths = modules from code refs + paths from config refs (deduplicated)
+    """
+    symbols = []
+    file_paths = []
+    seen_sym = set()
+    seen_fp = set()
+
+    for ref in typed_refs:
+        rtype = ref.get("type")
+        if rtype == "code":
+            name = ref.get("name", "")
+            if name and name not in seen_sym:
+                symbols.append(name)
+                seen_sym.add(name)
+            module = ref.get("module", "")
+            if module and module not in seen_fp:
+                file_paths.append(module)
+                seen_fp.add(module)
+        elif rtype == "config":
+            path = ref.get("path", "")
+            if path and path not in seen_fp:
+                file_paths.append(path)
+                seen_fp.add(path)
+
+    return symbols, file_paths
+
+
+def _extract_diataxis(header):
+    """Extract DIATAXIS type from header comment like <!-- DIATAXIS: how-to -->."""
+    m = re.search(r"<!--\s*DIATAXIS:\s*(.+?)\s*-->", header)
+    return m.group(1) if m else ""
 
 
 def slugify_heading(heading):
@@ -99,7 +140,13 @@ def section_write(args):
         print(f"Error: content file is empty: {args.content_file}", file=sys.stderr)
         sys.exit(1)
 
-    # Read refs-file, validate JSON with symbols and file_paths keys
+    # Inject <!-- section: slug --> marker before ## heading if not present
+    section_name = args.section
+    marker = f"<!-- section: {section_name} -->"
+    if marker not in content:
+        content = f"{marker}\n{content}"
+
+    # Read refs-file, validate JSON with typed_refs key
     if not os.path.isfile(args.refs_file):
         print(f"Error: refs file not found: {args.refs_file}", file=sys.stderr)
         sys.exit(1)
@@ -109,9 +156,9 @@ def section_write(args):
     except json.JSONDecodeError as e:
         print(f"Error: invalid JSON in refs file: {e}", file=sys.stderr)
         sys.exit(1)
-    if "symbols" not in refs or "file_paths" not in refs:
+    if "typed_refs" not in refs:
         print(
-            "Error: refs file must contain 'symbols' and 'file_paths' keys",
+            "Error: refs file must contain 'typed_refs' key",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -129,7 +176,6 @@ def section_write(args):
 
     # Ensure document structure exists
     doc_name = args.document
-    section_name = args.section
 
     if doc_name not in state["documents"]:
         state["documents"][doc_name] = {
@@ -143,6 +189,10 @@ def section_write(args):
     if header is not None:
         doc["header"] = header
 
+    # Derive symbols and file_paths from typed_refs
+    typed_refs = refs["typed_refs"]
+    derived_symbols, derived_file_paths = _derive_symbols_and_file_paths(typed_refs)
+
     # If section exists, overwrite content/refs (preserve order position).
     # If new, append to sections_order.
     if section_name not in doc["sections"]:
@@ -150,21 +200,21 @@ def section_write(args):
 
     doc["sections"][section_name] = {
         "content": content,
-        "symbols": refs["symbols"],
-        "file_paths": refs["file_paths"],
-        "calls": refs.get("calls", []),
+        "symbols": derived_symbols,
+        "file_paths": derived_file_paths,
+        "typed_refs": typed_refs,
     }
 
     # Advisory symbol check if --project-root provided
     if args.project_root:
-        check_symbols(refs["symbols"], refs["file_paths"], args.project_root)
+        check_symbols(derived_symbols, derived_file_paths, args.project_root)
 
     # Save state atomically
     save_json(args.state_file, state)
 
     # Print to stderr
-    sym_count = len(refs["symbols"])
-    fp_count = len(refs["file_paths"])
+    sym_count = len(derived_symbols)
+    fp_count = len(derived_file_paths)
     print(
         f"Wrote section {doc_name}/{section_name} "
         f"({sym_count} symbols, {fp_count} file_paths)",
@@ -210,7 +260,10 @@ def finalize(args):
     # For each document in state: assemble and write
     docs_written = []
     for doc_name, doc_data in state.get("documents", {}).items():
-        doc_dir = os.path.join(args.docs_dir, args.audience)
+        if args.audience:
+            doc_dir = os.path.join(args.docs_dir, args.audience)
+        else:
+            doc_dir = args.docs_dir
         os.makedirs(doc_dir, exist_ok=True)
         doc_path = os.path.join(doc_dir, f"{doc_name}.md")
 
@@ -287,9 +340,6 @@ def finalize(args):
                 if doc_name not in manifest["documents"]:
                     manifest["documents"][doc_name] = {}
                 entry = {"symbols": symbols, "file_paths": file_paths}
-                calls = section.get("calls", [])
-                if calls:
-                    entry["calls"] = calls
                 manifest["documents"][doc_name][section_slug] = entry
 
         # _written_sections metadata: initial mode only
@@ -305,6 +355,39 @@ def finalize(args):
     # Write manifest atomically
     save_json(args.manifest_file, manifest)
 
+    # Build XML source files if --xml-dir is set
+    xml_dir = getattr(args, "xml_dir", None)
+    if xml_dir:
+        for doc_name, doc_data in state.get("documents", {}).items():
+            header_text = doc_data.get("header", "")
+            diataxis = _extract_diataxis(header_text)
+            sections_for_xml = []
+            for section_slug in doc_data.get("sections_order", []):
+                section = doc_data["sections"].get(section_slug)
+                if section:
+                    sections_for_xml.append({
+                        "slug": section_slug,
+                        "body": section["content"],
+                    })
+            tree = build_xml_doc(
+                audience=args.audience,
+                diataxis=diataxis,
+                header=header_text,
+                sections=sections_for_xml,
+            )
+            # Populate XML <refs> from typed_refs (writer-emitted)
+            for section_slug in doc_data.get("sections_order", []):
+                section = doc_data["sections"].get(section_slug)
+                if section and section.get("typed_refs"):
+                    update_section_refs(tree, section_slug, section["typed_refs"])
+            if args.audience:
+                xml_out_dir = os.path.join(xml_dir, args.audience)
+            else:
+                xml_out_dir = xml_dir
+            os.makedirs(xml_out_dir, exist_ok=True)
+            xml_path = os.path.join(xml_out_dir, f"{doc_name}.xml")
+            serialize_xml_doc(tree, xml_path)
+
     # Delete state file
     os.remove(args.state_file)
 
@@ -313,9 +396,10 @@ def finalize(args):
         len(doc.get("sections_order", []))
         for doc in state.get("documents", {}).values()
     )
+    audience_label = args.audience or "standalone"
     print(
         f"Finalized {len(docs_written)} documents ({total_sections} sections) "
-        f"for {args.audience}",
+        f"for {audience_label}",
         file=sys.stderr,
     )
 
@@ -362,13 +446,17 @@ def main():
         action="store_true",
         help="Merge new sections into existing document (preserves unmodified sections)",
     )
+    parser.add_argument(
+        "--xml-dir",
+        help="When set, also build XML source files in this directory",
+    )
 
     args = parser.parse_args()
 
     if args.finalize:
         if not args.docs_dir:
             parser.error("--docs-dir is required in finalize mode")
-        if not args.audience:
+        if args.audience is None:
             parser.error("--audience is required in finalize mode")
         if not args.manifest_file:
             parser.error("--manifest-file is required in finalize mode")

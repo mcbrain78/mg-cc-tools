@@ -10,6 +10,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from lib.xml_doc import parse_xml_doc
+
 SCRIPT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "..",
@@ -25,26 +28,44 @@ def _write_content(tmp, name, text):
     return path
 
 
-def _write_refs(tmp, name, symbols=None, file_paths=None, calls=None):
+def _write_refs(tmp, name, typed_refs=None):
     """Write a refs JSON file and return its path."""
-    refs = {"symbols": symbols or [], "file_paths": file_paths or []}
-    if calls is not None:
-        refs["calls"] = calls
+    refs = {"typed_refs": typed_refs or []}
     path = os.path.join(tmp, name)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(refs, f)
     return path
 
 
+def _make_typed_refs(symbols=None, file_paths=None):
+    """Build typed_refs from simple symbols/file_paths for backward-compat in tests."""
+    refs = []
+    file_paths = file_paths or []
+    # Create code refs for each symbol, associating with first .py file_path
+    py_module = next((fp for fp in file_paths if fp.endswith(".py")), "")
+    for sym in (symbols or []):
+        ref = {"type": "code", "kind": "class", "name": sym}
+        if py_module:
+            ref["module"] = py_module
+        refs.append(ref)
+    # Add config refs for non-.py file_paths
+    for fp in file_paths:
+        if not fp.endswith(".py"):
+            refs.append({"type": "config", "path": fp})
+    return refs
+
+
 def _run_section(tmp, state_file, document, section, content_text,
                  symbols=None, file_paths=None, header_text=None,
-                 project_root=None, calls=None):
+                 project_root=None, typed_refs=None):
     """Helper: write content + refs files and call write-section.py in section mode."""
     content_file = _write_content(
         tmp, f"section-{document}-{section}.md", content_text
     )
+    if typed_refs is None:
+        typed_refs = _make_typed_refs(symbols, file_paths)
     refs_file = _write_refs(
-        tmp, f"refs-{document}-{section}.json", symbols, file_paths, calls
+        tmp, f"refs-{document}-{section}.json", typed_refs
     )
     cmd = [
         sys.executable, SCRIPT_PATH,
@@ -63,7 +84,7 @@ def _run_section(tmp, state_file, document, section, content_text,
 
 
 def _run_finalize(state_file, docs_dir, audience, manifest_file, mode="initial",
-                   merge=False):
+                   merge=False, xml_dir=None):
     """Helper: call write-section.py in finalize mode."""
     cmd = [
         sys.executable, SCRIPT_PATH,
@@ -76,6 +97,8 @@ def _run_finalize(state_file, docs_dir, audience, manifest_file, mode="initial",
     ]
     if merge:
         cmd.append("--merge")
+    if xml_dir:
+        cmd.extend(["--xml-dir", xml_dir])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -104,7 +127,7 @@ class TestSectionWrite:
             section = doc["sections"]["system-overview"]
             assert "The system is" in section["content"]
             assert section["symbols"] == ["Pipeline"]
-            assert section["file_paths"] == ["src/app.ts"]
+            assert "typed_refs" in section
 
     def test_multiple_sections_accumulate(self):
         """Write 3 sections, verify order preserved."""
@@ -184,16 +207,23 @@ class TestSectionWrite:
 
             assert state["documents"]["ARCHITECTURE"]["header"] == header
 
-    def test_calls_stored_in_state(self):
-        """Refs with calls field stores it in state."""
+    def test_typed_refs_derives_symbols_and_file_paths(self):
+        """typed_refs with code and config refs derive correct symbols/file_paths."""
         with tempfile.TemporaryDirectory() as tmp:
             state_file = os.path.join(tmp, "state.json")
-            calls = [{"symbol": "load_json", "kwargs": ["path", "default"]}]
+            typed_refs = [
+                {"type": "code", "kind": "function", "name": "load_json",
+                 "module": "lib/json_io.py"},
+                {"type": "code", "kind": "class", "name": "Pipeline",
+                 "module": "src/pipeline.py"},
+                {"type": "config", "path": "config/settings.yaml"},
+                {"type": "db", "schema": "public", "table": "users"},
+                {"type": "env", "name": "DATABASE_URL"},
+            ]
             result = _run_section(
                 tmp, state_file, "ARCHITECTURE", "overview",
                 "## Overview\n\nText\n",
-                symbols=["load_json"], file_paths=["lib/json_io.py"],
-                calls=calls,
+                typed_refs=typed_refs,
             )
             assert result.returncode == 0
 
@@ -201,16 +231,20 @@ class TestSectionWrite:
                 state = json.load(f)
 
             section = state["documents"]["ARCHITECTURE"]["sections"]["overview"]
-            assert section["calls"] == calls
+            assert section["symbols"] == ["load_json", "Pipeline"]
+            assert section["file_paths"] == [
+                "lib/json_io.py", "src/pipeline.py", "config/settings.yaml",
+            ]
+            assert section["typed_refs"] == typed_refs
 
-    def test_calls_absent_defaults_empty(self):
-        """Refs without calls field defaults to empty list in state."""
+    def test_empty_typed_refs(self):
+        """Empty typed_refs results in empty symbols/file_paths."""
         with tempfile.TemporaryDirectory() as tmp:
             state_file = os.path.join(tmp, "state.json")
             result = _run_section(
                 tmp, state_file, "ARCHITECTURE", "overview",
                 "## Overview\n\nText\n",
-                symbols=["Sym"], file_paths=["a.py"],
+                typed_refs=[],
             )
             assert result.returncode == 0
 
@@ -218,7 +252,9 @@ class TestSectionWrite:
                 state = json.load(f)
 
             section = state["documents"]["ARCHITECTURE"]["sections"]["overview"]
-            assert section["calls"] == []
+            assert section["symbols"] == []
+            assert section["file_paths"] == []
+            assert section["typed_refs"] == []
 
     def test_missing_content_file_exits_1(self):
         """Content file absent exits 1."""
@@ -276,8 +312,8 @@ class TestSectionWrite:
             assert result.returncode == 1
             assert "invalid JSON" in result.stderr
 
-    def test_missing_refs_keys_exits_1(self):
-        """Refs file lacks required keys exits 1."""
+    def test_missing_typed_refs_exits_1(self):
+        """Refs file without typed_refs key exits 1."""
         with tempfile.TemporaryDirectory() as tmp:
             state_file = os.path.join(tmp, "state.json")
             content_file = _write_content(tmp, "content.md", "## Heading\n\nText\n")
@@ -293,7 +329,7 @@ class TestSectionWrite:
                 capture_output=True, text=True,
             )
             assert result.returncode == 1
-            assert "file_paths" in result.stderr
+            assert "typed_refs" in result.stderr
 
 
 class TestFinalize:
@@ -312,6 +348,7 @@ class TestFinalize:
                             "content": content,
                             "symbols": symbols,
                             "file_paths": fps,
+                            "typed_refs": _make_typed_refs(symbols, fps),
                         }
                         for slug, content, symbols, fps in sections
                     },
@@ -434,11 +471,15 @@ class TestFinalize:
             assert "overview" in arch
             assert "concepts" not in arch
 
-    def test_finalize_emits_calls_in_manifest(self):
-        """Sections with calls emit them in manifest."""
+    def test_finalize_manifest_from_typed_refs(self):
+        """Manifest symbols/file_paths come from typed_refs derivation."""
         with tempfile.TemporaryDirectory() as tmp:
             state_file = os.path.join(tmp, "state.json")
-            calls = [{"symbol": "load_json", "kwargs": ["path", "default"]}]
+            typed_refs = [
+                {"type": "code", "kind": "function", "name": "load_json",
+                 "module": "lib/json_io.py"},
+                {"type": "config", "path": "config/app.yaml"},
+            ]
             state = {
                 "documents": {
                     "ARCHITECTURE": {
@@ -448,8 +489,8 @@ class TestFinalize:
                             "overview": {
                                 "content": "## Overview\n\nText",
                                 "symbols": ["load_json"],
-                                "file_paths": ["lib/json_io.py"],
-                                "calls": calls,
+                                "file_paths": ["lib/json_io.py", "config/app.yaml"],
+                                "typed_refs": typed_refs,
                             }
                         },
                     }
@@ -467,25 +508,10 @@ class TestFinalize:
             with open(manifest_file) as f:
                 manifest = json.load(f)
 
-            assert manifest["documents"]["ARCHITECTURE"]["overview"]["calls"] == calls
-
-    def test_finalize_omits_empty_calls_from_manifest(self):
-        """Sections without calls don't have calls key in manifest."""
-        with tempfile.TemporaryDirectory() as tmp:
-            sections = [
-                ("overview", "## Overview\n\nText", ["Sym"], ["a.py"]),
-            ]
-            state_file = self._build_state(tmp, sections)
-            docs_dir = os.path.join(tmp, "docs")
-            manifest_file = os.path.join(tmp, "manifest.json")
-
-            _run_finalize(state_file, docs_dir, "developers", manifest_file,
-                          mode="update")
-
-            with open(manifest_file) as f:
-                manifest = json.load(f)
-
-            assert "calls" not in manifest["documents"]["ARCHITECTURE"]["overview"]
+            entry = manifest["documents"]["ARCHITECTURE"]["overview"]
+            assert entry["symbols"] == ["load_json"]
+            assert entry["file_paths"] == ["lib/json_io.py", "config/app.yaml"]
+            assert "calls" not in entry
 
     def test_finalize_cleans_state_file(self):
         """State file deleted after finalize."""
@@ -525,6 +551,7 @@ class TestFinalize:
                                 "content": "## Overview\n\nArch text",
                                 "symbols": ["Sym1"],
                                 "file_paths": ["a.py"],
+                                "typed_refs": _make_typed_refs(["Sym1"], ["a.py"]),
                             }
                         },
                     },
@@ -536,6 +563,7 @@ class TestFinalize:
                                 "content": "## Setup\n\nSetup text",
                                 "symbols": ["Sym2"],
                                 "file_paths": ["b.py"],
+                                "typed_refs": _make_typed_refs(["Sym2"], ["b.py"]),
                             }
                         },
                     },
@@ -626,6 +654,7 @@ class TestMergeMode:
                             "content": content,
                             "symbols": symbols,
                             "file_paths": fps,
+                            "typed_refs": _make_typed_refs(symbols, fps),
                         }
                         for slug, content, symbols, fps in sections
                     },
@@ -789,3 +818,322 @@ class TestMergeMode:
 
             assert "ARCHITECTURE" in manifest["documents"]
             assert manifest["documents"]["ARCHITECTURE"]["overview"]["symbols"] == ["Pipeline"]
+
+
+class TestSectionMarkerInjection:
+    """Section-write mode injects <!-- section: slug --> markers."""
+
+    def test_marker_injected(self):
+        """Content without marker gets one prepended."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            result = _run_section(
+                tmp, state_file, "ARCHITECTURE", "system-overview",
+                "## System Overview\n\nThe system is...\n",
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            content = state["documents"]["ARCHITECTURE"]["sections"]["system-overview"]["content"]
+            assert content.startswith("<!-- section: system-overview -->")
+            assert "## System Overview" in content
+
+    def test_marker_not_duplicated(self):
+        """Content that already has the marker is not modified."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            content_with_marker = (
+                "<!-- section: overview -->\n"
+                "## Overview\n\nText.\n"
+            )
+            result = _run_section(
+                tmp, state_file, "ARCHITECTURE", "overview",
+                content_with_marker,
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            content = state["documents"]["ARCHITECTURE"]["sections"]["overview"]["content"]
+            assert content.count("<!-- section: overview -->") == 1
+
+
+class TestFinalizeXmlOutput:
+    """Finalize with --xml-dir produces XML source files."""
+
+    def _build_state(self, tmp, sections, header="# Doc\n", doc_name="ARCHITECTURE"):
+        """Build a state file with given sections, return state_file path."""
+        state_file = os.path.join(tmp, "state.json")
+        state = {
+            "documents": {
+                doc_name: {
+                    "header": header,
+                    "sections_order": [s[0] for s in sections],
+                    "sections": {
+                        slug: {
+                            "content": content,
+                            "symbols": symbols,
+                            "file_paths": fps,
+                            "typed_refs": _make_typed_refs(symbols, fps),
+                        }
+                        for slug, content, symbols, fps in sections
+                    },
+                }
+            }
+        }
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        return state_file
+
+    def test_xml_file_created(self):
+        """Finalize with --xml-dir produces XML file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            header = "<!-- DIATAXIS: explanation -->\n<!-- AUDIENCE: developers -->\n\n# Architecture\n"
+            sections = [
+                ("overview", "<!-- section: overview -->\n## Overview\n\nText", ["Sym"], ["a.py"]),
+            ]
+            state_file = self._build_state(tmp, sections, header)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+            xml_dir = os.path.join(tmp, "xml-sources")
+
+            result = _run_finalize(
+                state_file, docs_dir, "developers", manifest_file,
+                xml_dir=xml_dir,
+            )
+            assert result.returncode == 0
+
+            xml_path = os.path.join(xml_dir, "developers", "ARCHITECTURE.xml")
+            assert os.path.isfile(xml_path)
+
+            doc = parse_xml_doc(xml_path)
+            assert doc["audience"] == "developers"
+            assert doc["diataxis"] == "explanation"
+            assert len(doc["sections"]) == 1
+            assert doc["sections"][0]["slug"] == "overview"
+            assert "Text" in doc["sections"][0]["body"]
+
+    def test_xml_sections_have_markers(self):
+        """XML section bodies include the <!-- section: --> marker."""
+        with tempfile.TemporaryDirectory() as tmp:
+            header = "<!-- DIATAXIS: how-to -->\n# Ops\n"
+            sections = [
+                ("monitoring", "<!-- section: monitoring -->\n## Monitoring\n\nContent", [], []),
+            ]
+            state_file = self._build_state(tmp, sections, header)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+            xml_dir = os.path.join(tmp, "xml-sources")
+
+            _run_finalize(
+                state_file, docs_dir, "developers", manifest_file,
+                xml_dir=xml_dir,
+            )
+
+            xml_path = os.path.join(xml_dir, "developers", "ARCHITECTURE.xml")
+            doc = parse_xml_doc(xml_path)
+            assert "<!-- section: monitoring -->" in doc["sections"][0]["body"]
+
+    def test_finalize_xml_has_populated_refs(self):
+        """Finalize populates XML <refs> from typed_refs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            header = "<!-- DIATAXIS: reference -->\n# Ref\n"
+            typed_refs = [
+                {"type": "code", "kind": "function", "name": "run_etl",
+                 "module": "src/etl.py"},
+                {"type": "db", "schema": "public", "table": "etl_runs",
+                 "column": "status"},
+                {"type": "env", "name": "ETL_WORKERS"},
+            ]
+            state_file = os.path.join(tmp, "state.json")
+            state = {
+                "documents": {
+                    "ARCHITECTURE": {
+                        "header": header,
+                        "sections_order": ["overview"],
+                        "sections": {
+                            "overview": {
+                                "content": "<!-- section: overview -->\n## Overview\n\nText",
+                                "symbols": ["run_etl"],
+                                "file_paths": ["src/etl.py"],
+                                "typed_refs": typed_refs,
+                            }
+                        },
+                    }
+                }
+            }
+            with open(state_file, "w", encoding="utf-8") as f:
+                json.dump(state, f)
+
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+            xml_dir = os.path.join(tmp, "xml-sources")
+
+            result = _run_finalize(
+                state_file, docs_dir, "developers", manifest_file,
+                xml_dir=xml_dir,
+            )
+            assert result.returncode == 0
+
+            xml_path = os.path.join(xml_dir, "developers", "ARCHITECTURE.xml")
+            doc = parse_xml_doc(xml_path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 3
+            ref_types = {r["type"] for r in refs}
+            assert ref_types == {"code", "db", "env"}
+
+    def test_xml_and_md_both_produced(self):
+        """Both XML and .md files are produced."""
+        with tempfile.TemporaryDirectory() as tmp:
+            header = "<!-- DIATAXIS: reference -->\n# Ref\n"
+            sections = [
+                ("items", "<!-- section: items -->\n## Items\n\nStuff", [], []),
+            ]
+            state_file = self._build_state(tmp, sections, header)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+            xml_dir = os.path.join(tmp, "xml-sources")
+
+            _run_finalize(
+                state_file, docs_dir, "developers", manifest_file,
+                xml_dir=xml_dir,
+            )
+
+            md_path = os.path.join(docs_dir, "developers", "ARCHITECTURE.md")
+            xml_path = os.path.join(xml_dir, "developers", "ARCHITECTURE.xml")
+            assert os.path.isfile(md_path)
+            assert os.path.isfile(xml_path)
+
+    def test_no_xml_dir_no_xml(self):
+        """Without --xml-dir, no XML files are produced."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sections = [
+                ("overview", "## Overview\n\nText", [], []),
+            ]
+            state_file = self._build_state(tmp, sections)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            _run_finalize(state_file, docs_dir, "developers", manifest_file)
+
+            # No xml-sources dir should be created
+            assert not os.path.exists(os.path.join(tmp, "xml-sources"))
+
+
+class TestFinalizeEmptyAudience:
+    """Finalize with empty audience writes to docs root, not a subdirectory."""
+
+    def _build_state(self, tmp, sections, header="# Doc\n", doc_name="GLOSSARY"):
+        """Build a state file with given sections, return state_file path."""
+        state_file = os.path.join(tmp, "state.json")
+        state = {
+            "documents": {
+                doc_name: {
+                    "header": header,
+                    "sections_order": [s[0] for s in sections],
+                    "sections": {
+                        slug: {
+                            "content": content,
+                            "symbols": symbols,
+                            "file_paths": fps,
+                            "typed_refs": _make_typed_refs(symbols, fps),
+                        }
+                        for slug, content, symbols, fps in sections
+                    },
+                }
+            }
+        }
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        return state_file
+
+    def test_empty_audience_writes_to_docs_root(self):
+        """Empty audience writes doc to docs_dir/DOCUMENT.md, not docs_dir//DOCUMENT.md."""
+        with tempfile.TemporaryDirectory() as tmp:
+            header = "<!-- auto-generated -->\n# Glossary\n"
+            sections = [
+                ("system-concepts", "## System Concepts\n\nTerms", [], []),
+                ("domain-terms", "## Domain Terms\n\nMore terms", [], []),
+            ]
+            state_file = self._build_state(tmp, sections, header)
+            docs_dir = os.path.join(tmp, "docs")
+            os.makedirs(docs_dir, exist_ok=True)
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(state_file, docs_dir, "", manifest_file)
+            assert result.returncode == 0
+
+            # File should be at docs_dir/GLOSSARY.md (no subdirectory)
+            doc_path = os.path.join(docs_dir, "GLOSSARY.md")
+            assert os.path.isfile(doc_path)
+            with open(doc_path) as f:
+                content = f.read()
+            assert "# Glossary" in content
+            assert "## System Concepts" in content
+            assert "## Domain Terms" in content
+
+            # Only the file should exist in docs_dir (no subdirectories)
+            entries = os.listdir(docs_dir)
+            assert entries == ["GLOSSARY.md"]
+
+    def test_empty_audience_xml_writes_to_xml_root(self):
+        """Empty audience writes XML to xml_dir/DOCUMENT.xml, not xml_dir//DOCUMENT.xml."""
+        with tempfile.TemporaryDirectory() as tmp:
+            header = "<!-- DIATAXIS: reference -->\n<!-- AUDIENCE: all -->\n\n# Glossary\n"
+            sections = [
+                ("system-concepts", "<!-- section: system-concepts -->\n## System Concepts\n\nTerms", [], []),
+            ]
+            state_file = self._build_state(tmp, sections, header)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+            xml_dir = os.path.join(tmp, "xml-sources")
+
+            result = _run_finalize(state_file, docs_dir, "", manifest_file,
+                                   xml_dir=xml_dir)
+            assert result.returncode == 0
+
+            # XML should be at xml_dir/GLOSSARY.xml (no subdirectory)
+            xml_path = os.path.join(xml_dir, "GLOSSARY.xml")
+            assert os.path.isfile(xml_path)
+
+            doc = parse_xml_doc(xml_path)
+            assert doc["diataxis"] == "reference"
+            assert len(doc["sections"]) == 1
+            assert doc["sections"][0]["slug"] == "system-concepts"
+
+    def test_empty_audience_manifest_correct(self):
+        """Empty audience still produces correct manifest."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sections = [
+                ("system-concepts", "## System Concepts\n\nTerms", ["Term1"], ["glossary.md"]),
+            ]
+            state_file = self._build_state(tmp, sections)
+            docs_dir = os.path.join(tmp, "docs")
+            os.makedirs(docs_dir, exist_ok=True)
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(state_file, docs_dir, "", manifest_file)
+            assert result.returncode == 0
+
+            with open(manifest_file) as f:
+                manifest = json.load(f)
+            assert "GLOSSARY" in manifest["documents"]
+            assert manifest["documents"]["GLOSSARY"]["system-concepts"]["symbols"] == ["Term1"]
+
+    def test_empty_audience_stderr_label(self):
+        """Empty audience prints 'standalone' in summary."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sections = [
+                ("terms", "## Terms\n\nText", [], []),
+            ]
+            state_file = self._build_state(tmp, sections)
+            docs_dir = os.path.join(tmp, "docs")
+            os.makedirs(docs_dir, exist_ok=True)
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(state_file, docs_dir, "", manifest_file)
+            assert result.returncode == 0
+            assert "standalone" in result.stderr
