@@ -77,9 +77,10 @@ For each XML file in xml-sources (filtered by audience if specified), prepare pr
    ```
    This creates per-section JSON files and a manifest.json.
 
-3. **Spawn verify-prose agents** (one per document, parallel foreground):
+3. **Spawn verify-prose agents** (one per document, parallel foreground, **model: sonnet**):
    ```
    Agent(
+     model="sonnet",
      description="Prose audit {audience} {DOCUMENT}",
      prompt="You are a prose-vs-refs auditor.
 
