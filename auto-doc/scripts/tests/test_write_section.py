@@ -819,6 +819,79 @@ class TestMergeMode:
             assert "ARCHITECTURE" in manifest["documents"]
             assert manifest["documents"]["ARCHITECTURE"]["overview"]["symbols"] == ["Pipeline"]
 
+    def test_merge_xml_preserves_existing_sections(self):
+        """Merge mode with --xml-dir updates changed sections and preserves others."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # Create existing .md doc (needed for md merge)
+            existing_content = (
+                "<!-- DIATAXIS: reference -->\n"
+                "<!-- AUDIENCE: all -->\n\n"
+                "# Glossary\n\n"
+                "## System Concepts\n\nExisting system concepts\n\n"
+                "## Domain Terms\n\nExisting domain terms\n\n"
+                "## Technical Terms\n\nExisting technical terms\n"
+            )
+            self._write_existing_doc(tmp, "", "GLOSSARY", existing_content)
+
+            # Create existing XML with 3 sections
+            from lib.xml_doc import build_xml_doc, serialize_xml_doc, parse_xml_doc
+
+            xml_dir = os.path.join(tmp, "xml-sources")
+            os.makedirs(xml_dir, exist_ok=True)
+            xml_path = os.path.join(xml_dir, "GLOSSARY.xml")
+            tree = build_xml_doc(
+                audience="",
+                diataxis="reference",
+                header="<!-- DIATAXIS: reference -->\n# Glossary\n",
+                sections=[
+                    {"slug": "system-concepts",
+                     "body": "<!-- section: system-concepts -->\n## System Concepts\n\nExisting system concepts"},
+                    {"slug": "domain-terms",
+                     "body": "<!-- section: domain-terms -->\n## Domain Terms\n\nExisting domain terms"},
+                    {"slug": "technical-terms",
+                     "body": "<!-- section: technical-terms -->\n## Technical Terms\n\nExisting technical terms"},
+                ],
+            )
+            serialize_xml_doc(tree, xml_path)
+
+            # State has 1 updated section + 1 new section (only 2 of 4 total)
+            sections = [
+                ("domain-terms",
+                 "<!-- section: domain-terms -->\n## Domain Terms\n\nUpdated domain terms",
+                 [], []),
+                ("infrastructure-terms",
+                 "<!-- section: infrastructure-terms -->\n## Infrastructure Terms\n\nNew infra terms",
+                 [], []),
+            ]
+            state_file = self._build_state(
+                tmp, sections, doc_name="GLOSSARY",
+            )
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "", manifest_file,
+                mode="update", merge=True, xml_dir=xml_dir,
+            )
+            assert result.returncode == 0
+
+            # Verify XML has all 4 sections (3 original + 1 new)
+            doc = parse_xml_doc(xml_path)
+            slugs = [s["slug"] for s in doc["sections"]]
+            assert slugs == [
+                "system-concepts", "domain-terms", "technical-terms",
+                "infrastructure-terms",
+            ]
+            # Updated section has new content
+            domain = next(s for s in doc["sections"] if s["slug"] == "domain-terms")
+            assert "Updated domain terms" in domain["body"]
+            # Preserved section has old content
+            system = next(s for s in doc["sections"] if s["slug"] == "system-concepts")
+            assert "Existing system concepts" in system["body"]
+            # New section appended
+            infra = next(s for s in doc["sections"] if s["slug"] == "infrastructure-terms")
+            assert "New infra terms" in infra["body"]
+
 
 class TestSectionMarkerInjection:
     """Section-write mode injects <!-- section: slug --> markers."""

@@ -294,6 +294,25 @@ def update_section_body(tree, slug, new_body):
     return tree
 
 
+def add_section(tree, slug, body):
+    """Append a new section element to the document.
+
+    Args:
+        tree: lxml.etree._ElementTree
+        slug: Section slug identifier.
+        body: Markdown body text (stored as CDATA).
+
+    Returns:
+        The tree (mutated in place).
+    """
+    root = tree.getroot()
+    section_el = etree.SubElement(root, "section", slug=slug)
+    etree.SubElement(section_el, "refs")
+    body_el = etree.SubElement(section_el, "body")
+    body_el.text = etree.CDATA(body)
+    return tree
+
+
 def get_section_slugs(tree):
     """Return ordered list of section slugs in the document.
 

@@ -40,7 +40,14 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json, save_text
 from lib.symbols import extract_python_symbols
-from lib.xml_doc import build_xml_doc, serialize_xml_doc, update_section_refs
+from lib.xml_doc import (
+    add_section,
+    build_xml_doc,
+    get_section_slugs,
+    serialize_xml_doc,
+    update_section_body,
+    update_section_refs,
+)
 
 
 def _derive_symbols_and_file_paths(typed_refs):
@@ -359,33 +366,55 @@ def finalize(args):
     xml_dir = getattr(args, "xml_dir", None)
     if xml_dir:
         for doc_name, doc_data in state.get("documents", {}).items():
-            header_text = doc_data.get("header", "")
-            diataxis = _extract_diataxis(header_text)
-            sections_for_xml = []
-            for section_slug in doc_data.get("sections_order", []):
-                section = doc_data["sections"].get(section_slug)
-                if section:
-                    sections_for_xml.append({
-                        "slug": section_slug,
-                        "body": section["content"],
-                    })
-            tree = build_xml_doc(
-                audience=args.audience,
-                diataxis=diataxis,
-                header=header_text,
-                sections=sections_for_xml,
-            )
-            # Populate XML <refs> from typed_refs (writer-emitted)
-            for section_slug in doc_data.get("sections_order", []):
-                section = doc_data["sections"].get(section_slug)
-                if section and section.get("typed_refs"):
-                    update_section_refs(tree, section_slug, section["typed_refs"])
             if args.audience:
                 xml_out_dir = os.path.join(xml_dir, args.audience)
             else:
                 xml_out_dir = xml_dir
             os.makedirs(xml_out_dir, exist_ok=True)
             xml_path = os.path.join(xml_out_dir, f"{doc_name}.xml")
+
+            if merge and os.path.isfile(xml_path):
+                # Merge mode: update existing XML tree in place
+                from lxml import etree
+                tree = etree.parse(xml_path)
+                existing_slugs = set(get_section_slugs(tree))
+
+                for section_slug in doc_data.get("sections_order", []):
+                    section = doc_data["sections"].get(section_slug)
+                    if not section:
+                        continue
+                    if section_slug in existing_slugs:
+                        update_section_body(tree, section_slug, section["content"])
+                    else:
+                        add_section(tree, section_slug, section["content"])
+                    if section.get("typed_refs"):
+                        update_section_refs(tree, section_slug, section["typed_refs"])
+            else:
+                # Initial mode: build new XML from scratch
+                header_text = doc_data.get("header", "")
+                diataxis = _extract_diataxis(header_text)
+                sections_for_xml = []
+                for section_slug in doc_data.get("sections_order", []):
+                    section = doc_data["sections"].get(section_slug)
+                    if section:
+                        sections_for_xml.append({
+                            "slug": section_slug,
+                            "body": section["content"],
+                        })
+                tree = build_xml_doc(
+                    audience=args.audience,
+                    diataxis=diataxis,
+                    header=header_text,
+                    sections=sections_for_xml,
+                )
+                # Populate XML <refs> from typed_refs (writer-emitted)
+                for section_slug in doc_data.get("sections_order", []):
+                    section = doc_data["sections"].get(section_slug)
+                    if section and section.get("typed_refs"):
+                        update_section_refs(
+                            tree, section_slug, section["typed_refs"]
+                        )
+
             serialize_xml_doc(tree, xml_path)
 
     # Delete state file
