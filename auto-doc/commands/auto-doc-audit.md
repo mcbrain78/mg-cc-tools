@@ -42,7 +42,9 @@ Parse the user's input text for optional audience names. Example: user types `/m
    mkdir -p {project_root}/.mg/docs/tmp/audit
    ```
 
-### Step 2: Deterministic Reference Checks
+### Step 2: Deterministic Checks
+
+#### Step 2a: Reference Integrity (refs vs codebase)
 
 Run verify-xml-refs.py once across all XML sources. It walks the entire xml-sources directory, checks every typed ref against the codebase, and appends findings to a findings file. **Do NOT run this in the background** — you need the results before proceeding.
 
@@ -57,7 +59,20 @@ python3 {SCRIPTS_DIR}/verify-xml-refs.py \
 
 Add `--audience` only if the user specified audience names (e.g., `--audience devops`).
 
-Read `{TMP_DIR}/audit/findings-refs.json` to get the deterministic findings list.
+#### Step 2b: Ref-Prose Coverage (refs vs prose)
+
+Run check-ref-prose-coverage.py to find declared refs that are never mentioned in the section prose. This is a fast substring check — no codebase access needed.
+
+```bash
+python3 {SCRIPTS_DIR}/check-ref-prose-coverage.py \
+    --xml-dir {project_root}/.mg/docs/xml-sources \
+    --findings-file {TMP_DIR}/audit/findings-refs.json \
+    [--audience AUDIENCE]
+```
+
+Same `--audience` flag as above. Findings are appended to the same file.
+
+Read `{TMP_DIR}/audit/findings-refs.json` to get all deterministic findings.
 
 ### Step 3: Prose-vs-Refs Consistency
 
