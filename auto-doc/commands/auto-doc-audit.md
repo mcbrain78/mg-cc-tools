@@ -19,7 +19,7 @@ Read references/schema.md
 
 ### Step 1: Setup
 
-Parse the user's input text for optional audience names. Example: user types `/mg:auto-doc-audit devops`. Extract as a filter list. If no audience names provided, audit all audiences.
+Parse the user's input text for optional audience names. Example: user types `/mg:auto-doc-audit devops`. Extract as a comma-separated string for the `--audience` flag below. If no audience names provided, omit the flag (all audiences).
 
 1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
    - `docs_dir` (default: `docs/auto-doc`)
@@ -36,32 +36,42 @@ Parse the user's input text for optional audience names. Example: user types `/m
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
-4. **Build file list.** Collect all XML files to audit, filtering by audience if specified.
+4. **Create tmp directory:**
+   ```bash
+   mkdir -p {project_root}/.mg/docs/tmp
+   ```
 
 ### Step 2: Deterministic Reference Checks
 
-For each XML file:
+Run verify-xml-refs.py once across all XML sources. It walks the entire xml-sources directory, checks every typed ref against the codebase, and appends findings to a findings file.
 
 ```bash
 python3 {SCRIPTS_DIR}/verify-xml-refs.py \
-    --xml-file {xml_file_path} \
-    --project-root {project_root}
+    --xml-dir {project_root}/.mg/docs/xml-sources \
+    --project-root {project_root} \
+    --findings-file {TMP_DIR}/audit-findings.json \
+    [--audience AUDIENCE]
 ```
 
-Parse the JSON output. Collect all findings across files.
+Add `--audience` only if the user specified audience names (e.g., `--audience devops`).
+
+Read `{TMP_DIR}/audit-findings.json` to get the deterministic findings list.
 
 ### Step 3: Prose-vs-Refs Consistency
 
-For each XML file, prepare the prose verification input and spawn a Sonnet agent:
+For each XML file in xml-sources (filtered by audience if specified), prepare prose verification input and spawn a verify-prose agent.
 
-1. **Prepare input:**
+1. **Collect XML files.** Use Glob to find all `.xml` files under `{project_root}/.mg/docs/xml-sources/`. If an audience filter is active, only include files under `xml-sources/{audience}/` and root-level XML files (GLOSSARY.xml, OVERVIEW.xml).
+
+2. **For each XML file, prepare input:**
    ```bash
    python3 {SCRIPTS_DIR}/prepare-prose-verify.py \
        --xml-file {xml_file_path} \
-       --output {TMP_DIR}/prose-verify-{audience}-{DOCUMENT}.json
+       --output-dir {TMP_DIR}/prose-verify-{audience}-{DOCUMENT}
    ```
+   This creates per-section JSON files and a manifest.json.
 
-2. **Spawn verify-prose agent** (one per document, parallel foreground):
+3. **Spawn verify-prose agents** (one per document, parallel foreground):
    ```
    Agent(
      description="Prose audit {audience} {DOCUMENT}",
@@ -69,32 +79,41 @@ For each XML file, prepare the prose verification input and spawn a Sonnet agent
 
    Read and follow the instructions in: {AGENTS_DIR}/verify-prose.md
 
-   Input file: {TMP_DIR}/prose-verify-{audience}-{DOCUMENT}.json
-   Output file: {TMP_DIR}/prose-findings-{audience}-{DOCUMENT}.json"
+   Project root: {project_root}
+   Prose verify dir: {TMP_DIR}/prose-verify-{audience}-{DOCUMENT}
+   Findings file: {TMP_DIR}/prose-findings-{audience}-{DOCUMENT}.json
+   Scripts dir: {SCRIPTS_DIR}"
    )
    ```
 
-3. **Collect findings** from each agent's output file.
+4. **Collect prose findings** from each agent's output file (`{TMP_DIR}/prose-findings-*.json`). Read each file and accumulate all findings.
 
 ### Step 4: Report
 
-Merge all findings (deterministic + prose) and present a summary:
+Present a summary combining deterministic and prose findings:
 
 ```
 Audit Results:
 
 | Document                  | Ref Issues | Prose Issues | Total |
 |---------------------------|------------|--------------|-------|
-| devops/OPERATIONS.xml     | 2          | 1            | 3     |
-| devops/TROUBLESHOOTING.xml| 0          | 0            | 0     |
+| devops/OPERATIONS         | 2          | 1            | 3     |
+| devops/TROUBLESHOOTING    | 0          | 0            | 0     |
+| GLOSSARY                  | 1          | 0            | 1     |
 
 Total: {N} issues across {M} documents
 ```
 
 For documents with issues, show per-document details:
-- Each finding with type, severity, and description
+- Each finding with check type and description
 
-### Step 5: Guidance
+If zero issues found:
+```
+All clear. No reference integrity or prose consistency issues found.
+Next step: Run /mg:auto-doc-verify for full editorial review.
+```
+
+### Step 5: Guidance (if issues found)
 
 ```
 Fix issues and re-run /mg:auto-doc-audit to confirm.
@@ -105,5 +124,7 @@ When clean, run /mg:auto-doc-verify for full editorial review.
 
 - **Audit is lightweight.** It checks reference integrity and prose consistency, not editorial quality or completeness. That's verify's job.
 - **Deterministic checks run first.** verify-xml-refs.py is fast and catches the most common issues.
-- **Prose checks use Sonnet, not Haiku.** The auditor reads both prose and refs to check if the writer missed referencing something it described.
+- **verify-xml-refs.py runs ONCE for the whole xml-sources directory.** Do not call it per-file.
+- **prepare-prose-verify.py takes `--output-dir` (a directory), not `--output` (a file).** It creates per-section JSON files inside that directory.
+- **verify-prose agents need project_root, prose_verify_dir, findings_file, and scripts_dir.** Pass all four.
 - **Zero exit on clean.** If no issues found, congratulate and suggest verify as next step.
