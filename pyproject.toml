@@ -2,7 +2,10 @@
 name = "mg-cc-tools"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["tiktoken"]
+dependencies = [
+    "lxml>=6.0.2",
+    "tiktoken",
+]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]

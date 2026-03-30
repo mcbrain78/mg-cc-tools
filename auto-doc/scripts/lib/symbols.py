@@ -1,7 +1,8 @@
 """Shared AST-based Python symbol extraction.
 
-Used by add-manifest-entry.py (advisory validation) and
-verify-references.py (reference integrity checking).
+Used by add-manifest-entry.py (advisory validation),
+verify-references.py (reference integrity checking), and
+verify-xml-refs.py (deterministic XML ref verification).
 
 Zero external dependencies -- stdlib only.
 """
@@ -66,3 +67,207 @@ def extract_function_signatures(source):
                 params.append("**")
             signatures[node.name] = params
     return signatures
+
+
+def extract_sqlalchemy_models(source):
+    """Extract SQLAlchemy model metadata from Python source.
+
+    Detects classes with __tablename__ and Column() definitions.
+    Returns dict mapping table_name -> {"schema": str, "columns": [str], "class_name": str}.
+    Schema comes from __table_args__ {"schema": "..."} if present.
+
+    Returns empty dict on SyntaxError.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+
+    models = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+
+        table_name = None
+        schema_name = ""
+        columns = []
+
+        for item in node.body:
+            # __tablename__ = "..."
+            if isinstance(item, ast.Assign):
+                for target in item.targets:
+                    if isinstance(target, ast.Name) and target.id == "__tablename__":
+                        if isinstance(item.value, ast.Constant) and isinstance(item.value.value, str):
+                            table_name = item.value.value
+
+                    # __table_args__ = {"schema": "..."}  or  (... {"schema": "..."})
+                    if isinstance(target, ast.Name) and target.id == "__table_args__":
+                        schema_name = _extract_schema_from_table_args(item.value)
+
+            # column = Column(...)  or  column: Mapped[...] = mapped_column(...)
+            if isinstance(item, ast.Assign):
+                for target in item.targets:
+                    if isinstance(target, ast.Name):
+                        if _is_column_call(item.value):
+                            columns.append(target.id)
+            elif isinstance(item, ast.AnnAssign):
+                if isinstance(item.target, ast.Name) and item.value is not None:
+                    if _is_column_call(item.value):
+                        columns.append(item.target.id)
+
+        if table_name is not None:
+            models[table_name] = {
+                "schema": schema_name,
+                "columns": columns,
+                "class_name": node.name,
+            }
+
+    return models
+
+
+def _extract_schema_from_table_args(node):
+    """Extract schema string from __table_args__ value."""
+    # Dict literal: {"schema": "name"}
+    if isinstance(node, ast.Dict):
+        return _extract_schema_from_dict(node)
+    # Tuple: ({...}, {"schema": "name"})  — last element is often a dict
+    if isinstance(node, ast.Tuple):
+        for elt in reversed(node.elts):
+            if isinstance(elt, ast.Dict):
+                result = _extract_schema_from_dict(elt)
+                if result:
+                    return result
+    return ""
+
+
+def _extract_schema_from_dict(dict_node):
+    """Extract 'schema' value from a dict literal node."""
+    for key, value in zip(dict_node.keys, dict_node.values):
+        if (isinstance(key, ast.Constant)
+                and key.value == "schema"
+                and isinstance(value, ast.Constant)
+                and isinstance(value.value, str)):
+            return value.value
+    return ""
+
+
+def _is_column_call(node):
+    """Check if a node is a Column() or mapped_column() call."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id in ("Column", "mapped_column")
+    if isinstance(func, ast.Attribute):
+        return func.attr in ("Column", "mapped_column")
+    return False
+
+
+def extract_class_attributes(source, class_name):
+    """Extract attribute names defined on a specific class.
+
+    Includes:
+    - Class-level assignments: x = ...
+    - Annotated assignments: x: type = ...
+    - Annotated declarations: x: type (no value)
+
+    Returns a set of attribute names. Returns empty set on SyntaxError
+    or if class not found.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            attrs = set()
+            for item in node.body:
+                if isinstance(item, ast.Assign):
+                    for target in item.targets:
+                        if isinstance(target, ast.Name):
+                            attrs.add(target.id)
+                elif isinstance(item, ast.AnnAssign):
+                    if isinstance(item.target, ast.Name):
+                        attrs.add(item.target.id)
+            return attrs
+
+    return set()
+
+
+def extract_enum_values(source, enum_class):
+    """Extract enum member values from a specific class.
+
+    Handles:
+    - NAME = "value"  (string literal)
+    - NAME = value    (any constant)
+    - auto() values   (returns member name as value)
+
+    Returns dict mapping member_name -> value (as string).
+    Returns empty dict on SyntaxError or if class not found.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == enum_class:
+            members = {}
+            for item in node.body:
+                if isinstance(item, ast.Assign):
+                    for target in item.targets:
+                        if isinstance(target, ast.Name):
+                            val = _extract_constant_value(item.value)
+                            if val is not None:
+                                members[target.id] = str(val)
+                            elif _is_auto_call(item.value):
+                                members[target.id] = target.id
+            return members
+
+    return {}
+
+
+def _extract_constant_value(node):
+    """Extract constant value from an AST node, or None."""
+    if isinstance(node, ast.Constant):
+        return node.value
+    return None
+
+
+def _is_auto_call(node):
+    """Check if a node is auto() call."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return node.func.id == "auto"
+    return False
+
+
+def extract_decorated_functions(source, decorator):
+    """Extract names of functions/methods decorated with a specific decorator.
+
+    Matches decorators by name (e.g., "flow" matches @flow and @flow(...)).
+
+    Returns list of function names. Returns empty list on SyntaxError.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    names = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for dec in node.decorator_list:
+                dec_name = None
+                if isinstance(dec, ast.Name):
+                    dec_name = dec.id
+                elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name):
+                    dec_name = dec.func.id
+                elif isinstance(dec, ast.Attribute):
+                    dec_name = dec.attr
+                elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
+                    dec_name = dec.func.attr
+                if dec_name == decorator:
+                    names.append(node.name)
+                    break
+    return names

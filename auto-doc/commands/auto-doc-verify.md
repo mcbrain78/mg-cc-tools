@@ -88,7 +88,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
    ```
    Add `--audience` only if the user specified audience names in Step 0.
 
-### Step 2: Run Mechanical Script
+### Step 2: Run Mechanical Scripts
 
 Run the deterministic reference integrity checker directly (not in an agent):
 ```bash
@@ -99,7 +99,18 @@ python3 {SCRIPTS_DIR}/verify-references.py \
     --findings-file {project_root}/.mg/docs/docs-verify-findings.json
 ```
 
-This checks file paths, symbols, and function call signatures in reference manifests. Findings are written directly to the main findings file. If the script exits non-zero (e.g., no reference-manifests directory yet), log the error and continue to Step 3 -- other agents can still produce useful findings.
+This checks file paths, symbols, and function call signatures in reference manifests. Findings are written directly to the main findings file. If the script exits non-zero (e.g., no reference-manifests directory yet), log the error and continue -- other agents can still produce useful findings.
+
+**If XML sources exist** (check if `.mg/docs/xml-sources/` directory exists and contains `.xml` files), also run the deterministic XML ref verifier:
+```bash
+python3 {SCRIPTS_DIR}/verify-xml-refs.py \
+    --xml-dir {project_root}/.mg/docs/xml-sources \
+    --project-root {project_root} \
+    --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
+    [--audience AUDIENCES]
+```
+
+Add `--audience` only if the user specified audience names in Step 0. This checks every typed ref (db schemas/tables/columns, code classes/functions, flow names, env vars, config paths, enum values) against the actual codebase deterministically.
 
 ### Step 3: Init Agent Findings Files
 

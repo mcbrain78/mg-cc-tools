@@ -215,7 +215,7 @@ class TestBuildPaths:
                 "project_root", "docs_dir_abs", "glossary_path",
                 "findings_file", "findings_prefix", "checks_file",
                 "manifest", "scan_context_path", "tmp_dir",
-                "fact_checker_findings",
+                "xml_dir", "fact_checker_findings",
             }
             assert expected_keys == set(result.keys())
 
@@ -252,6 +252,47 @@ class TestBuildPaths:
 
             result = json.loads(stdout)
             assert "docs-verify-findings-my-custom" in result["findings_prefix"]
+
+    def test_xml_dir_null_when_no_xml_sources(self):
+        """xml_dir is None when no xml-sources directory exists."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+
+            stdout, _, _ = _run([
+                "--scan-file", scan_path,
+                "--config", config_path,
+                "--global-config", config_path,
+                "--checks-file", os.path.join(tmp, "checks.json"),
+                "--scripts-dir", SCRIPTS_DIR,
+                "--templates-dir", os.path.join(tmp, "templates"),
+            ])
+
+            result = json.loads(stdout)
+            assert result["xml_dir"] is None
+
+    def test_xml_dir_set_when_xml_sources_exist(self):
+        """xml_dir is set when xml-sources directory has XML files."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+
+            # Create xml-sources with an XML file
+            xml_dir = os.path.join(project_root, ".mg", "docs", "xml-sources", "devops")
+            os.makedirs(xml_dir)
+            with open(os.path.join(xml_dir, "OPS.xml"), "w") as f:
+                f.write("<document></document>")
+
+            stdout, _, _ = _run([
+                "--scan-file", scan_path,
+                "--config", config_path,
+                "--global-config", config_path,
+                "--checks-file", os.path.join(tmp, "checks.json"),
+                "--scripts-dir", SCRIPTS_DIR,
+                "--templates-dir", os.path.join(tmp, "templates"),
+            ])
+
+            result = json.loads(stdout)
+            assert result["xml_dir"] is not None
+            assert "xml-sources" in result["xml_dir"]
 
 
 # =============================================================================

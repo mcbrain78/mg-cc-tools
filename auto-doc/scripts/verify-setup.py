@@ -128,6 +128,14 @@ def build_paths(project_root, docs_dir, checks_file, findings_prefix):
     mg_docs = os.path.join(project_root, ".mg", "docs")
     tmp_dir = os.path.join(mg_docs, "tmp")
 
+    # Detect XML sources directory
+    xml_dir = os.path.join(mg_docs, "xml-sources")
+    has_xml_sources = os.path.isdir(xml_dir) and any(
+        f.endswith(".xml")
+        for dirpath, _, files in os.walk(xml_dir)
+        for f in files
+    )
+
     return {
         "project_root": project_root,
         "docs_dir_abs": docs_dir_abs,
@@ -138,6 +146,7 @@ def build_paths(project_root, docs_dir, checks_file, findings_prefix):
         "manifest": os.path.join(tmp_dir, "review-chunks", "manifest.json"),
         "scan_context_path": os.path.join(tmp_dir, "verify-scan-context.json"),
         "tmp_dir": tmp_dir,
+        "xml_dir": xml_dir if has_xml_sources else None,
         "fact_checker_findings": {
             "code_example": os.path.join(mg_docs, "docs-verify-findings-code-example.json"),
             "data_model": os.path.join(mg_docs, "docs-verify-findings-data-model.json"),

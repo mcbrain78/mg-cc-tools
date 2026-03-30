@@ -32,11 +32,53 @@ python3 {SCRIPTS_DIR}/verify-setup.py \
 ```
 Add `--audience` only if the user specified audience names in Step 0.
 
-Parse the JSON output to get all runtime paths (`project_root`, `docs_dir_abs`, `glossary_path`, `findings_file`, `findings_prefix`, `manifest`, `scan_context_path`, `tmp_dir`, `fact_checker_findings`). If non-zero exit, print the error and abort.
+Parse the JSON output to get all runtime paths (`project_root`, `docs_dir_abs`, `glossary_path`, `findings_file`, `findings_prefix`, `manifest`, `scan_context_path`, `tmp_dir`, `xml_dir`, `fact_checker_findings`). If non-zero exit, print the error and abort.
+
+Note: `xml_dir` is non-null when XML sources exist (produced by generate). This enables deterministic ref verification and narrows the LLM fact-checker scope.
+
+### Step 1.5: Deterministic XML Ref Verification
+
+If `xml_dir` is non-null, run the deterministic XML reference checker **in the orchestrator** (not as a subagent — it's a fast deterministic script):
+
+```bash
+python3 {SCRIPTS_DIR}/verify-xml-refs.py \
+    --xml-dir {xml_dir} \
+    --project-root {project_root} \
+    --findings-file {findings_file} \
+    [--audience AUDIENCES]
+```
+
+Add `--audience` only if the user specified audience names in Step 0.
+
+This checks every typed ref (db schemas/tables/columns, code classes/functions, flow names, env vars, config paths, enum values) against the actual codebase deterministically. No LLM involved.
 
 ### Step 2: Fact-Checkers
 
-Spawn all 4 agents in a **single parallel message** (model=sonnet, foreground). Each reads its agent .md by file reference:
+**If `xml_dir` is non-null:** skip the code-example-verifier and data-model-verifier agents — their checks are now covered deterministically by `verify-xml-refs.py`. Instead, add focused prose-vs-refs verification. The fact-checker step becomes:
+
+1. **Prepare prose verification data** for each XML file:
+   ```bash
+   python3 {SCRIPTS_DIR}/prepare-prose-verify.py \
+       --xml-file {xml_file} \
+       --output-dir {tmp_dir}/prose-verify/{audience}/{doc_name}
+   ```
+   Run this for every XML file in `{xml_dir}` (recursively). Each produces per-section JSON files with body + readable refs summary.
+
+2. **Spawn agents** in a single parallel message:
+
+| Agent | Agent file | Extra params |
+|---|---|---|
+| Prose-vs-refs verifier (one per XML doc) | `{AGENTS_DIR}/verify-prose.md` | `prose_verify_dir`, `findings_file` (use a per-doc file at `{tmp_dir}/prose-verify-findings-{doc_name}.json`), `scripts_dir` |
+| Cross-doc checker | `{AGENTS_DIR}/cross-doc-checker.md` | `review_manifest`, `glossary_path`, `findings_file` (cross_doc) |
+| Completeness checker | `{AGENTS_DIR}/completeness-checker.md` | `review_manifest`, `scan_context_path`, `findings_file` (completeness) |
+
+   Initialize each prose-verify findings file before spawning:
+   ```bash
+   python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+       --findings-file {tmp_dir}/prose-verify-findings-{doc_name}.json
+   ```
+
+**If `xml_dir` is null (no XML sources):** fall back to all 4 agents as before:
 
 | Agent | Agent file | Extra params |
 |---|---|---|
@@ -45,7 +87,7 @@ Spawn all 4 agents in a **single parallel message** (model=sonnet, foreground). 
 | Cross-doc checker | `{AGENTS_DIR}/cross-doc-checker.md` | `review_manifest`, `glossary_path`, `findings_file` (cross_doc) |
 | Completeness checker | `{AGENTS_DIR}/completeness-checker.md` | `review_manifest`, `scan_context_path`, `findings_file` (completeness) |
 
-All agents receive `project_root`. The `review_manifest` is the `manifest` path from setup. Wait for all 4.
+All agents receive `project_root`. The `review_manifest` is the `manifest` path from setup. Wait for all agents.
 
 ### Step 3: Editorial
 
@@ -71,7 +113,20 @@ Wait for all agents to complete. No turn loop needed — each agent drives its o
 
 ### Step 4: Merge
 
-Merge all findings — 4 explicit fact-checker files + editorial glob:
+Merge all findings — fact-checker files + editorial glob + prose-verify files (if XML path):
+
+**If `xml_dir` is non-null:**
+```bash
+python3 {SCRIPTS_DIR}/list-verify-findings.py \
+  --merge-from {fact_checker_findings.cross_doc} \
+  --merge-from {fact_checker_findings.completeness} \
+  --merge-glob "{findings_prefix}-*.json" \
+  --merge-glob "{tmp_dir}/prose-verify-findings-*.json" \
+  --findings-file {findings_file} \
+  --output {tmp_dir}/all-findings.json
+```
+
+**If `xml_dir` is null:**
 ```bash
 python3 {SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {fact_checker_findings.code_example} \

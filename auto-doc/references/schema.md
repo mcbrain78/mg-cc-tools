@@ -636,10 +636,118 @@ The scan output and related pipeline files live in the project workspace:
 │       ├── diff-scope.json           -- scoped work order for incremental scans
 │       ├── docs-update-report.md     -- generation report
 │       ├── docs-verify-report.md     -- verification report
+│       ├── xml-sources/              -- XML source files (source of truth for refs)
+│       │   ├── devops/OPERATIONS.xml
+│       │   ├── devops/TROUBLESHOOTING.xml
+│       │   ├── end-users/USER_GUIDE.xml
+│       │   ├── GLOSSARY.xml
+│       │   └── OVERVIEW.xml
+│       ├── reference-manifests/      -- per-audience symbol/file manifests
 │       └── scan-logs/                -- per-audience scan intermediates
 ```
 
-The scanner creates the workspace and `docs-scan.json`. The generator and verifier expect them to exist.
+The scanner creates the workspace and `docs-scan.json`. The generator creates `xml-sources/` and `reference-manifests/`. The verifier expects them to exist.
+
+## XML Source Documents
+
+XML sources are the structured source of truth for documentation. Each XML file stores the document's prose alongside typed code references per section. Markdown files in `docs/auto-doc/` are assembled from XML and are the human-readable output.
+
+### File Layout
+
+XML sources live at `.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml`. Standalone docs (GLOSSARY, OVERVIEW) are at `.mg/docs/xml-sources/{DOCUMENT}.xml`.
+
+### XML Schema
+
+```xml
+<document audience="devops" diataxis="how-to">
+  <meta>
+    <title>Operations Guide</title>
+    <generated>2026-03-29</generated>
+    <header><![CDATA[<!-- This file is auto-generated... -->
+<!-- DIATAXIS: how-to -->
+<!-- AUDIENCE: devops -->
+
+# Operations Guide]]></header>
+  </meta>
+
+  <section slug="monitoring-alerting">
+    <refs>
+      <db>
+        <schema name="road_runner">
+          <table name="etl_runs">
+            <column>flow_name</column>
+            <column>status</column>
+          </table>
+        </schema>
+      </db>
+      <code>
+        <class name="EtlRun">
+          <attr>status</attr>
+        </class>
+        <function name="compute_finance_metrics"
+                  module="src/road_runner/flows/compute.py">
+          <param>recompute_stale</param>
+        </function>
+      </code>
+      <flow>ingest-quarterly-finance-data</flow>
+      <env>WORKER_CONCURRENCY</env>
+      <config>config/field-mapping.yaml</config>
+      <enum class="EtlRun" field="status">
+        <value>completed</value>
+        <value>failed</value>
+      </enum>
+    </refs>
+
+    <body><![CDATA[
+<!-- section: monitoring-alerting -->
+## Monitoring & Alerting
+<!-- docs-meta: last-updated: 2026-03-29, sources: [...] -->
+
+The ETL run log tracks all pipeline executions in `road_runner.etl_runs`.
+    ]]></body>
+  </section>
+</document>
+```
+
+### Section Markers
+
+Each section body contains a `<!-- section: {slug} -->` HTML comment that maps 1:1 to the `<section slug="{slug}">` element in XML. These markers enable deterministic sync between .md and XML:
+
+- `write-section.py` injects markers automatically during section-write mode
+- `sync-edits-to-xml.py` splits .md on markers to match sections to XML
+- `assemble-markdown.py` preserves markers in the assembled .md output
+- Markers are invisible to readers but essential for the XML sync pipeline
+
+### Six Ref Types
+
+| Type | XML Nesting | Verified Against |
+|---|---|---|
+| `db` | `<db><schema><table><column>` | SQLAlchemy `__tablename__`, `__table_args__`, Column defs |
+| `code` | `<code><class attr>`, `<code><function param>` | AST via `lib/symbols.py` |
+| `flow` | `<flow>` (flat name) | `@flow` decorators |
+| `env` | `<env>` (flat name) | Settings classes, `.env.example` |
+| `config` | `<config>` (flat path) | Filesystem existence |
+| `enum` | `<enum class field><value>` | Enum classes, string literals |
+
+Refs are initially empty (populated by `extract-refs.py` via Haiku after generation) and verified deterministically by `verify-xml-refs.py` during the verify step.
+
+### Flat JSON Wire Format
+
+Scripts exchange refs as flat JSON arrays (never raw XML). Each element has a `type` key:
+
+```json
+[
+  {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
+  {"type": "code", "kind": "function", "name": "compute_finance_metrics",
+   "module": "src/road_runner/flows/compute.py", "param": "recompute_stale"},
+  {"type": "flow", "name": "ingest-quarterly-finance-data"},
+  {"type": "env", "name": "WORKER_CONCURRENCY"},
+  {"type": "config", "path": "config/field-mapping.yaml"},
+  {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"}
+]
+```
+
+`lib/xml_doc.py` converts between flat JSON and nested XML.
 
 ## Reference Manifests
 
