@@ -99,36 +99,60 @@ Handle user response:
 - **Indices** (e.g., "0,2"): Approve only those groups.
 - **"cancel"**: Exit with `"No fixes approved. Run again when ready."`
 
-### Step 5: Prepare and Spawn Fixer Agent
+### Step 5: Initialize Fix Queue and Process Groups
 
-1. Create the edit directory:
+1. Create the edit directory and initialize the queue:
    ```bash
    mkdir -p {TMP_DIR}/audit/edits
    ```
 
 2. Build the approved indices string (comma-separated, e.g., `"0,1,2"` or `"0,2"`).
 
-3. Spawn a **single** agent (foreground, do NOT set `run_in_background`):
+3. Initialize the fix queue:
+   ```bash
+   uv run {SCRIPTS_DIR}/fix-queue.py init \
+       --grouping-file {TMP_DIR}/audit/grouping.json \
+       --findings-file {TMP_DIR}/audit/merged-findings.json \
+       --xml-dir {project_root}/.mg/docs/xml-sources \
+       --edit-dir {TMP_DIR}/audit/edits \
+       --approved {comma_separated_indices} \
+       --state-file {TMP_DIR}/audit/fix-state.json
+   ```
 
-```
-Agent(
-  description="Fix audit findings via edit XML loop",
-  prompt="You are an audit fix agent.
+4. **Loop** — call `next` repeatedly until done:
 
-Read and follow the instructions in: {AGENTS_DIR}/audit-fixer.md
+   a. Get the next group:
+      ```bash
+      uv run {SCRIPTS_DIR}/fix-queue.py next \
+          --state-file {TMP_DIR}/audit/fix-state.json
+      ```
 
-grouping_file: {TMP_DIR}/audit/grouping.json
-findings_file: {TMP_DIR}/audit/merged-findings.json
-xml_dir: {project_root}/.mg/docs/xml-sources
-edit_dir: {TMP_DIR}/audit/edits
-approved_indices: {comma_separated_indices}
-scripts_dir: {SCRIPTS_DIR}"
-)
-```
+   b. Parse the JSON output from stdout.
 
-**Do NOT run this agent in the background. Do NOT split into multiple agents.**
+   c. If `status` is `"done"`: **break** the loop. Save `files_modified` from the output for Step 6.
 
-After the agent completes, collect the list of modified XML file paths from its output.
+   d. If `status` is `"next"`: spawn a **single foreground** agent to edit the group's file:
+
+      ```
+      Agent(
+        description="Fix group: {group_id}",
+        prompt="You are an audit fix agent.
+
+      Read and follow the instructions in: {AGENTS_DIR}/audit-fixer.md
+
+      edit_file: {edit_file from next output}"
+      )
+      ```
+
+      **Do NOT run this agent in the background.** Wait for it to complete before calling `next` again.
+
+   e. After the agent completes, go back to step (a). The next `next` call will merge the edits before extracting the next group.
+
+**Key properties:**
+- One subagent per group — each gets a fresh context with just one edit file.
+- The script enforces sequentiality: each `next` merges the previous group before extracting the next.
+- Empty groups (0 matching XML sections) are auto-skipped inside `next`.
+- The final group's merge happens on the last `next` call (which returns `"done"`).
 
 ### Step 6: Reassemble Markdown
 
@@ -166,10 +190,10 @@ Errors (manual review needed):
 
 ## Important Principles
 
-- **Single agent, not parallel.** A single root cause can span multiple documents. Independent agents could fix the same issue inconsistently. One agent sees all context.
+- **Script-controlled sequentiality.** `fix-queue.py` enforces the extract→edit→merge order. The orchestrator never sees more than one group at a time. Each extraction reads the latest master state (after the previous merge).
+- **One agent per group.** Each subagent gets a fresh context with a single edit file. This prevents context buildup and ensures consistent behavior across groups.
 - **XML-first editing.** Edits go into XML, markdown is reassembled at the end. No lossy round-trip through sync-edits-to-xml.py.
 - **Surgical edits via Edit tool.** The fixer agent uses the Edit tool on focused edit XML files — not full-body replacements. This is cheaper and safer.
-- **Sequential group processing.** Each group's extract→edit→merge cycle completes before the next starts, so each extraction sees the latest master state.
 - **Agent reads the codebase.** The fixer agent uses Read/Glob/Grep to verify ground truth before making corrections. It never guesses.
 - **Approval before execution.** Always present the plan via AskUserQuestion before spawning the agent.
 - **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: ...`) rather than inlining the full agent definition.
