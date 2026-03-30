@@ -27,6 +27,7 @@ COMMANDS=(
   auto-doc-generate
   auto-doc-update
   auto-doc-audit
+  auto-doc-fix
   auto-doc-verify
   auto-doc-verify-mini
   auto-doc-verify-singledoc
@@ -77,6 +78,7 @@ while [[ $# -gt 0 ]]; do
       echo "  /mg:auto-doc-generate     <- step 2: generate"
       echo "  /mg:auto-doc-update       <- fix findings + integrate notes"
       echo "  /mg:auto-doc-audit        <- lightweight ref integrity + prose audit"
+      echo "  /mg:auto-doc-fix          <- fix audit findings (refs + prose)"
       echo "  /mg:auto-doc-verify       <- step 3: verify (full editorial)"
       echo "  /mg:auto-doc-verify-mini  <- step 3 alt: verify with Haiku editorial"
       echo "  /mg:auto-doc-verify-singledoc  <- step 3 alt: verify with self-driven Sonnet editorial"
@@ -409,6 +411,7 @@ echo "  /mg:auto-doc-scan         <- step 1: scan"
 echo "  /mg:auto-doc-generate     <- step 2: generate"
 echo "  /mg:auto-doc-update       <- fix findings + integrate notes"
 echo "  /mg:auto-doc-audit        <- lightweight ref integrity + prose audit"
+echo "  /mg:auto-doc-fix          <- fix audit findings (refs + prose)"
 echo "  /mg:auto-doc-verify       <- step 3: verify (full editorial)"
 echo "  /mg:auto-doc-verify-mini  <- step 3 alt: verify with Haiku editorial"
 echo "  /mg:auto-doc-verify-singledoc  <- step 3 alt: verify with Sonnet SendMessage editorial"

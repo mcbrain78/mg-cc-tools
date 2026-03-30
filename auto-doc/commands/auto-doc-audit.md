@@ -36,32 +36,28 @@ Parse the user's input text for optional audience names. Example: user types `/m
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
-4. **Create tmp directory:**
+4. **Create audit directory:**
    ```bash
-   mkdir -p {project_root}/.mg/docs/tmp
+   rm -rf {project_root}/.mg/docs/tmp/audit
+   mkdir -p {project_root}/.mg/docs/tmp/audit
    ```
 
 ### Step 2: Deterministic Reference Checks
 
 Run verify-xml-refs.py once across all XML sources. It walks the entire xml-sources directory, checks every typed ref against the codebase, and appends findings to a findings file. **Do NOT run this in the background** — you need the results before proceeding.
 
-First, clear any stale findings from a previous audit run:
-```bash
-rm -f {TMP_DIR}/audit-findings.json
-```
-
-Then run the verification (this may take 1-2 minutes for large projects):
+Run the verification (this may take 1-2 minutes for large projects):
 ```bash
 python3 {SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {project_root}/.mg/docs/xml-sources \
     --project-root {project_root} \
-    --findings-file {TMP_DIR}/audit-findings.json \
+    --findings-file {TMP_DIR}/audit/findings-refs.json \
     [--audience AUDIENCE]
 ```
 
 Add `--audience` only if the user specified audience names (e.g., `--audience devops`).
 
-Read `{TMP_DIR}/audit-findings.json` to get the deterministic findings list.
+Read `{TMP_DIR}/audit/findings-refs.json` to get the deterministic findings list.
 
 ### Step 3: Prose-vs-Refs Consistency
 
@@ -73,7 +69,7 @@ For each XML file in xml-sources (filtered by audience if specified), prepare pr
    ```bash
    python3 {SCRIPTS_DIR}/prepare-prose-verify.py \
        --xml-file {xml_file_path} \
-       --output-dir {TMP_DIR}/prose-verify-{audience}-{DOCUMENT}
+       --output-dir {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
    ```
    This creates per-section JSON files and a manifest.json.
 
@@ -87,13 +83,13 @@ For each XML file in xml-sources (filtered by audience if specified), prepare pr
    Read and follow the instructions in: {AGENTS_DIR}/verify-prose.md
 
    Project root: {project_root}
-   Prose verify dir: {TMP_DIR}/prose-verify-{audience}-{DOCUMENT}
-   Findings file: {TMP_DIR}/prose-findings-{audience}-{DOCUMENT}.json
+   Prose verify dir: {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+   Findings file: {TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
    Scripts dir: {SCRIPTS_DIR}"
    )
    ```
 
-4. **Collect prose findings** from each agent's output file (`{TMP_DIR}/prose-findings-*.json`). Read each file and accumulate all findings.
+4. **Collect prose findings** from each agent's output file (`{TMP_DIR}/audit/findings-prose-*.json`). Read each file and accumulate all findings.
 
 ### Step 4: Report
 
@@ -112,7 +108,10 @@ Total: {N} issues across {M} documents
 ```
 
 For documents with issues, show per-document details:
-- Each finding with check type and description
+- Findings grouped by category (ref integrity, prose consistency)
+- Each finding with section, check type, and description
+
+If you notice a dominant pattern (e.g., the same root cause accounting for many findings), call it out with its impact ("accounts for ~N of M findings").
 
 If zero issues found:
 ```
@@ -120,11 +119,17 @@ All clear. No reference integrity or prose consistency issues found.
 Next step: Run /mg:auto-doc-verify for full editorial review.
 ```
 
-### Step 5: Guidance (if issues found)
-
+If issues found, end with:
 ```
-Fix issues and re-run /mg:auto-doc-audit to confirm.
+Run /mg:auto-doc-fix to correct these issues, then re-run /mg:auto-doc-audit to confirm.
 When clean, run /mg:auto-doc-verify for full editorial review.
+```
+
+### Step 5: Persist Summary
+
+Write the full summary text from Step 4 to `{TMP_DIR}/audit/summary.md` so it survives beyond the conversation. Then tell the user:
+```
+Summary written to .mg/docs/tmp/audit/summary.md
 ```
 
 ## Important Principles
