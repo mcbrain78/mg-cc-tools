@@ -34,6 +34,7 @@ You are a focused verification agent. For each section, you compare the **prose 
       - Ref declares function `start_run` → search body for `start_run`. If the string `start_run` appears anywhere (prose, code block, backtick-quoted), covered. If not, flag it.
       - Ref declares class `Settings` → search for `Settings` (case-sensitive). If body says "settings" (lowercase) but never `Settings`, flag it — the exact name is not present.
       - Ref declares table `etl_runs` → search for `etl_runs`. If body has `road_runner.etl_runs`, covered (the name appears as a substring). If body never contains `etl_runs`, flag it.
+      - Ref declares config `config/field-mapping.yaml` → the identifier is the **filename** (`field-mapping.yaml`), not the full path. If body contains `field-mapping.yaml`, covered — even without the `config/` prefix. Same for systemd unit files: `road-runner-compute.service` covers a ref declared as `systemd/road-runner-compute.service`.
 
    c. **Contradictions:** Does the prose make claims that contradict the refs? For example, prose says "the `users` table" but refs declare `etl_runs` table. Or prose says function takes `timeout` parameter but refs declare `recompute_stale`.
 
