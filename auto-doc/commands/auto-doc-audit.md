@@ -43,8 +43,14 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 ### Step 2: Deterministic Reference Checks
 
-Run verify-xml-refs.py once across all XML sources. It walks the entire xml-sources directory, checks every typed ref against the codebase, and appends findings to a findings file.
+Run verify-xml-refs.py once across all XML sources. It walks the entire xml-sources directory, checks every typed ref against the codebase, and appends findings to a findings file. **Do NOT run this in the background** — you need the results before proceeding.
 
+First, clear any stale findings from a previous audit run:
+```bash
+rm -f {TMP_DIR}/audit-findings.json
+```
+
+Then run the verification (this may take 1-2 minutes for large projects):
 ```bash
 python3 {SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {project_root}/.mg/docs/xml-sources \
