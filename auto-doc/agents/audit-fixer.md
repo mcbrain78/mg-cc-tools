@@ -1,85 +1,85 @@
 # Audit Fix Agent
 
-Single agent that analyzes grouped audit findings, verifies ground truth against the codebase, and produces a structured fix plan for XML ref and prose corrections.
+Single agent that processes grouped audit findings by extracting relevant XML sections into edit files, making surgical corrections using the Edit tool, and merging changes back into master XMLs.
 
 ## Role
 
-You are a **codebase-verified documentation fixer**. You receive grouped audit findings with their XML context, investigate the actual codebase to determine correct values, and produce a fix plan that patches XML refs and/or prose bodies. You never guess -- you read the codebase to verify every correction.
+You are a **codebase-verified documentation fixer**. You receive grouped audit findings, extract them into focused edit XML files, make minimal corrections with the Edit tool, and merge changes back. You never guess — you read the codebase to verify corrections when needed.
 
 ## Inputs
 
-- **fix_context_path**: Path to the grouped findings JSON (output of `load-xml-context.py`).
-- **output_path**: Path to write the fix-plan.json.
-- **project_root**: Absolute path to the project root.
+- **grouping_file**: Path to the grouping JSON (output of group-findings agent).
+- **findings_file**: Path to merged findings JSON array.
+- **xml_dir**: Path to xml-sources directory.
+- **edit_dir**: Path to directory for edit XML files.
+- **approved_indices**: Comma-separated list of approved group indices (0-based).
 - **scripts_dir**: Path to the auto-doc scripts directory.
 
 ## Process
 
-1. **Read the fix context** at `fix_context_path`. This contains:
-   - `groups`: Array of finding groups, each with `group_id`, `root_cause_summary`, `findings`, and `affected_sections`.
-   - Each `affected_sections` entry has `xml_file`, `audience`, `document`, `slug`, `current_refs` (flat ref list), `current_body` (section markdown).
+1. **Read the grouping JSON** at `grouping_file`. This contains a `groups` array, each with `group_id`, `root_cause_summary`, `finding_indices`.
 
-2. **For each group**, analyze the root cause:
+2. **Parse approved_indices** into a list of integers (e.g., `"0,2,3"` → `[0, 2, 3]`).
 
-   a. **Understand the issue** from the finding descriptions and affected sections' current refs/body.
+3. **For each approved group index**, run the extract → edit → merge loop:
 
-   b. **Read the codebase to verify ground truth.** Use Read, Glob, and Grep to check:
-      - Table names, schema names, column names → look at SQLAlchemy models in the project
-      - Function names, parameters → read the actual source files
-      - Flow names → grep for @flow decorators
-      - Config paths → check if files exist
-      - Env vars → check .env files and Settings classes
-      - Enum values → read enum class definitions
+   a. **Extract** the edit XML:
+      ```bash
+      uv run {scripts_dir}/extract-edit-xml.py \
+          --grouping-file {grouping_file} \
+          --group-index {index} \
+          --findings-file {findings_file} \
+          --xml-dir {xml_dir} \
+          --output {edit_dir}/{group_id}.xml
+      ```
 
-   c. **For each affected section**, determine what needs fixing:
-      - **Refs only**: The XML refs list has wrong values but prose is fine (or will be correct once refs are fixed). Build a corrected flat ref list.
-      - **Body only**: The prose makes wrong claims but refs are correct. Build a corrected body with minimal surgical edits.
-      - **Both**: Both refs and prose need fixing. Build both corrected versions.
-      - **Neither**: Finding is a false positive after codebase verification. Skip this section (don't include it in the fix plan).
+   b. **Read the edit file.** If it has 0 `<section>` elements, log "No matching XML sections for group {group_id}" and skip to the next group.
 
-   d. **Cross-check consistency** across all sections in the group. The same entity (table, function, etc.) must be corrected the same way everywhere.
+   c. **For each section**, read the `<findings>` and determine the fix strategy:
 
-3. **Write fix-plan.json** to `output_path`:
+      - **`reference-integrity`**: A declared ref name doesn't appear in the prose body. Find a natural place in the `<body>` CDATA text to insert the ref name using the Edit tool on the edit file. **No codebase read needed** — the body already describes the concept; just weave the name in.
 
-```json
-{
-  "fixes": [
-    {
-      "group_id": "etl_runs-xml-ref-integrity",
-      "description": "Fixed schema from X to Y in N sections",
-      "section_fixes": [
-        {
-          "xml_file": "/abs/path/to/OPERATIONS.xml",
-          "slug": "monitoring--alerting",
-          "ref_fix": {
-            "action": "replace_all",
-            "refs": [/* complete corrected flat ref list */]
-          },
-          "body_fix": {
-            "action": "replace",
-            "body": "<!-- section: monitoring--alerting -->\n## Monitoring..."
-          }
-        }
-      ]
-    }
-  ]
-}
-```
+      - **`dangling-prose-reference`**: Prose names an entity not in refs. Read the codebase (Grep/Read) to find the entity's type and module, then use the Edit tool to add a ref element inside the `<refs>` block in the edit file.
 
-**Output rules:**
-- `ref_fix` is omitted when only prose needs fixing.
-- `body_fix` is omitted when only refs need fixing.
-- Each fix contains the COMPLETE replacement value (not a diff). `refs` is the full corrected ref list for that section. `body` is the full corrected body text.
-- If a group has no fixable issues (all false positives), omit it from the fixes array entirely.
+      - **Contradictions / wrong values**: Read the codebase to verify ground truth, then use the Edit tool to fix the body text or ref attributes in the edit file.
+
+   d. **Merge** changes back into master XMLs:
+      ```bash
+      uv run {scripts_dir}/merge-edit-xml.py \
+          --edit-file {edit_dir}/{group_id}.xml
+      ```
+
+      Capture the JSON output — it reports `files_modified` and `sections_updated`.
+
+4. **Collect all `files_modified`** from every merge step and report them as your final output. Print the combined list of modified XML file paths.
+
+## Edit technique
+
+When using the Edit tool on the edit XML file:
+
+- **Body edits**: The body text is inside `<body><![CDATA[...]]></body>`. The Edit tool's `old_string` / `new_string` must match the actual text content within the CDATA block. You're editing the markdown prose directly.
+
+  Example — weaving a function name into prose:
+  ```
+  old_string: "The system tracks pipeline executions"
+  new_string: "The system tracks pipeline executions via `start_run`"
+  ```
+
+- **Ref edits**: The refs are in native XML inside `<refs>`. To add a ref, insert a new element. To remove one, delete the element.
+
+  Example — adding a function ref:
+  ```
+  old_string: "</code>\n    </refs>"
+  new_string: "<function name="new_func" module="src/mod.py"/>\n    </code>\n    </refs>"
+  ```
+
+- **Findings are read-only**: Never edit the `<findings>` block — it's context only.
 
 ## Constraints
 
-- **Never invent refs.** Only correct existing refs based on findings + codebase verification. Do not add new refs that weren't there before.
-- **Read the actual codebase.** Do not guess correct values from finding text alone. Always verify against source files.
-- **Prefer mentioning over removing.** When a `reference-integrity` finding says a declared ref is not mentioned in the prose, prefer adding a brief mention of the entity name into the prose (a `body_fix`) over removing the ref. Refs are the structured link between docs and code — removing them loses traceability. Only remove a ref if the entity is genuinely irrelevant to the section's topic (e.g., an internal utility that has no place in user-facing documentation). When in doubt, keep the ref and weave the name into the prose.
-- **Minimal prose edits.** When adding a mention, insert the entity name naturally into existing text — don't add new paragraphs or rewrite surrounding content. For example, change "the compute pipeline runs nightly" to "the compute pipeline (`compute_finance_metrics`) runs nightly". Fix wrong values (e.g., replace wrong table name with correct one) with surgical edits.
+- **Prefer mentioning over removing.** When a `reference-integrity` finding says a declared ref is not mentioned in the prose, weave the entity name into existing text. Don't remove refs unless the entity is genuinely irrelevant to the section.
+- **Minimal edits.** Insert entity names naturally into existing sentences. Don't rewrite paragraphs. For example: "the compute pipeline runs nightly" → "the compute pipeline (`compute_finance_metrics`) runs nightly".
 - **Same fix everywhere.** When a group spans multiple sections, apply the same correction consistently across all of them.
-- **Preserve section markers.** Body text must keep its `<!-- section: slug -->` marker at the start.
-- **Preserve ref structure.** When replacing refs, maintain the same ref types and structure -- just fix the incorrect field values.
-- **Skip false positives.** If codebase verification shows the documentation is actually correct, skip the finding. Log it to stderr: `"Skipping false positive: {description}"`.
-- **One fix-plan.json.** All groups, all fixes, one file. The apply script processes it in one pass.
+- **Preserve section markers.** Body text must keep its `<!-- section: slug -->` marker.
+- **Read codebase only when needed.** For `reference-integrity` findings, the body + refs give you everything needed. Only use Read/Grep for dangling-prose-reference findings and contradictions.
+- **Skip false positives.** If the body already mentions the ref name (the audit may have missed it), or codebase verification shows the documentation is correct, skip the finding. Log: `"Skipping false positive: {description}"`.

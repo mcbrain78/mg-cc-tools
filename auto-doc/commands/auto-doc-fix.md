@@ -6,7 +6,7 @@ allowed-tools: Bash, Read, Write, Glob, Grep, Agent, AskUserQuestion
 
 # Documentation Audit Fixer
 
-You are the **Fixer** -- reads audit findings, groups by root cause, spawns a single agent to investigate and produce a fix plan, then applies ref + prose corrections to XML and reassembles markdown.
+You are the **Fixer** -- reads audit findings, groups by root cause, spawns a single agent to investigate and produce surgical edits, then reassembles markdown.
 
 ## Before You Start
 
@@ -57,7 +57,7 @@ No audit findings to fix. Documentation is clean.
 ```
 Then exit.
 
-### Step 3a: Group Findings (LLM)
+### Step 3: Group Findings (LLM)
 
 Spawn a **Sonnet** agent to group findings by root cause:
 
@@ -76,85 +76,63 @@ output_file: {TMP_DIR}/audit/grouping.json"
 
 After the agent completes, read `{TMP_DIR}/audit/grouping.json` to verify it was written.
 
-### Step 3b: Load XML Context
-
-```bash
-uv run {SCRIPTS_DIR}/load-xml-context.py \
-    --grouping-file {TMP_DIR}/audit/grouping.json \
-    --findings-file {TMP_DIR}/audit/merged-findings.json \
-    --xml-dir {project_root}/.mg/docs/xml-sources \
-    --output {TMP_DIR}/audit/fix-context.json
-```
-
-Read the output file.
-
 ### Step 4: Present Summary and Get Approval
 
-Use AskUserQuestion to present the grouped findings. Separate groups into **fixable** (has affected XML sections) and **informational** (0 sections — the finding is valid but no XML section was matched):
+Read `{TMP_DIR}/audit/grouping.json` and `{TMP_DIR}/audit/merged-findings.json`. Present a table:
 
 ```
 Audit Fix Plan:
 
-Fixable groups:
-| Group | Root Cause | Findings | Sections |
-|-------|------------|----------|----------|
-| 1     | etl_runs schema mismatch | 5 | 3 |
-| 2     | missing config path | 2 | 2 |
+| # | Group | Root Cause | Findings |
+|---|-------|------------|----------|
+| 0 | etl-tracking-funcs | ETL tracking functions not named in prose | 5 |
+| 1 | missing-config-path | Config path ref declared but not in prose | 2 |
 ...
 
-Informational only (no matching XML sections):
-| Group | Root Cause | Findings |
-|-------|------------|----------|
-| 3     | stale flow name reference | 2 |
-...
+Total: {N} findings in {M} groups
 
-Total: {N} findings in {M} groups ({F} fixable, {I} info-only)
-
-Approve fixable groups: all / by group (enter group numbers) / cancel
+Approve: all / by group (enter indices, e.g. 0,2) / cancel
 ```
 
 Handle user response:
-- **"all"**: Proceed with all fixable groups.
-- **Group numbers** (e.g., "1,2"): Filter fix-context.json to only those groups before proceeding.
+- **"all"**: Approve all group indices.
+- **Indices** (e.g., "0,2"): Approve only those groups.
 - **"cancel"**: Exit with `"No fixes approved. Run again when ready."`
 
-If the user selects specific groups, rewrite `fix-context.json` with only the approved groups. Informational groups are always excluded from the fixer agent (they have no XML context to fix).
+### Step 5: Prepare and Spawn Fixer Agent
 
-### Step 5: Spawn Audit Fixer Agent
+1. Create the edit directory:
+   ```bash
+   mkdir -p {TMP_DIR}/audit/edits
+   ```
 
-Spawn a **single** agent (foreground, do NOT set `run_in_background`):
+2. Build the approved indices string (comma-separated, e.g., `"0,1,2"` or `"0,2"`).
+
+3. Spawn a **single** agent (foreground, do NOT set `run_in_background`):
 
 ```
 Agent(
-  model="sonnet",
-  description="Fix audit findings",
+  description="Fix audit findings via edit XML loop",
   prompt="You are an audit fix agent.
 
 Read and follow the instructions in: {AGENTS_DIR}/audit-fixer.md
 
-fix_context_path: {TMP_DIR}/audit/fix-context.json
-output_path: {TMP_DIR}/audit/fix-plan.json
-project_root: {project_root}
+grouping_file: {TMP_DIR}/audit/grouping.json
+findings_file: {TMP_DIR}/audit/merged-findings.json
+xml_dir: {project_root}/.mg/docs/xml-sources
+edit_dir: {TMP_DIR}/audit/edits
+approved_indices: {comma_separated_indices}
 scripts_dir: {SCRIPTS_DIR}"
 )
 ```
 
 **Do NOT run this agent in the background. Do NOT split into multiple agents.**
 
-After the agent completes, read `{TMP_DIR}/audit/fix-plan.json` to verify it was written.
+After the agent completes, collect the list of modified XML file paths from its output.
 
-### Step 6: Apply Fixes
+### Step 6: Reassemble Markdown
 
-```bash
-uv run {SCRIPTS_DIR}/apply-audit-fixes.py \
-    --fix-plan {TMP_DIR}/audit/fix-plan.json
-```
-
-Read the JSON output from stdout. This gives you the summary of what was modified.
-
-### Step 7: Reassemble Markdown
-
-For each XML file listed in the apply summary's `files_modified` array, reassemble the corresponding markdown:
+For each modified XML file, reassemble the corresponding markdown:
 
 ```bash
 uv run {SCRIPTS_DIR}/assemble-markdown.py \
@@ -166,25 +144,21 @@ To determine the `audience` and `DOCUMENT`:
 - Parse the XML file path: `xml-sources/{audience}/{DOCUMENT}.xml`
 - For root-level XML files (GLOSSARY.xml, OVERVIEW.xml), the output goes to `{docs_dir_abs}/{DOCUMENT}.md`
 
-### Step 8: Report
+### Step 7: Report
 
 Present a summary:
 
 ```
 Fix Summary:
 
-| Group | Description | Sections Fixed | Refs | Bodies |
-|-------|-------------|----------------|------|--------|
-| 1     | Fixed schema... | 3 | 3 | 2 |
-...
-
-Total: {N} sections fixed, {R} ref corrections, {B} body corrections
-Files modified: {list}
+Groups processed: {N}
+Modified XML files: {list}
+Markdown files reassembled: {list}
 
 Next step: Run /mg:auto-doc-audit to confirm fixes are clean.
 ```
 
-If there were errors, show them:
+If there were errors from any merge step, show them:
 ```
 Errors (manual review needed):
   - {error description}
@@ -194,7 +168,8 @@ Errors (manual review needed):
 
 - **Single agent, not parallel.** A single root cause can span multiple documents. Independent agents could fix the same issue inconsistently. One agent sees all context.
 - **XML-first editing.** Edits go into XML, markdown is reassembled at the end. No lossy round-trip through sync-edits-to-xml.py.
+- **Surgical edits via Edit tool.** The fixer agent uses the Edit tool on focused edit XML files — not full-body replacements. This is cheaper and safer.
+- **Sequential group processing.** Each group's extract→edit→merge cycle completes before the next starts, so each extraction sees the latest master state.
 - **Agent reads the codebase.** The fixer agent uses Read/Glob/Grep to verify ground truth before making corrections. It never guesses.
-- **Complete replacements, not diffs.** The fix plan contains complete replacement values, not patches. This matches the update_section_refs/update_section_body API.
 - **Approval before execution.** Always present the plan via AskUserQuestion before spawning the agent.
 - **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: ...`) rather than inlining the full agent definition.
