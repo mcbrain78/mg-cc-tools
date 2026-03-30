@@ -57,10 +57,30 @@ No audit findings to fix. Documentation is clean.
 ```
 Then exit.
 
-### Step 3: Group and Contextualize
+### Step 3a: Group Findings (LLM)
+
+Spawn a **Sonnet** agent to group findings by root cause:
+
+```
+Agent(
+  model="sonnet",
+  description="Group audit findings by root cause",
+  prompt="You are a finding grouper agent.
+
+Read and follow the instructions in: {AGENTS_DIR}/group-findings.md
+
+findings_file: {TMP_DIR}/audit/merged-findings.json
+output_file: {TMP_DIR}/audit/grouping.json"
+)
+```
+
+After the agent completes, read `{TMP_DIR}/audit/grouping.json` to verify it was written.
+
+### Step 3b: Load XML Context
 
 ```bash
-uv run {SCRIPTS_DIR}/group-audit-findings.py \
+uv run {SCRIPTS_DIR}/load-xml-context.py \
+    --grouping-file {TMP_DIR}/audit/grouping.json \
     --findings-file {TMP_DIR}/audit/merged-findings.json \
     --xml-dir {project_root}/.mg/docs/xml-sources \
     --output {TMP_DIR}/audit/fix-context.json
@@ -70,28 +90,35 @@ Read the output file.
 
 ### Step 4: Present Summary and Get Approval
 
-Use AskUserQuestion to present the grouped findings:
+Use AskUserQuestion to present the grouped findings. Separate groups into **fixable** (has affected XML sections) and **informational** (0 sections — the finding is valid but no XML section was matched):
 
 ```
 Audit Fix Plan:
 
+Fixable groups:
 | Group | Root Cause | Findings | Sections |
 |-------|------------|----------|----------|
 | 1     | etl_runs schema mismatch | 5 | 3 |
 | 2     | missing config path | 2 | 2 |
 ...
 
-Total: {N} findings in {M} groups affecting {S} sections
+Informational only (no matching XML sections):
+| Group | Root Cause | Findings |
+|-------|------------|----------|
+| 3     | stale flow name reference | 2 |
+...
 
-Approve: all / by group (enter group numbers) / cancel
+Total: {N} findings in {M} groups ({F} fixable, {I} info-only)
+
+Approve fixable groups: all / by group (enter group numbers) / cancel
 ```
 
 Handle user response:
-- **"all"**: Proceed with all groups.
-- **Group numbers** (e.g., "1,3"): Filter fix-context.json to only those groups before proceeding.
+- **"all"**: Proceed with all fixable groups.
+- **Group numbers** (e.g., "1,2"): Filter fix-context.json to only those groups before proceeding.
 - **"cancel"**: Exit with `"No fixes approved. Run again when ready."`
 
-If the user selects specific groups, rewrite `fix-context.json` with only the approved groups.
+If the user selects specific groups, rewrite `fix-context.json` with only the approved groups. Informational groups are always excluded from the fixer agent (they have no XML context to fix).
 
 ### Step 5: Spawn Audit Fixer Agent
 
@@ -99,6 +126,7 @@ Spawn a **single** agent (foreground, do NOT set `run_in_background`):
 
 ```
 Agent(
+  model="sonnet",
   description="Fix audit findings",
   prompt="You are an audit fix agent.
 

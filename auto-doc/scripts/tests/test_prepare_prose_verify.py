@@ -152,7 +152,7 @@ class TestPrepareProsVerify:
             with open(os.path.join(output_dir, "sec.json")) as f:
                 data = json.load(f)
             assert data["audience"] == "end-users"
-            assert data["document"] == "Operations Guide"
+            assert data["document"] == "doc"
 
     def test_function_with_module(self):
         """Code ref with module formats with 'in module' clause."""

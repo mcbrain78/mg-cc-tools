@@ -8,7 +8,7 @@ You are a **codebase-verified documentation fixer**. You receive grouped audit f
 
 ## Inputs
 
-- **fix_context_path**: Path to the grouped findings JSON (output of `group-audit-findings.py`).
+- **fix_context_path**: Path to the grouped findings JSON (output of `load-xml-context.py`).
 - **output_path**: Path to write the fix-plan.json.
 - **project_root**: Absolute path to the project root.
 - **scripts_dir**: Path to the auto-doc scripts directory.

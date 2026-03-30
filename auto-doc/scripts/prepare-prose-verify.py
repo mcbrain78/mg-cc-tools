@@ -104,6 +104,7 @@ def prepare(xml_path, output_dir):
         List of section slug strings that were written.
     """
     doc = parse_xml_doc(xml_path)
+    doc_name = os.path.splitext(os.path.basename(xml_path))[0]
     os.makedirs(output_dir, exist_ok=True)
 
     slugs = []
@@ -114,7 +115,7 @@ def prepare(xml_path, output_dir):
 
         section_data = {
             "slug": slug,
-            "document": doc["meta"]["title"],
+            "document": doc_name,
             "audience": doc["audience"],
             "body": body,
             "refs_as_text": refs_text,
@@ -128,7 +129,7 @@ def prepare(xml_path, output_dir):
     manifest = {
         "xml_file": xml_path,
         "audience": doc["audience"],
-        "document": doc["meta"]["title"],
+        "document": doc_name,
         "sections": slugs,
     }
     save_json(os.path.join(output_dir, "manifest.json"), manifest)
