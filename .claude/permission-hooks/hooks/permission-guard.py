@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections import namedtuple
 
 PROJECT_ROOT = "/home/mcbrain/mg_projects/mg-cc-tools"
@@ -99,6 +100,47 @@ for category, patterns in CATEGORIES.items():
 
 # Absolute paths that are always safe to reference
 SAFE_ABSOLUTE_PATHS = ["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", "/tmp"]
+
+# ── Session context (auto-approval via human-gated marker) ─────────────────
+# The emit-context.py script prints a SESSION_CONTEXT_ID marker into the
+# transcript.  The hook always forces human approval for that script (stage 0).
+# Once approved, subsequent tool calls are auto-approved for CONTEXT_TTL_S.
+_CONTEXT_RE = re.compile(r"SESSION_CONTEXT_ID: MG:([\w-]+)_(\d+)")
+_EMIT_SCRIPT_RE = re.compile(r"\bemit-context\.py\b")
+CONTEXT_TTL_S = 30 * 60  # 30 minutes
+
+
+def check_session_context(transcript_path):
+    """Return the active context command name (e.g. 'AUTO-DOC') or None.
+
+    Scans the transcript for the most recent SESSION_CONTEXT_ID marker
+    and checks whether its timestamp is within CONTEXT_TTL_S.
+    """
+    if not transcript_path:
+        return None
+    try:
+        with open(transcript_path) as f:
+            raw = f.read()
+    except (OSError, IOError):
+        return None
+
+    # Find all matches — we want the most recent one
+    matches = list(_CONTEXT_RE.finditer(raw))
+    if not matches:
+        return None
+
+    last = matches[-1]
+    command_name = last.group(1)
+    timestamp_ms = int(last.group(2))
+    age_s = time.time() - timestamp_ms / 1000
+
+    if age_s > CONTEXT_TTL_S:
+        return None
+    if age_s < 0:
+        return None  # clock skew / forged future timestamp
+
+    return command_name
+
 
 # Claude's internal directory (memory, settings, etc.) — always allowed
 _CLAUDE_DIR_TILDE = "~/.claude/"
@@ -690,6 +732,22 @@ def main():
 
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {})
+
+    # ── Stage 0: always gate the context emitter script ────────────────
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if _EMIT_SCRIPT_RE.search(command):
+            _ask("[permission-guard] Session context emitter — requires human approval")
+            return
+
+    # ── Session context auto-approve ───────────────────────────────────
+    ctx_cmd = check_session_context(event.get("transcript_path", ""))
+    if ctx_cmd:
+        _decide(
+            f"[permission-guard] Auto-approved by session context MG:{ctx_cmd}",
+            "allow",
+        )
+        return
 
     # ── Read / Edit / Write tool guard ──────────────────────────────────
     if tool_name in ("Read", "Edit", "Write"):
