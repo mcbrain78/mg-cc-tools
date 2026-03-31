@@ -21,13 +21,19 @@
     },
     "permission-hooks": {
       "version": "0.1.0",
-      "installed_at": "2026-03-31T08:56:55.410645+00:00",
-      "commands": [],
+      "installed_at": "2026-03-31T17:17:04.213251+00:00",
+      "commands": [
+        "edit_off.md",
+        "edit_on.md"
+      ],
       "source_checksums": {
-        "hooks/permission-guard.py": "sha256:a67c6f979f97d9530de8287cdc21bf87b5c9d8f6988ac5fb5a6988e7f584e7a5",
-        "install.sh": "sha256:59aa26b2c49eace4313fb86553c0949fa9a67971520135c6243cc41c37909f9f",
+        "commands/edit_off.md": "sha256:e2aa64c6a181d99e3e9ec510ec1c45836f7a339f50dbce1eb0d39794dda12759",
+        "commands/edit_on.md": "sha256:9899edf844a7d3fd0a217abbbba9fc1ae52e9a3b012009d0cfa5a3d2a85b0666",
+        "hooks/permission-guard.py": "sha256:8d244f2b797236d29e217808d3bcb8dfed327663e5866adea8942a21af3e18bf",
+        "install.sh": "sha256:586cc52c48c71e34b9bb0cc4e9eb2799e5288ce456bfaca64047e5ef52257a49",
         "post-install.md": "sha256:cf1c0ce815a178eb426d494ba2f3bf8d20b562b21c667eb362cccba3112e4302",
-        "scripts/emit-context.py": "sha256:54db2e0a0b3a3ebe850bc100a38f3690ea4f0ba480dda4c5f49ccdc2b14644ea"
+        "scripts/emit-context.py": "sha256:54db2e0a0b3a3ebe850bc100a38f3690ea4f0ba480dda4c5f49ccdc2b14644ea",
+        "scripts/emit-edit-guard.py": "sha256:34b733fcf7111bbffec31a3f656e2665d5198a724753de3560558e66db8f1f17"
       }
     },
     "spec": {
@@ -52,5 +58,5 @@
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools",
-  "last_updated": "2026-03-31T12:06:20.552446+00:00"
+  "last_updated": "2026-03-31T17:17:04.212106+00:00"
 }

@@ -38,6 +38,33 @@
             "command": "python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/hooks/permission-guard.py"
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/hooks/permission-guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/hooks/permission-guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/hooks/permission-guard.py"
+          }
+        ]
       }
     ]
   },

@@ -109,6 +109,29 @@ _CONTEXT_RE = re.compile(r"SESSION_CONTEXT_ID: MG:([\w-]+)_(\d+)")
 _EMIT_SCRIPT_RE = re.compile(r"\bemit-context\.py\b")
 CONTEXT_TTL_S = 30 * 60  # 30 minutes
 
+# Number of trailing JSONL lines to inspect for recent command invocation.
+_RECENT_LINES = 5
+
+
+def _emitter_follows_command(transcript_path):
+    """Return True if a slash command was loaded in the last few transcript entries.
+
+    When a user invokes a /mg: command, the command markdown (including its
+    ``allowed-tools:`` frontmatter) appears in the transcript 1-2 entries
+    before the emit-context.py Bash call.  Checking the tail of the
+    transcript avoids false-positives from old command content.
+    """
+    if not transcript_path:
+        return False
+    try:
+        with open(transcript_path) as f:
+            lines = f.read().splitlines()
+    except (OSError, IOError):
+        return False
+
+    tail = "\n".join(lines[-_RECENT_LINES:]) if lines else ""
+    return "allowed-tools:" in tail
+
 
 def check_session_context(transcript_path):
     """Return the active context command name (e.g. 'AUTO-DOC') or None.
@@ -140,6 +163,34 @@ def check_session_context(transcript_path):
         return None  # clock skew / forged future timestamp
 
     return command_name
+
+
+# ── Edit guard (manual toggle for Edit/Write/NotebookEdit) ──────────────────
+# The emit-edit-guard.py script prints a SESSION_FEATURE marker into the
+# transcript.  Default is ON (edits allowed).  When the latest marker is OFF,
+# Edit/Write/NotebookEdit are blocked until the user runs /mg:edit_on.
+_EDIT_GUARD_RE = re.compile(r"SESSION_FEATURE: MG:EDIT_GUARD_(ON|OFF)")
+
+
+def check_edit_guard(transcript_path):
+    """Return True if the edit guard is active (edits should be blocked).
+
+    Scans for the most recent EDIT_GUARD marker.  No marker or latest=ON
+    means edits are allowed (returns False).  Latest=OFF means blocked.
+    """
+    if not transcript_path:
+        return False
+    try:
+        with open(transcript_path) as f:
+            raw = f.read()
+    except (OSError, IOError):
+        return False
+
+    matches = list(_EDIT_GUARD_RE.finditer(raw))
+    if not matches:
+        return False  # No marker → default ON (edits allowed)
+
+    return matches[-1].group(1) == "OFF"
 
 
 # Claude's internal directory (memory, settings, etc.) — always allowed
@@ -733,11 +784,18 @@ def main():
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {})
 
-    # ── Stage 0: always gate the context emitter script ────────────────
+    # ── Stage 0: gate emitter scripts (unless preceded by a command) ──
     if tool_name == "Bash":
         command = tool_input.get("command", "")
         if _EMIT_SCRIPT_RE.search(command):
-            _ask("[permission-guard] Session context emitter — requires human approval")
+            if _emitter_follows_command(event.get("transcript_path", "")):
+                _decide(
+                    "[permission-guard] Session context emitter — "
+                    "auto-approved (slash command active)",
+                    "allow",
+                )
+            else:
+                _ask("[permission-guard] Session context emitter — requires human approval")
             return
 
     # ── Session context auto-approve ───────────────────────────────────
@@ -748,6 +806,15 @@ def main():
             "allow",
         )
         return
+
+    # ── Edit guard (manual toggle) ──────────────────────────────────────
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        if check_edit_guard(event.get("transcript_path", "")):
+            _ask(
+                "[permission-guard] Implementation/edits are not approved yet "
+                "by the user."
+            )
+            return
 
     # ── Read / Edit / Write tool guard ──────────────────────────────────
     if tool_name in ("Read", "Edit", "Write"):
@@ -765,6 +832,9 @@ def main():
                 if desc:
                     _ask(f"[permission-guard] Out-of-project: {desc}")
                     return
+        # File passed all safety checks — approve explicitly so the hook
+        # doesn't fall through to CC's default permission mode (which prompts).
+        _decide("[permission-guard] In-project file", "allow")
         return
 
     # ── Bash tool guard ─────────────────────────────────────────────────
