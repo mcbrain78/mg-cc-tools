@@ -15,24 +15,29 @@ You are a focused verification agent. For each section, you compare the **prose 
 
 ## Process
 
-1. **Read the manifest** at `{prose_verify_dir}/manifest.json`. Get the list of section slugs.
+1. **Get first section.** Call next-section to get the first auditable section:
+   ```bash
+   python3 {scripts_dir}/next-section.py \
+       --state-file {findings_file}.sectionctl.json \
+       --prose-verify-dir {prose_verify_dir}
+   ```
+   If `done` is `true`, there are no sections with refs — report this and stop.
 
-2. **Process one section at a time.** For each section slug:
+2. **Process sections one at a time.** For each section returned by next-section:
 
-   a. **Read the section JSON** — read `{prose_verify_dir}/{slug}.json` now, immediately before auditing. Do NOT batch-read all sections upfront. Each file has:
+   a. **Read the section JSON** at the `file` path returned by next-section.
+      Do NOT read any other section files. Do NOT read the manifest. Each file has:
       - `slug`: Section identifier
       - `document`: Document title
       - `audience`: Target audience
       - `body`: The section's markdown prose
       - `refs_as_text`: Human-readable bullet list of declared code references
 
-   b. **Skip sections with "(no refs declared)".** If a section has no declared refs, there's nothing to compare. Move to the next section.
+   b. **Audit this section** — run checks 3a–3d (below) against the section data you just read.
 
-   c. **Audit this section** — run checks 3a–3d (below) against the section data you just read.
+   c. **Record findings** for this section (step 4 below).
 
-   d. **Record findings** for this section (step 4 below).
-
-   e. **Per-section re-audit loop.** Call audit-pass-control to decide whether to re-audit this section:
+   d. **Per-section re-audit loop.** Call audit-pass-control to decide whether to re-audit this section:
 
       ```bash
       python3 {scripts_dir}/audit-pass-control.py \
@@ -47,6 +52,10 @@ You are a focused verification agent. For each section, you compare the **prose 
       - Call audit-pass-control again for this section. Repeat until `continue` is `false`.
 
       When `continue` is `false`, move to the next section.
+
+   e. **Get next section.** Call next-section again (same command as step 1).
+      If `done` is `true`, proceed to step 5 (report).
+      Otherwise, go to step 2a.
 
 3. **Checks to run per section.** Compare prose against refs:
 
