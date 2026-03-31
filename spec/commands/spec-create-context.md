@@ -1,7 +1,7 @@
 # Create Context
 
 ---
-name: mg:create-context
+name: mg:spec-create-context
 description: Generate a GSD CONTEXT.md from a design document, gap assessment, or scope doc — content becomes locked decisions for planning
 argument-hint: "<phase-number> <source-file-path>"
 allowed-tools:
@@ -63,7 +63,7 @@ Assess whether this command's process steps (Steps 8-9) are still compatible wit
 
 Present findings via AskUserQuestion:
 - header: "Template drift"
-- question: "GSD's context template has changed since mg:create-context was last updated. {summary of what changed and whether the command is still compatible}. How should I proceed?"
+- question: "GSD's context template has changed since mg:spec-create-context was last updated. {summary of what changed and whether the command is still compatible}. How should I proceed?"
 - options:
   - "Continue anyway" — "Proceed using the live template as guidance. This warning will appear on every run until the command is updated in mg-cc-tools and reinstalled."
   - "Abort" — "Stop. I'll update the command in mg-cc-tools first."
@@ -75,9 +75,9 @@ Present findings via AskUserQuestion:
 Aborted. Update the snapshot and command process in mg-cc-tools, then reinstall:
 
   cd <mg-cc-tools>
-  # Update create-context/commands/context-template.snapshot with new template
-  # Review create-context/commands/create-context.md process steps
-  ./create-context/install.sh --project <this-project>
+  # Update spec/references/context-template.snapshot with new template
+  # Review spec/commands/spec-create-context.md process steps
+  ./spec/install.sh --project <this-project>
 ```
 Exit.
 
@@ -91,11 +91,11 @@ If either is missing:
 ```
 ERROR: Both phase number and source file path are required.
 
-Usage: /mg:create-context <phase-number> <source-file-path>
+Usage: /mg:spec-create-context <phase-number> <source-file-path>
 
 Examples:
-  /mg:create-context 86 docs/gaps/phase-86-gaps.md
-  /mg:create-context 3 docs/design/auth-requirements.md
+  /mg:spec-create-context 86 docs/gaps/phase-86-gaps.md
+  /mg:spec-create-context 3 docs/design/auth-requirements.md
 ```
 Exit.
 

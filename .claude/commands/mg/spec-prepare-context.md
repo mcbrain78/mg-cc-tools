@@ -1,8 +1,8 @@
 # Prepare Context
 
 ---
-name: mg:prepare-context
-description: Split a multi-phase source document into per-phase files for downstream ingestion by mg:create-context
+name: mg:spec-prepare-context
+description: Split a multi-phase source document into per-phase files for downstream ingestion by mg:spec-create-context
 argument-hint: "<start>-<end> <source-file-path>"
 allowed-tools:
   - Read
@@ -17,7 +17,7 @@ allowed-tools:
 <objective>
 Read a source document (design doc, scope doc, requirements brief) and split its content into per-phase files based on ROADMAP.md phase goals and REQUIREMENTS.md requirement IDs. Each output file contains the subset of source content relevant to that phase — faithfully preserved with minimal contextual framing.
 
-The output files are consumed by `mg:create-context`, which transforms them into GSD CONTEXT.md format.
+The output files are consumed by `mg:spec-create-context`, which transforms them into GSD CONTEXT.md format.
 
 This command does NOT transform content into GSD format. It only splits.
 </objective>
@@ -32,7 +32,7 @@ Examples:
 - `3-4 docs/design/pipeline-spec.md`
 
 Single-phase usage is also valid:
-- `1 docs/design/foundation-notes.md` (equivalent to `mg:create-context` input prep)
+- `1 docs/design/foundation-notes.md` (equivalent to `mg:spec-create-context` input prep)
 </context>
 
 <process>
@@ -47,11 +47,11 @@ If either is missing:
 ```
 ERROR: Both phase range and source file path are required.
 
-Usage: /mg:prepare-context <start>-<end> <source-file-path>
+Usage: /mg:spec-prepare-context <start>-<end> <source-file-path>
 
 Examples:
-  /mg:prepare-context 1-5 docs/work-queue/todo/doc-command/DESIGN.md
-  /mg:prepare-context 3 docs/design/pipeline-spec.md
+  /mg:spec-prepare-context 1-5 docs/work-queue/todo/doc-command/DESIGN.md
+  /mg:spec-prepare-context 3 docs/design/pipeline-spec.md
 ```
 Exit.
 
@@ -224,9 +224,9 @@ Use AskUserQuestion:
 - header: "Next"
 - question: "Phase files are ready. Create CONTEXT.md for each phase?"
 - options:
-  - "Create all (Recommended)" — "Run mg:create-context for each phase sequentially"
+  - "Create all (Recommended)" — "Run mg:spec-create-context for each phase sequentially"
   - "Create specific" — "Let me pick which phases to ingest"
-  - "Stop here" — "I'll run mg:create-context manually later"
+  - "Stop here" — "I'll run mg:spec-create-context manually later"
 
 **If "Create all":**
 
@@ -237,10 +237,10 @@ Creating context for Phase {N}: {Name}...
 ---
 ```
 ```
-Skill("mg:create-context", "{phase_number} {source-dir}/phase-docs/phase-{NN}-{slug}.md")
+Skill("mg:spec-create-context", "{phase_number} {source-dir}/phase-docs/phase-{NN}-{slug}.md")
 ```
 
-After each `create-context` completes, briefly note the result:
+After each `spec-create-context` completes, briefly note the result:
 ```
 Phase {N}: ✓ CONTEXT.md created ({decision_count} decisions)
 ```
@@ -273,15 +273,15 @@ Use AskUserQuestion (multiSelect: true):
 - question: "Which phases should I create CONTEXT.md for?"
 - options: One per phase file
 
-Then run `create-context` for selected phases only.
+Then run `spec-create-context` for selected phases only.
 
 **If "Stop here":**
 ```
 Phase files ready at: {source-dir}/phase-docs/
 
 To ingest manually:
-  /mg:create-context 1 {source-dir}/phase-docs/phase-01-{slug}.md
-  /mg:create-context 2 {source-dir}/phase-docs/phase-02-{slug}.md
+  /mg:spec-create-context 1 {source-dir}/phase-docs/phase-01-{slug}.md
+  /mg:spec-create-context 2 {source-dir}/phase-docs/phase-02-{slug}.md
   ...
 
 ---
@@ -290,13 +290,13 @@ To ingest manually:
 </process>
 
 <important_notes>
-- This command splits content — it does NOT transform into GSD CONTEXT.md format. That is `mg:create-context`'s job.
+- This command splits content — it does NOT transform into GSD CONTEXT.md format. That is `mg:spec-create-context`'s job.
 - Content is preserved verbatim. The only additions are: header block, parent heading framing lines, cross-phase pointers, and built-vs-used annotations.
-- Cross-cutting content is duplicated in full into every relevant phase file. This is intentional — each phase file must be self-contained for `create-context` to process independently.
+- Cross-cutting content is duplicated in full into every relevant phase file. This is intentional — each phase file must be self-contained for `spec-create-context` to process independently.
 - The "built-vs-used" distinction matters: a script defined in Phase 1 but consumed in Phase 3 maps to Phase 1 (where the implementation decisions live). A note indicating Phase 3 consumption is added for context.
 - Remainder handling ensures nothing is silently dropped. The user always knows if content wasn't mapped.
-- Phase files are ephemeral build artifacts — they exist to feed `create-context` and for user inspection. They are not committed to git.
-- The auto-advance runs `create-context` sequentially via Skill invocations. Each invocation gets the focused per-phase source file, avoiding the problem of feeding a large cross-phase doc to `create-context`.
-- `create-context` needs a `mkdir -p` fix (separate change) to handle missing phase directories. Until that fix is applied, phase directories must exist before auto-advance runs.
+- Phase files are ephemeral build artifacts — they exist to feed `spec-create-context` and for user inspection. They are not committed to git.
+- The auto-advance runs `spec-create-context` sequentially via Skill invocations. Each invocation gets the focused per-phase source file, avoiding the problem of feeding a large cross-phase doc to `spec-create-context`.
+- `spec-create-context` needs a `mkdir -p` fix (separate change) to handle missing phase directories. Until that fix is applied, phase directories must exist before auto-advance runs.
 - Range syntax uses dash (`1-5`) which is unambiguous because GSD decimal phases use dots (`2.1`), not dashes.
 </important_notes>

@@ -1,7 +1,7 @@
 # Create Context
 
 ---
-name: mg:create-context
+name: mg:spec-create-context
 description: Generate a GSD CONTEXT.md from a design document, gap assessment, or scope doc — content becomes locked decisions for planning
 argument-hint: "<phase-number> <source-file-path>"
 allowed-tools:
@@ -27,7 +27,7 @@ Examples:
 - `86 docs/work_queue/kpi-ingestion-v2/gap-assessment/phase-86-gaps.md`
 - `3 docs/design/auth-requirements.md`
 
-Template snapshot: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/commands/mg/context-template.snapshot`
+Template snapshot: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/references/context-template.snapshot`
 </context>
 
 <required_reading>
@@ -41,7 +41,7 @@ Read the GSD context template to understand the target format:
 
 Before generating anything, verify that the GSD context template hasn't changed since this command was last updated.
 
-1. Read the stored template snapshot at `/home/mcbrain/mg_projects/mg-cc-tools/.claude/commands/mg/context-template.snapshot`
+1. Read the stored template snapshot at `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/references/context-template.snapshot`
 2. Read the live GSD template at `.claude/get-shit-done/templates/context.md` (already loaded via required_reading)
 3. Compare the **File Template** section and **guidelines** section between the two. Ignore the `<good_examples>` section — examples don't affect the structural format.
 
@@ -63,7 +63,7 @@ Assess whether this command's process steps (Steps 8-9) are still compatible wit
 
 Present findings via AskUserQuestion:
 - header: "Template drift"
-- question: "GSD's context template has changed since mg:create-context was last updated. {summary of what changed and whether the command is still compatible}. How should I proceed?"
+- question: "GSD's context template has changed since mg:spec-create-context was last updated. {summary of what changed and whether the command is still compatible}. How should I proceed?"
 - options:
   - "Continue anyway" — "Proceed using the live template as guidance. This warning will appear on every run until the command is updated in mg-cc-tools and reinstalled."
   - "Abort" — "Stop. I'll update the command in mg-cc-tools first."
@@ -75,9 +75,9 @@ Present findings via AskUserQuestion:
 Aborted. Update the snapshot and command process in mg-cc-tools, then reinstall:
 
   cd <mg-cc-tools>
-  # Update create-context/commands/context-template.snapshot with new template
-  # Review create-context/commands/create-context.md process steps
-  ./create-context/install.sh --project <this-project>
+  # Update spec/references/context-template.snapshot with new template
+  # Review spec/commands/spec-create-context.md process steps
+  ./spec/install.sh --project <this-project>
 ```
 Exit.
 
@@ -91,11 +91,11 @@ If either is missing:
 ```
 ERROR: Both phase number and source file path are required.
 
-Usage: /mg:create-context <phase-number> <source-file-path>
+Usage: /mg:spec-create-context <phase-number> <source-file-path>
 
 Examples:
-  /mg:create-context 86 docs/gaps/phase-86-gaps.md
-  /mg:create-context 3 docs/design/auth-requirements.md
+  /mg:spec-create-context 86 docs/gaps/phase-86-gaps.md
+  /mg:spec-create-context 3 docs/design/auth-requirements.md
 ```
 Exit.
 
@@ -317,5 +317,5 @@ Discretion areas: {count} areas left to planner
 - This command does NOT require GSD's gsd-tools.cjs. Phase resolution uses Glob, roadmap parsing uses Read.
 - discuss-phase handles pre-existing CONTEXT.md gracefully (offers Update/View/Skip), so running this command before discuss-phase is safe.
 - The PRD express path in plan-phase (step 3.5) follows a similar pattern — both convert external documents into CONTEXT.md.
-- The template snapshot at `/home/mcbrain/mg_projects/mg-cc-tools/.claude/commands/mg/context-template.snapshot` is the baseline this command was designed for. If drift is detected, the snapshot is NOT updated at runtime — it persists until the command is updated in mg-cc-tools and reinstalled.
+- The template snapshot at `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/references/context-template.snapshot` is the baseline this command was designed for. If drift is detected, the snapshot is NOT updated at runtime — it persists until the command is updated in mg-cc-tools and reinstalled.
 </important_notes>

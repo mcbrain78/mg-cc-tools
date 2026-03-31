@@ -1,0 +1,8 @@
+[tool]
+description = "Spec lifecycle — draft, improve, and convert concept specs to GSD context"
+
+[preflight]
+required = ["gsd"]
+
+[detect]
+paths = [".claude/commands/mg/spec-draft.md"]

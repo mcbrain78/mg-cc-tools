@@ -21,16 +21,36 @@
     },
     "permission-hooks": {
       "version": "0.1.0",
-      "installed_at": "2026-03-27T12:02:26.327791+00:00",
+      "installed_at": "2026-03-31T08:56:55.410645+00:00",
       "commands": [],
       "source_checksums": {
-        "install.sh": "sha256:558c0853ef0bc8d708eab6c1d37ae54045fa485d1e114a9c90bef761e57e5fd2",
-        "post-install.md": "sha256:34ba9a3fdb69d8724b2320ceaafa8afb2c649104008487dadfbe5966ad299f33"
+        "hooks/permission-guard.py": "sha256:a67c6f979f97d9530de8287cdc21bf87b5c9d8f6988ac5fb5a6988e7f584e7a5",
+        "install.sh": "sha256:59aa26b2c49eace4313fb86553c0949fa9a67971520135c6243cc41c37909f9f",
+        "post-install.md": "sha256:cf1c0ce815a178eb426d494ba2f3bf8d20b562b21c667eb362cccba3112e4302",
+        "scripts/emit-context.py": "sha256:54db2e0a0b3a3ebe850bc100a38f3690ea4f0ba480dda4c5f49ccdc2b14644ea"
+      }
+    },
+    "spec": {
+      "version": "0.1.0",
+      "installed_at": "2026-03-31T12:06:20.553379+00:00",
+      "commands": [
+        "spec-create-context.md",
+        "spec-draft.md",
+        "spec-improve.md",
+        "spec-prepare-context.md"
+      ],
+      "source_checksums": {
+        "commands/spec-create-context.md": "sha256:aa6ef7a539cb8edbdf6f6dfd2ae4b5e05db7263df0f29ac2e00abedc666fce9c",
+        "commands/spec-draft.md": "sha256:4997da460661fc1f5999567bff902856e9787636c3f3bca35f197af6a0770f6b",
+        "commands/spec-improve.md": "sha256:e60829c46d4635430a6473e99c7c53e609b770b56fe1183cf72641cd6847adf9",
+        "commands/spec-prepare-context.md": "sha256:33323ad8d6b01f126ff59e2a54409aac90bacfc8ed617c0989b770ae3bcd1a8f",
+        "install.sh": "sha256:000b55f50af0f38df6bd73082e69cc1d63204be181c4a7849d891bcaae1d4bc0",
+        "references/concept-spec-template.md": "sha256:d2af0abd56f568d6a7370e9fe46d6d29be1240201840f36aaea6a065803411dd"
       }
     }
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools",
-  "last_updated": "2026-03-27T12:02:26.326951+00:00"
+  "last_updated": "2026-03-31T12:06:20.552446+00:00"
 }
