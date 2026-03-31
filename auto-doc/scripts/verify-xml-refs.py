@@ -21,6 +21,7 @@ produce findings, exit 0 always.
 """
 
 import argparse
+import importlib
 import os
 import sys
 
@@ -152,8 +153,28 @@ def check_db_ref(ref, cache):
     return f"Table `{table}` not found in any SQLAlchemy model"
 
 
+def _is_dotted_module(module):
+    """Check if a module string looks like a dotted package path (not a local file)."""
+    return "." in module and "/" not in module and not module.endswith(".py")
+
+
+def _check_import(module, name):
+    """Try to verify a symbol exists in an installed package.
+
+    Returns:
+        True  — symbol found in the imported module
+        False — module imported but symbol not found
+        None  — module could not be imported (not installed)
+    """
+    try:
+        mod = importlib.import_module(module)
+        return hasattr(mod, name)
+    except Exception:
+        return None
+
+
 def check_code_ref(ref, cache):
-    """Check a code ref (class/function with attrs/params) against AST."""
+    """Check a code ref (class/function/variable with attrs/params) against AST."""
     kind = ref.get("kind", "")
     name = ref.get("name", "")
     module = ref.get("module", "")
@@ -162,6 +183,15 @@ def check_code_ref(ref, cache):
     if module:
         symbols = cache.get_symbols(module)
         if name not in symbols:
+            # Local file didn't resolve — try as installed package
+            if _is_dotted_module(module):
+                result = _check_import(module, name)
+                if result is True:
+                    return None  # Found in installed package
+                if result is False:
+                    return f"`{name}` not found in `{module}`"
+                # result is None — not installed, skip rather than flag
+                return None
             return f"`{name}` not found in `{module}`"
 
         if kind == "class":

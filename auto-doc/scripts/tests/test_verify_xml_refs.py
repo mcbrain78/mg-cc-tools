@@ -246,6 +246,76 @@ class TestCodeRefs:
             assert len(findings) == 0
 
 
+class TestThirdPartyRefs:
+    """Third-party module refs verified via import."""
+
+    def test_installed_package_symbol_found(self):
+        """Symbol in an installed third-party package is not flagged."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # lxml is installed in the test environment
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "parse",
+                "<!-- section: parse -->\n## Parse\n\nContent",
+                [{"type": "code", "kind": "function", "name": "parse",
+                  "module": "lxml.etree"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_installed_package_wrong_symbol_flagged(self):
+        """Wrong symbol in an installed package is flagged."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "parse",
+                "<!-- section: parse -->\n## Parse\n\nContent",
+                [{"type": "code", "kind": "function",
+                  "name": "totally_nonexistent_symbol",
+                  "module": "lxml.etree"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "totally_nonexistent_symbol" in findings[0]["description"]
+
+    def test_uninstalled_package_not_flagged(self):
+        """Symbol in an uninstalled package is skipped, not flagged."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "external",
+                "<!-- section: external -->\n## External\n\nContent",
+                [{"type": "code", "kind": "function",
+                  "name": "some_function",
+                  "module": "nonexistent.package.that.doesnt.exist"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_local_path_not_treated_as_package(self):
+        """A module with / or .py is treated as a local file, not a package."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "missing",
+                "<!-- section: missing -->\n## Missing\n\nContent",
+                [{"type": "code", "kind": "function",
+                  "name": "some_func",
+                  "module": "src/nonexistent/module.py"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "not found" in findings[0]["description"]
+
+
 class TestFlowRefs:
     """Flow ref verification against @flow decorators."""
 
