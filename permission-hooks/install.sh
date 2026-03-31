@@ -97,6 +97,11 @@ if [[ ! -f "${SCRIPT_DIR}/scripts/emit-context.py" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${SCRIPT_DIR}/scripts/emit-edit-guard.py" ]]; then
+  echo "Error: missing scripts/emit-edit-guard.py"
+  exit 1
+fi
+
 # ── Check for python3 ───────────────────────────────────────────────────────
 
 if ! command -v python3 &>/dev/null; then
@@ -117,11 +122,19 @@ cp "${SCRIPT_DIR}/hooks/permission-guard.py" "${SUPPORT_DIR}/hooks/"
 chmod +x "${SUPPORT_DIR}/hooks/permission-guard.py"
 echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
 
-# Context emitter script
+# Scripts
 mkdir -p "${SUPPORT_DIR}/scripts"
 cp "${SCRIPT_DIR}/scripts/emit-context.py" "${SUPPORT_DIR}/scripts/"
+cp "${SCRIPT_DIR}/scripts/emit-edit-guard.py" "${SUPPORT_DIR}/scripts/"
 chmod +x "${SUPPORT_DIR}/scripts/emit-context.py"
+chmod +x "${SUPPORT_DIR}/scripts/emit-edit-guard.py"
 echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
+
+# Commands
+mkdir -p "${COMMANDS_DIR}"
+cp "${SCRIPT_DIR}/commands/edit_on.md" "${COMMANDS_DIR}/"
+cp "${SCRIPT_DIR}/commands/edit_off.md" "${COMMANDS_DIR}/"
+echo "  Commands → ${COMMANDS_DIR}/ (edit_on.md, edit_off.md)"
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 
@@ -130,6 +143,14 @@ echo "  Resolving placeholders ..."
 # Hook file: {PROJECT_ROOT}
 hook_file="${SUPPORT_DIR}/hooks/permission-guard.py"
 sed -i "s|{PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
+
+# Command files: {EMIT_EDIT_GUARD_SCRIPT}
+EMIT_EDIT_GUARD_ABS="${SUPPORT_DIR}/scripts/emit-edit-guard.py"
+for cmd_file in "${COMMANDS_DIR}/edit_on.md" "${COMMANDS_DIR}/edit_off.md"; do
+  if [[ -f "$cmd_file" ]]; then
+    sed -i "s|{EMIT_EDIT_GUARD_SCRIPT}|${EMIT_EDIT_GUARD_ABS}|g" "$cmd_file"
+  fi
+done
 
 # ── Clean up stale files ───────────────────────────────────────────────────
 

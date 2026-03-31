@@ -142,6 +142,34 @@ def check_session_context(transcript_path):
     return command_name
 
 
+# ── Edit guard (manual toggle for Edit/Write/NotebookEdit) ──────────────────
+# The emit-edit-guard.py script prints a SESSION_FEATURE marker into the
+# transcript.  Default is ON (edits allowed).  When the latest marker is OFF,
+# Edit/Write/NotebookEdit are blocked until the user runs /mg:edit_on.
+_EDIT_GUARD_RE = re.compile(r"SESSION_FEATURE: MG:EDIT_GUARD_(ON|OFF)")
+
+
+def check_edit_guard(transcript_path):
+    """Return True if the edit guard is active (edits should be blocked).
+
+    Scans for the most recent EDIT_GUARD marker.  No marker or latest=ON
+    means edits are allowed (returns False).  Latest=OFF means blocked.
+    """
+    if not transcript_path:
+        return False
+    try:
+        with open(transcript_path) as f:
+            raw = f.read()
+    except (OSError, IOError):
+        return False
+
+    matches = list(_EDIT_GUARD_RE.finditer(raw))
+    if not matches:
+        return False  # No marker → default ON (edits allowed)
+
+    return matches[-1].group(1) == "OFF"
+
+
 # Claude's internal directory (memory, settings, etc.) — always allowed
 _CLAUDE_DIR_TILDE = "~/.claude/"
 _CLAUDE_DIR_ABS = os.path.expanduser("~/.claude/")
@@ -733,7 +761,7 @@ def main():
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {})
 
-    # ── Stage 0: always gate the context emitter script ────────────────
+    # ── Stage 0: always gate emitter scripts ──────────────────────────
     if tool_name == "Bash":
         command = tool_input.get("command", "")
         if _EMIT_SCRIPT_RE.search(command):
@@ -748,6 +776,15 @@ def main():
             "allow",
         )
         return
+
+    # ── Edit guard (manual toggle) ──────────────────────────────────────
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        if check_edit_guard(event.get("transcript_path", "")):
+            _ask(
+                "[permission-guard] Implementation/edits are not approved yet "
+                "by the user."
+            )
+            return
 
     # ── Read / Edit / Write tool guard ──────────────────────────────────
     if tool_name in ("Read", "Edit", "Write"):

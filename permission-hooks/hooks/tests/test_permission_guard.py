@@ -20,6 +20,7 @@ _strip_heredocs = guard._strip_heredocs
 check_exit_code_masking = guard.check_exit_code_masking
 check_session_context = guard.check_session_context
 _EMIT_SCRIPT_RE = guard._EMIT_SCRIPT_RE
+check_edit_guard = guard.check_edit_guard
 CONTEXT_TTL_S = guard.CONTEXT_TTL_S
 
 
@@ -1862,3 +1863,113 @@ class TestSessionContext:
                 assert check_session_context(path) == cmd, f"Failed for {cmd}"
             finally:
                 os.unlink(path)
+
+
+# ── Edit guard toggle tests ─────────────────────────────────────────────────
+
+class TestEditGuard:
+    """check_edit_guard reads transcript for EDIT_GUARD markers."""
+
+    def _write_transcript(self, lines):
+        f = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".jsonl", delete=False
+        )
+        f.write("\n".join(lines))
+        f.close()
+        return f.name
+
+    def _tool_result_line(self, content, tool_use_id="toolu_test"):
+        entry = {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": content,
+                    }
+                ],
+            },
+        }
+        return json.dumps(entry)
+
+    def test_no_transcript_returns_false(self):
+        assert check_edit_guard("") is False
+        assert check_edit_guard(None) is False
+
+    def test_missing_file_returns_false(self):
+        assert check_edit_guard("/nonexistent/transcript.jsonl") is False
+
+    def test_empty_file_returns_false(self):
+        path = self._write_transcript([""])
+        try:
+            assert check_edit_guard(path) is False
+        finally:
+            os.unlink(path)
+
+    def test_no_marker_returns_false_default_on(self):
+        """No marker means default ON — edits allowed."""
+        path = self._write_transcript([
+            self._tool_result_line("some unrelated output"),
+        ])
+        try:
+            assert check_edit_guard(path) is False
+        finally:
+            os.unlink(path)
+
+    def test_off_marker_returns_true(self):
+        """OFF marker means edits blocked."""
+        path = self._write_transcript([
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+        ])
+        try:
+            assert check_edit_guard(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_on_marker_returns_false(self):
+        """ON marker means edits allowed."""
+        path = self._write_transcript([
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
+        ])
+        try:
+            assert check_edit_guard(path) is False
+        finally:
+            os.unlink(path)
+
+    def test_latest_marker_wins_off_then_on(self):
+        """Last marker wins: OFF then ON → allowed."""
+        path = self._write_transcript([
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
+        ])
+        try:
+            assert check_edit_guard(path) is False
+        finally:
+            os.unlink(path)
+
+    def test_latest_marker_wins_on_then_off(self):
+        """Last marker wins: ON then OFF → blocked."""
+        path = self._write_transcript([
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+        ])
+        try:
+            assert check_edit_guard(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_multiple_toggles_last_wins(self):
+        """Multiple toggles — the very last one determines state."""
+        path = self._write_transcript([
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+        ])
+        try:
+            assert check_edit_guard(path) is True
+        finally:
+            os.unlink(path)
