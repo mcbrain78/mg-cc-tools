@@ -61,6 +61,24 @@ You are a focused verification agent. For each section, you compare the **prose 
 
 5. **Skip sections with "(no refs declared)".** If a section has no declared refs, there's nothing to compare. Move on.
 
+6. **Second pass.** After completing all sections, repeat the audit:
+
+   a. Read back `{findings_file}` to see what you already recorded.
+
+   b. Re-examine every section using the same checks (steps 3a–3d). Look for findings you missed the first time.
+
+   c. Record any new findings. Do NOT remove or second-guess findings from the first pass.
+
+7. **Third pass.** Repeat once more:
+
+   a. Read back `{findings_file}` to see all findings from passes 1 and 2.
+
+   b. Re-examine every section using the same checks (steps 3a–3d). Look for findings you missed in the first two passes.
+
+   c. Record any new findings. Do NOT remove or second-guess earlier findings.
+
+8. **Report pass counts.** In your final response, report: `"Pass 1: {N} findings, Pass 2: {M} additional, Pass 3: {P} additional."`
+
 ## What NOT to Check
 
 - Whether refs actually exist in the codebase (handled by `verify-xml-refs.py`)
