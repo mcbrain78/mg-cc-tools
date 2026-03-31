@@ -35,12 +35,12 @@ Parse `$ARGUMENTS` into space-separated tokens:
 
 **Quick mode** skips Steps 1 and 3 (target selection and action menus). All other steps run normally:
 
-1. Resolve the target path:
+1. Resolve the target path — **you MUST call resolve-target, do NOT resolve paths yourself**:
    ```bash
    python3 "$MG_INSTALL_LIB" resolve-target --target "<first_token>"
    ```
    If `"error"` is returned: STOP. Show the error message.
-   Otherwise, use the returned `"target"` value as `TARGET_PATH`. If it does not have a `.claude/` directory:
+   Otherwise, use the returned `"target"` value (an absolute path) as `TARGET_PATH` for ALL subsequent commands. **Never use relative paths like `../` as TARGET_PATH.** If it does not have a `.claude/` directory:
    ```bash
    mkdir -p "$TARGET_PATH/.claude/commands/mg"
    ```
@@ -63,12 +63,12 @@ For **interactive mode**, proceed with Steps 1-8 below.
 
 ## Step 1: Target Selection
 
-**If `$ARGUMENTS` contains a target**, resolve it:
+**If `$ARGUMENTS` contains a target**, resolve it — **you MUST call resolve-target, do NOT resolve paths yourself**:
 ```bash
 python3 "$MG_INSTALL_LIB" resolve-target --target "<argument>"
 ```
 If `"error"` is returned: STOP. Show the error message.
-Otherwise, use the returned `"target"` value as `TARGET_PATH`.
+Otherwise, use the returned `"target"` value (an absolute path) as `TARGET_PATH` for ALL subsequent commands.
 
 **If no arguments**, scan sibling directories (`../*/`) and present them via AskUserQuestion (header: "Target Project", multiSelect: false) with sibling paths (alphabetical) plus "Enter path manually". If no siblings found, offer only "Enter path manually". If user selects manual entry, ask for the path via a follow-up AskUserQuestion. Then resolve the selected path with `resolve-target` as above.
 

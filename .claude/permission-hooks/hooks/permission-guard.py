@@ -271,6 +271,10 @@ def check_file_outside_project(file_path, project_root):
         resolved = os.path.realpath(file_path)
         if resolved.startswith(project_root + "/") or resolved == project_root:
             return None  # resolves inside the project
+        # Allow sibling projects in the same workspace directory
+        workspace = os.path.dirname(project_root)
+        if workspace and resolved.startswith(workspace + "/"):
+            return None
         return f"parent directory traversal: {file_path}"
 
     # Absolute paths not under project root
@@ -358,6 +362,10 @@ def check_outside_project(command, project_root):
             resolved = os.path.realpath(token)
             if resolved.startswith(project_root + "/") or resolved == project_root:
                 continue  # resolves inside the project
+            # Allow sibling projects in the same workspace directory
+            workspace = os.path.dirname(project_root)
+            if workspace and resolved.startswith(workspace + "/"):
+                continue
             return (
                 f"parent directory traversal: {token}",
                 token,
