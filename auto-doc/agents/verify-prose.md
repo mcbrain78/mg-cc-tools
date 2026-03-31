@@ -17,14 +17,38 @@ You are a focused verification agent. For each section, you compare the **prose 
 
 1. **Read the manifest** at `{prose_verify_dir}/manifest.json`. Get the list of section slugs.
 
-2. **For each section slug**, read `{prose_verify_dir}/{slug}.json`. Each file has:
-   - `slug`: Section identifier
-   - `document`: Document title
-   - `audience`: Target audience
-   - `body`: The section's markdown prose
-   - `refs_as_text`: Human-readable bullet list of declared code references
+2. **Process one section at a time.** For each section slug:
 
-3. **Compare prose against refs.** For each section, run these checks:
+   a. **Read the section JSON** — read `{prose_verify_dir}/{slug}.json` now, immediately before auditing. Do NOT batch-read all sections upfront. Each file has:
+      - `slug`: Section identifier
+      - `document`: Document title
+      - `audience`: Target audience
+      - `body`: The section's markdown prose
+      - `refs_as_text`: Human-readable bullet list of declared code references
+
+   b. **Skip sections with "(no refs declared)".** If a section has no declared refs, there's nothing to compare. Move to the next section.
+
+   c. **Audit this section** — run checks 3a–3d (below) against the section data you just read.
+
+   d. **Record findings** for this section (step 4 below).
+
+   e. **Per-section re-audit loop.** Call audit-pass-control to decide whether to re-audit this section:
+
+      ```bash
+      python3 {scripts_dir}/audit-pass-control.py \
+          --state-file {findings_file}.passctl.json \
+          --section "{slug}"
+      ```
+
+      If `continue` is `true`:
+      - Read back `{findings_file}` to see what you already recorded for this section.
+      - Re-audit this same section using checks 3a–3d. Look for findings you missed.
+      - Record any new findings. Do NOT remove or second-guess earlier findings.
+      - Call audit-pass-control again for this section. Repeat until `continue` is `false`.
+
+      When `continue` is `false`, move to the next section.
+
+3. **Checks to run per section.** Compare prose against refs:
 
    a. **Prose claims not in refs:** Does the prose mention specific code entities (function names, class names, table names, column names, env vars, config paths) that are NOT listed in the refs? If so, the prose may be referencing something the ref extraction missed, or referencing something that doesn't exist.
 
@@ -59,25 +83,7 @@ You are a focused verification agent. For each section, you compare the **prose 
    - `code-example-fact-check` — code example references entities not in declared refs
    - `internal-contradiction` — prose contradicts itself or contradicts declared refs on specifics
 
-5. **Skip sections with "(no refs declared)".** If a section has no declared refs, there's nothing to compare. Move on.
-
-6. **Second pass.** After completing all sections, repeat the audit:
-
-   a. Read back `{findings_file}` to see what you already recorded.
-
-   b. Re-examine every section using the same checks (steps 3a–3d). Look for findings you missed the first time.
-
-   c. Record any new findings. Do NOT remove or second-guess findings from the first pass.
-
-7. **Third pass.** Repeat once more:
-
-   a. Read back `{findings_file}` to see all findings from passes 1 and 2.
-
-   b. Re-examine every section using the same checks (steps 3a–3d). Look for findings you missed in the first two passes.
-
-   c. Record any new findings. Do NOT remove or second-guess earlier findings.
-
-8. **Report pass counts.** In your final response, report: `"Pass 1: {N} findings, Pass 2: {M} additional, Pass 3: {P} additional."`
+5. **Report pass counts.** In your final response, report the number of findings added per section per pass (e.g., `"monitoring-alerting: Pass 1: 3, Pass 2: +2, Pass 3: +0 | data-pipeline: Pass 1: 1, Pass 2: +1, Pass 3: +0"`).
 
 ## What NOT to Check
 
