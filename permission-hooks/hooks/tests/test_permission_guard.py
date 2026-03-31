@@ -21,6 +21,7 @@ check_exit_code_masking = guard.check_exit_code_masking
 check_session_context = guard.check_session_context
 _EMIT_SCRIPT_RE = guard._EMIT_SCRIPT_RE
 check_edit_guard = guard.check_edit_guard
+_emitter_follows_command = guard._emitter_follows_command
 CONTEXT_TTL_S = guard.CONTEXT_TTL_S
 
 
@@ -1709,6 +1710,128 @@ class TestEmitScriptGate:
     def test_ignores_partial_name(self):
         assert not _EMIT_SCRIPT_RE.search("python3 emit-context.pyc")
         assert not _EMIT_SCRIPT_RE.search("python3 emit-contexty.py")
+
+
+class TestEmitterFollowsCommand:
+    """_emitter_follows_command detects recent slash command invocations."""
+
+    def _write_transcript(self, lines):
+        f = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".jsonl", delete=False
+        )
+        f.write("\n".join(lines))
+        f.close()
+        return f.name
+
+    def _command_line(self, command_name="auto-doc-audit"):
+        """Build a JSONL line simulating a loaded slash command."""
+        entry = {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"---\nname: {command_name}\n"
+                            "description: Run audit\n"
+                            "allowed-tools: Bash, Read, Write\n---\n"
+                            "## Session Context\n"
+                            "Run emit-context.py AUTO-DOC"
+                        ),
+                    }
+                ],
+            },
+        }
+        return json.dumps(entry)
+
+    def _assistant_line(self, text="I'll start the audit pipeline."):
+        entry = {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": text}],
+            },
+        }
+        return json.dumps(entry)
+
+    def _tool_result_line(self, content):
+        entry = {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_test",
+                        "content": content,
+                    }
+                ],
+            },
+        }
+        return json.dumps(entry)
+
+    def test_no_transcript_returns_false(self):
+        assert _emitter_follows_command("") is False
+        assert _emitter_follows_command(None) is False
+
+    def test_missing_file_returns_false(self):
+        assert _emitter_follows_command("/nonexistent/file.jsonl") is False
+
+    def test_empty_transcript_returns_false(self):
+        path = self._write_transcript([""])
+        try:
+            assert _emitter_follows_command(path) is False
+        finally:
+            os.unlink(path)
+
+    def test_command_just_loaded(self):
+        """Command in the last 2 entries → emitter should be auto-approved."""
+        path = self._write_transcript([
+            self._command_line(),
+            self._assistant_line(),
+        ])
+        try:
+            assert _emitter_follows_command(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_command_with_filler(self):
+        """Command a few entries back but still within window."""
+        path = self._write_transcript([
+            self._command_line(),
+            self._assistant_line(),
+            self._tool_result_line("some file content"),
+            self._assistant_line("Now let me run the emitter."),
+        ])
+        try:
+            assert _emitter_follows_command(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_no_command_in_transcript(self):
+        """No command at all → should be gated."""
+        path = self._write_transcript([
+            self._assistant_line("Let me try running the emitter."),
+            self._tool_result_line("some output"),
+        ])
+        try:
+            assert _emitter_follows_command(path) is False
+        finally:
+            os.unlink(path)
+
+    def test_old_command_not_in_tail(self):
+        """Command far back in transcript (beyond tail window) → gated."""
+        filler = [self._tool_result_line(f"output {i}") for i in range(10)]
+        path = self._write_transcript([
+            self._command_line(),
+            *filler,
+            self._assistant_line("Let me try again."),
+        ])
+        try:
+            assert _emitter_follows_command(path) is False
+        finally:
+            os.unlink(path)
 
 
 class TestSessionContext:

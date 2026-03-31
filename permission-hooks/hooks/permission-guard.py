@@ -109,6 +109,29 @@ _CONTEXT_RE = re.compile(r"SESSION_CONTEXT_ID: MG:([\w-]+)_(\d+)")
 _EMIT_SCRIPT_RE = re.compile(r"\bemit-context\.py\b")
 CONTEXT_TTL_S = 30 * 60  # 30 minutes
 
+# Number of trailing JSONL lines to inspect for recent command invocation.
+_RECENT_LINES = 5
+
+
+def _emitter_follows_command(transcript_path):
+    """Return True if a slash command was loaded in the last few transcript entries.
+
+    When a user invokes a /mg: command, the command markdown (including its
+    ``allowed-tools:`` frontmatter) appears in the transcript 1-2 entries
+    before the emit-context.py Bash call.  Checking the tail of the
+    transcript avoids false-positives from old command content.
+    """
+    if not transcript_path:
+        return False
+    try:
+        with open(transcript_path) as f:
+            lines = f.read().splitlines()
+    except (OSError, IOError):
+        return False
+
+    tail = "\n".join(lines[-_RECENT_LINES:]) if lines else ""
+    return "allowed-tools:" in tail
+
 
 def check_session_context(transcript_path):
     """Return the active context command name (e.g. 'AUTO-DOC') or None.
@@ -761,11 +784,18 @@ def main():
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {})
 
-    # ── Stage 0: always gate emitter scripts ──────────────────────────
+    # ── Stage 0: gate emitter scripts (unless preceded by a command) ──
     if tool_name == "Bash":
         command = tool_input.get("command", "")
         if _EMIT_SCRIPT_RE.search(command):
-            _ask("[permission-guard] Session context emitter — requires human approval")
+            if _emitter_follows_command(event.get("transcript_path", "")):
+                _decide(
+                    "[permission-guard] Session context emitter — "
+                    "auto-approved (slash command active)",
+                    "allow",
+                )
+            else:
+                _ask("[permission-guard] Session context emitter — requires human approval")
             return
 
     # ── Session context auto-approve ───────────────────────────────────
