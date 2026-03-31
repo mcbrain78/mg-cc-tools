@@ -24,8 +24,10 @@ Prints JSON to stdout. Diagnostics go to stderr.
 """
 
 import argparse
+import difflib
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -86,6 +88,30 @@ def cmd_init(args):
 # next — merge previous, extract next
 # ---------------------------------------------------------------------------
 
+def _save_diff(orig_file, edited_file, diff_file, group_id):
+    """Compute unified diff between original and edited XML, save to file."""
+    with open(orig_file, encoding="utf-8") as f:
+        orig_lines = f.readlines()
+    with open(edited_file, encoding="utf-8") as f:
+        edited_lines = f.readlines()
+
+    diff = list(difflib.unified_diff(
+        orig_lines, edited_lines,
+        fromfile=f"{group_id}.orig.xml",
+        tofile=f"{group_id}.xml",
+    ))
+
+    if diff:
+        with open(diff_file, "w", encoding="utf-8") as f:
+            f.writelines(diff)
+        print(f"  Diff saved: {diff_file}", file=sys.stderr)
+    else:
+        # No changes — agent made no edits
+        with open(diff_file, "w", encoding="utf-8") as f:
+            f.write(f"# No changes made by agent for group {group_id}\n")
+        print(f"  No changes for group {group_id}", file=sys.stderr)
+
+
 def _merge_current(state):
     """Merge the current group's edit file, update state.
 
@@ -105,6 +131,15 @@ def _merge_current(state):
         err = f"Edit file not found for merge: {edit_file}"
         print(f"  Error: {err}", file=sys.stderr)
         return [err]
+
+    # Generate diff: original extraction vs agent-edited version
+    orig_file = edit_file.replace(".xml", ".orig.xml")
+    diff_file = os.path.join(cfg["edit_dir"], f"{group_id}.diff")
+    if os.path.isfile(orig_file):
+        _save_diff(orig_file, edit_file, diff_file, group_id)
+        if "diffs" not in state:
+            state["diffs"] = []
+        state["diffs"].append(diff_file)
 
     merge_script = os.path.join(SCRIPTS_DIR, "merge-edit-xml.py")
     result = subprocess.run(
@@ -183,6 +218,11 @@ def _extract_group(state, group_index):
     except Exception:
         return None, 0
 
+    # Save original for diffing after agent edits
+    if section_count > 0:
+        orig_file = edit_file.replace(".xml", ".orig.xml")
+        shutil.copy2(edit_file, orig_file)
+
     return edit_file, section_count
 
 
@@ -250,6 +290,7 @@ def cmd_next(args):
         "completed": len(state["completed"]),
         "skipped": len(state["skipped"]),
         "files_modified": state["files_modified"],
+        "diffs": state.get("diffs", []),
     }
     if errors:
         output["merge_errors"] = errors

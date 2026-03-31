@@ -194,6 +194,34 @@ class TestUpdateSectionRefs:
         finally:
             os.unlink(path)
 
+    def test_code_refs_variable(self):
+        tree = build_xml_doc("devops", "how-to", "# Title", SAMPLE_SECTIONS)
+        flat_refs = [
+            {"type": "code", "kind": "variable", "name": "FMP_QUARTERLY_ENDPOINTS",
+             "module": "src/road_runner/fmp/endpoints.py"},
+            {"type": "code", "kind": "variable", "name": "DEFAULT_TIMEOUT"},
+        ]
+        update_section_refs(tree, "monitoring-alerting", flat_refs)
+
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 2
+            var1 = refs[0]
+            assert var1["type"] == "code"
+            assert var1["kind"] == "variable"
+            assert var1["name"] == "FMP_QUARTERLY_ENDPOINTS"
+            assert var1["module"] == "src/road_runner/fmp/endpoints.py"
+            var2 = refs[1]
+            assert var2["kind"] == "variable"
+            assert var2["name"] == "DEFAULT_TIMEOUT"
+            assert "module" not in var2
+        finally:
+            os.unlink(path)
+
     def test_flow_env_config_refs(self):
         tree = build_xml_doc("devops", "how-to", "# Title", SAMPLE_SECTIONS)
         flat_refs = [

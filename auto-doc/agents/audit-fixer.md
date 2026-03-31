@@ -12,7 +12,7 @@ You are a **codebase-verified documentation fixer**. You receive a single edit X
 
 ## Process
 
-1. **Read the edit file** at `edit_file`. It contains `<section>` elements, each with `<findings>`, `<refs>`, and `<body>`.
+1. **Read the edit file** at `edit_file`. It contains `<section>` elements, each with `<findings>`, `<refs>`, and `<body>`. If the file exceeds the Read tool's token limit, read it in chunks using `offset` and `limit`.
 
 2. **For each section**, read the `<findings>` and determine the fix strategy:
 
@@ -47,7 +47,10 @@ When using the Edit tool on the edit XML file:
 ## Constraints
 
 - **Prefer mentioning over removing.** When a `reference-integrity` finding says a declared ref is not mentioned in the prose, weave the entity name into existing text. Don't remove refs unless the entity is genuinely irrelevant to the section.
-- **Minimal edits.** Insert entity names naturally into existing sentences. Don't rewrite paragraphs. For example: "the compute pipeline runs nightly" → "the compute pipeline (`compute_finance_metrics`) runs nightly".
+- **Minimal edits.** Insert entity names into existing sentences. Don't rewrite paragraphs. For example: "the compute pipeline runs nightly" → "the compute pipeline (`compute_finance_metrics`) runs nightly".
+- **No new names.** Only insert identifiers that appear in the finding's description or the section's existing `<refs>`. Do not add explanatory context that introduces entity names, file paths, or env vars not already present. Only in exceptional cases where the insertion would be ungrammatical without it may you add generic words — never specific identifiers.
+  - Good: `"migrations run via `alembic_road_runner/env.py`"`
+  - Bad: `"migrations run via `alembic_road_runner/env.py`, which reads `DATABASE_URL` from `.env.production`"` (introduces `DATABASE_URL` and `.env.production` — neither is in the finding or refs)
 - **Same fix everywhere.** When a group spans multiple sections, apply the same correction consistently across all of them.
 - **Preserve section markers.** Body text must keep its `<!-- section: slug -->` marker.
 - **Read codebase only when needed.** For `reference-integrity` findings, the body + refs give you everything needed. Only use Read/Grep for dangling-prose-reference findings and contradictions.

@@ -688,6 +688,8 @@ XML sources live at `.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml`. Standalone
                   module="src/road_runner/flows/compute.py">
           <param>recompute_stale</param>
         </function>
+        <variable name="FMP_QUARTERLY_ENDPOINTS"
+                  module="src/road_runner/fmp/endpoints.py"/>
       </code>
       <flow>ingest-quarterly-finance-data</flow>
       <env>WORKER_CONCURRENCY</env>
@@ -723,13 +725,13 @@ Each section body contains a `<!-- section: {slug} -->` HTML comment that maps 1
 | Type | XML Nesting | Verified Against |
 |---|---|---|
 | `db` | `<db><schema><table><column>` | SQLAlchemy `__tablename__`, `__table_args__`, Column defs |
-| `code` | `<code><class attr>`, `<code><function param>` | AST via `lib/symbols.py` |
+| `code` | `<code><class attr>`, `<code><function param>`, `<code><variable>` | AST via `lib/symbols.py` |
 | `flow` | `<flow>` (flat name) | `@flow` decorators |
 | `env` | `<env>` (flat name) | Settings classes, `.env.example` |
 | `config` | `<config>` (flat path) | Filesystem existence |
 | `enum` | `<enum class field><value>` | Enum classes, string literals |
 
-Refs are initially empty (populated by `extract-refs.py` via Haiku after generation) and verified deterministically by `verify-xml-refs.py` during the verify step.
+Refs are produced inline by writer agents during generation (as `typed_refs` in the section refs JSON) and verified deterministically by `verify-xml-refs.py` during the audit step.
 
 ### Flat JSON Wire Format
 
@@ -740,6 +742,8 @@ Scripts exchange refs as flat JSON arrays (never raw XML). Each element has a `t
   {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
   {"type": "code", "kind": "function", "name": "compute_finance_metrics",
    "module": "src/road_runner/flows/compute.py", "param": "recompute_stale"},
+  {"type": "code", "kind": "variable", "name": "FMP_QUARTERLY_ENDPOINTS",
+   "module": "src/road_runner/fmp/endpoints.py"},
   {"type": "flow", "name": "ingest-quarterly-finance-data"},
   {"type": "env", "name": "WORKER_CONCURRENCY"},
   {"type": "config", "path": "config/field-mapping.yaml"},

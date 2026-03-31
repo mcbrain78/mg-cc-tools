@@ -169,7 +169,7 @@ def _parse_db_refs(db_el):
 
 
 def _parse_code_refs(code_el):
-    """Parse <code><class>/<function> hierarchy into flat refs."""
+    """Parse <code><class>/<function>/<variable> hierarchy into flat refs."""
     refs = []
     for cls_el in code_el.findall("class"):
         cls_name = cls_el.get("name", "")
@@ -198,6 +198,13 @@ def _parse_code_refs(code_el):
                 refs.append(r)
         else:
             refs.append(ref)
+    for var_el in code_el.findall("variable"):
+        var_name = var_el.get("name", "")
+        module = var_el.get("module", "")
+        ref = {"type": "code", "kind": "variable", "name": var_name}
+        if module:
+            ref["module"] = module
+        refs.append(ref)
     return refs
 
 
@@ -394,7 +401,7 @@ def _build_db_xml(refs_el, db_refs):
 
 
 def _build_code_xml(refs_el, code_refs):
-    """Build <code><class>/<function> from flat code refs."""
+    """Build <code><class>/<function>/<variable> from flat code refs."""
     code_el = etree.SubElement(refs_el, "code")
 
     # Group classes: collect attrs per class name
@@ -435,6 +442,16 @@ def _build_code_xml(refs_el, code_refs):
         for param in params:
             param_el = etree.SubElement(func_el, "param")
             param_el.text = param
+
+    # Variables: simple name + optional module
+    for ref in code_refs:
+        if ref.get("kind") == "variable":
+            name = ref.get("name", "")
+            module = ref.get("module", "")
+            attrs = {"name": name}
+            if module:
+                attrs["module"] = module
+            etree.SubElement(code_el, "variable", **attrs)
 
 
 def _build_enum_xml(refs_el, enum_refs):

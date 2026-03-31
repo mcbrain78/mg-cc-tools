@@ -432,6 +432,122 @@ def _modify_edit_body(edit_file, slug, new_text):
 
 
 # ---------------------------------------------------------------------------
+# Diff generation tests
+# ---------------------------------------------------------------------------
+
+class TestDiffs:
+    """Per-group diffs are saved for audit trail."""
+
+    def test_orig_file_saved_after_extract(self):
+        with tempfile.TemporaryDirectory() as td:
+            gf, ff, xd, ed, sf, _ = _setup_scenario(td, n_groups=1)
+
+            _run(["init", "--grouping-file", gf, "--findings-file", ff,
+                  "--xml-dir", xd, "--edit-dir", ed,
+                  "--approved", "0", "--state-file", sf])
+
+            r = _run(["next", "--state-file", sf])
+            edit_file = json.loads(r.stdout)["edit_file"]
+            orig_file = edit_file.replace(".xml", ".orig.xml")
+
+            assert os.path.isfile(orig_file)
+
+    def test_diff_file_created_on_merge(self):
+        with tempfile.TemporaryDirectory() as td:
+            gf, ff, xd, ed, sf, _ = _setup_scenario(td, n_groups=1)
+
+            _run(["init", "--grouping-file", gf, "--findings-file", ff,
+                  "--xml-dir", xd, "--edit-dir", ed,
+                  "--approved", "0", "--state-file", sf])
+
+            r = _run(["next", "--state-file", sf])
+            edit_file = json.loads(r.stdout)["edit_file"]
+
+            # Simulate agent edit
+            _modify_edit_body(edit_file, "section-0", "Agent-modified content.")
+
+            # Merge triggers diff
+            _run(["next", "--state-file", sf])
+
+            diff_file = os.path.join(ed, "group-0.diff")
+            assert os.path.isfile(diff_file)
+
+            with open(diff_file) as f:
+                diff_content = f.read()
+            assert "Agent-modified content" in diff_content
+            assert "---" in diff_content  # unified diff header
+
+    def test_no_edit_produces_empty_diff(self):
+        with tempfile.TemporaryDirectory() as td:
+            gf, ff, xd, ed, sf, _ = _setup_scenario(td, n_groups=1)
+
+            _run(["init", "--grouping-file", gf, "--findings-file", ff,
+                  "--xml-dir", xd, "--edit-dir", ed,
+                  "--approved", "0", "--state-file", sf])
+
+            _run(["next", "--state-file", sf])
+            # No edit — just merge
+            _run(["next", "--state-file", sf])
+
+            diff_file = os.path.join(ed, "group-0.diff")
+            assert os.path.isfile(diff_file)
+
+            with open(diff_file) as f:
+                diff_content = f.read()
+            assert "No changes" in diff_content
+
+    def test_diffs_in_done_output(self):
+        with tempfile.TemporaryDirectory() as td:
+            gf, ff, xd, ed, sf, _ = _setup_scenario(td, n_groups=2)
+
+            _run(["init", "--grouping-file", gf, "--findings-file", ff,
+                  "--xml-dir", xd, "--edit-dir", ed,
+                  "--approved", "0,1", "--state-file", sf])
+
+            r1 = _run(["next", "--state-file", sf])
+            _modify_edit_body(
+                json.loads(r1.stdout)["edit_file"], "section-0", "Edit 0.",
+            )
+
+            r2 = _run(["next", "--state-file", sf])
+            _modify_edit_body(
+                json.loads(r2.stdout)["edit_file"], "section-1", "Edit 1.",
+            )
+
+            r3 = _run(["next", "--state-file", sf])
+            output = json.loads(r3.stdout)
+
+            assert output["status"] == "done"
+            assert len(output["diffs"]) == 2
+            assert all(os.path.isfile(d) for d in output["diffs"])
+
+    def test_diff_shows_actual_changes(self):
+        """Diff content reflects the specific text the agent changed."""
+        with tempfile.TemporaryDirectory() as td:
+            gf, ff, xd, ed, sf, _ = _setup_scenario(td, n_groups=1)
+
+            _run(["init", "--grouping-file", gf, "--findings-file", ff,
+                  "--xml-dir", xd, "--edit-dir", ed,
+                  "--approved", "0", "--state-file", sf])
+
+            r = _run(["next", "--state-file", sf])
+            edit_file = json.loads(r.stdout)["edit_file"]
+
+            _modify_edit_body(edit_file, "section-0", "Now mentions `func_0`.")
+
+            _run(["next", "--state-file", sf])
+
+            diff_file = os.path.join(ed, "group-0.diff")
+            with open(diff_file) as f:
+                diff_content = f.read()
+
+            # Should show the old content being replaced
+            assert "-" in diff_content  # removed lines
+            assert "+" in diff_content  # added lines
+            assert "func_0" in diff_content
+
+
+# ---------------------------------------------------------------------------
 # CLI tests
 # ---------------------------------------------------------------------------
 

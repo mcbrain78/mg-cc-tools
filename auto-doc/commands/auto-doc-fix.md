@@ -101,9 +101,9 @@ Handle user response:
 
 ### Step 5: Initialize Fix Queue and Process Groups
 
-1. Create the edit directory and initialize the queue:
+1. Create the fix directory (separate from audit so diffs survive audit re-runs):
    ```bash
-   mkdir -p {TMP_DIR}/audit/edits
+   mkdir -p {TMP_DIR}/fix
    ```
 
 2. Build the approved indices string (comma-separated, e.g., `"0,1,2"` or `"0,2"`).
@@ -114,9 +114,9 @@ Handle user response:
        --grouping-file {TMP_DIR}/audit/grouping.json \
        --findings-file {TMP_DIR}/audit/merged-findings.json \
        --xml-dir {project_root}/.mg/docs/xml-sources \
-       --edit-dir {TMP_DIR}/audit/edits \
+       --edit-dir {TMP_DIR}/fix \
        --approved {comma_separated_indices} \
-       --state-file {TMP_DIR}/audit/fix-state.json
+       --state-file {TMP_DIR}/fix/fix-state.json
    ```
 
 4. **Loop** — call `next` repeatedly until done:
@@ -124,7 +124,7 @@ Handle user response:
    a. Get the next group:
       ```bash
       uv run {SCRIPTS_DIR}/fix-queue.py next \
-          --state-file {TMP_DIR}/audit/fix-state.json
+          --state-file {TMP_DIR}/fix/fix-state.json
       ```
 
    b. Parse the JSON output from stdout.
