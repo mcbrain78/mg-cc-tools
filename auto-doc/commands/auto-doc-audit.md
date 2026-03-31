@@ -67,9 +67,11 @@ Add `--audience` only if the user specified audience names (e.g., `--audience de
 
 Read `{TMP_DIR}/audit/findings-refs.json` to get the deterministic findings list.
 
-### Step 3: Prose-vs-Refs Consistency
+### Step 3: Prose-vs-Refs Consistency (3-wave audit)
 
-For each XML file in xml-sources (filtered by audience if specified), prepare prose verification input and spawn a verify-prose agent.
+Three waves of fresh agents audit each document. Each wave spawns new agents that have never seen the sections, preventing shortcutting. All waves write to the same findings file per document (append-only).
+
+#### 3.1. Collect and prepare
 
 1. **Collect XML files.** Use Glob to find all `.xml` files under `{project_root}/.mg/docs/xml-sources/`. If an audience filter is active, only include files under `xml-sources/{audience}/` and root-level XML files (GLOSSARY.xml, OVERVIEW.xml).
 
@@ -81,23 +83,77 @@ For each XML file in xml-sources (filtered by audience if specified), prepare pr
    ```
    This creates per-section JSON files and a manifest.json.
 
-3. **Spawn verify-prose agents** (one per document, parallel foreground, **model: sonnet**):
-   ```
-   Agent(
-     model="sonnet",
-     description="Prose audit {audience} {DOCUMENT}",
-     prompt="You are a prose-vs-refs auditor.
+#### 3.2. Wave 1 — Initial audit
 
-   Read and follow the instructions in: {AGENTS_DIR}/verify-prose.md
+Spawn verify-prose agents (one per document, parallel foreground, **model: sonnet**):
+```
+Agent(
+  model="sonnet",
+  description="Prose audit W1 {audience} {DOCUMENT}",
+  prompt="You are a prose-vs-refs auditor.
 
-   Project root: {project_root}
-   Prose verify dir: {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
-   Findings file: {TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
-   Scripts dir: {SCRIPTS_DIR}"
-   )
-   ```
+Read and follow the instructions in: {AGENTS_DIR}/verify-prose.md
 
-4. **Collect prose findings** from each agent's output file (`{TMP_DIR}/audit/findings-prose-*.json`). Read each file and accumulate all findings.
+Project root: {project_root}
+Prose verify dir: {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+Findings file: {TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
+Scripts dir: {SCRIPTS_DIR}"
+)
+```
+
+#### 3.3. Clean up state files
+
+After wave 1 completes, delete section-control state files so wave 2 agents start fresh:
+```bash
+rm -f {TMP_DIR}/audit/*.sectionctl.json
+```
+
+#### 3.4. Wave 2 — Re-audit pass 1
+
+Spawn verify-prose-reaudit agents (one per document, parallel foreground, **model: sonnet**). They read wave 1 findings and look for what was missed. Use the **same findings files** as wave 1:
+```
+Agent(
+  model="sonnet",
+  description="Prose audit W2 {audience} {DOCUMENT}",
+  prompt="You are a prose-vs-refs re-auditor.
+
+Read and follow the instructions in: {AGENTS_DIR}/verify-prose-reaudit.md
+
+Project root: {project_root}
+Prose verify dir: {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+Findings file: {TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
+Scripts dir: {SCRIPTS_DIR}"
+)
+```
+
+#### 3.5. Clean up state files
+
+After wave 2 completes, delete section-control state files again:
+```bash
+rm -f {TMP_DIR}/audit/*.sectionctl.json
+```
+
+#### 3.6. Wave 3 — Re-audit pass 2
+
+Spawn verify-prose-reaudit agents (one per document, parallel foreground, **model: sonnet**). They read wave 1+2 findings and do a final sweep. Use the **same findings files**:
+```
+Agent(
+  model="sonnet",
+  description="Prose audit W3 {audience} {DOCUMENT}",
+  prompt="You are a prose-vs-refs re-auditor.
+
+Read and follow the instructions in: {AGENTS_DIR}/verify-prose-reaudit.md
+
+Project root: {project_root}
+Prose verify dir: {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+Findings file: {TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
+Scripts dir: {SCRIPTS_DIR}"
+)
+```
+
+#### 3.7. Collect findings
+
+**Collect prose findings** from each document's findings file (`{TMP_DIR}/audit/findings-prose-*.json`). Read each file and accumulate all findings.
 
 ### Step 4: Report
 
