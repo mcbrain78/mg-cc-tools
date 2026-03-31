@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """Validate and append a single verify finding to docs-verify-findings.json.
 
-Called by the verifier agent during each check. The agent writes finding
-data to a temp file (via Write tool), then invokes this script with
---input pointing to that file. The script validates 6 required fields,
-rejects invalid input to a .rejected file, and appends valid findings
-atomically to the consolidated findings file.
+Called by the verifier agent during each check. Supports two modes:
 
-Usage:
+Inline mode (preferred — single Bash call, no temp file):
+    python3 add-verify-finding.py \
+        --findings-file .mg/docs/docs-verify-findings.json \
+        --document "OPERATIONS" \
+        --section "deployment" \
+        --audience "devops" \
+        --check "reference-integrity" \
+        --description "..." \
+        --suggestion "..."
+
+File mode (legacy — requires writing a temp file first):
     python3 add-verify-finding.py \
         --input {TMP_DIR}/finding-001.json \
         --findings-file .mg/docs/docs-verify-findings.json
 
-Input JSON must contain:
-    document, section, audience, check, description, suggestion
+Required fields: document, section, audience, check, description, suggestion
 
 Output adds computed fields:
     group_id (document/section) for grouping related findings
@@ -123,33 +128,69 @@ def main():
         description="Validate and append a verify finding"
     )
     parser.add_argument(
-        "--input", required=True, dest="input_file",
-        help="Path to temp file with finding JSON",
+        "--input", dest="input_file",
+        help="Path to temp file with finding JSON (file mode)",
     )
     parser.add_argument(
         "--findings-file", required=True,
         help="Path to docs-verify-findings.json",
     )
+    # Inline args — preferred mode, no temp file needed
+    parser.add_argument("--document", help="Document name")
+    parser.add_argument("--section", help="Section slug")
+    parser.add_argument("--audience", help="Target audience")
+    parser.add_argument("--check", help="Check type")
+    parser.add_argument("--description", help="Finding description")
+    parser.add_argument("--suggestion", help="Suggested fix")
 
     args = parser.parse_args()
-    input_path = os.path.abspath(args.input_file)
     findings_path = os.path.abspath(args.findings_file)
 
-    # Read input from temp file
-    try:
-        input_data = load_json(input_path)
-    except json.JSONDecodeError as e:
-        save_rejected(input_path, f"Invalid JSON: {e}")
-        sys.exit(1)
+    # Determine input mode: inline args vs file
+    inline_fields = {
+        "document": args.document, "section": args.section,
+        "audience": args.audience, "check": args.check,
+        "description": args.description, "suggestion": args.suggestion,
+    }
+    has_inline = any(v is not None for v in inline_fields.values())
 
-    if input_data is None:
-        save_rejected(input_path, "Input file not found or empty")
-        sys.exit(1)
+    if has_inline:
+        # Inline mode — construct finding from CLI args
+        missing = [k for k, v in inline_fields.items() if v is None]
+        if missing:
+            print(
+                f"Error: inline mode requires all 6 fields. Missing: {', '.join(missing)}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        input_data = inline_fields
+    elif args.input_file:
+        # File mode — read from temp file
+        input_path = os.path.abspath(args.input_file)
+        try:
+            input_data = load_json(input_path)
+        except json.JSONDecodeError as e:
+            save_rejected(input_path, f"Invalid JSON: {e}")
+            sys.exit(1)
+
+        if input_data is None:
+            save_rejected(input_path, "Input file not found or empty")
+            sys.exit(1)
+    else:
+        print(
+            "Error: provide either --input <file> or inline args "
+            "(--document, --section, --audience, --check, --description, --suggestion)",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     # Validate
     is_valid, error = validate_finding(input_data)
     if not is_valid:
-        save_rejected(input_path, error)
+        if args.input_file:
+            save_rejected(os.path.abspath(args.input_file), error)
+        else:
+            print(f"Error: {error}", file=sys.stderr)
         sys.exit(1)
 
     # Compute group_id for grouping related findings

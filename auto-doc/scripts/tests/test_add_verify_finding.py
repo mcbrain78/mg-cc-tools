@@ -436,8 +436,8 @@ class TestAddVerifyFindingNormalization:
 class TestAddVerifyFindingCLI:
     """CLI argument validation."""
 
-    def test_missing_input_arg_fails(self):
-        """Missing --input arg exits non-zero."""
+    def test_no_input_and_no_inline_fails(self):
+        """No --input and no inline args exits non-zero."""
         with tempfile.TemporaryDirectory() as tmp:
             findings_file = os.path.join(tmp, "findings.json")
             result = subprocess.run(
@@ -460,3 +460,148 @@ class TestAddVerifyFindingCLI:
                 capture_output=True, text=True,
             )
             assert result.returncode != 0
+
+
+class TestAddVerifyFindingInlineMode:
+    """Inline CLI args mode (no temp file needed)."""
+
+    def _inline_args(self, finding=None, **overrides):
+        """Build inline CLI args list from a finding dict."""
+        f = finding or _valid_finding()
+        f.update(overrides)
+        args = []
+        for key in ["document", "section", "audience", "check",
+                     "description", "suggestion"]:
+            if key in f:
+                args.extend([f"--{key}", f[key]])
+        return args
+
+    def test_inline_appends_to_empty_file(self):
+        """Inline args create finding and append to new findings file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 *self._inline_args()],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, f"stderr: {result.stderr}"
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert len(data) == 1
+            assert data[0]["document"] == "OPERATIONS"
+            assert data[0]["section"] == "deployment-pipeline"
+            assert data[0]["check"] == "reference-integrity"
+            assert data[0]["group_id"] == "OPERATIONS/deployment-pipeline"
+
+    def test_inline_appends_to_existing(self):
+        """Inline args append to existing findings array."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            # Seed with 2 existing findings
+            existing = [_valid_finding() for _ in range(2)]
+            with open(findings_file, "w") as f:
+                json.dump(existing, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 *self._inline_args(document="GLOSSARY",
+                                    section="system-concepts")],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert len(data) == 3
+            assert data[2]["document"] == "GLOSSARY"
+
+    def test_inline_missing_field_fails(self):
+        """Inline mode with missing field exits with code 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            # Omit --suggestion
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--document", "OPERATIONS",
+                 "--section", "deployment",
+                 "--audience", "devops",
+                 "--check", "reference-integrity",
+                 "--description", "test"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 2
+            assert "suggestion" in result.stderr
+
+    def test_inline_invalid_check_fails(self):
+        """Inline mode with invalid check type exits non-zero."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 *self._inline_args(check="spelling")],
+                capture_output=True, text=True,
+            )
+            assert result.returncode != 0
+
+    def test_inline_normalizes_document(self):
+        """Inline mode strips .md from document name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 *self._inline_args(document="OPERATIONS.md")],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert data[0]["document"] == "OPERATIONS"
+
+    def test_inline_normalizes_audience(self):
+        """Inline mode normalizes singular audience to plural."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 *self._inline_args(audience="developer")],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert data[0]["audience"] == "developers"
+
+    def test_inline_confirmation_on_stderr(self):
+        """Inline mode prints confirmation to stderr."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 *self._inline_args()],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "OPERATIONS" in result.stderr
+            assert "reference-integrity" in result.stderr
