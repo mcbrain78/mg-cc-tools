@@ -8,6 +8,14 @@ allowed-tools: Bash, Read, Write, AskUserQuestion
 
 You capture documentation notes to the inbox for later processing by the generate pipeline. This is a **standalone command** -- it does not trigger any pipeline step (scan, generate, or verify). Notes stay in the inbox until `/mg:auto-doc-generate` processes them.
 
+## Session Context
+
+Run the session context emitter for permission auto-approval:
+```
+python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+```
+If the script is not found, continue — permissions will require manual approval.
+
 ## Arguments
 
 `$ARGUMENTS` contains the note text. Example usage:

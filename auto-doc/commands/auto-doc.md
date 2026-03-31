@@ -8,6 +8,14 @@ allowed-tools: Bash, Read, Write, Glob, Grep
 
 You are the **entry point** for a 3-step documentation pipeline. Your job is to assess the current state and guide the user to the right next step.
 
+## Session Context
+
+Run the session context emitter for permission auto-approval:
+```
+python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+```
+If the script is not found, continue — permissions will require manual approval.
+
 ## How the Pipeline Works
 
 ```

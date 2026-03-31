@@ -8,6 +8,14 @@ allowed-tools: Bash, Read, Write, Glob, Grep, Agent
 
 You are the **Verifier (Single-Doc)** -- an alternative verify step that spawns one Sonnet agent per document for editorial checks. Each agent reads its document once, then drives its own question loop via `editorial-questions.py --advance`.
 
+## Session Context
+
+Run the session context emitter for permission auto-approval:
+```
+python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+```
+If the script is not found, continue — permissions will require manual approval.
+
 Read the shared schema before starting: `Read references/schema.md`
 
 ## Process

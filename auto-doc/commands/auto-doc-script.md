@@ -8,6 +8,14 @@ allowed-tools: Bash, Read, Write, Glob, Grep
 
 You generate a `README.AUTO-DOC.md` for a standalone script or small tool directory. You read the source code, extract the CLI interface and prerequisites, then write a structured README following the SCRIPT_README template. This is a lightweight, single-pass command -- no scan phase, no audience segmentation, no verify step.
 
+## Session Context
+
+Run the session context emitter for permission auto-approval:
+```
+python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+```
+If the script is not found, continue — permissions will require manual approval.
+
 ## Arguments
 
 `$ARGUMENTS` contains the target path and an optional `--output <path>` flag.

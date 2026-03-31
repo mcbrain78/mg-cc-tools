@@ -278,6 +278,7 @@ SCRIPTS_ABS="${SUPPORT_DIR}/scripts"
 TEMPLATES_ABS="${SUPPORT_DIR}/references/templates"
 CHECKS_ABS="${SUPPORT_DIR}/references/verify-checks.json"
 TMP_ABS="${PROJECT_ROOT}/.mg/docs/tmp"
+EMIT_CONTEXT_ABS="${TARGET_DIR}/permission-hooks/scripts/emit-context.py"
 
 echo "  Resolving path placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
@@ -316,6 +317,10 @@ for cmd in "${COMMANDS[@]}"; do
   # Resolve checks file placeholder
   if grep -q '{CHECKS_FILE}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{CHECKS_FILE}|${CHECKS_ABS}|g" "$cmd_file"
+  fi
+  # Resolve emit-context script placeholder (permission-hooks cross-ref)
+  if grep -q '{EMIT_CONTEXT_SCRIPT}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_ABS}|g" "$cmd_file"
   fi
 done
 

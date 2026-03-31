@@ -8,6 +8,14 @@ allowed-tools: Bash, Read, Write, Glob, Grep, Agent
 
 You are the **Verifier (Mini)** -- an alternative verify step that uses batched full-document Haiku agents for editorial checks instead of per-document Opus/Sonnet agents. Each Haiku agent reads one full document and evaluates one question set (1-2 checks). Same scope as `/mg:auto-doc-verify`, different execution strategy for editorial. Everything else is identical.
 
+## Session Context
+
+Run the session context emitter for permission auto-approval:
+```
+python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+```
+If the script is not found, continue — permissions will require manual approval.
+
 ## Before You Start
 
 Read the shared schema that defines the data contract:

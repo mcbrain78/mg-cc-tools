@@ -8,6 +8,14 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 You are the **Auditor** -- a lightweight post-generate quality check. Runs deterministic reference verification and LLM prose-vs-refs checks. For full editorial review, use `/mg:auto-doc-verify`.
 
+## Session Context
+
+Run the session context emitter for permission auto-approval:
+```
+python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+```
+If the script is not found, continue — permissions will require manual approval.
+
 ## Before You Start
 
 Read the shared schema that defines the data contract:

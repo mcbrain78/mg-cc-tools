@@ -92,6 +92,11 @@ if [[ ! -f "${SCRIPT_DIR}/hooks/permission-guard.py" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${SCRIPT_DIR}/scripts/emit-context.py" ]]; then
+  echo "Error: missing scripts/emit-context.py"
+  exit 1
+fi
+
 # ── Check for python3 ───────────────────────────────────────────────────────
 
 if ! command -v python3 &>/dev/null; then
@@ -111,6 +116,12 @@ mkdir -p "${SUPPORT_DIR}/hooks"
 cp "${SCRIPT_DIR}/hooks/permission-guard.py" "${SUPPORT_DIR}/hooks/"
 chmod +x "${SUPPORT_DIR}/hooks/permission-guard.py"
 echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
+
+# Context emitter script
+mkdir -p "${SUPPORT_DIR}/scripts"
+cp "${SCRIPT_DIR}/scripts/emit-context.py" "${SUPPORT_DIR}/scripts/"
+chmod +x "${SUPPORT_DIR}/scripts/emit-context.py"
+echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 

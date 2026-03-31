@@ -18,6 +18,9 @@ check_outside_project = guard.check_outside_project
 _is_safe_rm = guard._is_safe_rm
 _strip_heredocs = guard._strip_heredocs
 check_exit_code_masking = guard.check_exit_code_masking
+check_session_context = guard.check_session_context
+_EMIT_SCRIPT_RE = guard._EMIT_SCRIPT_RE
+CONTEXT_TTL_S = guard.CONTEXT_TTL_S
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -538,6 +541,18 @@ class TestOutsideProject:
         )
         assert result is None
 
+    def test_allow_parent_traversal_to_workspace_sibling(self):
+        """cp to ../sibling should be allowed when it resolves to a workspace sibling."""
+        import os
+        cwd = os.getcwd()
+        workspace = os.path.dirname(cwd)
+        project = cwd  # project root = cwd
+        # ../some-sibling resolves to workspace/some-sibling — a sibling project
+        result = check_outside_project(
+            'mkdir -p "../some-sibling/dir"', project
+        )
+        assert result is None
+
     def test_allow_relative_within_project(self):
         result = check_outside_project(
             "cp file.txt other.txt", self.PROJECT
@@ -777,6 +792,16 @@ class TestFileOutsideProject:
         project = os.path.dirname(os.getcwd())  # parent of cwd
         result = check_file_outside_project(
             "../somefile.txt", project
+        )
+        assert result is None
+
+    def test_allow_parent_traversal_to_workspace_sibling(self):
+        """../sibling/file.txt should be allowed when it resolves to a workspace sibling."""
+        import os
+        cwd = os.getcwd()
+        project = cwd  # project root = cwd
+        result = check_file_outside_project(
+            "../some-sibling/file.txt", project
         )
         assert result is None
 
@@ -1651,3 +1676,189 @@ class TestHaikuLiveUserApproved:
             f"rm -rf {self.PROJECT}/src/", ctx,
         )
         assert verdict != "SAFE", f"Expected UNSURE for unrelated context, got {verdict}"
+
+
+# ── Session Context ────────────────────────────────────────────────────────
+
+import json
+import time
+import tempfile
+
+
+class TestEmitScriptGate:
+    """Stage 0: emit-context.py always requires human approval."""
+
+    def test_detects_emit_context_bare(self):
+        assert _EMIT_SCRIPT_RE.search("python3 emit-context.py AUTO-DOC")
+
+    def test_detects_emit_context_full_path(self):
+        assert _EMIT_SCRIPT_RE.search(
+            "uv run /home/user/.claude/permission-hooks/scripts/emit-context.py AUTO-DOC"
+        )
+
+    def test_detects_emit_context_relative_path(self):
+        assert _EMIT_SCRIPT_RE.search(
+            "python3 ./scripts/emit-context.py CODEBASE-HEALTH"
+        )
+
+    def test_ignores_unrelated_scripts(self):
+        assert not _EMIT_SCRIPT_RE.search("python3 verify-setup.py")
+        assert not _EMIT_SCRIPT_RE.search("uv run check-references.py")
+
+    def test_ignores_partial_name(self):
+        assert not _EMIT_SCRIPT_RE.search("python3 emit-context.pyc")
+        assert not _EMIT_SCRIPT_RE.search("python3 emit-contexty.py")
+
+
+class TestSessionContext:
+    """check_session_context reads transcript and validates marker."""
+
+    def _write_transcript(self, lines):
+        """Write lines to a temp file and return its path."""
+        f = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".jsonl", delete=False
+        )
+        f.write("\n".join(lines))
+        f.close()
+        return f.name
+
+    def _tool_result_line(self, content, tool_use_id="toolu_test"):
+        """Build a JSONL line containing a tool_result with given content."""
+        entry = {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": content,
+                    }
+                ],
+            },
+        }
+        return json.dumps(entry)
+
+    def _assistant_text_line(self, text):
+        """Build a JSONL line containing assistant text."""
+        entry = {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": text}],
+            },
+        }
+        return json.dumps(entry)
+
+    def test_no_transcript_returns_none(self):
+        assert check_session_context("") is None
+        assert check_session_context(None) is None
+
+    def test_missing_file_returns_none(self):
+        assert check_session_context("/nonexistent/transcript.jsonl") is None
+
+    def test_empty_file_returns_none(self):
+        path = self._write_transcript([""])
+        try:
+            assert check_session_context(path) is None
+        finally:
+            os.unlink(path)
+
+    def test_no_marker_returns_none(self):
+        path = self._write_transcript([
+            self._assistant_text_line("Let me read that file."),
+            self._tool_result_line("file contents here"),
+        ])
+        try:
+            assert check_session_context(path) is None
+        finally:
+            os.unlink(path)
+
+    def test_valid_marker_returns_command_name(self):
+        now_ms = int(time.time() * 1000)
+        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{now_ms}"
+        path = self._write_transcript([
+            self._tool_result_line(marker),
+        ])
+        try:
+            result = check_session_context(path)
+            assert result == "AUTO-DOC"
+        finally:
+            os.unlink(path)
+
+    def test_expired_marker_returns_none(self):
+        old_ms = int((time.time() - CONTEXT_TTL_S - 60) * 1000)
+        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{old_ms}"
+        path = self._write_transcript([
+            self._tool_result_line(marker),
+        ])
+        try:
+            assert check_session_context(path) is None
+        finally:
+            os.unlink(path)
+
+    def test_future_timestamp_returns_none(self):
+        future_ms = int((time.time() + 3600) * 1000)
+        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{future_ms}"
+        path = self._write_transcript([
+            self._tool_result_line(marker),
+        ])
+        try:
+            assert check_session_context(path) is None
+        finally:
+            os.unlink(path)
+
+    def test_uses_most_recent_marker(self):
+        old_ms = int((time.time() - CONTEXT_TTL_S - 60) * 1000)
+        now_ms = int(time.time() * 1000)
+        path = self._write_transcript([
+            self._tool_result_line(
+                f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{old_ms}"
+            ),
+            self._tool_result_line(
+                f"SESSION_CONTEXT_ID: MG:CODEBASE-HEALTH_{now_ms}"
+            ),
+        ])
+        try:
+            result = check_session_context(path)
+            assert result == "CODEBASE-HEALTH"
+        finally:
+            os.unlink(path)
+
+    def test_marker_in_assistant_text_still_matches(self):
+        """The marker regex doesn't distinguish source — stage 0 gate is
+        the trust anchor, not transcript position."""
+        now_ms = int(time.time() * 1000)
+        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{now_ms}"
+        path = self._write_transcript([
+            self._assistant_text_line(marker),
+        ])
+        try:
+            # This WOULD match — security relies on stage 0, not parsing
+            result = check_session_context(path)
+            assert result == "AUTO-DOC"
+        finally:
+            os.unlink(path)
+
+    def test_hyphenated_command_name(self):
+        now_ms = int(time.time() * 1000)
+        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{now_ms}"
+        path = self._write_transcript([
+            self._tool_result_line(marker),
+        ])
+        try:
+            assert check_session_context(path) == "AUTO-DOC"
+        finally:
+            os.unlink(path)
+
+    def test_various_command_names(self):
+        now_ms = int(time.time() * 1000)
+        for cmd in ("AUTO-DOC", "CODEBASE-HEALTH", "DEBUG-TRIAGE", "AUTODOC"):
+            marker = f"SESSION_CONTEXT_ID: MG:{cmd}_{now_ms}"
+            path = self._write_transcript([
+                self._tool_result_line(marker),
+            ])
+            try:
+                assert check_session_context(path) == cmd, f"Failed for {cmd}"
+            finally:
+                os.unlink(path)

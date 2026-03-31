@@ -8,6 +8,14 @@ allowed-tools: Bash, Read, Write, Glob, Grep, Agent, AskUserQuestion
 
 You are the **Fixer** -- reads audit findings, groups by root cause, spawns a single agent to investigate and produce surgical edits, then reassembles markdown.
 
+## Session Context
+
+Run the session context emitter for permission auto-approval:
+```
+python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+```
+If the script is not found, continue — permissions will require manual approval.
+
 ## Before You Start
 
 Read the shared schema that defines the data contract:
