@@ -125,7 +125,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 10. Renderer for Install Command | 2/2 | Complete    | 2026-03-20 |
 | 11. Add Tooling to Install Command | 3/3 | Complete    | 2026-03-20 |
 | 12. Auto Doc Rename & Cleanup | 2/2 | Complete    | 2026-03-22 |
-| 18. Recursive Section XML Core | 2/2 | Complete   | 2026-04-01 |
+| 18. Recursive Section XML Core | 2/2 | Complete    | 2026-04-01 |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
