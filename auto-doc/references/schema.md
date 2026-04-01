@@ -658,6 +658,10 @@ XML sources live at `.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml`. Standalone
 
 ### XML Schema
 
+Sections nest recursively with no depth limit. There is one uniform `<section>` element type at all depths -- no `<subsection>` or depth-specific types. Within each section, `<refs>` and `<body>` always come before child `<section>` elements in document order.
+
+Each section's `<body>` contains ONLY the prose between its heading and the next child heading (never child content). Each section's `<refs>` declare only entities mentioned in that section's body.
+
 ```xml
 <document audience="devops" diataxis="how-to">
   <meta>
@@ -670,6 +674,7 @@ XML sources live at `.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml`. Standalone
 # Operations Guide]]></header>
   </meta>
 
+  <!-- ## level section — contains intro prose and two child sections -->
   <section slug="monitoring-alerting">
     <refs>
       <db>
@@ -684,23 +689,8 @@ XML sources live at `.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml`. Standalone
         <class name="EtlRun">
           <attr>status</attr>
         </class>
-        <function name="compute_finance_metrics"
-                  module="src/road_runner/flows/compute.py">
-          <param>recompute_stale</param>
-        </function>
-        <variable name="FMP_QUARTERLY_ENDPOINTS"
-                  module="src/road_runner/fmp/endpoints.py"/>
       </code>
-      <flow>ingest-quarterly-finance-data</flow>
       <env>WORKER_CONCURRENCY</env>
-      <config>config/field-mapping.yaml</config>
-      <enum class="EtlRun" field="status">
-        <value>completed</value>
-        <value>failed</value>
-      </enum>
-      <dep>tenacity</dep>
-      <literal>fmp-api</literal>
-      <ext>pg_dump</ext>
     </refs>
 
     <body><![CDATA[
@@ -709,19 +699,93 @@ XML sources live at `.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml`. Standalone
 <!-- docs-meta: last-updated: 2026-03-29, sources: [...] -->
 
 The ETL run log tracks all pipeline executions in `road_runner.etl_runs`.
+Each run records `EtlRun.status` and respects `WORKER_CONCURRENCY`.
     ]]></body>
+
+    <!-- ### level section — child of monitoring-alerting -->
+    <section slug="etl-run-logging">
+      <refs>
+        <code>
+          <function name="compute_finance_metrics"
+                    module="src/road_runner/flows/compute.py">
+            <param>recompute_stale</param>
+          </function>
+        </code>
+        <flow>ingest-quarterly-finance-data</flow>
+        <dep>tenacity</dep>
+      </refs>
+
+      <body><![CDATA[
+<!-- section: etl-run-logging -->
+### ETL Run Logging
+
+The `compute_finance_metrics` function orchestrates the `ingest-quarterly-finance-data`
+flow with retry logic via `tenacity`.
+      ]]></body>
+
+      <!-- #### level section — grandchild of monitoring-alerting -->
+      <section slug="artifact-format">
+        <refs>
+          <config>config/field-mapping.yaml</config>
+          <literal>fmp-api</literal>
+          <ext>pg_dump</ext>
+        </refs>
+
+        <body><![CDATA[
+<!-- section: artifact-format -->
+#### Artifact Format
+
+Run artifacts are mapped via `config/field-mapping.yaml` and exported
+through `fmp-api`. Backups use `pg_dump` for snapshot recovery.
+        ]]></body>
+      </section>
+    </section>
+
+    <!-- ### level section — sibling of etl-run-logging -->
+    <section slug="alert-channels">
+      <refs>
+        <env>ALERT_WEBHOOK_URL</env>
+        <config>config/alerts.yaml</config>
+      </refs>
+
+      <body><![CDATA[
+<!-- section: alert-channels -->
+### Alert Channels
+
+Alerts are routed through the webhook at `ALERT_WEBHOOK_URL`
+as configured in `config/alerts.yaml`.
+      ]]></body>
+    </section>
   </section>
 </document>
 ```
 
+**Key structural rules:**
+
+- `monitoring-alerting` (##) has its own `<refs>` and `<body>` with intro prose only, then two child `<section>` elements
+- `etl-run-logging` (###) has its own refs (different from parent), its own body, and one child `<section>`
+- `artifact-format` (####) is a leaf section -- no children, just refs and body
+- `alert-channels` (###) is a sibling of `etl-run-logging` under the same parent
+- Slugs are unique among siblings, not globally (two parents could each have a `### Prerequisites` child)
+
 ### Section Markers
 
-Each section body contains a `<!-- section: {slug} -->` HTML comment that maps 1:1 to the `<section slug="{slug}">` element in XML. These markers enable deterministic sync between .md and XML:
+Each section body contains a `<!-- section: {slug} -->` HTML comment that maps 1:1 to the `<section slug="{slug}">` element in XML. Markers appear at every heading level (##, ###, ####, etc.), not just `##`. They enable deterministic sync between .md and XML:
 
 - `write-section.py` injects markers automatically during section-write mode
 - `sync-edits-to-xml.py` splits .md on markers to match sections to XML
 - `assemble-markdown.py` preserves markers in the assembled .md output
 - Markers are invisible to readers but essential for the XML sync pipeline
+
+### Path Addressing
+
+Sections at any depth are addressed by a slash-separated path of slugs from the root. The path convention is used by `xml_doc.py` navigation functions (`_find_section_by_path`, `walk_sections`, `get_section_paths`):
+
+- `"monitoring-alerting"` -- top-level (##) section
+- `"monitoring-alerting/etl-run-logging"` -- child (###) section
+- `"monitoring-alerting/etl-run-logging/artifact-format"` -- grandchild (####) section
+
+A bare slug is a valid single-segment path, so all functions that accept a path remain backward-compatible with code that passes top-level slugs.
 
 ### Nine Ref Types
 
