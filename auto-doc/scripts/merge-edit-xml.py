@@ -18,6 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.xml_doc import (
+    _find_section_by_path,
     _parse_refs,
     serialize_xml_doc,
     update_section_body,
@@ -48,10 +49,11 @@ def merge_edit_xml(edit_file):
 
     for section_el in root.findall("section"):
         source = section_el.get("source", "")
-        slug = section_el.get("slug", "")
+        # Path is primary key; fall back to slug for backward compat
+        path = section_el.get("path") or section_el.get("slug", "")
 
-        if not source or not slug:
-            errors.append("Section missing source or slug attribute")
+        if not source or not path:
+            errors.append("Section missing source or path/slug attribute")
             continue
 
         if not os.path.isfile(source):
@@ -68,15 +70,11 @@ def merge_edit_xml(edit_file):
 
         master_tree, was_changed = master_cache[source]
 
-        # Find master section
-        master_section = None
-        for el in master_tree.getroot().findall("section"):
-            if el.get("slug") == slug:
-                master_section = el
-                break
+        # Find master section via path-based navigation
+        master_section = _find_section_by_path(master_tree.getroot(), path)
 
         if master_section is None:
-            errors.append(f"Section '{slug}' not found in {source}")
+            errors.append(f"Section '{path}' not found in {source}")
             continue
 
         # Extract edit body
@@ -101,11 +99,11 @@ def merge_edit_xml(edit_file):
         changed = False
 
         if edit_body != master_body:
-            update_section_body(master_tree, slug, edit_body)
+            update_section_body(master_tree, path, edit_body)
             changed = True
 
         if edit_refs != master_refs:
-            update_section_refs(master_tree, slug, edit_refs)
+            update_section_refs(master_tree, path, edit_refs)
             changed = True
 
         if changed:

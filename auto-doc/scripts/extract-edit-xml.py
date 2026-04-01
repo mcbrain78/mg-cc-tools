@@ -23,6 +23,7 @@ from copy import deepcopy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json
+from lib.xml_doc import _find_section_by_path
 
 from lxml import etree
 
@@ -107,18 +108,18 @@ def extract_edit_xml(grouping, findings, xml_dir, group_index):
     # Build XML index
     xml_index = _build_xml_index(xml_dir)
 
-    # Group findings by (xml_path, slug)
+    # Group findings by (xml_path, section_path)
     sections_map = {}
     for f in group_findings:
         xml_path = _find_xml_for_finding(f, xml_index)
         if not xml_path:
             continue
-        slug = f.get("section", "")
-        key = (xml_path, slug)
+        section_path = f.get("section", "")
+        key = (xml_path, section_path)
         if key not in sections_map:
             sections_map[key] = {
                 "xml_path": xml_path,
-                "slug": slug,
+                "path": section_path,
                 "document": f.get("document", ""),
                 "audience": f.get("audience", ""),
                 "findings": [],
@@ -133,7 +134,7 @@ def extract_edit_xml(grouping, findings, xml_dir, group_index):
     parsed_cache = {}
     for info in sections_map.values():
         xml_path = info["xml_path"]
-        slug = info["slug"]
+        section_path = info["path"]
 
         # Parse master XML (cached)
         if xml_path not in parsed_cache:
@@ -143,20 +144,20 @@ def extract_edit_xml(grouping, findings, xml_dir, group_index):
                 continue
         master_tree = parsed_cache[xml_path]
 
-        # Find section in master
-        section_el = None
-        for el in master_tree.getroot().findall("section"):
-            if el.get("slug") == slug:
-                section_el = el
-                break
+        # Find section in master via path-based navigation
+        section_el = _find_section_by_path(
+            master_tree.getroot(), section_path,
+        )
         if section_el is None:
             continue
 
-        # Create edit section
+        # Create edit section with both slug (leaf) and path (full)
+        leaf_slug = section_path.rsplit("/", 1)[-1]
         edit_section = etree.SubElement(
             root, "section",
             source=xml_path,
-            slug=slug,
+            slug=leaf_slug,
+            path=section_path,
             audience=info["audience"],
             document=info["document"],
         )
