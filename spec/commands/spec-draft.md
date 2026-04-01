@@ -171,6 +171,7 @@ Before presenting the draft, scan the written document for:
 - **Solution sections inconsistent with Design Decisions** — solution describes behavior that a D-block rules out
 - **Scope conflicts** — items implicitly required by the Solution but listed in "What does NOT get built"
 - **Resolvable Open Items** — items in Open Items that actually have enough information from the discussion to be resolved (they should be Design Decisions instead)
+- **Uncovered scope items** — deliverables in "What gets built" that have no corresponding Verification criterion. Every scope row should be testable by at least one verification item
 
 If any findings: report them to the user alongside the draft and fix before finalizing.
 

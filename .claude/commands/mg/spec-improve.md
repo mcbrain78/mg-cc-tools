@@ -102,6 +102,24 @@ Provide a critical review focused on:
      not needed, remove it entirely. (Explicit scope exclusions like
      "this plan does NOT cover X" are fine — those are boundaries, not
      deferrals.)
+7. Simpler alternatives — now that the full design is laid out, step back:
+   could the same goals be achieved with a fundamentally simpler approach?
+   A solution that looked necessary during incremental discussion sometimes
+   reveals a shorter path when viewed as a whole. Only flag this if you can
+   name a concrete simpler alternative and explain why it might be better —
+   not a vague "could be simpler."
+8. Over-specification — flag implementation code (function bodies, algorithm
+   implementations) in the spec. A concept document defines interfaces and
+   contracts (CLI flags, JSON schemas, XML structures, data flow). Function
+   bodies cross into the implementer's work and risk being copied verbatim
+   without thinking about edge cases. The test: if you removed the code and
+   left only a prose description of what the function does, would an
+   implementer still know what to build? If yes, the code doesn't belong
+   in the spec.
+9. Verification coverage — check that every row in the Scope table has at
+   least one corresponding item in the Verification section. A deliverable
+   with no way to verify it is either untestable (rethink the deliverable)
+   or under-specified (add the verification criterion).
 
 Be harsh. Flag everything that seems off.
 Validate claims against actual data or code where possible.
@@ -156,6 +174,8 @@ For each issue, report:
 ## Step 5 — Implement Fixes
 
 Apply all fixes to AUTO_IMPROVE_FILE where you are confident in the resolution. For each fix, leave a brief inline comment or commit-style note explaining what changed and why.
+
+When adding detail to resolve a "missing piece" finding, specify the interface contract (CLI flags, data format, behavior description) — not implementation code. If the fix requires showing how something works, describe the algorithm in prose rather than writing the function body.
 
 ## Step 6 — Validate
 
