@@ -55,31 +55,40 @@ You generate the project OVERVIEW.md by reading the documents that writer agents
    ```
    The header contains the ownership comment, DIATAXIS/AUDIENCE comments, the `# {Project Name} Documentation` heading, and the top-level `<!-- docs-meta: ... -->` comment (everything before the first `## `).
 
-   Then, for each `## ` section (System Purpose, Key Concepts, Architecture at a Glance, Audience Guide):
+   Then, **for each `##` section** (System Purpose, Key Concepts, Architecture at a Glance, Audience Guide), follow this 3-step pattern:
 
-   a. Write the section content (the `## ` heading + `<!-- docs-meta: ... -->` comment + body) to a temp file:
-   ```bash
-   Write({TMP_DIR}/section-overview-OVERVIEW-{slug}.md)
-   ```
+   **Step 1: Emit the `##` intro.** Write the `## ` heading line + `<!-- docs-meta: ... -->` comment + body content up to the first `###` heading (or end of section if no `###` exists).
 
-   b. Write a refs JSON file (OVERVIEW is pure prose, no code references):
-   ```bash
-   Write({TMP_DIR}/refs-overview-OVERVIEW-{slug}.json)
-   ```
-   Content: `{"typed_refs": []}`
+   a. Write intro content to `{TMP_DIR}/section-overview-OVERVIEW-{slug}.md`.
+   b. Write refs to `{TMP_DIR}/refs-overview-OVERVIEW-{slug}.json` (OVERVIEW is pure prose, typically `{"typed_refs": []}`).
+   c. Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/write-section.py \
+          --state-file {TMP_DIR}/write-state-overview.json \
+          --document OVERVIEW \
+          --section {slug} \
+          --content-file {TMP_DIR}/section-overview-OVERVIEW-{slug}.md \
+          --refs-file {TMP_DIR}/refs-overview-OVERVIEW-{slug}.json \
+          --header-file {TMP_DIR}/header-overview-OVERVIEW.md
+      ```
+      Only pass `--header-file` on the **first** `##` section call. Omit it for subsequent sections.
 
-   c. Call write-section.py:
-   ```bash
-   python3 {SCRIPTS_DIR}/write-section.py \
-       --state-file {TMP_DIR}/write-state-overview.json \
-       --document OVERVIEW \
-       --section {slug} \
-       --content-file {TMP_DIR}/section-overview-OVERVIEW-{slug}.md \
-       --refs-file {TMP_DIR}/refs-overview-OVERVIEW-{slug}.json \
-       --header-file {TMP_DIR}/header-overview-OVERVIEW.md
-   ```
+   **Step 2: Emit each `###` child** (if any). Current OVERVIEW templates use `##` sections only. `###` headings are uncommon but supported. For each `###` heading within this `##` section:
 
-   Only pass `--header-file` on the **first** section call. Omit it for subsequent sections.
+   a. Write content to `{TMP_DIR}/section-overview-OVERVIEW-{slug}-{child-slug}.md`.
+   b. Write refs to `{TMP_DIR}/refs-overview-OVERVIEW-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
+   c. Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/write-section.py \
+          --state-file {TMP_DIR}/write-state-overview.json \
+          --document OVERVIEW \
+          --section {child-slug} \
+          --parent {slug} \
+          --content-file {TMP_DIR}/section-overview-OVERVIEW-{slug}-{child-slug}.md \
+          --refs-file {TMP_DIR}/refs-overview-OVERVIEW-{slug}-{child-slug}.json
+      ```
+
+   **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote. A ref that only appears in a child's content MUST go in the child's refs, not the parent intro's refs.
 
    **Do NOT call finalize or write OVERVIEW.md directly. The orchestrator handles finalize after this agent completes.**
 

@@ -48,32 +48,41 @@ The initial pass runs **before** the four writer agents. Its purpose is to estab
    ```
    The header contains the ownership comment, DIATAXIS/AUDIENCE comments, and `# Glossary` heading (everything before the first `## `).
 
-   Then, for each `## ` section you generate (System Concepts, Domain Terms, Technical Terms, and any optional sections like API Terms or Infrastructure Terms):
+   Then, **for each `##` section** you generate (System Concepts, Domain Terms, Technical Terms, and any optional sections like API Terms or Infrastructure Terms), follow this 3-step pattern:
 
-   a. Write the section content (the `## ` heading + body) to a temp file:
-   ```bash
-   Write({TMP_DIR}/section-glossary-GLOSSARY-{slug}.md)
-   ```
+   **Step 1: Emit the `##` intro.** Write the `## ` heading line plus the body content up to the first `###` heading (or end of section if no `###` exists).
 
-   b. Write an empty refs JSON file (glossary is pure prose, no code references):
-   ```bash
-   Write({TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json)
-   ```
-   Content: `{"typed_refs": []}`
-   For terms that reference specific code entities, emit typed_refs. Valid types: `db` (schema/table/column), `code` (class/function/variable), `flow` (Prefect flow name), `env` (environment variable), `config` (config file path), `enum` (enum value), `dep` (PyPI dependency name), `literal` (named string literal in project files — concurrency tags, worker pools, artifact keys, schema names), `ext` (external tool with no codebase footprint — pg_dump, VACUUM, etc.). Use `{"typed_refs": []}` for purely conceptual terms.
+   a. Write intro content to `{TMP_DIR}/section-glossary-GLOSSARY-{slug}.md`.
+   b. Write refs to `{TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json` with ONLY the typed_refs for entities in the intro body.
+      For terms that reference specific code entities, emit typed_refs. Valid types: `db` (schema/table/column), `code` (class/function/variable), `flow` (Prefect flow name), `env` (environment variable), `config` (config file path), `enum` (enum value), `dep` (PyPI dependency name), `literal` (named string literal in project files -- concurrency tags, worker pools, artifact keys, schema names), `ext` (external tool with no codebase footprint -- pg_dump, VACUUM, etc.). Use `{"typed_refs": []}` for purely conceptual terms.
+   c. Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/write-section.py \
+          --state-file {TMP_DIR}/write-state-glossary.json \
+          --document GLOSSARY \
+          --section {slug} \
+          --content-file {TMP_DIR}/section-glossary-GLOSSARY-{slug}.md \
+          --refs-file {TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json \
+          --header-file {TMP_DIR}/header-glossary-GLOSSARY.md
+      ```
+      Only pass `--header-file` on the **first** `##` section call. Omit it for subsequent sections.
 
-   c. Call write-section.py:
-   ```bash
-   python3 {SCRIPTS_DIR}/write-section.py \
-       --state-file {TMP_DIR}/write-state-glossary.json \
-       --document GLOSSARY \
-       --section {slug} \
-       --content-file {TMP_DIR}/section-glossary-GLOSSARY-{slug}.md \
-       --refs-file {TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json \
-       --header-file {TMP_DIR}/header-glossary-GLOSSARY.md
-   ```
+   **Step 2: Emit each `###` child** (if any). Current glossary templates use `##` sections only. `###` headings are rare but supported. For each `###` heading within this `##` section:
 
-   Only pass `--header-file` on the **first** section call. Omit it for subsequent sections.
+   a. Write content to `{TMP_DIR}/section-glossary-GLOSSARY-{slug}-{child-slug}.md`.
+   b. Write refs to `{TMP_DIR}/refs-glossary-GLOSSARY-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
+   c. Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/write-section.py \
+          --state-file {TMP_DIR}/write-state-glossary.json \
+          --document GLOSSARY \
+          --section {child-slug} \
+          --parent {slug} \
+          --content-file {TMP_DIR}/section-glossary-GLOSSARY-{slug}-{child-slug}.md \
+          --refs-file {TMP_DIR}/refs-glossary-GLOSSARY-{slug}-{child-slug}.json
+      ```
+
+   **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote. A ref that only appears in a child's content MUST go in the child's refs, not the parent intro's refs.
 
    **Do NOT call finalize or write GLOSSARY.md directly. The orchestrator handles finalize after this agent completes.**
 
@@ -93,29 +102,39 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
    b. **Check for synonym conflicts** -- If the proposed term is a synonym for an existing term (e.g., "error" vs "finding"), do not add it. Instead, note the canonical term in the reconciliation log.
    c. **Add new terms** -- For genuinely new terms, write a proper definition following the glossary format. Categorize the term and include audience-relevance.
 
-4. **Write updated sections via write-section.py** -- For each section that changed (has new or updated terms), write the updated section content through write-section.py, same as the initial pass:
+4. **Write updated sections via write-section.py** -- For each section that changed (has new or updated terms), write the updated section content through write-section.py, using the same 3-step per-heading pattern as the initial pass:
 
-   a. Write the section content to a temp file:
-   ```bash
-   Write({TMP_DIR}/section-glossary-GLOSSARY-{slug}.md)
-   ```
+   **Step 1: Emit the `##` intro.** Write the `## ` heading line plus the body content up to the first `###` heading (or end of section if no `###` exists).
 
-   b. Write the refs JSON file:
-   ```bash
-   Write({TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json)
-   ```
-   Content: `{"typed_refs": []}`
-   For terms that reference specific code entities, emit typed_refs. Valid types: `db` (schema/table/column), `code` (class/function/variable), `flow` (Prefect flow name), `env` (environment variable), `config` (config file path), `enum` (enum value), `dep` (PyPI dependency name), `literal` (named string literal in project files — concurrency tags, worker pools, artifact keys, schema names), `ext` (external tool with no codebase footprint — pg_dump, VACUUM, etc.). Use `{"typed_refs": []}` for purely conceptual terms.
+   a. Write intro content to `{TMP_DIR}/section-glossary-GLOSSARY-{slug}.md`.
+   b. Write refs to `{TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json` with ONLY the typed_refs for entities in the intro body.
+      For terms that reference specific code entities, emit typed_refs. Valid types: `db` (schema/table/column), `code` (class/function/variable), `flow` (Prefect flow name), `env` (environment variable), `config` (config file path), `enum` (enum value), `dep` (PyPI dependency name), `literal` (named string literal in project files -- concurrency tags, worker pools, artifact keys, schema names), `ext` (external tool with no codebase footprint -- pg_dump, VACUUM, etc.). Use `{"typed_refs": []}` for purely conceptual terms.
+   c. Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/write-section.py \
+          --state-file {TMP_DIR}/write-state-glossary.json \
+          --document GLOSSARY \
+          --section {slug} \
+          --content-file {TMP_DIR}/section-glossary-GLOSSARY-{slug}.md \
+          --refs-file {TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json
+      ```
 
-   c. Call write-section.py:
-   ```bash
-   python3 {SCRIPTS_DIR}/write-section.py \
-       --state-file {TMP_DIR}/write-state-glossary.json \
-       --document GLOSSARY \
-       --section {slug} \
-       --content-file {TMP_DIR}/section-glossary-GLOSSARY-{slug}.md \
-       --refs-file {TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json
-   ```
+   **Step 2: Emit each `###` child** (if any). Current glossary templates use `##` sections only. `###` headings are rare but supported. For each `###` heading within this `##` section:
+
+   a. Write content to `{TMP_DIR}/section-glossary-GLOSSARY-{slug}-{child-slug}.md`.
+   b. Write refs to `{TMP_DIR}/refs-glossary-GLOSSARY-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
+   c. Call:
+      ```bash
+      python3 {SCRIPTS_DIR}/write-section.py \
+          --state-file {TMP_DIR}/write-state-glossary.json \
+          --document GLOSSARY \
+          --section {child-slug} \
+          --parent {slug} \
+          --content-file {TMP_DIR}/section-glossary-GLOSSARY-{slug}-{child-slug}.md \
+          --refs-file {TMP_DIR}/refs-glossary-GLOSSARY-{slug}-{child-slug}.json
+      ```
+
+   **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote.
 
    Only write sections that actually changed. Unchanged sections are preserved by the `--merge` flag during finalize (handled by the orchestrator).
 
