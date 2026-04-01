@@ -274,6 +274,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **RPS-05**: Edit merging uses the `path` attribute from edit-group XML to locate the target node in the master XML tree and merge content back to the correct tree position
 - [x] **RPS-06**: Markdown-to-XML sync splits markdown by `<!-- section: slug -->` markers and reconstructs the section tree from heading levels, where heading depth is the authoritative signal for tree position and markers provide section identity
 
+### Writer Heading Emission
+
+- [ ] **WHE-01**: Writer agents call write-section.py once per heading (intro, `###`, `####`, etc.) with the ancestor slug path as `--parent`, producing per-heading XML sections instead of one section per `##` heading
+- [ ] **WHE-02**: Only `devops-writer.md`, `glossary-writer.md`, and `overview-writer.md` are updated; stale-format writers (`end-user-writer.md`, `developer-writer.md`, `agent-writer.md`) are not modified
+- [ ] **WHE-03**: Generated markdown output (prose and heading structure) is identical to the current output — only emission granularity changes
+- [ ] **WHE-04**: `<!-- section: slug -->` markers appear at every heading level in generated documents, using the same marker pattern regardless of depth
+- [ ] **WHE-05**: Each write-section.py call's `typed_refs` correspond exactly to the body emitted in that call — refs that appear only in child content must not be listed in the parent's refs
+- [ ] **WHE-06**: End-to-end verification confirms round-trip fidelity and ref precision across the full pipeline
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -512,12 +521,18 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RPS-04 | Phase 20 | Complete |
 | RPS-05 | Phase 20 | Complete |
 | RPS-06 | Phase 20 | Complete |
+| WHE-01 | Phase 21 | Pending |
+| WHE-02 | Phase 21 | Pending |
+| WHE-03 | Phase 21 | Pending |
+| WHE-04 | Phase 21 | Pending |
+| WHE-05 | Phase 21 | Pending |
+| WHE-06 | Phase 21 | Pending |
 
 **Coverage:**
-- v1 requirements: 207 total
-- Mapped to phases: 207
+- v1 requirements: 213 total
+- Mapped to phases: 213
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-04-01 after Phase 20 requirement generation*
+*Last updated: 2026-04-01 after Phase 21 requirement generation*
