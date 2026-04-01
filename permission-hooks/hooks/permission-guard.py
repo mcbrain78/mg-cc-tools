@@ -836,6 +836,9 @@ def main():
                 if desc:
                     _ask(f"[permission-guard] Out-of-project: {desc}")
                     return
+        # File passed all safety checks — approve explicitly so the hook
+        # doesn't fall through to CC's default permission mode (which prompts).
+        _decide("[permission-guard] In-project file", "allow")
         return
 
     # ── Bash tool guard ─────────────────────────────────────────────────
