@@ -166,6 +166,8 @@ Invoke:
 Skill("gsd:add-phase", "{phase name}")
 ```
 
+**Do NOT call `gsd-tools.cjs phase add` directly via Bash.** The Skill handles STATE.md updates that gsd-tools.cjs does not. Calling gsd-tools.cjs directly requires manually replicating Skill behavior and will miss future Skill additions.
+
 After the Skill completes, read `.planning/ROADMAP.md` to find the newly created phase entry. The entry will have:
 ```
 **Goal:** [To be planned]
@@ -220,6 +222,6 @@ Split the concept into per-phase files and create CONTEXT.md for each phase:
 - Goals are edited directly in ROADMAP.md after `gsd:add-phase` creates the entry. There is no gsd-tools command to set a goal — direct file editing is required.
 - The analysis runs in the orchestrator (no subagent) so the concept content stays in context for the adjustment loop. Concept docs are typically 200-400 lines — well within budget.
 - This command does NOT modify REQUIREMENTS.md. It does NOT create CONTEXT.md files. It does NOT run spec-prepare-context or spec-create-context. It only creates phases and sets goals.
-- The `gsd:add-phase` Skill also updates STATE.md with roadmap evolution entries, so no separate STATE.md update is needed.
+- The `gsd:add-phase` Skill updates both ROADMAP.md (via gsd-tools.cjs) and STATE.md (Roadmap Evolution). Calling gsd-tools.cjs directly skips the STATE.md update. Always use the Skill.
 - Dependencies between proposed phases are noted in the proposal for the user's benefit, but `gsd:add-phase` sets a default `**Depends on:** Phase {N-1}`. If the dependency structure differs from simple sequential, the user should manually adjust ROADMAP.md after creation.
 </important_notes>

@@ -73,7 +73,7 @@ ERROR: ROADMAP.md not found. Create a roadmap first.
 ```
 Exit.
 
-**Read `.planning/REQUIREMENTS.md`** (if it exists — not required, but enriches mapping).
+**Read `.planning/REQUIREMENTS.md`** if it exists. If all phases in the range have `Requirements: TBD`, skip — no requirement-based mapping signals are available. Otherwise, read the full text of each referenced requirement ID to enrich content mapping in Step 3.
 
 **Validate each phase in range exists in ROADMAP.md:**
 For each phase number, look for `### Phase {N}:` in the ROADMAP. If any phase in the range is missing:
@@ -245,7 +245,17 @@ After each `spec-create-context` completes, briefly note the result:
 Phase {N}: ✓ CONTEXT.md created ({decision_count} decisions)
 ```
 
-After all phases:
+After all phases, commit the generated CONTEXT.md files:
+
+```bash
+git add .planning/phases/*-CONTEXT.md && git commit -m "$(cat <<'EOF'
+docs: create CONTEXT.md for phases {first_phase}-{last_phase}
+EOF
+)"
+```
+
+Then present the summary:
+
 ```
 ## All phases ingested
 
