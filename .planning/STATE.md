@@ -257,6 +257,7 @@ Recent decisions affecting current work:
 - Phase 15 added: auto doc enduser quality
 - Phase 16 added: auto doc incremental scan
 - Phase 17 added: auto-doc generate docs improvements
+- Phase 18 added: Recursive Section XML Core
 
 ### Blockers/Concerns
 

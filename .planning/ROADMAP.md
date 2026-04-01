@@ -298,3 +298,13 @@ Plans:
 Plans:
 - [ ] 17-01-PLAN.md — TDD: split-scan-by-audience.py per-audience and glossary view splitter with pytest suite
 - [ ] 17-02-PLAN.md — Orchestrator view routing and Serena guidance in all 5 writer agents
+
+### Phase 18: Recursive Section XML Core
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 17
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 18 to break down)
