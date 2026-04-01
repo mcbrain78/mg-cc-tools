@@ -176,7 +176,42 @@ If any findings: report them to the user alongside the draft and fix before fina
 
 If no findings: write the file.
 
-## 7. Output
+## 7. Open Item Resolution
+
+If the draft contains **any Open Items**, automatically offer to resolve them — do not wait for the user to ask.
+
+Present each open item one at a time using AskUserQuestion. For each item:
+
+1. **Think about your recommendation first.** Consider codebase patterns found during research, consistency with decisions already made, simplicity, and maintainability.
+2. **Present numbered options with the recommended option first**, marked "(Recommended)". List 2-4 concrete options. Always include a final option to defer.
+
+Format:
+
+```
+**Open Item {n}/{total}: {title}**
+
+{Brief context — what the item is about and why it matters}
+
+Options:
+1. (Recommended) {option} — {rationale for recommending}
+2. {option} — {tradeoff}
+3. {option} — {tradeoff}
+{n}. Defer — keep as Open Item for later resolution
+```
+
+Use AskUserQuestion:
+- header: "Open Item {n}/{total}"
+- question: the formatted block above
+- options: the numbered options as a list
+
+When the user picks an option (by number or description):
+- Promote the resolved item to a Design Decision D-block in the draft
+- Update any Solution/Scope sections affected by the resolution
+- Move to the next open item
+
+After all items are resolved or deferred, re-run the consistency check (Step 6) on any newly added D-blocks before proceeding to output.
+
+## 8. Output
 
 Write the concept spec to `docs/work-queue/todo/{name}/concept.md`.
 
@@ -196,8 +231,8 @@ Design Decisions: {count} D-blocks captured
 
 ## Next Steps
 
-- `/mg:spec-improve concept.md` — refine with fresh-eyes subagent review
-- Review the Open Items and resolve them before implementation
+- `/mg:spec-improve docs/work-queue/todo/{name}/concept.md` — refine with fresh-eyes subagent review
+{If open items remain: "- Resolve remaining Open Items before implementation"}
 
 ---
 ```
