@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 20-01-PLAN.md
-last_updated: "2026-04-01T19:53:59.795Z"
-last_activity: 2026-04-01 -- Plan 20-01 complete (recursive pipeline script updates)
+stopped_at: Completed 20-02-PLAN.md
+last_updated: "2026-04-01T19:57:14.054Z"
+last_activity: 2026-04-01 -- Plan 20-02 complete (extract/merge/sync path-based migration)
 progress:
   total_phases: 21
-  completed_phases: 18
+  completed_phases: 19
   total_plans: 56
-  completed_plans: 54
+  completed_plans: 55
   percent: 98
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 20 of 21 (Recursive Pipeline Script Updates)
-Plan: 1 of 2 in current phase
+Plan: 2 of 2 in current phase
 Status: In Progress
-Last activity: 2026-04-01 -- Plan 20-01 complete (recursive pipeline script updates)
+Last activity: 2026-04-01 -- Plan 20-02 complete (extract/merge/sync path-based migration)
 
 Progress: [██████████] 98%
 
@@ -104,6 +104,7 @@ Progress: [██████████] 98%
 | Phase 19 P02 | 3min | 2 tasks | 2 files |
 | Phase 19 P01 | 6min | 2 tasks | 2 files |
 | Phase 20 P01 | 4min | 2 tasks | 5 files |
+| Phase 20 P02 | 7min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -248,6 +249,9 @@ Recent decisions affecting current work:
 - [Phase 20]: walk_sections replaces flat doc['sections'] loop in verify-xml-refs.py and prepare-prose-verify.py
 - [Phase 20]: prepare-prose-verify.py creates nested output directories via os.path.dirname(path) + os.makedirs
 - [Phase 20]: load-audit-findings.py confirmed path-agnostic (no code changes needed, tests added)
+- [Phase 20]: Extract edit XML adds path attribute alongside slug; slug is leaf for display, path is full slash-separated for merge-back
+- [Phase 20]: Merge reads path attribute as primary key with slug fallback for backward compat
+- [Phase 20]: _infer_paths uses stack-based heading-level algorithm: pop on same-or-shallower, push on deeper; no-heading defaults to depth 2
 
 ### Pending Todos
 
@@ -286,6 +290,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-01T19:53:59.791Z
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-04-01T19:57:14.050Z
+Stopped at: Completed 20-02-PLAN.md
 Resume file: None
