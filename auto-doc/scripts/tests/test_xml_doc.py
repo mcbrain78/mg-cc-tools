@@ -265,7 +265,7 @@ class TestUpdateSectionRefs:
             os.unlink(path)
 
     def test_mixed_refs_all_types(self):
-        """All six ref types in one update."""
+        """All nine ref types in one update."""
         tree = build_xml_doc("devops", "how-to", "# Title", SAMPLE_SECTIONS)
         flat_refs = [
             {"type": "db", "schema": "rr", "table": "runs", "column": "id"},
@@ -274,6 +274,9 @@ class TestUpdateSectionRefs:
             {"type": "env", "name": "PORT"},
             {"type": "config", "path": "config.yaml"},
             {"type": "enum", "class": "Run", "field": "status", "value": "ok"},
+            {"type": "dep", "name": "tenacity"},
+            {"type": "literal", "name": "fmp-api"},
+            {"type": "ext", "name": "pg_dump"},
         ]
         update_section_refs(tree, "monitoring-alerting", flat_refs)
 
@@ -290,6 +293,69 @@ class TestUpdateSectionRefs:
             assert "env" in types
             assert "config" in types
             assert "enum" in types
+            assert "dep" in types
+            assert "literal" in types
+            assert "ext" in types
+        finally:
+            os.unlink(path)
+
+    def test_dep_refs(self):
+        tree = build_xml_doc("devops", "how-to", "# Title", SAMPLE_SECTIONS)
+        flat_refs = [
+            {"type": "dep", "name": "tenacity"},
+            {"type": "dep", "name": "edgartools"},
+        ]
+        update_section_refs(tree, "monitoring-alerting", flat_refs)
+
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 2
+            assert refs[0] == {"type": "dep", "name": "tenacity"}
+            assert refs[1] == {"type": "dep", "name": "edgartools"}
+        finally:
+            os.unlink(path)
+
+    def test_literal_refs(self):
+        tree = build_xml_doc("devops", "how-to", "# Title", SAMPLE_SECTIONS)
+        flat_refs = [
+            {"type": "literal", "name": "fmp-api"},
+            {"type": "literal", "name": "finance-data-pool"},
+        ]
+        update_section_refs(tree, "monitoring-alerting", flat_refs)
+
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 2
+            assert refs[0] == {"type": "literal", "name": "fmp-api"}
+            assert refs[1] == {"type": "literal", "name": "finance-data-pool"}
+        finally:
+            os.unlink(path)
+
+    def test_ext_refs(self):
+        tree = build_xml_doc("devops", "how-to", "# Title", SAMPLE_SECTIONS)
+        flat_refs = [
+            {"type": "ext", "name": "pg_dump"},
+            {"type": "ext", "name": "VACUUM"},
+        ]
+        update_section_refs(tree, "monitoring-alerting", flat_refs)
+
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 2
+            assert refs[0] == {"type": "ext", "name": "pg_dump"}
+            assert refs[1] == {"type": "ext", "name": "VACUUM"}
         finally:
             os.unlink(path)
 

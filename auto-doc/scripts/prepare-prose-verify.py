@@ -90,6 +90,15 @@ def _format_single_ref(ref_type, ref):
         value = ref.get("value", "")
         return f"[enum] {cls}.{field} = {value}"
 
+    if ref_type == "dep":
+        return f"[dep] {ref.get('name', '')}"
+
+    if ref_type == "literal":
+        return f"[literal] {ref.get('name', '')}"
+
+    if ref_type == "ext":
+        return f"[ext] {ref.get('name', '')}"
+
     return None
 
 

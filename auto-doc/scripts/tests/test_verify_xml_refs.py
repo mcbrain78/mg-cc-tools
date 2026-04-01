@@ -441,6 +441,159 @@ class TestEnumRefs:
             assert "bogus_value" in findings[0]["description"]
 
 
+class TestDepRefs:
+    """Dependency ref verification against pyproject.toml."""
+
+    def test_valid_dep(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # Add pyproject.toml with a known dependency
+            with open(os.path.join(project_root, "pyproject.toml"), "w") as f:
+                f.write(
+                    "[project]\n"
+                    "dependencies = [\n"
+                    '    "tenacity>=8.0",\n'
+                    '    "httpx",\n'
+                    "]\n"
+                    "[project.optional-dependencies]\n"
+                    'dev = ["pytest"]\n'
+                )
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "deps",
+                "<!-- section: deps -->\n## Deps\n\nContent",
+                [{"type": "dep", "name": "tenacity"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_valid_dep_from_optional(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            with open(os.path.join(project_root, "pyproject.toml"), "w") as f:
+                f.write(
+                    "[project]\n"
+                    "dependencies = []\n"
+                    "[project.optional-dependencies]\n"
+                    'dev = ["pytest>=7.0"]\n'
+                )
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "deps",
+                "<!-- section: deps -->\n## Deps\n\nContent",
+                [{"type": "dep", "name": "pytest"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_missing_dep(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            with open(os.path.join(project_root, "pyproject.toml"), "w") as f:
+                f.write("[project]\ndependencies = []\n")
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "deps",
+                "<!-- section: deps -->\n## Deps\n\nContent",
+                [{"type": "dep", "name": "nonexistent-package"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "nonexistent-package" in findings[0]["description"]
+
+    def test_dep_name_normalization(self):
+        """Underscores and dots in dep names are normalized to hyphens."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            with open(os.path.join(project_root, "pyproject.toml"), "w") as f:
+                f.write(
+                    "[project]\n"
+                    'dependencies = ["pydantic_settings>=2.0"]\n'
+                )
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "deps",
+                "<!-- section: deps -->\n## Deps\n\nContent",
+                [{"type": "dep", "name": "pydantic-settings"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+
+class TestLiteralRefs:
+    """Literal ref verification by project-wide grep."""
+
+    def test_valid_literal_in_python(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # Add a Python file with the literal string
+            with open(os.path.join(project_root, "src", "app", "tasks.py"), "w") as f:
+                f.write('@task(tags=["fmp-api"])\ndef fetch(): pass\n')
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "tags",
+                "<!-- section: tags -->\n## Tags\n\nContent",
+                [{"type": "literal", "name": "fmp-api"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_valid_literal_in_yaml(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            with open(os.path.join(project_root, "config", "prefect.yaml"), "w") as f:
+                f.write("work_pool: finance-data-pool\n")
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "pools",
+                "<!-- section: pools -->\n## Pools\n\nContent",
+                [{"type": "literal", "name": "finance-data-pool"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_missing_literal(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "tags",
+                "<!-- section: tags -->\n## Tags\n\nContent",
+                [{"type": "literal", "name": "totally-nonexistent-literal"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "totally-nonexistent-literal" in findings[0]["description"]
+
+
+class TestExtRefs:
+    """External tool ref verification — always valid."""
+
+    def test_ext_always_valid(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "tools",
+                "<!-- section: tools -->\n## Tools\n\nContent",
+                [
+                    {"type": "ext", "name": "pg_dump"},
+                    {"type": "ext", "name": "VACUUM"},
+                    {"type": "ext", "name": "systemctl"},
+                ],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+
 class TestMixedRefs:
     """Multiple ref types in one document, multiple findings."""
 

@@ -10,6 +10,8 @@ set -euo pipefail
 #   mg:spec-improve          Iterative subagent-review improvement
 #   mg:spec-create-context   Convert concept spec to GSD CONTEXT.md
 #   mg:spec-prepare-context  Split multi-phase doc into per-phase files
+#   mg:spec-gsd-phases       Analyze concept doc and create GSD phases
+#   mg:spec-help             Show pipeline and usage guide
 #
 # Usage:
 #   ./install.sh --project [<dir>]  Install into project's .claude/ (default: cwd)
@@ -24,6 +26,8 @@ COMMANDS=(
   spec-improve
   spec-create-context
   spec-prepare-context
+  spec-gsd-phases
+  spec-help
 )
 
 REFERENCES=(
@@ -201,5 +205,7 @@ echo "  /mg:spec-draft [<source-file-path>]"
 echo "  /mg:spec-improve <file-path>"
 echo "  /mg:spec-create-context <phase-number> <source-file-path>"
 echo "  /mg:spec-prepare-context <start>-<end> <source-file-path>"
+echo "  /mg:spec-gsd-phases <source-file-path>"
+echo "  /mg:spec-help"
 echo ""
 echo "Prerequisite: GSD must be installed (uses .planning/ROADMAP.md)"

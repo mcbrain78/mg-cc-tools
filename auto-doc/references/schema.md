@@ -698,6 +698,9 @@ XML sources live at `.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml`. Standalone
         <value>completed</value>
         <value>failed</value>
       </enum>
+      <dep>tenacity</dep>
+      <literal>fmp-api</literal>
+      <ext>pg_dump</ext>
     </refs>
 
     <body><![CDATA[
@@ -720,7 +723,7 @@ Each section body contains a `<!-- section: {slug} -->` HTML comment that maps 1
 - `assemble-markdown.py` preserves markers in the assembled .md output
 - Markers are invisible to readers but essential for the XML sync pipeline
 
-### Six Ref Types
+### Nine Ref Types
 
 | Type | XML Nesting | Verified Against |
 |---|---|---|
@@ -730,6 +733,9 @@ Each section body contains a `<!-- section: {slug} -->` HTML comment that maps 1
 | `env` | `<env>` (flat name) | Settings classes, `.env.example` |
 | `config` | `<config>` (flat path) | Filesystem existence |
 | `enum` | `<enum class field><value>` | Enum classes, string literals |
+| `dep` | `<dep>` (flat name) | `pyproject.toml` dependencies (normalized PEP 508 name) |
+| `literal` | `<literal>` (flat name) | Project-wide grep across source/config files |
+| `ext` | `<ext>` (flat name) | No-op (external tools with no codebase footprint) |
 
 Refs are produced inline by writer agents during generation (as `typed_refs` in the section refs JSON) and verified deterministically by `verify-xml-refs.py` during the audit step.
 
@@ -747,7 +753,10 @@ Scripts exchange refs as flat JSON arrays (never raw XML). Each element has a `t
   {"type": "flow", "name": "ingest-quarterly-finance-data"},
   {"type": "env", "name": "WORKER_CONCURRENCY"},
   {"type": "config", "path": "config/field-mapping.yaml"},
-  {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"}
+  {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"},
+  {"type": "dep", "name": "tenacity"},
+  {"type": "literal", "name": "fmp-api"},
+  {"type": "ext", "name": "pg_dump"}
 ]
 ```
 

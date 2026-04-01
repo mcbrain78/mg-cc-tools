@@ -94,7 +94,7 @@ class TestPrepareProsVerify:
             assert data["refs_as_text"] == "(no refs declared)"
 
     def test_all_ref_types_formatted(self):
-        """All 6 ref types produce readable text."""
+        """All 9 ref types produce readable text."""
         with tempfile.TemporaryDirectory() as td:
             xml_path = _build_xml(td, [
                 ("all-types", "<!-- section: all-types -->\n## All\n\nContent.", [
@@ -104,6 +104,9 @@ class TestPrepareProsVerify:
                     {"type": "env", "name": "PORT"},
                     {"type": "config", "path": "config.yaml"},
                     {"type": "enum", "class": "Status", "field": "state", "value": "ok"},
+                    {"type": "dep", "name": "tenacity"},
+                    {"type": "literal", "name": "fmp-api"},
+                    {"type": "ext", "name": "pg_dump"},
                 ]),
             ])
             output_dir = os.path.join(td, "output")
@@ -124,6 +127,9 @@ class TestPrepareProsVerify:
             assert "[env] PORT" in refs
             assert "[config] config.yaml" in refs
             assert "[enum] Status.state = ok" in refs
+            assert "[dep] tenacity" in refs
+            assert "[literal] fmp-api" in refs
+            assert "[ext] pg_dump" in refs
 
     def test_missing_xml_exits_1(self):
         result = subprocess.run(

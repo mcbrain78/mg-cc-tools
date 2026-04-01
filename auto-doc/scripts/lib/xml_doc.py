@@ -140,6 +140,12 @@ def _parse_refs(refs_el):
             result.append({"type": "config", "path": child.text or ""})
         elif tag == "enum":
             result.extend(_parse_enum_refs(child))
+        elif tag == "dep":
+            result.append({"type": "dep", "name": child.text or ""})
+        elif tag == "literal":
+            result.append({"type": "literal", "name": child.text or ""})
+        elif tag == "ext":
+            result.append({"type": "ext", "name": child.text or ""})
     return result
 
 
@@ -351,6 +357,9 @@ def _build_refs_xml(refs_el, flat_refs):
     env_refs = [r for r in flat_refs if r.get("type") == "env"]
     config_refs = [r for r in flat_refs if r.get("type") == "config"]
     enum_refs = [r for r in flat_refs if r.get("type") == "enum"]
+    dep_refs = [r for r in flat_refs if r.get("type") == "dep"]
+    literal_refs = [r for r in flat_refs if r.get("type") == "literal"]
+    ext_refs = [r for r in flat_refs if r.get("type") == "ext"]
 
     if db_refs:
         _build_db_xml(refs_el, db_refs)
@@ -367,6 +376,15 @@ def _build_refs_xml(refs_el, flat_refs):
         el.text = ref.get("path", "")
     if enum_refs:
         _build_enum_xml(refs_el, enum_refs)
+    for ref in dep_refs:
+        el = etree.SubElement(refs_el, "dep")
+        el.text = ref.get("name", "")
+    for ref in literal_refs:
+        el = etree.SubElement(refs_el, "literal")
+        el.text = ref.get("name", "")
+    for ref in ext_refs:
+        el = etree.SubElement(refs_el, "ext")
+        el.text = ref.get("name", "")
 
 
 def _build_db_xml(refs_el, db_refs):

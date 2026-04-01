@@ -23,6 +23,7 @@ produce findings, exit 0 always.
 import argparse
 import importlib
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -36,6 +37,21 @@ from lib.symbols import (
     extract_sqlalchemy_models,
 )
 from lib.xml_doc import parse_xml_doc
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_DEP_NAME_RE = re.compile(r"^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)")
+
+
+def _parse_dep_name(dep_str):
+    """Extract normalized package name from a PEP 508 dependency string."""
+    m = _DEP_NAME_RE.match(dep_str.strip())
+    if m:
+        return re.sub(r"[-_.]+", "-", m.group(1)).lower()
+    return dep_str.strip().lower()
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +141,62 @@ class SourceCache:
                 if fname.endswith(".py"):
                     abs_path = os.path.join(dirpath, fname)
                     yield os.path.relpath(abs_path, self.project_root)
+
+    _WALK_EXTENSIONS = {
+        ".py", ".yaml", ".yml", ".toml", ".ini", ".service",
+        ".env", ".json", ".sh",
+    }
+    _SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".tox"}
+
+    def walk_project_files(self):
+        """Yield relative paths of source/config files for literal grep."""
+        for dirpath, dirnames, filenames in os.walk(self.project_root):
+            # Prune skipped directories in-place
+            dirnames[:] = [d for d in dirnames if d not in self._SKIP_DIRS]
+            for fname in filenames:
+                _, ext = os.path.splitext(fname)
+                if ext in self._WALK_EXTENSIONS or fname.startswith(".env"):
+                    abs_path = os.path.join(dirpath, fname)
+                    yield os.path.relpath(abs_path, self.project_root)
+
+    def get_pyproject_deps(self):
+        """Parse pyproject.toml and return a set of dependency package names."""
+        if hasattr(self, "_pyproject_deps"):
+            return self._pyproject_deps
+
+        deps = set()
+        toml_path = os.path.join(self.project_root, "pyproject.toml")
+        if not os.path.isfile(toml_path):
+            self._pyproject_deps = deps
+            return deps
+
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            try:
+                import tomli as tomllib
+            except ModuleNotFoundError:
+                self._pyproject_deps = deps
+                return deps
+
+        try:
+            with open(toml_path, "rb") as f:
+                data = tomllib.load(f)
+        except Exception:
+            self._pyproject_deps = deps
+            return deps
+
+        # [project.dependencies]
+        for dep_str in data.get("project", {}).get("dependencies", []):
+            deps.add(_parse_dep_name(dep_str))
+
+        # [project.optional-dependencies]
+        for extras_list in data.get("project", {}).get("optional-dependencies", {}).values():
+            for dep_str in extras_list:
+                deps.add(_parse_dep_name(dep_str))
+
+        self._pyproject_deps = deps
+        return deps
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +410,31 @@ def check_enum_ref(ref, cache):
     return f"Enum value `{value}` not found on class `{cls}`"
 
 
+def check_dep_ref(ref, cache):
+    """Check a dep ref against pyproject.toml dependencies."""
+    ref_name = ref.get("name", "")
+    normalized = re.sub(r"[-_.]+", "-", ref_name).lower()
+    deps = cache.get_pyproject_deps()
+    if normalized in deps:
+        return None
+    return f"Dependency `{ref_name}` not found in pyproject.toml"
+
+
+def check_literal_ref(ref, cache):
+    """Check a literal ref by grepping project source/config files."""
+    ref_name = ref.get("name", "")
+    for rel_path in cache.walk_project_files():
+        src = cache._read_source(rel_path)
+        if src and ref_name in src:
+            return None
+    return f"Literal `{ref_name}` not found in any project file"
+
+
+def check_ext_ref(ref, cache):
+    """Check an ext ref — always valid (external tools have no codebase footprint)."""
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Main verification
 # ---------------------------------------------------------------------------
@@ -349,6 +446,9 @@ CHECKER_BY_TYPE = {
     "env": check_env_ref,
     "config": check_config_ref,
     "enum": check_enum_ref,
+    "dep": check_dep_ref,
+    "literal": check_literal_ref,
+    "ext": check_ext_ref,
 }
 
 
@@ -410,6 +510,9 @@ def _suggestion_for_type(ref_type):
         "env": "Update the environment variable name or add it to .env.example",
         "config": "Update the config file path or create the missing file",
         "enum": "Update the enum value to match the current class definition",
+        "dep": "Update the dependency name or add it to pyproject.toml",
+        "literal": "Update the literal string or verify it exists in the project",
+        "ext": "Update the external tool name",
     }
     return suggestions.get(ref_type, "Update documentation to match codebase")
 
