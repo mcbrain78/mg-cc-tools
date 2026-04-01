@@ -281,7 +281,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **WHE-03**: Generated markdown output (prose and heading structure) is identical to the current output — only emission granularity changes
 - [x] **WHE-04**: `<!-- section: slug -->` markers appear at every heading level in generated documents, using the same marker pattern regardless of depth
 - [x] **WHE-05**: Each write-section.py call's `typed_refs` correspond exactly to the body emitted in that call — refs that appear only in child content must not be listed in the parent's refs
-- [ ] **WHE-06**: End-to-end verification confirms round-trip fidelity and ref precision across the full pipeline
+- [x] **WHE-06**: End-to-end verification confirms round-trip fidelity and ref precision across the full pipeline
 
 ## v2 Requirements
 
@@ -526,7 +526,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WHE-03 | Phase 21 | Complete |
 | WHE-04 | Phase 21 | Complete |
 | WHE-05 | Phase 21 | Complete |
-| WHE-06 | Phase 21 | Pending |
+| WHE-06 | Phase 21 | Complete |
 
 **Coverage:**
 - v1 requirements: 213 total
