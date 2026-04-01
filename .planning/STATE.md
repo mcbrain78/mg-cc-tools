@@ -259,6 +259,7 @@ Recent decisions affecting current work:
 - Phase 17 added: auto-doc generate docs improvements
 - Phase 18 added: Recursive Section XML Core
 - Phase 19 added: Nested Write-Section & Assembly
+- Phase 20 added: Recursive Pipeline Script Updates
 
 ### Blockers/Concerns
 

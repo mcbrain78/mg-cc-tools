@@ -318,3 +318,13 @@ Plans:
 
 Plans:
 - [ ] TBD (run /gsd:plan-phase 19 to break down)
+
+### Phase 20: Recursive Pipeline Script Updates
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 19
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 20 to break down)
