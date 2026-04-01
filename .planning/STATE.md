@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 19-01-PLAN.md
-last_updated: "2026-04-01T19:14:52.036Z"
-last_activity: 2026-04-01 -- Plan 19-01 complete (nested write-section features)
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-04-01T19:53:59.795Z"
+last_activity: 2026-04-01 -- Plan 20-01 complete (recursive pipeline script updates)
 progress:
   total_phases: 21
   completed_phases: 18
-  total_plans: 54
-  completed_plans: 53
+  total_plans: 56
+  completed_plans: 54
   percent: 98
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Automate the creation and maintenance of audience-specific documentation so it stays current as code evolves
-**Current focus:** Phase 19 - Nested Write-Section & Assembly
+**Current focus:** Phase 20 - Recursive Pipeline Script Updates
 
 ## Current Position
 
-Phase: 19 of 21 (Nested Write-Section & Assembly)
+Phase: 20 of 21 (Recursive Pipeline Script Updates)
 Plan: 1 of 2 in current phase
 Status: In Progress
-Last activity: 2026-04-01 -- Plan 19-01 complete (nested write-section features)
+Last activity: 2026-04-01 -- Plan 20-01 complete (recursive pipeline script updates)
 
 Progress: [██████████] 98%
 
@@ -103,6 +103,7 @@ Progress: [██████████] 98%
 | Phase 18 P02 | 2min | 2 tasks | 1 files |
 | Phase 19 P02 | 3min | 2 tasks | 2 files |
 | Phase 19 P01 | 6min | 2 tasks | 2 files |
+| Phase 20 P01 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -244,6 +245,9 @@ Recent decisions affecting current work:
 - [Phase 19]: Removed get_section_slugs import from write-section.py (replaced by get_section_paths)
 - [Phase 19]: Overwrite preserves existing subsections/subsections_order for both top-level and child sections
 - [Phase 19]: parse_existing_sections returns path-based tuples instead of slug-based (clean cutover per D4)
+- [Phase 20]: walk_sections replaces flat doc['sections'] loop in verify-xml-refs.py and prepare-prose-verify.py
+- [Phase 20]: prepare-prose-verify.py creates nested output directories via os.path.dirname(path) + os.makedirs
+- [Phase 20]: load-audit-findings.py confirmed path-agnostic (no code changes needed, tests added)
 
 ### Pending Todos
 
@@ -282,6 +286,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-01T19:10:14.239Z
-Stopped at: Completed 19-01-PLAN.md
+Last session: 2026-04-01T19:53:59.791Z
+Stopped at: Completed 20-01-PLAN.md
 Resume file: None

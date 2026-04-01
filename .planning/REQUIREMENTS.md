@@ -267,9 +267,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Recursive Pipeline Scripts
 
-- [ ] **RPS-01**: Findings identify their section using a single `"section"` field containing a slash-separated path (e.g., `"monitoring-alerting/etl-run-logging"`) that addresses sections at any tree depth
-- [ ] **RPS-02**: Reference verification recursively visits nested sections and audits each section's refs against its own body independently, so a ref listed in a parent section that only appears in a child's body fails the parent's audit
-- [ ] **RPS-03**: Prose verification input is produced for every section in the tree, with output files organized in nested directories mirroring the section hierarchy
+- [x] **RPS-01**: Findings identify their section using a single `"section"` field containing a slash-separated path (e.g., `"monitoring-alerting/etl-run-logging"`) that addresses sections at any tree depth
+- [x] **RPS-02**: Reference verification recursively visits nested sections and audits each section's refs against its own body independently, so a ref listed in a parent section that only appears in a child's body fails the parent's audit
+- [x] **RPS-03**: Prose verification input is produced for every section in the tree, with output files organized in nested directories mirroring the section hierarchy
 - [ ] **RPS-04**: Section extraction produces edit-group XML for individual sections at any tree depth, with each `<section>` element carrying a `path` attribute containing the full slash-separated path
 - [ ] **RPS-05**: Edit merging uses the `path` attribute from edit-group XML to locate the target node in the master XML tree and merge content back to the correct tree position
 - [ ] **RPS-06**: Markdown-to-XML sync splits markdown by `<!-- section: slug -->` markers and reconstructs the section tree from heading levels, where heading depth is the authoritative signal for tree position and markers provide section identity
@@ -506,9 +506,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WSA-05 | Phase 19 | Complete |
 | WSA-06 | Phase 19 | Complete |
 | WSA-07 | Phase 19 | Complete |
-| RPS-01 | Phase 20 | Pending |
-| RPS-02 | Phase 20 | Pending |
-| RPS-03 | Phase 20 | Pending |
+| RPS-01 | Phase 20 | Complete |
+| RPS-02 | Phase 20 | Complete |
+| RPS-03 | Phase 20 | Complete |
 | RPS-04 | Phase 20 | Pending |
 | RPS-05 | Phase 20 | Pending |
 | RPS-06 | Phase 20 | Pending |
