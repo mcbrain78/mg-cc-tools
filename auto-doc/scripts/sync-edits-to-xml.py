@@ -2,13 +2,16 @@
 """Sync markdown edits back to XML source document.
 
 Splits a .md file on <!-- section: slug --> markers, matches each section
-to the corresponding XML section by slug, and patches the CDATA body for
+to the corresponding XML section by path, and patches the CDATA body for
 any section whose content has changed.
+
+Tree hierarchy is reconstructed from heading levels after the flat marker
+split: ## = top-level, ### = child, #### = grandchild, etc.
 
 Usage:
     python3 sync-edits-to-xml.py --md-file PATH --xml-file PATH [--changed-only]
 
-When --changed-only is set, outputs a JSON array of changed slugs to stdout
+When --changed-only is set, outputs a JSON array of changed paths to stdout
 (for targeted ref re-extraction).
 
 Zero external dependencies beyond lxml (used by lib/xml_doc).
@@ -25,11 +28,15 @@ from lib.xml_doc import (
     parse_xml_doc,
     serialize_xml_doc,
     update_section_body,
+    walk_sections,
 )
 from lxml import etree
 
 # Pattern matches <!-- section: some-slug --> with optional whitespace
 SECTION_MARKER_RE = re.compile(r"^<!--\s*section:\s*(\S+)\s*-->", re.MULTILINE)
+
+# Heading level regex: ## = 2, ### = 3, #### = 4, etc.
+HEADING_RE = re.compile(r"^(#{2,6})\s+", re.MULTILINE)
 
 
 def split_md_on_markers(md_content):
@@ -59,15 +66,58 @@ def split_md_on_markers(md_content):
     return header, sections
 
 
+def _heading_depth(body):
+    """Extract heading depth from body (## = 2, ### = 3, etc.).
+
+    Returns 2 (top-level) if no heading found.
+    """
+    m = HEADING_RE.search(body)
+    if m:
+        return len(m.group(1))
+    return 2  # default to top-level if no heading found
+
+
+def _infer_paths(md_sections):
+    """Infer slash-separated paths from (slug, body) tuples using heading levels.
+
+    Uses a stack-based algorithm: stack tracks [(depth, slug)] ancestor chain.
+    For each section: pop stack while top's depth >= current depth, build path
+    from remaining stack slugs + current slug joined by "/", push current.
+
+    Args:
+        md_sections: List of (slug, body) tuples from split_md_on_markers.
+
+    Returns:
+        List of (path, slug, body) tuples with full slash-separated paths.
+    """
+    stack = []  # [(depth, slug)] -- tracks ancestor chain
+    result = []
+
+    for slug, body in md_sections:
+        depth = _heading_depth(body)
+
+        # Pop stack to find parent: any heading same-or-shallower pops
+        while stack and stack[-1][0] >= depth:
+            stack.pop()
+
+        # Build path from remaining stack + current slug
+        path = "/".join(s for _, s in stack) + ("/" if stack else "") + slug
+
+        result.append((path, slug, body))
+        stack.append((depth, slug))
+
+    return result
+
+
 def sync(md_path, xml_path):
-    """Sync markdown edits back to XML, return list of changed slugs.
+    """Sync markdown edits back to XML, return list of changed paths.
 
     Args:
         md_path: Path to the edited markdown file.
         xml_path: Path to the XML source file.
 
     Returns:
-        List of slugs whose body was changed.
+        List of slash-separated paths whose body was changed.
     """
     with open(md_path, "r", encoding="utf-8") as f:
         md_content = f.read()
@@ -76,18 +126,18 @@ def sync(md_path, xml_path):
     doc = parse_xml_doc(xml_path)
 
     _, md_sections = split_md_on_markers(md_content)
-    md_by_slug = {slug: body for slug, body in md_sections}
+    inferred = _infer_paths(md_sections)
+    md_by_path = {path: body for path, slug, body in inferred}
 
     changed = []
-    for section in doc["sections"]:
-        slug = section["slug"]
-        if slug not in md_by_slug:
+    for xml_path_key, section in walk_sections(doc["sections"]):
+        if xml_path_key not in md_by_path:
             continue
-        md_body = md_by_slug[slug]
+        md_body = md_by_path[xml_path_key]
         xml_body = section["body"].strip("\n")
         if md_body != xml_body:
-            update_section_body(tree, slug, md_body)
-            changed.append(slug)
+            update_section_body(tree, xml_path_key, md_body)
+            changed.append(xml_path_key)
 
     if changed:
         serialize_xml_doc(tree, xml_path)
@@ -109,7 +159,7 @@ def main():
     )
     parser.add_argument(
         "--changed-only", action="store_true",
-        help="Output JSON array of changed slugs to stdout",
+        help="Output JSON array of changed paths to stdout",
     )
 
     args = parser.parse_args()
