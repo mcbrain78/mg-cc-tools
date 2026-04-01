@@ -43,7 +43,7 @@ from lib.symbols import extract_python_symbols
 from lib.xml_doc import (
     add_section,
     build_xml_doc,
-    get_section_slugs,
+    get_section_paths,
     serialize_xml_doc,
     update_section_body,
     update_section_refs,
@@ -132,6 +132,42 @@ def check_symbols(symbols, file_paths, project_root):
             )
 
 
+def _resolve_parent(doc, parent_path):
+    """Walk the state tree to find the parent section dict.
+
+    Args:
+        doc: Document dict from state (has sections, sections_order).
+        parent_path: Slash-separated path (e.g., "monitoring-alerting/health-artifact").
+
+    Returns:
+        The parent section dict (which has subsections/subsections_order).
+
+    Raises:
+        SystemExit: If any path segment doesn't exist.
+    """
+    segments = parent_path.split("/")
+
+    # First segment must be in top-level sections
+    current = doc["sections"].get(segments[0])
+    if current is None:
+        print(f"Error: parent section not found: {segments[0]}", file=sys.stderr)
+        sys.exit(1)
+
+    # Walk remaining segments through subsections
+    for i, seg in enumerate(segments[1:], 1):
+        subs = current.get("subsections", {})
+        current = subs.get(seg)
+        if current is None:
+            path_so_far = "/".join(segments[:i + 1])
+            print(
+                f"Error: parent section not found: {path_so_far}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    return current
+
+
 def section_write(args):
     """Accumulate a section into the state file."""
     # Load state file (create empty if missing)
@@ -200,17 +236,53 @@ def section_write(args):
     typed_refs = refs["typed_refs"]
     derived_symbols, derived_file_paths = _derive_symbols_and_file_paths(typed_refs)
 
-    # If section exists, overwrite content/refs (preserve order position).
-    # If new, append to sections_order.
-    if section_name not in doc["sections"]:
-        doc["sections_order"].append(section_name)
-
-    doc["sections"][section_name] = {
+    # Build the new section entry (always includes subsections keys)
+    new_entry = {
         "content": content,
         "symbols": derived_symbols,
         "file_paths": derived_file_paths,
         "typed_refs": typed_refs,
+        "subsections": {},
+        "subsections_order": [],
     }
+
+    parent_path = getattr(args, "parent", None)
+
+    if parent_path:
+        # Resolve parent in the state tree
+        parent_section = _resolve_parent(doc, parent_path)
+
+        # Ensure parent has subsections structure
+        if "subsections" not in parent_section:
+            parent_section["subsections"] = {}
+        if "subsections_order" not in parent_section:
+            parent_section["subsections_order"] = []
+
+        # If overwriting existing child, preserve its subsections
+        existing_child = parent_section["subsections"].get(section_name)
+        if existing_child:
+            new_entry["subsections"] = existing_child.get("subsections", {})
+            new_entry["subsections_order"] = existing_child.get(
+                "subsections_order", []
+            )
+        else:
+            parent_section["subsections_order"].append(section_name)
+
+        parent_section["subsections"][section_name] = new_entry
+    else:
+        # Top-level section (existing behavior + new subsections keys)
+        if section_name not in doc["sections"]:
+            doc["sections_order"].append(section_name)
+
+        # If overwriting existing section, preserve its subsections
+        existing = doc["sections"].get(section_name)
+        if existing:
+            new_entry["subsections"] = existing.get("subsections", {})
+            new_entry["subsections_order"] = existing.get(
+                "subsections_order", []
+            )
+
+        doc["sections"][section_name] = new_entry
 
     # Advisory symbol check if --project-root provided
     if args.project_root:
@@ -230,27 +302,134 @@ def section_write(args):
 
 
 def parse_existing_sections(content):
-    """Parse a markdown document into header + ordered sections by ## headings.
+    """Parse a markdown document into header + ordered sections by headings.
 
-    Returns (header_text, [(slug, heading_line, section_body), ...]).
+    Splits on ## through ##### headings. Returns flat list with
+    path-based keys for merge matching.
+
+    Returns:
+        (header_text, [(path, heading_line, section_body), ...])
+        where path is slash-separated (e.g., "monitoring/etl-logging").
     """
-    parts = re.split(r"(?=^## )", content, flags=re.MULTILINE)
+    parts = re.split(r"(?=^#{2,5} )", content, flags=re.MULTILINE)
     header = ""
     sections = []
 
+    # Stack tracks current slug at each depth level
+    # depth 0 = ##, depth 1 = ###, etc.
+    path_stack = []
+
     for i, part in enumerate(parts):
-        if i == 0 and not part.startswith("## "):
+        if i == 0 and not re.match(r"^#{2,5} ", part):
             header = part
-        else:
-            lines = part.split("\n", 1)
-            heading_line = lines[0]
-            body = lines[1] if len(lines) > 1 else ""
-            # Extract heading text after "## "
-            heading_text = heading_line[3:].strip()
-            slug = slugify_heading(heading_text)
-            sections.append((slug, heading_line, body))
+            continue
+
+        lines = part.split("\n", 1)
+        heading_line = lines[0]
+        body = lines[1] if len(lines) > 1 else ""
+
+        # Count heading level
+        match = re.match(r"^(#{2,5}) ", heading_line)
+        if not match:
+            continue
+        level = len(match.group(1))  # 2 for ##, 3 for ###, etc.
+        depth = level - 2  # 0 for ##, 1 for ###, etc.
+
+        heading_text = heading_line[level + 1:].strip()
+        slug = slugify_heading(heading_text)
+
+        # Trim stack to current depth, then append slug
+        path_stack = path_stack[:depth]
+        path_stack.append(slug)
+        path = "/".join(path_stack)
+
+        sections.append((path, heading_line, body))
 
     return header, sections
+
+
+def _state_section_to_xml_section(slug, section_data):
+    """Recursively convert state section to XML section format.
+
+    Returns:
+        Dict with slug, body, and children keys.
+    """
+    children = []
+    for child_slug in section_data.get("subsections_order", []):
+        child_data = section_data.get("subsections", {}).get(child_slug)
+        if child_data:
+            children.append(_state_section_to_xml_section(child_slug, child_data))
+    return {
+        "slug": slug,
+        "body": section_data["content"],
+        "children": children,
+    }
+
+
+def _state_sections_to_xml(doc_data):
+    """Convert state document data to list of section dicts for build_xml_doc."""
+    sections = []
+    for slug in doc_data.get("sections_order", []):
+        section = doc_data.get("sections", {}).get(slug)
+        if section:
+            sections.append(_state_section_to_xml_section(slug, section))
+    return sections
+
+
+def _collect_all_sections_depth_first(sections, sections_order, prefix=""):
+    """Recursively collect (path, section_data) in depth-first order."""
+    result = []
+    for slug in sections_order:
+        section = sections.get(slug)
+        if not section:
+            continue
+        path = f"{prefix}/{slug}" if prefix else slug
+        result.append((path, section))
+        result.extend(_collect_all_sections_depth_first(
+            section.get("subsections", {}),
+            section.get("subsections_order", []),
+            path,
+        ))
+    return result
+
+
+def _collect_manifest_entries(sections, sections_order, prefix=""):
+    """Recursively collect manifest entries from nested state tree.
+
+    Yields (path, symbols, file_paths) for sections with non-empty refs.
+    """
+    for slug in sections_order:
+        section = sections.get(slug)
+        if not section:
+            continue
+        path = f"{prefix}/{slug}" if prefix else slug
+        symbols = section.get("symbols", [])
+        file_paths = section.get("file_paths", [])
+        if symbols or file_paths:
+            yield path, symbols, file_paths
+        # Recurse into subsections
+        yield from _collect_manifest_entries(
+            section.get("subsections", {}),
+            section.get("subsections_order", []),
+            path,
+        )
+
+
+def _collect_all_paths(sections, sections_order, prefix=""):
+    """Collect all section paths from nested state tree."""
+    paths = []
+    for slug in sections_order:
+        section = sections.get(slug)
+        if not section:
+            continue
+        path = f"{prefix}/{slug}" if prefix else slug
+        paths.append(path)
+        paths.extend(_collect_all_paths(
+            section.get("subsections", {}),
+            section.get("subsections_order", []),
+            path,
+        ))
+    return paths
 
 
 def finalize(args):
@@ -283,23 +462,25 @@ def finalize(args):
                 existing_content
             )
 
-            # Build lookup of new sections from state
+            # Build lookup of new sections from state (keyed by path)
             new_sections = {}
-            for section_slug in doc_data.get("sections_order", []):
-                section = doc_data["sections"].get(section_slug)
-                if section:
-                    new_sections[section_slug] = section["content"]
+            all_state_sections = _collect_all_sections_depth_first(
+                doc_data.get("sections", {}),
+                doc_data.get("sections_order", []),
+            )
+            for path, sec_data in all_state_sections:
+                new_sections[path] = sec_data["content"]
 
             # Replace matching sections, preserve unmodified ones
             result_parts = []
             if existing_header:
                 result_parts.append(existing_header.rstrip("\n"))
 
-            seen_slugs = set()
-            for slug, heading_line, body in existing_sections:
-                seen_slugs.add(slug)
-                if slug in new_sections:
-                    result_parts.append(new_sections[slug].rstrip("\n"))
+            seen_paths = set()
+            for path, heading_line, body in existing_sections:
+                seen_paths.add(path)
+                if path in new_sections:
+                    result_parts.append(new_sections[path].rstrip("\n"))
                 else:
                     # Preserve original section verbatim
                     result_parts.append(
@@ -307,24 +488,24 @@ def finalize(args):
                     )
 
             # Append new sections not in existing doc
-            for section_slug in doc_data.get("sections_order", []):
-                if section_slug not in seen_slugs:
-                    section = doc_data["sections"].get(section_slug)
-                    if section:
-                        result_parts.append(section["content"].rstrip("\n"))
+            for path, sec_data in all_state_sections:
+                if path not in seen_paths:
+                    result_parts.append(sec_data["content"].rstrip("\n"))
 
             assembled = "\n\n".join(result_parts) + "\n"
         else:
-            # Standard assembly: header + sections in order
+            # Standard assembly: header + sections depth-first
             parts = []
             header = doc_data.get("header", "")
             if header:
                 parts.append(header.rstrip("\n"))
 
-            for section_slug in doc_data.get("sections_order", []):
-                section = doc_data["sections"].get(section_slug)
-                if section:
-                    parts.append(section["content"].rstrip("\n"))
+            all_state_sections = _collect_all_sections_depth_first(
+                doc_data.get("sections", {}),
+                doc_data.get("sections_order", []),
+            )
+            for _path, sec_data in all_state_sections:
+                parts.append(sec_data["content"].rstrip("\n"))
 
             assembled = "\n\n".join(parts) + "\n"
 
@@ -338,16 +519,14 @@ def finalize(args):
         sections_order = doc_data.get("sections_order", [])
         sections = doc_data.get("sections", {})
 
-        # Section entries: only for sections with non-empty symbols or file_paths
-        for section_slug in sections_order:
-            section = sections.get(section_slug, {})
-            symbols = section.get("symbols", [])
-            file_paths = section.get("file_paths", [])
-            if symbols or file_paths:
-                if doc_name not in manifest["documents"]:
-                    manifest["documents"][doc_name] = {}
-                entry = {"symbols": symbols, "file_paths": file_paths}
-                manifest["documents"][doc_name][section_slug] = entry
+        # Section entries: recursively collect all sections with non-empty refs
+        for path, symbols, file_paths_list in _collect_manifest_entries(
+            sections, sections_order
+        ):
+            if doc_name not in manifest["documents"]:
+                manifest["documents"][doc_name] = {}
+            entry = {"symbols": symbols, "file_paths": file_paths_list}
+            manifest["documents"][doc_name][path] = entry
 
         # _written_sections metadata: initial mode only
         if mode == "initial":
@@ -356,7 +535,9 @@ def finalize(args):
             manifest["documents"][doc_name]["_written_sections"] = {
                 "symbols": [],
                 "file_paths": [],
-                "sections_written": list(sections_order),
+                "sections_written": _collect_all_paths(
+                    sections, sections_order
+                ),
             }
 
     # Write manifest atomically
@@ -377,42 +558,50 @@ def finalize(args):
                 # Merge mode: update existing XML tree in place
                 from lxml import etree
                 tree = etree.parse(xml_path)
-                existing_slugs = set(get_section_slugs(tree))
+                existing_paths = set(get_section_paths(tree))
 
-                for section_slug in doc_data.get("sections_order", []):
-                    section = doc_data["sections"].get(section_slug)
-                    if not section:
-                        continue
-                    if section_slug in existing_slugs:
-                        update_section_body(tree, section_slug, section["content"])
+                # Walk all state sections recursively
+                all_sections = _collect_all_sections_depth_first(
+                    doc_data.get("sections", {}),
+                    doc_data.get("sections_order", []),
+                )
+                for path, sec_data in all_sections:
+                    if path in existing_paths:
+                        update_section_body(tree, path, sec_data["content"])
                     else:
-                        add_section(tree, section_slug, section["content"])
-                    if section.get("typed_refs"):
-                        update_section_refs(tree, section_slug, section["typed_refs"])
+                        # Extract parent_path and leaf slug
+                        if "/" in path:
+                            parent_path = path.rsplit("/", 1)[0]
+                            leaf_slug = path.rsplit("/", 1)[1]
+                        else:
+                            parent_path = None
+                            leaf_slug = path
+                        add_section(
+                            tree, leaf_slug, sec_data["content"],
+                            parent_path=parent_path,
+                        )
+                    if sec_data.get("typed_refs"):
+                        update_section_refs(tree, path, sec_data["typed_refs"])
             else:
-                # Initial mode: build new XML from scratch
+                # Initial mode: build new XML from scratch (nested)
                 header_text = doc_data.get("header", "")
                 diataxis = _extract_diataxis(header_text)
-                sections_for_xml = []
-                for section_slug in doc_data.get("sections_order", []):
-                    section = doc_data["sections"].get(section_slug)
-                    if section:
-                        sections_for_xml.append({
-                            "slug": section_slug,
-                            "body": section["content"],
-                        })
+                sections_for_xml = _state_sections_to_xml(doc_data)
                 tree = build_xml_doc(
                     audience=args.audience,
                     diataxis=diataxis,
                     header=header_text,
                     sections=sections_for_xml,
                 )
-                # Populate XML <refs> from typed_refs (writer-emitted)
-                for section_slug in doc_data.get("sections_order", []):
-                    section = doc_data["sections"].get(section_slug)
-                    if section and section.get("typed_refs"):
+                # Populate XML <refs> from typed_refs at correct paths
+                all_sections = _collect_all_sections_depth_first(
+                    doc_data.get("sections", {}),
+                    doc_data.get("sections_order", []),
+                )
+                for path, sec_data in all_sections:
+                    if sec_data.get("typed_refs"):
                         update_section_refs(
-                            tree, section_slug, section["typed_refs"]
+                            tree, path, sec_data["typed_refs"]
                         )
 
             serialize_xml_doc(tree, xml_path)
@@ -422,7 +611,10 @@ def finalize(args):
 
     # Print summary to stderr
     total_sections = sum(
-        len(doc.get("sections_order", []))
+        len(_collect_all_paths(
+            doc.get("sections", {}),
+            doc.get("sections_order", []),
+        ))
         for doc in state.get("documents", {}).values()
     )
     audience_label = args.audience or "standalone"
@@ -462,6 +654,10 @@ def main():
     )
     parser.add_argument(
         "--project-root", help="Enables advisory symbol validation"
+    )
+    parser.add_argument(
+        "--parent",
+        help="Parent section path for nesting (e.g., 'monitoring-alerting/health-artifact')",
     )
     # Finalize mode args
     parser.add_argument("--docs-dir", help="Absolute path to docs output root")
