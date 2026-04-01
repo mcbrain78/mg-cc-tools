@@ -116,10 +116,14 @@ _RECENT_LINES = 5
 def _emitter_follows_command(transcript_path):
     """Return True if a slash command was loaded in the last few transcript entries.
 
-    When a user invokes a /mg: command, the command markdown (including its
-    ``allowed-tools:`` frontmatter) appears in the transcript 1-2 entries
-    before the emit-context.py Bash call.  Checking the tail of the
-    transcript avoids false-positives from old command content.
+    When a user invokes a /mg: command, Claude Code injects a
+    ``<command-name>/mg:...`` tag in the transcript 1-3 entries before the
+    emit-context.py Bash call.  Checking the tail of the transcript avoids
+    false-positives from old command content.
+
+    Note: CC strips YAML frontmatter (including ``allowed-tools:``) before
+    writing command content to the transcript, so we match on the
+    ``<command-name>`` tag instead.
     """
     if not transcript_path:
         return False
@@ -130,7 +134,7 @@ def _emitter_follows_command(transcript_path):
         return False
 
     tail = "\n".join(lines[-_RECENT_LINES:]) if lines else ""
-    return "allowed-tools:" in tail
+    return "<command-name>/mg:" in tail
 
 
 def check_session_context(transcript_path):

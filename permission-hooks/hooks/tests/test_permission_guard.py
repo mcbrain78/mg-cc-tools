@@ -1723,8 +1723,8 @@ class TestEmitterFollowsCommand:
         f.close()
         return f.name
 
-    def _command_line(self, command_name="auto-doc-audit"):
-        """Build a JSONL line simulating a loaded slash command."""
+    def _command_tag_line(self, command_name="auto-doc-audit"):
+        """Build a JSONL line with the <command-name> tag CC injects."""
         entry = {
             "type": "user",
             "message": {
@@ -1733,9 +1733,26 @@ class TestEmitterFollowsCommand:
                     {
                         "type": "text",
                         "text": (
-                            f"---\nname: {command_name}\n"
-                            "description: Run audit\n"
-                            "allowed-tools: Bash, Read, Write\n---\n"
+                            f"<command-message>mg:{command_name}</command-message>\n"
+                            f"<command-name>/mg:{command_name}</command-name>"
+                        ),
+                    }
+                ],
+            },
+        }
+        return json.dumps(entry)
+
+    def _command_body_line(self, command_name="auto-doc-audit"):
+        """Build a JSONL line with the command body (frontmatter stripped by CC)."""
+        entry = {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "# Documentation Audit\n\n"
                             "## Session Context\n"
                             "Run emit-context.py AUTO-DOC"
                         ),
@@ -1786,9 +1803,10 @@ class TestEmitterFollowsCommand:
             os.unlink(path)
 
     def test_command_just_loaded(self):
-        """Command in the last 2 entries → emitter should be auto-approved."""
+        """Command tag + body in the last entries → emitter should be auto-approved."""
         path = self._write_transcript([
-            self._command_line(),
+            self._command_tag_line(),
+            self._command_body_line(),
             self._assistant_line(),
         ])
         try:
@@ -1799,10 +1817,30 @@ class TestEmitterFollowsCommand:
     def test_command_with_filler(self):
         """Command a few entries back but still within window."""
         path = self._write_transcript([
-            self._command_line(),
+            self._command_tag_line(),
+            self._command_body_line(),
             self._assistant_line(),
-            self._tool_result_line("some file content"),
             self._assistant_line("Now let me run the emitter."),
+        ])
+        try:
+            assert _emitter_follows_command(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_realistic_transcript(self):
+        """Mirrors real CC transcript: snapshot, progress, clear, system, snapshot, tag, body, thinking."""
+        snapshot = json.dumps({"type": "file-history-snapshot", "snapshot": {}})
+        progress = json.dumps({"type": "progress", "data": {}})
+        system = json.dumps({"type": "system", "content": "context"})
+        path = self._write_transcript([
+            snapshot,
+            progress,
+            self._assistant_line("/clear"),
+            system,
+            snapshot,
+            self._command_tag_line(),
+            self._command_body_line(),
+            self._assistant_line(),  # thinking
         ])
         try:
             assert _emitter_follows_command(path) is True
@@ -1824,7 +1862,8 @@ class TestEmitterFollowsCommand:
         """Command far back in transcript (beyond tail window) → gated."""
         filler = [self._tool_result_line(f"output {i}") for i in range(10)]
         path = self._write_transcript([
-            self._command_line(),
+            self._command_tag_line(),
+            self._command_body_line(),
             *filler,
             self._assistant_line("Let me try again."),
         ])
