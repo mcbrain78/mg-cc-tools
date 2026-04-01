@@ -116,10 +116,14 @@ _RECENT_LINES = 5
 def _emitter_follows_command(transcript_path):
     """Return True if a slash command was loaded in the last few transcript entries.
 
-    When a user invokes a /mg: command, the command markdown (including its
-    ``allowed-tools:`` frontmatter) appears in the transcript 1-2 entries
-    before the emit-context.py Bash call.  Checking the tail of the
-    transcript avoids false-positives from old command content.
+    When a user invokes a /mg: command, Claude Code injects a
+    ``<command-name>/mg:...`` tag in the transcript 1-3 entries before the
+    emit-context.py Bash call.  Checking the tail of the transcript avoids
+    false-positives from old command content.
+
+    Note: CC strips YAML frontmatter (including ``allowed-tools:``) before
+    writing command content to the transcript, so we match on the
+    ``<command-name>`` tag instead.
     """
     if not transcript_path:
         return False
@@ -130,7 +134,7 @@ def _emitter_follows_command(transcript_path):
         return False
 
     tail = "\n".join(lines[-_RECENT_LINES:]) if lines else ""
-    return "allowed-tools:" in tail
+    return "<command-name>/mg:" in tail
 
 
 def check_session_context(transcript_path):
@@ -169,14 +173,18 @@ def check_session_context(transcript_path):
 # The emit-edit-guard.py script prints a SESSION_FEATURE marker into the
 # transcript.  Default is ON (edits allowed).  When the latest marker is OFF,
 # Edit/Write/NotebookEdit are blocked until the user runs /mg:edit_on.
-_EDIT_GUARD_RE = re.compile(r"SESSION_FEATURE: MG:EDIT_GUARD_(ON|OFF)")
+_EDIT_GUARD_RE = re.compile(r"SESSION_FEATURE: MG:EDIT_GUARD_(ON|OFF)_(\d{10,})")
 
 
 def check_edit_guard(transcript_path):
     """Return True if the edit guard is active (edits should be blocked).
 
-    Scans for the most recent EDIT_GUARD marker.  No marker or latest=ON
-    means edits are allowed (returns False).  Latest=OFF means blocked.
+    Scans for the most recent EDIT_GUARD marker with a valid timestamp.
+    No marker or latest=ON means edits are allowed (returns False).
+    Latest=OFF means blocked.
+
+    The timestamp suffix distinguishes real emitter output from phantom
+    matches (source code / grep output appearing in the transcript).
     """
     if not transcript_path:
         return False
@@ -190,7 +198,15 @@ def check_edit_guard(transcript_path):
     if not matches:
         return False  # No marker → default ON (edits allowed)
 
-    return matches[-1].group(1) == "OFF"
+    # Walk backwards to find the most recent marker with a fresh timestamp
+    for match in reversed(matches):
+        timestamp_ms = int(match.group(2))
+        age_s = time.time() - timestamp_ms / 1000
+        if age_s > CONTEXT_TTL_S or age_s < 0:
+            continue  # stale or future — skip
+        return match.group(1) == "OFF"
+
+    return False  # all markers stale → default ON
 
 
 # Claude's internal directory (memory, settings, etc.) — always allowed
@@ -810,7 +826,7 @@ def main():
     # ── Edit guard (manual toggle) ──────────────────────────────────────
     if tool_name in ("Edit", "Write", "NotebookEdit"):
         if check_edit_guard(event.get("transcript_path", "")):
-            _ask(
+            _deny(
                 "[permission-guard] Implementation/edits are not approved yet "
                 "by the user."
             )

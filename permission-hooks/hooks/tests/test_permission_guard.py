@@ -2056,6 +2056,11 @@ class TestEditGuard:
         }
         return json.dumps(entry)
 
+    def _guard_marker(self, state, age_s=0):
+        """Build a timestamped EDIT_GUARD marker.  age_s=0 means 'just now'."""
+        ts = int((time.time() - age_s) * 1000)
+        return f"SESSION_FEATURE: MG:EDIT_GUARD_{state}_{ts}"
+
     def test_no_transcript_returns_false(self):
         assert check_edit_guard("") is False
         assert check_edit_guard(None) is False
@@ -2083,7 +2088,7 @@ class TestEditGuard:
     def test_off_marker_returns_true(self):
         """OFF marker means edits blocked."""
         path = self._write_transcript([
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+            self._tool_result_line(self._guard_marker("OFF")),
         ])
         try:
             assert check_edit_guard(path) is True
@@ -2093,7 +2098,7 @@ class TestEditGuard:
     def test_on_marker_returns_false(self):
         """ON marker means edits allowed."""
         path = self._write_transcript([
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
+            self._tool_result_line(self._guard_marker("ON")),
         ])
         try:
             assert check_edit_guard(path) is False
@@ -2103,8 +2108,8 @@ class TestEditGuard:
     def test_latest_marker_wins_off_then_on(self):
         """Last marker wins: OFF then ON → allowed."""
         path = self._write_transcript([
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
+            self._tool_result_line(self._guard_marker("OFF")),
+            self._tool_result_line(self._guard_marker("ON")),
         ])
         try:
             assert check_edit_guard(path) is False
@@ -2114,8 +2119,8 @@ class TestEditGuard:
     def test_latest_marker_wins_on_then_off(self):
         """Last marker wins: ON then OFF → blocked."""
         path = self._write_transcript([
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+            self._tool_result_line(self._guard_marker("ON")),
+            self._tool_result_line(self._guard_marker("OFF")),
         ])
         try:
             assert check_edit_guard(path) is True
@@ -2125,13 +2130,37 @@ class TestEditGuard:
     def test_multiple_toggles_last_wins(self):
         """Multiple toggles — the very last one determines state."""
         path = self._write_transcript([
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_ON"),
-            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+            self._tool_result_line(self._guard_marker("OFF")),
+            self._tool_result_line(self._guard_marker("ON")),
+            self._tool_result_line(self._guard_marker("OFF")),
+            self._tool_result_line(self._guard_marker("ON")),
+            self._tool_result_line(self._guard_marker("OFF")),
         ])
         try:
             assert check_edit_guard(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_phantom_markers_ignored(self):
+        """Code snippets in transcript (no timestamp) don't trigger guard."""
+        path = self._write_transcript([
+            self._tool_result_line("SESSION_FEATURE: MG:EDIT_GUARD_OFF"),
+            self._tool_result_line(
+                "_EDIT_GUARD_RE = re.compile("
+                "r\"SESSION_FEATURE: MG:EDIT_GUARD_(ON|OFF)\")"
+            ),
+        ])
+        try:
+            assert check_edit_guard(path) is False
+        finally:
+            os.unlink(path)
+
+    def test_stale_marker_ignored(self):
+        """Markers older than CONTEXT_TTL_S are ignored."""
+        path = self._write_transcript([
+            self._tool_result_line(self._guard_marker("OFF", age_s=7200)),
+        ])
+        try:
+            assert check_edit_guard(path) is False
         finally:
             os.unlink(path)

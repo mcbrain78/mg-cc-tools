@@ -9,6 +9,7 @@ ON  = edits allowed (default state)
 OFF = edits blocked until re-enabled
 """
 import sys
+import time
 
 
 def main():
@@ -17,7 +18,8 @@ def main():
         sys.exit(1)
 
     state = sys.argv[1].upper()
-    print(f"SESSION_FEATURE: MG:EDIT_GUARD_{state}")
+    ts = int(time.time() * 1000)
+    print(f"SESSION_FEATURE: MG:EDIT_GUARD_{state}_{ts}")
 
 
 if __name__ == "__main__":
