@@ -175,3 +175,64 @@ class TestCLI:
 
             merged = json.loads(open(output_path).read())
             assert merged == []
+
+
+class TestSlashSeparatedPaths:
+    """Verify deduplication works correctly with slash-separated section paths."""
+
+    def test_dedup_with_slash_paths(self):
+        """Findings with slash-separated section paths are deduplicated correctly."""
+        findings = [
+            {"document": "OPS", "section": "monitoring-alerting/etl-run-logging",
+             "check": "xml-ref-integrity", "description": "Table not found"},
+            {"document": "OPS", "section": "monitoring-alerting/etl-run-logging",
+             "check": "xml-ref-integrity", "description": "Table not found"},
+        ]
+        result = deduplicate(findings)
+        assert len(result) == 1
+        assert result[0]["section"] == "monitoring-alerting/etl-run-logging"
+
+    def test_bare_slug_and_path_are_distinct(self):
+        """Old-format (bare slug) and new-format (path) findings are treated as distinct."""
+        findings = [
+            {"document": "OPS", "section": "etl-run-logging",
+             "check": "xml-ref-integrity", "description": "Table not found"},
+            {"document": "OPS", "section": "monitoring-alerting/etl-run-logging",
+             "check": "xml-ref-integrity", "description": "Table not found"},
+        ]
+        result = deduplicate(findings)
+        assert len(result) == 2
+
+    def test_different_paths_same_leaf_slug(self):
+        """Same leaf slug under different parents are treated as distinct."""
+        findings = [
+            {"document": "OPS", "section": "monitoring-alerting/overview",
+             "check": "xml-ref-integrity", "description": "bad ref"},
+            {"document": "OPS", "section": "deployment/overview",
+             "check": "xml-ref-integrity", "description": "bad ref"},
+        ]
+        result = deduplicate(findings)
+        assert len(result) == 2
+
+    def test_merge_with_mixed_path_formats(self):
+        """load_and_merge handles mixed bare-slug and path findings from different files."""
+        with tempfile.TemporaryDirectory() as td:
+            # Deterministic findings with slash paths
+            with open(os.path.join(td, "findings-refs.json"), "w") as f:
+                json.dump([
+                    {"document": "OPS", "section": "monitoring-alerting/etl-run-logging",
+                     "check": "xml-ref-integrity", "description": "Table not found"},
+                ], f)
+
+            # Prose findings with slash paths
+            with open(os.path.join(td, "findings-prose-devops-OPS.json"), "w") as f:
+                json.dump([
+                    {"document": "OPS", "section": "monitoring-alerting/etl-run-logging",
+                     "check": "dangling-prose-reference", "description": "Different check"},
+                    {"document": "OPS", "section": "monitoring-alerting/etl-run-logging",
+                     "check": "xml-ref-integrity", "description": "Table not found"},
+                ], f)
+
+            result = load_and_merge(td)
+            # Should have 2: one xml-ref-integrity (deduped) + one dangling-prose-reference
+            assert len(result) == 2
