@@ -125,7 +125,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 10. Renderer for Install Command | 2/2 | Complete    | 2026-03-20 |
 | 11. Add Tooling to Install Command | 3/3 | Complete    | 2026-03-20 |
 | 12. Auto Doc Rename & Cleanup | 2/2 | Complete    | 2026-03-22 |
-| 18. Recursive Section XML Core | 1/2 | In Progress | - |
+| 18. Recursive Section XML Core | 2/2 | Complete   | 2026-04-01 |
 
 ### Phase 6: Fix Verify Feedback Loop & Scan Output
 
@@ -305,7 +305,7 @@ Plans:
 **Goal:** xml_doc.py supports recursive section nesting with `_find_section_by_path`, `walk_sections`, `get_section_paths`, and path-based navigation functions, and schema.md documents the nested XML model
 **Requirements**: XML-01, XML-02, XML-03, XML-04, XML-05, XML-06, XML-07, XML-08, XML-09
 **Depends on:** Phase 17
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 18-01-PLAN.md — TDD: recursive xml_doc.py model (build, parse, find, walk, paths, mutations) with comprehensive test suite

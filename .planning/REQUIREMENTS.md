@@ -252,7 +252,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **XML-05**: All section-addressing operations (find, update body, update refs, list paths) accept a slash-separated path to identify a section at any depth, with bare slugs remaining valid for top-level sections
 - [x] **XML-06**: Slugs must be unique among siblings — two sections under different parents may share a slug, but no two siblings may
 - [x] **XML-07**: Old flat-section XML files are regenerated from scratch rather than migrated — no code reads both old and new formats
-- [ ] **XML-08**: The schema reference document describes the nested section XML model with examples at two or more levels of nesting
+- [x] **XML-08**: The schema reference document describes the nested section XML model with examples at two or more levels of nesting
 - [x] **XML-09**: Round-trip fidelity is preserved: parsing a serialized XML tree and re-serializing it yields an equivalent structure including slugs, bodies, refs, and children at all depths
 
 ## v2 Requirements
@@ -478,7 +478,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | XML-05 | Phase 18 | Complete |
 | XML-06 | Phase 18 | Complete |
 | XML-07 | Phase 18 | Complete |
-| XML-08 | Phase 18 | Pending |
+| XML-08 | Phase 18 | Complete |
 | XML-09 | Phase 18 | Complete |
 
 **Coverage:**
