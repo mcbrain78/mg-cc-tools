@@ -257,13 +257,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Write-Section & Assembly
 
-- [ ] **WSA-01**: write-section.py accepts a `--parent` flag that places a section as a child at any tree depth: omitting `--parent` creates a top-level section, a single slug nests under that top-level section, and a slash-separated path nests at the resolved position
-- [ ] **WSA-02**: Parent section must already exist before a child section can be emitted
-- [ ] **WSA-03**: Finalize produces nested `<section>` XML elements where each section carries its own `<refs>` and `<body>` and child sections are nested inside their parent
-- [ ] **WSA-04**: Merge mode (`--merge` with `parse_existing_sections()`) supports nested sections by splitting on all heading levels and matching sections by path
+- [x] **WSA-01**: write-section.py accepts a `--parent` flag that places a section as a child at any tree depth: omitting `--parent` creates a top-level section, a single slug nests under that top-level section, and a slash-separated path nests at the resolved position
+- [x] **WSA-02**: Parent section must already exist before a child section can be emitted
+- [x] **WSA-03**: Finalize produces nested `<section>` XML elements where each section carries its own `<refs>` and `<body>` and child sections are nested inside their parent
+- [x] **WSA-04**: Merge mode (`--merge` with `parse_existing_sections()`) supports nested sections by splitting on all heading levels and matching sections by path
 - [x] **WSA-05**: assemble-markdown.py performs recursive depth-first concatenation of section bodies and their children
 - [x] **WSA-06**: Assembled markdown output remains flat — nesting affects internal storage and tracking only, not the final document
-- [ ] **WSA-07**: Clean cutover: old flat-format state files are not migrated or supported; new runs produce the nested format from scratch
+- [x] **WSA-07**: Clean cutover: old flat-format state files are not migrated or supported; new runs produce the nested format from scratch
 
 ## v2 Requirements
 
@@ -490,13 +490,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | XML-07 | Phase 18 | Complete |
 | XML-08 | Phase 18 | Complete |
 | XML-09 | Phase 18 | Complete |
-| WSA-01 | Phase 19 | Pending |
-| WSA-02 | Phase 19 | Pending |
-| WSA-03 | Phase 19 | Pending |
-| WSA-04 | Phase 19 | Pending |
+| WSA-01 | Phase 19 | Complete |
+| WSA-02 | Phase 19 | Complete |
+| WSA-03 | Phase 19 | Complete |
+| WSA-04 | Phase 19 | Complete |
 | WSA-05 | Phase 19 | Complete |
 | WSA-06 | Phase 19 | Complete |
-| WSA-07 | Phase 19 | Pending |
+| WSA-07 | Phase 19 | Complete |
 
 **Coverage:**
 - v1 requirements: 201 total
