@@ -261,8 +261,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **WSA-02**: Parent section must already exist before a child section can be emitted
 - [ ] **WSA-03**: Finalize produces nested `<section>` XML elements where each section carries its own `<refs>` and `<body>` and child sections are nested inside their parent
 - [ ] **WSA-04**: Merge mode (`--merge` with `parse_existing_sections()`) supports nested sections by splitting on all heading levels and matching sections by path
-- [ ] **WSA-05**: assemble-markdown.py performs recursive depth-first concatenation of section bodies and their children
-- [ ] **WSA-06**: Assembled markdown output remains flat — nesting affects internal storage and tracking only, not the final document
+- [x] **WSA-05**: assemble-markdown.py performs recursive depth-first concatenation of section bodies and their children
+- [x] **WSA-06**: Assembled markdown output remains flat — nesting affects internal storage and tracking only, not the final document
 - [ ] **WSA-07**: Clean cutover: old flat-format state files are not migrated or supported; new runs produce the nested format from scratch
 
 ## v2 Requirements
@@ -494,8 +494,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WSA-02 | Phase 19 | Pending |
 | WSA-03 | Phase 19 | Pending |
 | WSA-04 | Phase 19 | Pending |
-| WSA-05 | Phase 19 | Pending |
-| WSA-06 | Phase 19 | Pending |
+| WSA-05 | Phase 19 | Complete |
+| WSA-06 | Phase 19 | Complete |
 | WSA-07 | Phase 19 | Pending |
 
 **Coverage:**
