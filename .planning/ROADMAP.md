@@ -302,7 +302,7 @@ Plans:
 ### Phase 18: Recursive Section XML Core
 
 **Goal:** xml_doc.py supports recursive section nesting with `_find_section_by_path`, `walk_sections`, `get_section_paths`, and path-based navigation functions, and schema.md documents the nested XML model
-**Requirements**: TBD
+**Requirements**: XML-01, XML-02, XML-03, XML-04, XML-05, XML-06, XML-07, XML-08, XML-09
 **Depends on:** Phase 17
 **Plans:** 0 plans
 
