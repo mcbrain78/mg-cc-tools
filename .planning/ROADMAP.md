@@ -325,7 +325,7 @@ Plans:
 ### Phase 20: Recursive Pipeline Script Updates
 
 **Goal:** verify-xml-refs.py, prepare-prose-verify.py, extract-edit-xml.py, merge-edit-xml.py, sync-edits-to-xml.py, and load-audit-findings.py operate on the recursive section tree using slash-separated section paths
-**Requirements**: TBD
+**Requirements**: RPS-01, RPS-02, RPS-03, RPS-04, RPS-05, RPS-06
 **Depends on:** Phase 19
 **Plans:** 0 plans
 
