@@ -27,12 +27,37 @@ merge_edit_xml = _mod.merge_edit_xml
 
 
 def _build_master(td, audience, doc_name, sections_with_refs):
-    """Build a master XML file, return its path."""
-    sections = [{"slug": s, "body": b} for s, b, _ in sections_with_refs]
+    """Build a master XML file, return its path.
+
+    sections_with_refs: list of (slug, body, refs) or (slug, body, refs, children)
+    where children is a list of (slug, body, refs) or (slug, body, refs, children).
+    """
+    def _to_section_dicts(items):
+        result = []
+        for item in items:
+            slug, body, refs = item[0], item[1], item[2]
+            children_raw = item[3] if len(item) > 3 else []
+            d = {"slug": slug, "body": body}
+            if children_raw:
+                d["children"] = _to_section_dicts(children_raw)
+            result.append(d)
+        return result
+
+    def _collect_refs(items, prefix=""):
+        result = []
+        for item in items:
+            slug, _, refs = item[0], item[1], item[2]
+            children_raw = item[3] if len(item) > 3 else []
+            path = f"{prefix}/{slug}" if prefix else slug
+            if refs:
+                result.append((path, refs))
+            result.extend(_collect_refs(children_raw, path))
+        return result
+
+    sections = _to_section_dicts(sections_with_refs)
     tree = build_xml_doc(audience, "how-to", f"# {doc_name}", sections)
-    for slug, _, refs in sections_with_refs:
-        if refs:
-            update_section_refs(tree, slug, refs)
+    for path, refs in _collect_refs(sections_with_refs):
+        update_section_refs(tree, path, refs)
 
     doc_dir = os.path.join(td, audience) if audience != "all" else td
     os.makedirs(doc_dir, exist_ok=True)
@@ -45,20 +70,23 @@ def _build_edit_xml(td, group_id, sections):
     """Build an edit XML file.
 
     sections: list of dicts with keys: source, slug, audience, document,
-              findings (list of {check, description}), refs_xml (str), body (str)
+              findings (list of {check, description}), refs_xml (str), body (str),
+              path (str, optional -- added as attribute when present)
     """
     root = etree.Element("edit-group", id=group_id)
     summary = etree.SubElement(root, "summary")
     summary.text = "Test group"
 
     for sec in sections:
-        section_el = etree.SubElement(
-            root, "section",
-            source=sec["source"],
-            slug=sec["slug"],
-            audience=sec.get("audience", "devops"),
-            document=sec.get("document", "DOC"),
-        )
+        attrs = {
+            "source": sec["source"],
+            "slug": sec["slug"],
+            "audience": sec.get("audience", "devops"),
+            "document": sec.get("document", "DOC"),
+        }
+        if "path" in sec:
+            attrs["path"] = sec["path"]
+        section_el = etree.SubElement(root, "section", **attrs)
 
         findings_el = etree.SubElement(section_el, "findings")
         for f in sec.get("findings", []):
@@ -408,3 +436,155 @@ class TestCLI:
         assert result.returncode == 0  # always exits 0
         summary = json.loads(result.stdout)
         assert len(summary["errors"]) == 1
+
+
+class TestNestedMerge:
+    """Merge edited sections into nested positions in master XML."""
+
+    def test_merge_reads_path_attribute(self):
+        """Merge uses path attribute to locate nested section in master."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = _build_master(td, "devops", "OPS", [(
+                "monitoring-alerting",
+                "<!-- section: monitoring-alerting -->\n## M\n\nParent.",
+                [],
+                [(
+                    "etl-run-logging",
+                    "<!-- section: etl-run-logging -->\n### ETL\n\nOriginal child.",
+                    [],
+                )],
+            )])
+
+            edit_path = _build_edit_xml(td, "g1", [{
+                "source": master_path,
+                "slug": "etl-run-logging",
+                "path": "monitoring-alerting/etl-run-logging",
+                "body": "<!-- section: etl-run-logging -->\n### ETL\n\nFixed child.",
+            }])
+
+            summary = merge_edit_xml(edit_path)
+            assert summary["sections_updated"] == 1
+            assert master_path in summary["files_modified"]
+
+            doc = parse_xml_doc(master_path)
+            child = doc["sections"][0]["children"][0]
+            assert "Fixed child" in child["body"]
+            assert "Original" not in child["body"]
+
+    def test_merge_falls_back_to_slug_when_no_path(self):
+        """Backward compat: merge works with slug-only (no path attribute)."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = _build_master(td, "devops", "OPS", [(
+                "deployment",
+                "<!-- section: deployment -->\n## Deployment\n\nOld.",
+                [],
+            )])
+
+            # No path attribute -- just slug
+            edit_path = _build_edit_xml(td, "g1", [{
+                "source": master_path,
+                "slug": "deployment",
+                "body": "<!-- section: deployment -->\n## Deployment\n\nFixed.",
+            }])
+
+            summary = merge_edit_xml(edit_path)
+            assert summary["sections_updated"] == 1
+
+            doc = parse_xml_doc(master_path)
+            assert "Fixed" in doc["sections"][0]["body"]
+
+    def test_update_helpers_called_with_path(self):
+        """update_section_body and update_section_refs receive path, not slug."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = _build_master(td, "devops", "OPS", [(
+                "monitoring-alerting",
+                "<!-- section: monitoring-alerting -->\n## M\n\nParent.",
+                [],
+                [(
+                    "etl-run-logging",
+                    "<!-- section: etl-run-logging -->\n### ETL\n\nOriginal.",
+                    [{"type": "code", "kind": "function", "name": "old_func"}],
+                )],
+            )])
+
+            refs_xml = (
+                '<refs><code><function name="new_func"/></code></refs>'
+            )
+            edit_path = _build_edit_xml(td, "g1", [{
+                "source": master_path,
+                "slug": "etl-run-logging",
+                "path": "monitoring-alerting/etl-run-logging",
+                "body": "<!-- section: etl-run-logging -->\n### ETL\n\nUpdated.",
+                "refs_xml": refs_xml,
+            }])
+
+            summary = merge_edit_xml(edit_path)
+            assert summary["sections_updated"] == 1
+
+            doc = parse_xml_doc(master_path)
+            child = doc["sections"][0]["children"][0]
+            assert "Updated" in child["body"]
+            assert child["refs"][0]["name"] == "new_func"
+
+    def test_nested_round_trip_idempotent(self):
+        """Extract then merge (unedited) on nested XML is idempotent."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_dir = os.path.join(td, "xml-sources")
+            refs = [{"type": "code", "kind": "function", "name": "log_run"}]
+            master_path = _build_master(
+                os.path.join(xml_dir, "devops"), "devops", "OPS", [(
+                    "monitoring-alerting",
+                    "<!-- section: monitoring-alerting -->\n## M\n\nParent.",
+                    [],
+                    [(
+                        "etl-run-logging",
+                        "<!-- section: etl-run-logging -->\n### ETL\n\nChild content.",
+                        refs,
+                    )],
+                )],
+            )
+
+            original = parse_xml_doc(master_path)
+
+            # Extract
+            extract_spec = importlib.util.spec_from_file_location(
+                "extract_edit_xml",
+                os.path.join(SCRIPTS_DIR, "extract-edit-xml.py"),
+            )
+            extract_mod = importlib.util.module_from_spec(extract_spec)
+            extract_spec.loader.exec_module(extract_mod)
+
+            findings = [
+                {"document": "OPS",
+                 "section": "monitoring-alerting/etl-run-logging",
+                 "audience": "devops",
+                 "check": "c1", "description": "Issue"},
+            ]
+            grouping = {
+                "groups": [{
+                    "group_id": "g1",
+                    "root_cause_summary": "test",
+                    "finding_indices": [0],
+                }],
+            }
+
+            edit_tree = extract_mod.extract_edit_xml(
+                grouping, findings, xml_dir, 0,
+            )
+            edit_path = os.path.join(td, "edit.xml")
+            edit_tree.write(
+                edit_path, xml_declaration=True,
+                encoding="utf-8", pretty_print=True,
+            )
+
+            # Merge without editing
+            summary = merge_edit_xml(edit_path)
+            assert summary["sections_updated"] == 0
+            assert summary["files_modified"] == []
+
+            # Master unchanged
+            after = parse_xml_doc(master_path)
+            orig_child = original["sections"][0]["children"][0]
+            after_child = after["sections"][0]["children"][0]
+            assert orig_child["body"] == after_child["body"]
+            assert orig_child["refs"] == after_child["refs"]

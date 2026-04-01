@@ -22,12 +22,38 @@ extract_edit_xml = _mod.extract_edit_xml
 
 
 def _build_xml(xml_dir, audience, doc_name, sections_with_refs):
-    """Build an XML file with populated refs."""
-    sections = [{"slug": s, "body": b} for s, b, _ in sections_with_refs]
+    """Build an XML file with populated refs.
+
+    sections_with_refs: list of (slug, body, refs) or (slug, body, refs, children)
+    where children is a list of (slug, body, refs) or (slug, body, refs, children).
+    """
+    def _to_section_dicts(items):
+        result = []
+        for item in items:
+            slug, body, refs = item[0], item[1], item[2]
+            children_raw = item[3] if len(item) > 3 else []
+            d = {"slug": slug, "body": body}
+            if children_raw:
+                d["children"] = _to_section_dicts(children_raw)
+            result.append(d)
+        return result
+
+    def _collect_refs(items, prefix=""):
+        """Collect (path, refs) pairs from nested section specs."""
+        result = []
+        for item in items:
+            slug, _, refs = item[0], item[1], item[2]
+            children_raw = item[3] if len(item) > 3 else []
+            path = f"{prefix}/{slug}" if prefix else slug
+            if refs:
+                result.append((path, refs))
+            result.extend(_collect_refs(children_raw, path))
+        return result
+
+    sections = _to_section_dicts(sections_with_refs)
     tree = build_xml_doc(audience, "how-to", f"# {doc_name}", sections)
-    for slug, _, refs in sections_with_refs:
-        if refs:
-            update_section_refs(tree, slug, refs)
+    for path, refs in _collect_refs(sections_with_refs):
+        update_section_refs(tree, path, refs)
 
     doc_dir = os.path.join(xml_dir, audience) if audience != "all" else xml_dir
     os.makedirs(doc_dir, exist_ok=True)
@@ -456,3 +482,155 @@ class TestCLI:
             tree = etree.parse(output)
             sections = tree.getroot().findall("section")
             assert len(sections) == 0
+
+
+class TestNestedExtraction:
+    """Extract edit XML for nested sections using path-based navigation."""
+
+    def test_nested_section_has_path_attribute(self):
+        """Extraction of a nested section produces edit XML with path attribute."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_dir = os.path.join(td, "xml-sources")
+            refs = [{"type": "code", "kind": "function", "name": "log_run"}]
+            _build_xml(xml_dir, "devops", "OPS", [(
+                "monitoring-alerting",
+                "<!-- section: monitoring-alerting -->\n## Monitoring & Alerting\n\nOverview.",
+                [],
+                [(
+                    "etl-run-logging",
+                    "<!-- section: etl-run-logging -->\n### ETL Run Logging\n\nLogs all runs.",
+                    refs,
+                )],
+            )])
+
+            findings = [
+                {"document": "OPS",
+                 "section": "monitoring-alerting/etl-run-logging",
+                 "audience": "devops",
+                 "check": "reference-integrity",
+                 "description": "Function log_run not mentioned"},
+            ]
+            grouping = {
+                "groups": [{
+                    "group_id": "nested-funcs",
+                    "root_cause_summary": "Nested section issue",
+                    "finding_indices": [0],
+                }],
+            }
+
+            tree = extract_edit_xml(grouping, findings, xml_dir, 0)
+            sections = tree.getroot().findall("section")
+            assert len(sections) == 1
+
+            sec = sections[0]
+            assert sec.get("path") == "monitoring-alerting/etl-run-logging"
+            assert sec.get("slug") == "etl-run-logging"
+
+    def test_path_attribute_contains_full_path(self):
+        """Path attribute is the full slash-separated path."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_dir = os.path.join(td, "xml-sources")
+            _build_xml(xml_dir, "devops", "OPS", [(
+                "monitoring-alerting",
+                "<!-- section: monitoring-alerting -->\n## M\n\nM.",
+                [],
+                [(
+                    "etl-run-logging",
+                    "<!-- section: etl-run-logging -->\n### ETL\n\nE.",
+                    [],
+                    [(
+                        "artifact-format",
+                        "<!-- section: artifact-format -->\n#### Artifact Format\n\nA.",
+                        [],
+                    )],
+                )],
+            )])
+
+            findings = [
+                {"document": "OPS",
+                 "section": "monitoring-alerting/etl-run-logging/artifact-format",
+                 "audience": "devops",
+                 "check": "c1", "description": "Issue"},
+            ]
+            grouping = {
+                "groups": [{
+                    "group_id": "deep-nested",
+                    "root_cause_summary": "test",
+                    "finding_indices": [0],
+                }],
+            }
+
+            tree = extract_edit_xml(grouping, findings, xml_dir, 0)
+            sections = tree.getroot().findall("section")
+            assert len(sections) == 1
+            assert sections[0].get("path") == "monitoring-alerting/etl-run-logging/artifact-format"
+            assert sections[0].get("slug") == "artifact-format"
+
+    def test_sections_map_groups_by_path(self):
+        """Findings group by (xml_path, path) not (xml_path, slug)."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_dir = os.path.join(td, "xml-sources")
+            _build_xml(xml_dir, "devops", "OPS", [(
+                "monitoring-alerting",
+                "<!-- section: monitoring-alerting -->\n## M\n\nM.",
+                [],
+                [(
+                    "etl-run-logging",
+                    "<!-- section: etl-run-logging -->\n### ETL\n\nE.",
+                    [],
+                )],
+            )])
+
+            # Two findings targeting the same nested path
+            findings = [
+                {"document": "OPS",
+                 "section": "monitoring-alerting/etl-run-logging",
+                 "audience": "devops",
+                 "check": "c1", "description": "Issue A"},
+                {"document": "OPS",
+                 "section": "monitoring-alerting/etl-run-logging",
+                 "audience": "devops",
+                 "check": "c2", "description": "Issue B"},
+            ]
+            grouping = {
+                "groups": [{
+                    "group_id": "grouped",
+                    "root_cause_summary": "test",
+                    "finding_indices": [0, 1],
+                }],
+            }
+
+            tree = extract_edit_xml(grouping, findings, xml_dir, 0)
+            sections = tree.getroot().findall("section")
+            # Both findings grouped into one section
+            assert len(sections) == 1
+            finding_els = sections[0].findall("findings/finding")
+            assert len(finding_els) == 2
+
+    def test_top_level_section_gets_path_attribute(self):
+        """Top-level sections also get a path attribute (bare slug as path)."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_dir = os.path.join(td, "xml-sources")
+            _build_xml(xml_dir, "devops", "OPS", [(
+                "deployment",
+                "<!-- section: deployment -->\n## Deployment\n\nD.",
+                [],
+            )])
+
+            findings = [
+                {"document": "OPS", "section": "deployment",
+                 "audience": "devops", "check": "c1", "description": "Issue"},
+            ]
+            grouping = {
+                "groups": [{
+                    "group_id": "top-level",
+                    "root_cause_summary": "test",
+                    "finding_indices": [0],
+                }],
+            }
+
+            tree = extract_edit_xml(grouping, findings, xml_dir, 0)
+            sec = tree.getroot().findall("section")[0]
+            # Top-level: path equals slug
+            assert sec.get("path") == "deployment"
+            assert sec.get("slug") == "deployment"
