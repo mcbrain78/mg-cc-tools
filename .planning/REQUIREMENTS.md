@@ -255,6 +255,16 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **XML-08**: The schema reference document describes the nested section XML model with examples at two or more levels of nesting
 - [x] **XML-09**: Round-trip fidelity is preserved: parsing a serialized XML tree and re-serializing it yields an equivalent structure including slugs, bodies, refs, and children at all depths
 
+### Write-Section & Assembly
+
+- [ ] **WSA-01**: write-section.py accepts a `--parent` flag that places a section as a child at any tree depth: omitting `--parent` creates a top-level section, a single slug nests under that top-level section, and a slash-separated path nests at the resolved position
+- [ ] **WSA-02**: Parent section must already exist before a child section can be emitted
+- [ ] **WSA-03**: Finalize produces nested `<section>` XML elements where each section carries its own `<refs>` and `<body>` and child sections are nested inside their parent
+- [ ] **WSA-04**: Merge mode (`--merge` with `parse_existing_sections()`) supports nested sections by splitting on all heading levels and matching sections by path
+- [ ] **WSA-05**: assemble-markdown.py performs recursive depth-first concatenation of section bodies and their children
+- [ ] **WSA-06**: Assembled markdown output remains flat — nesting affects internal storage and tracking only, not the final document
+- [ ] **WSA-07**: Clean cutover: old flat-format state files are not migrated or supported; new runs produce the nested format from scratch
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -480,12 +490,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | XML-07 | Phase 18 | Complete |
 | XML-08 | Phase 18 | Complete |
 | XML-09 | Phase 18 | Complete |
+| WSA-01 | Phase 19 | Pending |
+| WSA-02 | Phase 19 | Pending |
+| WSA-03 | Phase 19 | Pending |
+| WSA-04 | Phase 19 | Pending |
+| WSA-05 | Phase 19 | Pending |
+| WSA-06 | Phase 19 | Pending |
+| WSA-07 | Phase 19 | Pending |
 
 **Coverage:**
-- v1 requirements: 194 total
-- Mapped to phases: 194
+- v1 requirements: 201 total
+- Mapped to phases: 201
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-04-01 after Phase 18 requirement generation*
+*Last updated: 2026-04-01 after Phase 19 requirement generation*

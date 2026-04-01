@@ -314,7 +314,7 @@ Plans:
 ### Phase 19: Nested Write-Section & Assembly
 
 **Goal:** write-section.py supports `--parent` flag for hierarchical child section emission with nested state format and recursive XML finalization, and assemble-markdown.py concatenates sections depth-first
-**Requirements**: TBD
+**Requirements**: WSA-01, WSA-02, WSA-03, WSA-04, WSA-05, WSA-06, WSA-07
 **Depends on:** Phase 18
 **Plans:** 0 plans
 
