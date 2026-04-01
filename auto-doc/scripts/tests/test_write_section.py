@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from lib.xml_doc import parse_xml_doc
+from lib.xml_doc import parse_xml_doc, walk_sections
 
 SCRIPT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -57,7 +57,7 @@ def _make_typed_refs(symbols=None, file_paths=None):
 
 def _run_section(tmp, state_file, document, section, content_text,
                  symbols=None, file_paths=None, header_text=None,
-                 project_root=None, typed_refs=None):
+                 project_root=None, typed_refs=None, parent=None):
     """Helper: write content + refs files and call write-section.py in section mode."""
     content_file = _write_content(
         tmp, f"section-{document}-{section}.md", content_text
@@ -80,6 +80,8 @@ def _run_section(tmp, state_file, document, section, content_text,
         cmd.extend(["--header-file", header_file])
     if project_root:
         cmd.extend(["--project-root", project_root])
+    if parent:
+        cmd.extend(["--parent", parent])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -1210,3 +1212,549 @@ class TestFinalizeEmptyAudience:
             result = _run_finalize(state_file, docs_dir, "", manifest_file)
             assert result.returncode == 0
             assert "standalone" in result.stderr
+
+
+class TestNestedSectionWrite:
+    """Section-write mode with --parent for nested sections."""
+
+    def test_parent_single_slug_places_child(self):
+        """--parent as single slug places child under existing top-level section."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+
+            # Write top-level parent first
+            result = _run_section(
+                tmp, state_file, "OPS", "monitoring-alerting",
+                "## Monitoring & Alerting\n\nIntro text\n",
+            )
+            assert result.returncode == 0
+
+            # Write child under parent
+            result = _run_section(
+                tmp, state_file, "OPS", "etl-run-logging",
+                "### ETL Run Logging\n\nLog details\n",
+                parent="monitoring-alerting",
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            parent_sec = state["documents"]["OPS"]["sections"]["monitoring-alerting"]
+            assert "subsections" in parent_sec
+            assert "subsections_order" in parent_sec
+            assert "etl-run-logging" in parent_sec["subsections"]
+            assert parent_sec["subsections_order"] == ["etl-run-logging"]
+            child = parent_sec["subsections"]["etl-run-logging"]
+            assert "Log details" in child["content"]
+
+    def test_parent_slash_path_places_grandchild(self):
+        """--parent as slash path (a/b) places child at resolved position."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+
+            # Write top-level
+            _run_section(
+                tmp, state_file, "OPS", "monitoring-alerting",
+                "## Monitoring & Alerting\n\nIntro\n",
+            )
+            # Write child
+            _run_section(
+                tmp, state_file, "OPS", "health-artifact",
+                "### Health Artifact\n\nArtifact overview\n",
+                parent="monitoring-alerting",
+            )
+            # Write grandchild
+            result = _run_section(
+                tmp, state_file, "OPS", "artifact-format",
+                "#### Artifact Format\n\nJSON schema\n",
+                parent="monitoring-alerting/health-artifact",
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            parent_sec = state["documents"]["OPS"]["sections"]["monitoring-alerting"]
+            child_sec = parent_sec["subsections"]["health-artifact"]
+            assert "artifact-format" in child_sec["subsections"]
+            grandchild = child_sec["subsections"]["artifact-format"]
+            assert "JSON schema" in grandchild["content"]
+
+    def test_no_parent_creates_toplevel_with_subsections_keys(self):
+        """Omitting --parent creates top-level section with subsections={}, subsections_order=[]."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+
+            result = _run_section(
+                tmp, state_file, "OPS", "deployment",
+                "## Deployment\n\nDeploy info\n",
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            section = state["documents"]["OPS"]["sections"]["deployment"]
+            assert section["subsections"] == {}
+            assert section["subsections_order"] == []
+
+    def test_nonexistent_parent_exits_error(self):
+        """Referencing a non-existent parent path exits with error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+
+            # Write a top-level section first (so doc exists)
+            _run_section(
+                tmp, state_file, "OPS", "deployment",
+                "## Deployment\n\nText\n",
+            )
+
+            # Try to write child under non-existent parent
+            result = _run_section(
+                tmp, state_file, "OPS", "child-section",
+                "### Child\n\nText\n",
+                parent="nonexistent",
+            )
+            assert result.returncode == 1
+            assert "not found" in result.stderr
+
+    def test_overwrite_child_preserves_subsections(self):
+        """Overwriting existing child preserves its subsections and subsections_order."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+
+            # Write parent
+            _run_section(
+                tmp, state_file, "OPS", "monitoring-alerting",
+                "## Monitoring\n\nIntro\n",
+            )
+            # Write child
+            _run_section(
+                tmp, state_file, "OPS", "etl-logging",
+                "### ETL Logging\n\nOriginal\n",
+                parent="monitoring-alerting",
+            )
+            # Write grandchild under the child
+            _run_section(
+                tmp, state_file, "OPS", "log-format",
+                "#### Log Format\n\nJSON\n",
+                parent="monitoring-alerting/etl-logging",
+            )
+
+            # Overwrite the child (etl-logging) with new content
+            result = _run_section(
+                tmp, state_file, "OPS", "etl-logging",
+                "### ETL Logging\n\nUpdated content\n",
+                parent="monitoring-alerting",
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            child = state["documents"]["OPS"]["sections"]["monitoring-alerting"]["subsections"]["etl-logging"]
+            # Content updated
+            assert "Updated content" in child["content"]
+            # Grandchild preserved
+            assert "log-format" in child["subsections"]
+            assert child["subsections_order"] == ["log-format"]
+
+
+class TestNestedFinalize:
+    """Finalize mode with nested state tree."""
+
+    def _build_nested_state(self, tmp, doc_name="OPS",
+                            header="<!-- DIATAXIS: how-to -->\n# Ops\n"):
+        """Build a state with 2-level nesting for testing."""
+        state_file = os.path.join(tmp, "state.json")
+        state = {
+            "documents": {
+                doc_name: {
+                    "header": header,
+                    "sections_order": ["monitoring-alerting", "deployment"],
+                    "sections": {
+                        "monitoring-alerting": {
+                            "content": "<!-- section: monitoring-alerting -->\n## Monitoring & Alerting\n\nIntro text",
+                            "symbols": ["AlertManager"],
+                            "file_paths": ["src/alerts.py"],
+                            "typed_refs": [
+                                {"type": "code", "kind": "class", "name": "AlertManager",
+                                 "module": "src/alerts.py"},
+                            ],
+                            "subsections": {
+                                "etl-run-logging": {
+                                    "content": "<!-- section: etl-run-logging -->\n### ETL Run Logging\n\nLog details",
+                                    "symbols": ["EtlLogger"],
+                                    "file_paths": ["src/etl.py"],
+                                    "typed_refs": [
+                                        {"type": "code", "kind": "class", "name": "EtlLogger",
+                                         "module": "src/etl.py"},
+                                    ],
+                                    "subsections": {},
+                                    "subsections_order": [],
+                                },
+                            },
+                            "subsections_order": ["etl-run-logging"],
+                        },
+                        "deployment": {
+                            "content": "<!-- section: deployment -->\n## Deployment\n\nDeploy info",
+                            "symbols": [],
+                            "file_paths": [],
+                            "typed_refs": [],
+                            "subsections": {},
+                            "subsections_order": [],
+                        },
+                    },
+                }
+            }
+        }
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        return state_file
+
+    def test_nested_finalize_xml_structure(self):
+        """Finalize converts nested state to nested <section> XML elements."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = self._build_nested_state(tmp)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+            xml_dir = os.path.join(tmp, "xml-sources")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+                xml_dir=xml_dir,
+            )
+            assert result.returncode == 0
+
+            xml_path = os.path.join(xml_dir, "devops", "OPS.xml")
+            doc = parse_xml_doc(xml_path)
+
+            # Top-level: 2 sections
+            assert len(doc["sections"]) == 2
+            assert doc["sections"][0]["slug"] == "monitoring-alerting"
+            assert doc["sections"][1]["slug"] == "deployment"
+
+            # Nested: monitoring-alerting has 1 child
+            monitoring = doc["sections"][0]
+            assert len(monitoring["children"]) == 1
+            assert monitoring["children"][0]["slug"] == "etl-run-logging"
+            assert "Log details" in monitoring["children"][0]["body"]
+
+    def test_nested_finalize_refs_at_paths(self):
+        """Finalize populates refs at correct paths for nested sections."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = self._build_nested_state(tmp)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+            xml_dir = os.path.join(tmp, "xml-sources")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+                xml_dir=xml_dir,
+            )
+            assert result.returncode == 0
+
+            xml_path = os.path.join(xml_dir, "devops", "OPS.xml")
+            doc = parse_xml_doc(xml_path)
+
+            # Walk all sections and check refs
+            path_refs = {}
+            for path, section in walk_sections(doc["sections"]):
+                path_refs[path] = section["refs"]
+
+            # Top-level section has AlertManager ref
+            assert len(path_refs["monitoring-alerting"]) == 1
+            assert path_refs["monitoring-alerting"][0]["name"] == "AlertManager"
+
+            # Child section has EtlLogger ref
+            assert len(path_refs["monitoring-alerting/etl-run-logging"]) == 1
+            assert path_refs["monitoring-alerting/etl-run-logging"][0]["name"] == "EtlLogger"
+
+    def test_nested_finalize_markdown_assembly(self):
+        """Finalize assembles nested sections in depth-first order for markdown."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = self._build_nested_state(tmp)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+            )
+            assert result.returncode == 0
+
+            doc_path = os.path.join(docs_dir, "devops", "OPS.md")
+            with open(doc_path) as f:
+                content = f.read()
+
+            # All sections present in order: monitoring -> etl-logging -> deployment
+            assert "## Monitoring & Alerting" in content
+            assert "### ETL Run Logging" in content
+            assert "## Deployment" in content
+
+            # Depth-first: monitoring before etl-logging before deployment
+            assert content.index("Monitoring & Alerting") < content.index("ETL Run Logging")
+            assert content.index("ETL Run Logging") < content.index("Deployment")
+
+    def test_nested_manifest_has_path_keys(self):
+        """Manifest includes entries for nested sections with slash-separated path keys."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = self._build_nested_state(tmp)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+            )
+            assert result.returncode == 0
+
+            with open(manifest_file) as f:
+                manifest = json.load(f)
+
+            ops = manifest["documents"]["OPS"]
+            # Top-level section with refs
+            assert "monitoring-alerting" in ops
+            assert ops["monitoring-alerting"]["symbols"] == ["AlertManager"]
+            # Nested section with refs -- key is slash-separated path
+            assert "monitoring-alerting/etl-run-logging" in ops
+            assert ops["monitoring-alerting/etl-run-logging"]["symbols"] == ["EtlLogger"]
+
+    def test_nested_written_sections_all_paths(self):
+        """_written_sections.sections_written includes all paths recursively."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = self._build_nested_state(tmp)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+                mode="initial",
+            )
+            assert result.returncode == 0
+
+            with open(manifest_file) as f:
+                manifest = json.load(f)
+
+            ws = manifest["documents"]["OPS"]["_written_sections"]
+            written = ws["sections_written"]
+            assert "monitoring-alerting" in written
+            assert "monitoring-alerting/etl-run-logging" in written
+            assert "deployment" in written
+            assert len(written) == 3
+
+    def test_nested_total_sections_count(self):
+        """Finalize summary counts all nested sections, not just top-level."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = self._build_nested_state(tmp)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+            )
+            assert result.returncode == 0
+            # Should report 3 sections total (2 top-level + 1 child)
+            assert "3 sections" in result.stderr
+
+
+class TestNestedMergeMode:
+    """Merge mode with nested sections (markdown and XML)."""
+
+    def _build_nested_state(self, tmp, doc_name="ARCHITECTURE"):
+        """Build a nested state with update sections for merge testing."""
+        state_file = os.path.join(tmp, "state.json")
+        state = {
+            "documents": {
+                doc_name: {
+                    "header": "",
+                    "sections_order": ["monitoring-alerting"],
+                    "sections": {
+                        "monitoring-alerting": {
+                            "content": "<!-- section: monitoring-alerting -->\n## Monitoring & Alerting\n\nUpdated intro",
+                            "symbols": [],
+                            "file_paths": [],
+                            "typed_refs": [],
+                            "subsections": {
+                                "etl-run-logging": {
+                                    "content": "<!-- section: etl-run-logging -->\n### ETL Run Logging\n\nUpdated logging",
+                                    "symbols": [],
+                                    "file_paths": [],
+                                    "typed_refs": [],
+                                    "subsections": {},
+                                    "subsections_order": [],
+                                },
+                                "new-child": {
+                                    "content": "<!-- section: new-child -->\n### New Child\n\nBrand new section",
+                                    "symbols": [],
+                                    "file_paths": [],
+                                    "typed_refs": [],
+                                    "subsections": {},
+                                    "subsections_order": [],
+                                },
+                            },
+                            "subsections_order": ["etl-run-logging", "new-child"],
+                        },
+                    },
+                }
+            }
+        }
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        return state_file
+
+    def _write_existing_doc(self, tmp, audience, doc_name, content):
+        """Write an existing document file and return its path."""
+        doc_dir = os.path.join(tmp, "docs", audience) if audience else os.path.join(tmp, "docs")
+        os.makedirs(doc_dir, exist_ok=True)
+        doc_path = os.path.join(doc_dir, f"{doc_name}.md")
+        with open(doc_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return doc_path
+
+    def test_merge_markdown_nested_sections(self):
+        """Merge mode reads existing doc with ### headings, matches by path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            existing_content = (
+                "# Ops\n\n"
+                "## Monitoring & Alerting\n\nOld monitoring intro\n\n"
+                "### ETL Run Logging\n\nOld etl logging\n\n"
+                "### Health Check\n\nExisting health check content\n\n"
+                "## Deployment\n\nExisting deployment\n"
+            )
+            self._write_existing_doc(
+                tmp, "devops", "ARCHITECTURE", existing_content,
+            )
+
+            state_file = self._build_nested_state(tmp)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+                mode="update", merge=True,
+            )
+            assert result.returncode == 0
+
+            doc_path = os.path.join(docs_dir, "devops", "ARCHITECTURE.md")
+            with open(doc_path) as f:
+                content = f.read()
+
+            # Replaced sections have new content
+            assert "Updated intro" in content
+            assert "Updated logging" in content
+            # Unmatched sections preserved
+            assert "Existing health check content" in content
+            assert "Existing deployment" in content
+            # New nested section appended
+            assert "Brand new section" in content
+
+    def test_merge_xml_nested_sections(self):
+        """Merge XML mode uses get_section_paths, updates nested, adds new nested."""
+        with tempfile.TemporaryDirectory() as tmp:
+            from lib.xml_doc import build_xml_doc, serialize_xml_doc
+
+            # Create existing XML with nested structure
+            xml_dir = os.path.join(tmp, "xml-sources", "devops")
+            os.makedirs(xml_dir, exist_ok=True)
+            xml_path = os.path.join(xml_dir, "ARCHITECTURE.xml")
+            tree = build_xml_doc(
+                audience="devops",
+                diataxis="how-to",
+                header="# Ops\n",
+                sections=[
+                    {
+                        "slug": "monitoring-alerting",
+                        "body": "<!-- section: monitoring-alerting -->\n## Monitoring\n\nOld intro",
+                        "children": [
+                            {
+                                "slug": "etl-run-logging",
+                                "body": "<!-- section: etl-run-logging -->\n### ETL Logging\n\nOld logging",
+                            },
+                        ],
+                    },
+                    {
+                        "slug": "deployment",
+                        "body": "<!-- section: deployment -->\n## Deployment\n\nExisting deploy",
+                    },
+                ],
+            )
+            serialize_xml_doc(tree, xml_path)
+
+            # Also create existing .md doc (finalize needs it for md merge)
+            self._write_existing_doc(
+                tmp, "devops", "ARCHITECTURE",
+                "# Ops\n\n## Monitoring\n\nOld\n\n## Deployment\n\nExisting\n",
+            )
+
+            state_file = self._build_nested_state(tmp)
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+                mode="update", merge=True,
+                xml_dir=os.path.join(tmp, "xml-sources"),
+            )
+            assert result.returncode == 0
+
+            # Verify XML
+            doc = parse_xml_doc(xml_path)
+
+            # monitoring-alerting still exists at top level
+            monitoring = next(s for s in doc["sections"] if s["slug"] == "monitoring-alerting")
+            assert "Updated intro" in monitoring["body"]
+
+            # etl-run-logging is updated child (not duplicated at root)
+            etl = next(c for c in monitoring["children"] if c["slug"] == "etl-run-logging")
+            assert "Updated logging" in etl["body"]
+
+            # new-child added as child of monitoring-alerting
+            new_child = next(c for c in monitoring["children"] if c["slug"] == "new-child")
+            assert "Brand new section" in new_child["body"]
+
+            # deployment preserved
+            deploy = next(s for s in doc["sections"] if s["slug"] == "deployment")
+            assert "Existing deploy" in deploy["body"]
+
+
+class TestParseExistingSectionsNested:
+    """parse_existing_sections handles ##-##### headings with path-based output."""
+
+    def test_parse_multi_level_headings(self):
+        """parse_existing_sections splits on ##-#### headings with correct paths."""
+        # We need to import the function directly
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader(
+            "write_section", SCRIPT_PATH,
+        )
+        mod = loader.load_module()
+
+        content = (
+            "# Doc Title\n\nSome header text\n\n"
+            "## Monitoring & Alerting\n\nMonitoring intro\n\n"
+            "### ETL Run Logging\n\nETL details\n\n"
+            "#### Artifact Format\n\nJSON format\n\n"
+            "### Health Check\n\nHealth details\n\n"
+            "## Deployment\n\nDeploy info\n"
+        )
+
+        header, sections = mod.parse_existing_sections(content)
+
+        assert "# Doc Title" in header
+        assert len(sections) == 5
+
+        # Verify paths are slash-separated
+        paths = [s[0] for s in sections]
+        assert paths == [
+            "monitoring-alerting",
+            "monitoring-alerting/etl-run-logging",
+            "monitoring-alerting/etl-run-logging/artifact-format",
+            "monitoring-alerting/health-check",
+            "deployment",
+        ]
+
+        # Verify heading_line preserved
+        assert sections[0][1] == "## Monitoring & Alerting"
+        assert sections[1][1] == "### ETL Run Logging"
+        assert sections[2][1] == "#### Artifact Format"
