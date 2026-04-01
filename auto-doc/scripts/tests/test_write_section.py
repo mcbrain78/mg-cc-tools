@@ -18,6 +18,16 @@ SCRIPT_PATH = os.path.join(
     "..",
     "write-section.py",
 )
+ASSEMBLE_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "assemble-markdown.py",
+)
+SYNC_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "sync-edits-to-xml.py",
+)
 
 
 def _write_content(tmp, name, text):
@@ -1758,3 +1768,333 @@ class TestParseExistingSectionsNested:
         assert sections[0][1] == "## Monitoring & Alerting"
         assert sections[1][1] == "### ETL Run Logging"
         assert sections[2][1] == "#### Artifact Format"
+
+
+class TestPerHeadingEmission:
+    """Integration tests for per-heading ref scoping and full pipeline round-trip."""
+
+    # -- Shared refs for each nesting level --
+    PARENT_REFS = [
+        {"type": "code", "kind": "class", "name": "MonitorService",
+         "module": "src/monitor.py"},
+    ]
+    CHILD_REFS = [
+        {"type": "code", "kind": "function", "name": "check_etl_health",
+         "module": "src/etl.py"},
+    ]
+    GRANDCHILD_REFS = [
+        {"type": "config", "path": "config/alerts.yaml"},
+    ]
+
+    def _build_nested_state_via_cli(self, tmp, levels=2):
+        """Build a nested state via CLI calls.
+
+        levels=2: parent + child
+        levels=3: parent + child + grandchild
+
+        Returns (state_file, doc_name).
+        """
+        state_file = os.path.join(tmp, "state.json")
+        doc_name = "OPS"
+
+        # Write parent (## level) with its own refs
+        result = _run_section(
+            tmp, state_file, doc_name, "monitoring-alerting",
+            "## Monitoring & Alerting\n<!-- docs-meta: ... -->\n\nParent intro text\n",
+            header_text="<!-- DIATAXIS: how-to -->\n# Ops\n",
+            typed_refs=self.PARENT_REFS,
+        )
+        assert result.returncode == 0, f"Parent section failed: {result.stderr}"
+
+        # Write child (### level)
+        result = _run_section(
+            tmp, state_file, doc_name, "etl-logging",
+            "### ETL Logging\n<!-- docs-meta: ... -->\n\nChild content about ETL\n",
+            typed_refs=self.CHILD_REFS,
+            parent="monitoring-alerting",
+        )
+        assert result.returncode == 0, f"Child section failed: {result.stderr}"
+
+        if levels >= 3:
+            # Write grandchild (#### level)
+            result = _run_section(
+                tmp, state_file, doc_name, "alert-config",
+                "#### Alert Config\n<!-- docs-meta: ... -->\n\nGrandchild config details\n",
+                typed_refs=self.GRANDCHILD_REFS,
+                parent="monitoring-alerting/etl-logging",
+            )
+            assert result.returncode == 0, f"Grandchild section failed: {result.stderr}"
+
+        return state_file, doc_name
+
+    def _finalize_to_xml(self, tmp, state_file, doc_name="OPS"):
+        """Finalize state to XML and return (xml_path, docs_dir, manifest_file)."""
+        docs_dir = os.path.join(tmp, "docs")
+        manifest_file = os.path.join(tmp, "manifest.json")
+        xml_dir = os.path.join(tmp, "xml-sources")
+
+        result = _run_finalize(
+            state_file, docs_dir, "devops", manifest_file,
+            xml_dir=xml_dir,
+        )
+        assert result.returncode == 0, f"Finalize failed: {result.stderr}"
+
+        xml_path = os.path.join(xml_dir, "devops", f"{doc_name}.xml")
+        assert os.path.isfile(xml_path), f"XML not created at {xml_path}"
+        return xml_path, docs_dir, manifest_file
+
+    def test_ref_scoping_parent_vs_child(self):
+        """Parent intro refs symbol A, child refs symbol B -- no cross-contamination."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file, doc_name = self._build_nested_state_via_cli(tmp, levels=2)
+            xml_path, _, _ = self._finalize_to_xml(tmp, state_file, doc_name)
+
+            doc = parse_xml_doc(xml_path)
+            path_refs = {}
+            for path, section in walk_sections(doc["sections"]):
+                path_refs[path] = section["refs"]
+
+            # Parent has only MonitorService
+            parent_refs = path_refs["monitoring-alerting"]
+            parent_names = [r.get("name", r.get("path", "")) for r in parent_refs]
+            assert "MonitorService" in parent_names
+            assert "check_etl_health" not in parent_names
+
+            # Child has only check_etl_health
+            child_refs = path_refs["monitoring-alerting/etl-logging"]
+            child_names = [r.get("name", r.get("path", "")) for r in child_refs]
+            assert "check_etl_health" in child_names
+            assert "MonitorService" not in child_names
+
+    def test_ref_scoping_grandchild(self):
+        """3-level nesting: each level has exactly its own refs, no leaking."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file, doc_name = self._build_nested_state_via_cli(tmp, levels=3)
+            xml_path, _, _ = self._finalize_to_xml(tmp, state_file, doc_name)
+
+            doc = parse_xml_doc(xml_path)
+            path_refs = {}
+            for path, section in walk_sections(doc["sections"]):
+                path_refs[path] = section["refs"]
+
+            # Parent: only MonitorService
+            parent_refs = path_refs["monitoring-alerting"]
+            assert len(parent_refs) == 1
+            assert parent_refs[0]["name"] == "MonitorService"
+
+            # Child: only check_etl_health
+            child_refs = path_refs["monitoring-alerting/etl-logging"]
+            assert len(child_refs) == 1
+            assert child_refs[0]["name"] == "check_etl_health"
+
+            # Grandchild: only config/alerts.yaml
+            gc_refs = path_refs["monitoring-alerting/etl-logging/alert-config"]
+            assert len(gc_refs) == 1
+            assert gc_refs[0]["path"] == "config/alerts.yaml"
+
+    def test_round_trip_build_finalize_assemble(self):
+        """Build nested state -> finalize -> assemble: all headings in depth-first order."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            doc_name = "OPS"
+
+            # Build: parent with 2 children, one child with a grandchild
+            _run_section(
+                tmp, state_file, doc_name, "monitoring-alerting",
+                "## Monitoring & Alerting\n<!-- docs-meta: ... -->\n\nIntro\n",
+                header_text="<!-- DIATAXIS: how-to -->\n# Ops\n",
+                typed_refs=self.PARENT_REFS,
+            )
+            _run_section(
+                tmp, state_file, doc_name, "etl-logging",
+                "### ETL Logging\n<!-- docs-meta: ... -->\n\nETL details\n",
+                typed_refs=self.CHILD_REFS,
+                parent="monitoring-alerting",
+            )
+            _run_section(
+                tmp, state_file, doc_name, "alert-config",
+                "#### Alert Config\n<!-- docs-meta: ... -->\n\nAlert config\n",
+                typed_refs=self.GRANDCHILD_REFS,
+                parent="monitoring-alerting/etl-logging",
+            )
+            _run_section(
+                tmp, state_file, doc_name, "health-checks",
+                "### Health Checks\n<!-- docs-meta: ... -->\n\nHealth check info\n",
+                typed_refs=[],
+                parent="monitoring-alerting",
+            )
+
+            # Finalize to XML
+            xml_path, _, _ = self._finalize_to_xml(tmp, state_file, doc_name)
+
+            # Assemble to markdown
+            md_out = os.path.join(tmp, "assembled.md")
+            result = subprocess.run(
+                [sys.executable, ASSEMBLE_SCRIPT,
+                 "--xml-file", xml_path,
+                 "--output", md_out],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, f"Assemble failed: {result.stderr}"
+
+            with open(md_out) as f:
+                content = f.read()
+
+            # All headings present
+            assert "## Monitoring & Alerting" in content
+            assert "### ETL Logging" in content
+            assert "#### Alert Config" in content
+            assert "### Health Checks" in content
+
+            # Depth-first order: ## monitoring > ### etl > #### alert > ### health
+            idx_monitoring = content.index("## Monitoring & Alerting")
+            idx_etl = content.index("### ETL Logging")
+            idx_alert = content.index("#### Alert Config")
+            idx_health = content.index("### Health Checks")
+            assert idx_monitoring < idx_etl < idx_alert < idx_health
+
+            # Section markers present
+            assert "<!-- section: monitoring-alerting -->" in content
+            assert "<!-- section: etl-logging -->" in content
+            assert "<!-- section: alert-config -->" in content
+            assert "<!-- section: health-checks -->" in content
+
+    def test_round_trip_sync_edits(self):
+        """Build -> finalize -> assemble -> sync-edits: section paths survive round-trip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            doc_name = "OPS"
+
+            # Build nested state
+            _run_section(
+                tmp, state_file, doc_name, "monitoring-alerting",
+                "## Monitoring & Alerting\n<!-- docs-meta: ... -->\n\nIntro\n",
+                header_text="<!-- DIATAXIS: how-to -->\n# Ops\n",
+                typed_refs=self.PARENT_REFS,
+            )
+            _run_section(
+                tmp, state_file, doc_name, "etl-logging",
+                "### ETL Logging\n<!-- docs-meta: ... -->\n\nETL details\n",
+                typed_refs=self.CHILD_REFS,
+                parent="monitoring-alerting",
+            )
+            _run_section(
+                tmp, state_file, doc_name, "alert-config",
+                "#### Alert Config\n<!-- docs-meta: ... -->\n\nAlert config\n",
+                typed_refs=self.GRANDCHILD_REFS,
+                parent="monitoring-alerting/etl-logging",
+            )
+
+            # Finalize to XML
+            xml_path, _, _ = self._finalize_to_xml(tmp, state_file, doc_name)
+
+            # Collect original paths from XML
+            doc_before = parse_xml_doc(xml_path)
+            original_paths = [p for p, _ in walk_sections(doc_before["sections"])]
+
+            # Assemble to markdown
+            md_out = os.path.join(tmp, "assembled.md")
+            subprocess.run(
+                [sys.executable, ASSEMBLE_SCRIPT,
+                 "--xml-file", xml_path,
+                 "--output", md_out],
+                capture_output=True, text=True,
+            )
+
+            # Sync edits back to XML (no actual edits, just round-trip)
+            result = subprocess.run(
+                [sys.executable, SYNC_SCRIPT,
+                 "--md-file", md_out,
+                 "--xml-file", xml_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, f"Sync failed: {result.stderr}"
+
+            # Parse synced XML and verify paths match exactly
+            doc_after = parse_xml_doc(xml_path)
+            synced_paths = [p for p, _ in walk_sections(doc_after["sections"])]
+            assert synced_paths == original_paths, (
+                f"Paths changed after sync: {synced_paths} != {original_paths}"
+            )
+
+    def test_empty_intro_with_children(self):
+        """Parent ## has minimal content but ### children have real content."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            doc_name = "OPS"
+
+            # Parent with minimal intro (heading + docs-meta only)
+            _run_section(
+                tmp, state_file, doc_name, "monitoring-alerting",
+                "## Monitoring & Alerting\n<!-- docs-meta: ... -->\n",
+                header_text="<!-- DIATAXIS: how-to -->\n# Ops\n",
+                typed_refs=[],
+            )
+
+            # Child with substantial content
+            _run_section(
+                tmp, state_file, doc_name, "etl-logging",
+                "### ETL Logging\n<!-- docs-meta: ... -->\n\nDetailed ETL logging content here.\n\nThis section covers log formats, rotation, and retention policies.\n",
+                typed_refs=self.CHILD_REFS,
+                parent="monitoring-alerting",
+            )
+
+            # Another child with substantial content
+            _run_section(
+                tmp, state_file, doc_name, "health-checks",
+                "### Health Checks\n<!-- docs-meta: ... -->\n\nComprehensive health check documentation.\n\nCovers endpoint monitoring, database checks, and alerting thresholds.\n",
+                typed_refs=[],
+                parent="monitoring-alerting",
+            )
+
+            # Finalize
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest.json")
+            xml_dir = os.path.join(tmp, "xml-sources")
+
+            result = _run_finalize(
+                state_file, docs_dir, "devops", manifest_file,
+                xml_dir=xml_dir,
+            )
+            assert result.returncode == 0, f"Finalize failed: {result.stderr}"
+
+            xml_path = os.path.join(xml_dir, "devops", f"{doc_name}.xml")
+            doc = parse_xml_doc(xml_path)
+
+            # Parent section exists
+            monitoring = doc["sections"][0]
+            assert monitoring["slug"] == "monitoring-alerting"
+
+            # Parent has children
+            assert len(monitoring["children"]) == 2
+            child_slugs = [c["slug"] for c in monitoring["children"]]
+            assert "etl-logging" in child_slugs
+            assert "health-checks" in child_slugs
+
+            # Children have real content
+            etl = next(c for c in monitoring["children"] if c["slug"] == "etl-logging")
+            assert "log formats, rotation" in etl["body"]
+
+            health = next(c for c in monitoring["children"] if c["slug"] == "health-checks")
+            assert "endpoint monitoring" in health["body"]
+
+            # Assemble to markdown and verify structure
+            md_out = os.path.join(tmp, "assembled.md")
+            result = subprocess.run(
+                [sys.executable, ASSEMBLE_SCRIPT,
+                 "--xml-file", xml_path,
+                 "--output", md_out],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(md_out) as f:
+                content = f.read()
+
+            # Parent heading exists
+            assert "## Monitoring & Alerting" in content
+            # Children headings exist with real content
+            assert "### ETL Logging" in content
+            assert "### Health Checks" in content
+            assert "log formats, rotation" in content
+            assert "endpoint monitoring" in content
