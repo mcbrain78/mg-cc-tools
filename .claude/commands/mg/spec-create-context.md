@@ -115,10 +115,12 @@ Store the source content for step 7.
 
 Pad the phase number to 2 digits (3 → "03", 86 → "86", 2.1 → "02.1").
 
-Use Glob to find the phase directory:
+Use Glob to find the phase directory (match the `.gitkeep` file GSD creates in each phase dir):
 ```
-.planning/phases/{padded}-*/
+.planning/phases/{padded}-*/.gitkeep
 ```
+
+Extract the directory path from the matched file (strip the `/.gitkeep` suffix).
 
 If no match, create the directory using the phase name from ROADMAP.md:
 
@@ -199,6 +201,9 @@ Follow the template format from the required_reading. Create the CONTEXT.md with
 ```
 
 ### `<domain>` section
+
+The `<domain>` section describes what the phase **delivers** — the artifacts, capabilities, or behaviors that exist when the phase is done. Do not include validation activities, test strategies, or "how we verify" — those belong in `<specifics>` or are left to the planner.
+
 ```markdown
 <domain>
 ## Phase Boundary
@@ -251,6 +256,25 @@ named libraries or tools, code patterns referenced, API endpoints}
 
 </specifics>
 ```
+
+### `<code_context>` section
+```markdown
+<code_context>
+## Existing Code Insights
+
+### Reusable Assets
+- {Existing code/functions/modules that can be extended or reused for this phase}
+
+### Established Patterns
+- {Patterns in the existing codebase that constrain or enable this phase's implementation}
+
+### Integration Points
+- {Where new code connects to the existing system — imports, API boundaries, data flow}
+
+</code_context>
+```
+
+Populate from: the source document's references to existing code, file paths mentioned, function names discussed. If the source document doesn't reference existing code, use minimal entries noting the key files the phase will touch (derivable from the phase goal and decisions).
 
 ### `<deferred>` section
 ```markdown

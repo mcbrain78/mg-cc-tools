@@ -12,3 +12,8 @@ dev = ["pytest", "ruff"]
 
 [tool.pytest.ini_options]
 markers = ["slow: marks tests requiring large sample files (deselect with '-m \"not slow\"')"]
+
+[dependency-groups]
+dev = [
+    "griffe>=2.0.2",
+]
