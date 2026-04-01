@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import save_text
-from lib.xml_doc import parse_xml_doc
+from lib.xml_doc import parse_xml_doc, walk_sections
 
 
 def assemble(xml_path):
@@ -36,7 +36,7 @@ def assemble(xml_path):
     if header:
         parts.append(header.rstrip("\n"))
 
-    for section in doc["sections"]:
+    for _path, section in walk_sections(doc["sections"]):
         body = section["body"]
         if body:
             parts.append(body.strip("\n"))
@@ -67,7 +67,7 @@ def main():
     save_text(args.output, md_content)
 
     doc = parse_xml_doc(args.xml_file)
-    n_sections = len(doc["sections"])
+    n_sections = sum(1 for _ in walk_sections(doc["sections"]))
     print(
         f"Assembled {n_sections} sections → {args.output}",
         file=sys.stderr,
