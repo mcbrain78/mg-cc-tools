@@ -7,10 +7,21 @@ lxml.etree for CDATA support (stdlib ElementTree cannot do CDATA).
 The XML schema stores:
 - Document metadata (audience, diataxis type, generated date)
 - A header block (ownership comment, DIATAXIS/AUDIENCE markers, title)
-- Ordered sections, each with:
-  - A slug identifier
+- Recursively nested sections, each with:
+  - A slug identifier (unique among siblings)
   - Typed code references (<refs>)
   - Body markdown in CDATA (includes <!-- section: slug --> marker)
+  - Zero or more child <section> elements (recursive nesting)
+
+Sections mirror the markdown heading hierarchy: ## -> ### -> #### each
+produce a nested <section>. A section's body contains only the prose
+between its heading and the first child heading. A section's refs
+declare only entities mentioned in its own body.
+
+Path-based addressing uses slash-separated paths (e.g.
+"monitoring-alerting/etl-run-logging/artifact-format") to identify
+sections at any depth. Bare slugs are valid single-segment paths
+for backward compatibility with top-level sections.
 """
 
 import os
@@ -30,7 +41,10 @@ def build_xml_doc(audience, diataxis, header, sections, title=None):
         audience: Audience key (e.g. "devops", "end-users").
         diataxis: Diataxis type (e.g. "how-to", "reference").
         header: Raw markdown header string (ownership comment, markers, title).
-        sections: List of {"slug": str, "body": str} dicts, in order.
+        sections: List of section dicts with keys:
+            - slug: str (required)
+            - body: str (required)
+            - children: list of section dicts (optional, defaults to [])
         title: Optional document title. Extracted from header if not given.
 
     Returns:
@@ -47,15 +61,29 @@ def build_xml_doc(audience, diataxis, header, sections, title=None):
     header_el = etree.SubElement(meta, "header")
     header_el.text = etree.CDATA(header)
 
-    # <section> elements
+    # <section> elements -- recursive
     for sec in sections:
-        section_el = etree.SubElement(root, "section", slug=sec["slug"])
-        etree.SubElement(section_el, "refs")
-        # refs start empty; populated by finalize when typed_refs present
-        body_el = etree.SubElement(section_el, "body")
-        body_el.text = etree.CDATA(sec["body"])
+        _build_section(root, sec)
 
     return etree.ElementTree(root)
+
+
+def _build_section(parent_el, section):
+    """Build a <section> XML element with refs, body, and children.
+
+    Adds refs and body BEFORE recursing into children so element order
+    is always: <refs>, <body>, then child <section> elements.
+
+    Args:
+        parent_el: Parent XML element to append the section to.
+        section: Section dict with slug, body, and optional children.
+    """
+    section_el = etree.SubElement(parent_el, "section", slug=section["slug"])
+    etree.SubElement(section_el, "refs")
+    body_el = etree.SubElement(section_el, "body")
+    body_el.text = etree.CDATA(section["body"])
+    for child in section.get("children", []):
+        _build_section(section_el, child)
 
 
 def _extract_title(header):
@@ -82,7 +110,11 @@ def parse_xml_doc(path):
         - audience: str
         - diataxis: str
         - meta: {"title": str, "generated": str, "header": str}
-        - sections: list of {"slug": str, "body": str, "refs": list[dict]}
+        - sections: list of nested section dicts, each with:
+            - slug: str
+            - body: str
+            - refs: list[dict]
+            - children: list of section dicts (recursive, [] for leaves)
     """
     tree = etree.parse(path)
     root = tree.getroot()
@@ -94,12 +126,7 @@ def parse_xml_doc(path):
         "header": _text(meta_el.find("header")),
     }
 
-    sections = []
-    for section_el in root.findall("section"):
-        slug = section_el.get("slug")
-        body = _text(section_el.find("body"))
-        refs = _parse_refs(section_el.find("refs"))
-        sections.append({"slug": slug, "body": body, "refs": refs})
+    sections = [_parse_section(el) for el in root.findall("section")]
 
     return {
         "audience": root.get("audience"),
@@ -107,6 +134,25 @@ def parse_xml_doc(path):
         "meta": meta,
         "sections": sections,
     }
+
+
+def _parse_section(section_el):
+    """Parse a <section> element into a dict with children.
+
+    Uses findall("section") which returns only direct children,
+    ensuring each level is parsed independently.
+
+    Args:
+        section_el: lxml Element with tag "section".
+
+    Returns:
+        Dict with slug, body, refs, and children keys.
+    """
+    slug = section_el.get("slug")
+    body = _text(section_el.find("body"))
+    refs = _parse_refs(section_el.find("refs"))
+    children = [_parse_section(child) for child in section_el.findall("section")]
+    return {"slug": slug, "body": body, "refs": refs, "children": children}
 
 
 def _text(el):
@@ -251,24 +297,148 @@ def serialize_xml_doc(tree, path):
 
 
 # ---------------------------------------------------------------------------
+# Tree navigation
+# ---------------------------------------------------------------------------
+
+def _find_section_by_path(root, path):
+    """Resolve a slash-separated section path to an XML element.
+
+    Walks the tree level by level, matching each slug segment against
+    direct child <section> elements. Returns None on miss.
+
+    Args:
+        root: XML element to start searching from (typically document root).
+        path: Slash-separated path (e.g. "parent/child/grandchild").
+
+    Returns:
+        The matching <section> element, or None if any segment is missing.
+    """
+    node = root
+    for slug in path.split("/"):
+        match = None
+        for child in node.findall("section"):
+            if child.get("slug") == slug:
+                match = child
+                break
+        if match is None:
+            return None
+        node = match
+    return node
+
+
+def _find_section(tree, path):
+    """Find a <section> element by path, or raise ValueError.
+
+    Wraps _find_section_by_path with error raising for mandatory lookups.
+
+    Args:
+        tree: lxml.etree._ElementTree
+        path: Slash-separated section path (bare slug for top-level).
+
+    Returns:
+        The matching <section> element.
+
+    Raises:
+        ValueError: If path not found.
+    """
+    root = tree.getroot()
+    el = _find_section_by_path(root, path)
+    if el is None:
+        raise ValueError(f"Section not found: {path}")
+    return el
+
+
+# ---------------------------------------------------------------------------
+# Walk / enumerate
+# ---------------------------------------------------------------------------
+
+def walk_sections(sections, prefix=""):
+    """Yield (path, section_dict) for all sections in depth-first order.
+
+    Paths are slash-separated. Top-level sections have bare slugs as paths.
+    Nested sections have paths like "parent/child/grandchild".
+
+    Args:
+        sections: List of section dicts (each with slug, body, refs, children).
+        prefix: Path prefix for recursion (empty for top-level).
+
+    Yields:
+        Tuples of (path: str, section: dict).
+    """
+    for section in sections:
+        path = f"{prefix}/{section['slug']}" if prefix else section["slug"]
+        yield path, section
+        yield from walk_sections(section.get("children", []), path)
+
+
+def get_section_paths(tree):
+    """Return ordered list of slash-separated section paths at all depths.
+
+    Top-level sections return bare slugs. Nested sections return
+    slash-separated paths (e.g. "parent/child").
+
+    Args:
+        tree: lxml.etree._ElementTree
+
+    Returns:
+        List of path strings in depth-first document order.
+    """
+    root = tree.getroot()
+    paths = []
+    _collect_paths(root, "", paths)
+    return paths
+
+
+def _collect_paths(parent, prefix, paths):
+    """Recursively collect slash-separated paths from XML tree.
+
+    Args:
+        parent: XML element whose child sections to enumerate.
+        prefix: Path prefix for current level.
+        paths: Accumulator list to append paths to.
+    """
+    for el in parent.findall("section"):
+        slug = el.get("slug")
+        path = f"{prefix}/{slug}" if prefix else slug
+        paths.append(path)
+        _collect_paths(el, path, paths)
+
+
+def get_section_slugs(tree):
+    """Return ordered list of top-level section slugs in the document.
+
+    Backward-compatibility alias. For new code, use get_section_paths()
+    which returns paths at all depths.
+
+    Args:
+        tree: lxml.etree._ElementTree
+
+    Returns:
+        List of slug strings for top-level sections in document order.
+    """
+    root = tree.getroot()
+    return [el.get("slug") for el in root.findall("section")]
+
+
+# ---------------------------------------------------------------------------
 # Mutation helpers
 # ---------------------------------------------------------------------------
 
-def update_section_refs(tree, slug, flat_refs):
+def update_section_refs(tree, path, flat_refs):
     """Replace the <refs> element for a section with structured refs.
 
     Args:
         tree: lxml.etree._ElementTree
-        slug: Section slug to update.
+        path: Slash-separated section path (bare slug for top-level).
         flat_refs: List of flat ref dicts (same format as extract-refs.py output).
 
     Returns:
         The tree (mutated in place).
 
     Raises:
-        ValueError: If slug not found.
+        ValueError: If path not found.
     """
-    section_el = _find_section(tree, slug)
+    section_el = _find_section(tree, path)
     old_refs = section_el.find("refs")
     if old_refs is not None:
         section_el.remove(old_refs)
@@ -285,21 +455,21 @@ def update_section_refs(tree, slug, flat_refs):
     return tree
 
 
-def update_section_body(tree, slug, new_body):
+def update_section_body(tree, path, new_body):
     """Replace the CDATA body for a section.
 
     Args:
         tree: lxml.etree._ElementTree
-        slug: Section slug to update.
+        path: Slash-separated section path (bare slug for top-level).
         new_body: New markdown body text.
 
     Returns:
         The tree (mutated in place).
 
     Raises:
-        ValueError: If slug not found.
+        ValueError: If path not found.
     """
-    section_el = _find_section(tree, slug)
+    section_el = _find_section(tree, path)
     body_el = section_el.find("body")
     if body_el is None:
         body_el = etree.SubElement(section_el, "body")
@@ -307,46 +477,49 @@ def update_section_body(tree, slug, new_body):
     return tree
 
 
-def add_section(tree, slug, body):
-    """Append a new section element to the document.
+def add_section(tree, slug, body, parent_path=None):
+    """Append a new section element to the document or a parent section.
 
     Args:
         tree: lxml.etree._ElementTree
         slug: Section slug identifier.
         body: Markdown body text (stored as CDATA).
+        parent_path: Optional slash-separated path to parent section.
+            If None, appends to document root.
 
     Returns:
         The tree (mutated in place).
+
+    Raises:
+        ValueError: If parent_path is given but not found.
+        ValueError: If a sibling with the same slug already exists.
     """
     root = tree.getroot()
-    section_el = etree.SubElement(root, "section", slug=slug)
+    if parent_path:
+        parent_el = _find_section_by_path(root, parent_path)
+        if parent_el is None:
+            raise ValueError(f"Parent section not found: {parent_path}")
+    else:
+        parent_el = root
+
+    # Enforce sibling slug uniqueness
+    for existing in parent_el.findall("section"):
+        if existing.get("slug") == slug:
+            raise ValueError(
+                f"Duplicate sibling slug: {slug} already exists under "
+                f"{parent_path or 'root'}"
+            )
+
+    section_el = etree.SubElement(parent_el, "section", slug=slug)
     etree.SubElement(section_el, "refs")
     body_el = etree.SubElement(section_el, "body")
     body_el.text = etree.CDATA(body)
     return tree
 
 
-def get_section_slugs(tree):
-    """Return ordered list of section slugs in the document.
-
-    Args:
-        tree: lxml.etree._ElementTree
-
-    Returns:
-        List of slug strings in document order.
-    """
-    root = tree.getroot()
-    return [el.get("slug") for el in root.findall("section")]
-
-
-def _find_section(tree, slug):
-    """Find a <section> element by slug, or raise ValueError."""
-    root = tree.getroot()
-    for el in root.findall("section"):
-        if el.get("slug") == slug:
-            return el
-    raise ValueError(f"Section not found: {slug}")
-
+# ---------------------------------------------------------------------------
+# Ref XML builders (internal)
+# ---------------------------------------------------------------------------
 
 def _build_refs_xml(refs_el, flat_refs):
     """Build nested XML ref elements from a flat refs list."""
