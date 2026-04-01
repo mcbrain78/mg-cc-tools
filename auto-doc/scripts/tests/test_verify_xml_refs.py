@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from lib.xml_doc import build_xml_doc, serialize_xml_doc, update_section_refs
+from lib.xml_doc import build_xml_doc, serialize_xml_doc, update_section_refs, walk_sections
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 SCRIPT = os.path.join(SCRIPTS_DIR, "verify-xml-refs.py")
@@ -683,3 +683,154 @@ class TestEdgeCases:
             findings = json.loads(open(findings_file).read())
             assert len(findings) == 2
             assert findings[0] == {"existing": True}
+
+
+def _build_xml_nested(xml_dir, audience, doc_name, sections_tree):
+    """Build XML with nested sections (children key supported).
+
+    sections_tree: list of dicts with keys:
+        slug, body, refs (list of flat ref dicts), children (optional list of same)
+    """
+    def _strip_refs(sections):
+        """Return section dicts without refs (for build_xml_doc)."""
+        result = []
+        for s in sections:
+            d = {"slug": s["slug"], "body": s["body"]}
+            if s.get("children"):
+                d["children"] = _strip_refs(s["children"])
+            result.append(d)
+        return result
+
+    sections = _strip_refs(sections_tree)
+    tree = build_xml_doc(audience, "how-to", f"# {doc_name}", sections)
+
+    # Apply refs via walk_sections to get correct paths
+    def _apply_refs(sec_tree):
+        for s in sec_tree:
+            slug = s["slug"]
+            refs = s.get("refs", [])
+            if refs:
+                # Find path for this section via walk_sections on the parsed tree
+                # Use slug-based lookup for simplicity (update_section_refs accepts paths)
+                pass
+            if s.get("children"):
+                _apply_refs(s["children"])
+
+    # Walk all sections to apply refs by path
+    from lib.xml_doc import parse_xml_doc as _pxd
+    # We need to serialize then re-parse to get the right tree structure...
+    # Instead, let's use walk_sections on sections_tree and update by path
+    for path, sec in walk_sections(sections_tree):
+        refs = sec.get("refs", [])
+        if refs:
+            update_section_refs(tree, path, refs)
+
+    doc_dir = os.path.join(xml_dir, audience) if audience != "all" else xml_dir
+    os.makedirs(doc_dir, exist_ok=True)
+    xml_path = os.path.join(doc_dir, f"{doc_name}.xml")
+    serialize_xml_doc(tree, xml_path)
+    return xml_path
+
+
+class TestNestedSections:
+    """Verify recursive section traversal produces slash-separated paths in findings."""
+
+    def test_nested_findings_have_slash_paths(self):
+        """Findings for nested sections use slash-separated section paths."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_nested(xml_dir, "devops", "OPS", [
+                {
+                    "slug": "monitoring-alerting",
+                    "body": "<!-- section: monitoring-alerting -->\n## Monitoring & Alerting\n\nParent section.",
+                    "refs": [],
+                    "children": [
+                        {
+                            "slug": "etl-run-logging",
+                            "body": "<!-- section: etl-run-logging -->\n### ETL Run Logging\n\nChild section.",
+                            "refs": [{"type": "config", "path": "config/nonexistent.yaml"}],
+                        },
+                    ],
+                },
+            ])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert findings[0]["section"] == "monitoring-alerting/etl-run-logging"
+
+    def test_nested_group_id_uses_path(self):
+        """Finding group_id uses full slash-separated path."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_nested(xml_dir, "devops", "OPS", [
+                {
+                    "slug": "monitoring-alerting",
+                    "body": "<!-- section: monitoring-alerting -->\n## Monitoring & Alerting\n\nParent.",
+                    "refs": [],
+                    "children": [
+                        {
+                            "slug": "etl-run-logging",
+                            "body": "<!-- section: etl-run-logging -->\n### ETL Run Logging\n\nChild.",
+                            "refs": [{"type": "config", "path": "config/nonexistent.yaml"}],
+                        },
+                    ],
+                },
+            ])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert findings[0]["group_id"] == "OPS/monitoring-alerting/etl-run-logging"
+
+    def test_parent_ref_in_child_body_fails_parent(self):
+        """A ref in parent's refs that only exists in child body correctly fails parent."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # Parent has a code ref to a function that doesn't exist
+            _build_xml_nested(xml_dir, "devops", "OPS", [
+                {
+                    "slug": "monitoring-alerting",
+                    "body": "<!-- section: monitoring-alerting -->\n## Monitoring & Alerting\n\nOverview.",
+                    "refs": [{"type": "code", "kind": "function", "name": "nonexistent_parent_func"}],
+                    "children": [
+                        {
+                            "slug": "etl-run-logging",
+                            "body": "<!-- section: etl-run-logging -->\n### ETL Run Logging\n\nChild.",
+                            "refs": [],
+                        },
+                    ],
+                },
+            ])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            # Parent's finding uses parent path (not child path)
+            assert findings[0]["section"] == "monitoring-alerting"
+
+    def test_nested_ref_count_includes_all_depths(self):
+        """main() doc_refs count includes refs from nested sections."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_nested(xml_dir, "devops", "OPS", [
+                {
+                    "slug": "monitoring-alerting",
+                    "body": "<!-- section: monitoring-alerting -->\n## Monitoring\n\nParent.",
+                    "refs": [{"type": "ext", "name": "pg_dump"}],
+                    "children": [
+                        {
+                            "slug": "etl-run-logging",
+                            "body": "<!-- section: etl-run-logging -->\n### ETL Logging\n\nChild.",
+                            "refs": [
+                                {"type": "ext", "name": "systemctl"},
+                                {"type": "ext", "name": "journalctl"},
+                            ],
+                        },
+                    ],
+                },
+            ])
+
+            result = _run_verify(xml_dir, project_root, findings_file)
+            # Should report 3 refs total (1 parent + 2 child), not just 1 top-level
+            assert "3 refs checked" in result.stderr
