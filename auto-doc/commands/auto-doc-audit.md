@@ -1,6 +1,6 @@
 ---
 name: mg:auto-doc-audit
-description: Audit generated docs for reference integrity and prose-vs-refs consistency
+description: "Audit docs for ref integrity + prose consistency. Args: [audience] [waves=3]"
 allowed-tools: Bash, Read, Glob, Grep, Agent
 ---
 
@@ -27,7 +27,11 @@ Read references/schema.md
 
 ### Step 1: Setup
 
-Parse the user's input text for optional audience names. Example: user types `/mg:auto-doc-audit devops`. Extract as a comma-separated string for the `--audience` flag below. If no audience names provided, omit the flag (all audiences).
+Parse the user's input text for optional parameters:
+- **Audience filter**: audience names (e.g., `/mg:auto-doc-audit devops`). Extract as a comma-separated string for the `--audience` flag below. If not provided, omit the flag (all audiences).
+- **Wave count**: `waves=N` (e.g., `/mg:auto-doc-audit waves=5`). Controls how many prose audit waves to run. Default: 3. Wave 1 uses `verify-prose.md`; waves 2+ use `verify-prose-reaudit.md`. More waves = more findings but longer runtime (~3 min per wave).
+
+Store the wave count as `num_waves` (integer, minimum 1, default 3).
 
 1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
    - `docs_dir` (default: `docs/auto-doc`)
@@ -67,9 +71,9 @@ Add `--audience` only if the user specified audience names (e.g., `--audience de
 
 Read `{TMP_DIR}/audit/findings-refs.json` to get the deterministic findings list.
 
-### Step 3: Prose-vs-Refs Consistency (3-wave audit)
+### Step 3: Prose-vs-Refs Consistency (multi-wave audit)
 
-Three waves of fresh agents audit each document. Each wave spawns new agents that have never seen the sections, preventing shortcutting. All waves write to the same findings file per document (append-only).
+`num_waves` waves of fresh agents audit each document. Each wave spawns new agents that have never seen the sections, preventing shortcutting. All waves write to the same findings file per document (append-only).
 
 #### 3.1. Collect and prepare
 
@@ -101,20 +105,20 @@ Scripts dir: {SCRIPTS_DIR}"
 )
 ```
 
-#### 3.3. Clean up state files
+#### 3.3. Waves 2–N — Re-audit passes
 
-After wave 1 completes, delete section-control state files so wave 2 agents start fresh:
+**Repeat the following for each wave from 2 to `num_waves`:**
+
+a. **Clean up state files** so the next wave's agents start fresh:
 ```bash
 rm -f {TMP_DIR}/audit/*.sectionctl.json
 ```
 
-#### 3.4. Wave 2 — Re-audit pass 1
-
-Spawn verify-prose-reaudit agents (one per document, parallel foreground, **model: sonnet**). They read wave 1 findings and look for what was missed. Use the **same findings files** as wave 1:
+b. **Spawn verify-prose-reaudit agents** (one per document, parallel foreground, **model: sonnet**). They read all prior findings and look for what was missed. Use the **same findings files**:
 ```
 Agent(
   model="sonnet",
-  description="Prose audit W2 {audience} {DOCUMENT}",
+  description="Prose audit W{N} {audience} {DOCUMENT}",
   prompt="You are a prose-vs-refs re-auditor.
 
 Read and follow the instructions in: {AGENTS_DIR}/verify-prose-reaudit.md
@@ -126,32 +130,9 @@ Scripts dir: {SCRIPTS_DIR}"
 )
 ```
 
-#### 3.5. Clean up state files
+Where `{N}` is the current wave number (2, 3, 4, ...).
 
-After wave 2 completes, delete section-control state files again:
-```bash
-rm -f {TMP_DIR}/audit/*.sectionctl.json
-```
-
-#### 3.6. Wave 3 — Re-audit pass 2
-
-Spawn verify-prose-reaudit agents (one per document, parallel foreground, **model: sonnet**). They read wave 1+2 findings and do a final sweep. Use the **same findings files**:
-```
-Agent(
-  model="sonnet",
-  description="Prose audit W3 {audience} {DOCUMENT}",
-  prompt="You are a prose-vs-refs re-auditor.
-
-Read and follow the instructions in: {AGENTS_DIR}/verify-prose-reaudit.md
-
-Project root: {project_root}
-Prose verify dir: {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
-Findings file: {TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
-Scripts dir: {SCRIPTS_DIR}"
-)
-```
-
-#### 3.7. Collect findings
+#### 3.4. Collect findings
 
 **Collect prose findings** from each document's findings file (`{TMP_DIR}/audit/findings-prose-*.json`). Read each file and accumulate all findings.
 
