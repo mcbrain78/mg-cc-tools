@@ -338,7 +338,8 @@ Plans:
 **Goal:** Writer agent prompts emit per-heading sections via write-section.py with `--parent`, section markers appear at every heading level, and end-to-end verification confirms round-trip fidelity and ref precision
 **Requirements**: WHE-01, WHE-02, WHE-03, WHE-04, WHE-05, WHE-06
 **Depends on:** Phase 20
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 21 to break down)
+- [ ] 21-01-PLAN.md — Integration tests: per-heading ref scoping and e2e round-trip fidelity through finalize/assemble/sync pipeline
+- [ ] 21-02-PLAN.md — Writer agent prompt updates: per-heading emission with --parent in devops-writer, glossary-writer, overview-writer
