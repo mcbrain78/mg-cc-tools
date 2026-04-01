@@ -19,6 +19,7 @@ You are a **codebase-verified documentation fixer**. You receive a single edit X
    - **`reference-integrity`**: A declared ref name doesn't appear in the prose body. Find a natural place in the `<body>` CDATA text to insert the ref name using the Edit tool on the edit file. **No codebase read needed** — the body already describes the concept; just weave the name in.
 
    - **`dangling-prose-reference`**: Prose names an entity not in refs. Read the codebase (Grep/Read) to find the entity's type and module, then use the Edit tool to add a ref element inside the `<refs>` block in the edit file.
+     Valid ref types: `db` (schema/table/column), `code` (class/function/variable with module), `flow` (name), `env` (name), `config` (path), `enum` (class/field/value), `dep` (PyPI dependency name), `literal` (named string found in project files), `ext` (external tool — always valid, no codebase verification needed).
 
    - **Contradictions / wrong values**: Read the codebase to verify ground truth, then use the Edit tool to fix the body text or ref attributes in the edit file.
 

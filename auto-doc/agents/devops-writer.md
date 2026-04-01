@@ -78,7 +78,10 @@ You are a specialized writer agent for the **devops** audience. You generate doc
            {"type": "flow", "name": "ingest-quarterly-finance-data"},
            {"type": "env", "name": "WORKER_CONCURRENCY"},
            {"type": "config", "path": "config/field-mapping.yaml"},
-           {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"}
+           {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"},
+           {"type": "dep", "name": "tenacity"},
+           {"type": "literal", "name": "fmp-api"},
+           {"type": "ext", "name": "pg_dump"}
          ]}
          ```
          **Ref type table** (required fields per type):
@@ -90,6 +93,9 @@ You are a specialized writer agent for the **devops** audience. You generate doc
          | `env` | `name` |
          | `config` | `path` |
          | `enum` | `class`, `field`, `value` |
+         | `dep` | `name` — PyPI package name from pyproject.toml |
+         | `literal` | `name` — named string literal found anywhere in project files (concurrency tags, worker pools, artifact keys) |
+         | `ext` | `name` — external tool/command with no codebase footprint (pg_dump, VACUUM, systemctl) |
 
          write-section.py derives `symbols` and `file_paths` automatically from typed_refs.
          For sections with no code references, use `{"typed_refs": []}`.

@@ -60,7 +60,7 @@ The initial pass runs **before** the four writer agents. Its purpose is to estab
    Write({TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json)
    ```
    Content: `{"typed_refs": []}`
-   For terms that reference specific code entities (table names, class names, flows, env vars), emit typed_refs with appropriate type entries. Use `{"typed_refs": []}` for purely conceptual terms.
+   For terms that reference specific code entities, emit typed_refs. Valid types: `db` (schema/table/column), `code` (class/function/variable), `flow` (Prefect flow name), `env` (environment variable), `config` (config file path), `enum` (enum value), `dep` (PyPI dependency name), `literal` (named string literal in project files — concurrency tags, worker pools, artifact keys, schema names), `ext` (external tool with no codebase footprint — pg_dump, VACUUM, etc.). Use `{"typed_refs": []}` for purely conceptual terms.
 
    c. Call write-section.py:
    ```bash
@@ -105,7 +105,7 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
    Write({TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json)
    ```
    Content: `{"typed_refs": []}`
-   For terms that reference specific code entities (table names, class names, flows, env vars), emit typed_refs with appropriate type entries. Use `{"typed_refs": []}` for purely conceptual terms.
+   For terms that reference specific code entities, emit typed_refs. Valid types: `db` (schema/table/column), `code` (class/function/variable), `flow` (Prefect flow name), `env` (environment variable), `config` (config file path), `enum` (enum value), `dep` (PyPI dependency name), `literal` (named string literal in project files — concurrency tags, worker pools, artifact keys, schema names), `ext` (external tool with no codebase footprint — pg_dump, VACUUM, etc.). Use `{"typed_refs": []}` for purely conceptual terms.
 
    c. Call write-section.py:
    ```bash
