@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-03-23T23:15:05.736Z"
-last_activity: 2026-03-23 -- Plan 17-02 complete (orchestrator wiring + writer Serena guidance)
+stopped_at: Completed 18-01-PLAN.md
+last_updated: "2026-04-01T17:55:12Z"
+last_activity: 2026-04-01 -- Plan 18-01 complete (recursive nested XML section model)
 progress:
-  total_phases: 17
-  completed_phases: 16
-  total_plans: 50
-  completed_plans: 49
-  percent: 98
+  total_phases: 18
+  completed_phases: 17
+  total_plans: 52
+  completed_plans: 50
+  percent: 96
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Automate the creation and maintenance of audience-specific documentation so it stays current as code evolves
-**Current focus:** Phase 11 - Add Tooling to Install Command
+**Current focus:** Phase 18 - Recursive Section XML Core
 
 ## Current Position
 
-Phase: 17 of 17 (Auto Doc Generate Docs Improvements)
-Plan: 2 of 2 in current phase
+Phase: 18 of 18 (Recursive Section XML Core)
+Plan: 1 of 2 in current phase
 Status: In Progress
-Last activity: 2026-03-23 -- Plan 17-02 complete (orchestrator wiring + writer Serena guidance)
+Last activity: 2026-04-01 -- Plan 18-01 complete (recursive nested XML section model)
 
-Progress: [██████████] 98%
+Progress: [█████████░] 96%
 
 ## Performance Metrics
 
@@ -99,6 +99,7 @@ Progress: [██████████] 98%
 | Phase 16 P02 | 4min | 2 tasks | 5 files |
 | Phase 17 P01 | 2min | 2 tasks | 2 files |
 | Phase 17 P02 | 2min | 2 tasks | 6 files |
+| Phase 18 P01 | 5min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -230,6 +231,10 @@ Recent decisions affecting current work:
 - [Phase 17]: Audience mode validates --audience/--documents at runtime (not argparse required=True) to allow glossary mode to omit them
 - [Phase 17]: View files created eagerly for all audiences in update mode (not filtered to approved)
 - [Phase 17]: Orchestrator uses loop pattern with {audience} placeholder for split-scan calls
+- [Phase 18]: _find_section_by_path returns None (pure navigation primitive); _find_section raises ValueError (mandatory lookup wrapper)
+- [Phase 18]: get_section_slugs retained as backward-compat alias for top-level slugs only -- write-section.py still imports it until Phase 19
+- [Phase 18]: add_section validates sibling slug uniqueness at insertion time via linear scan of parent's children
+- [Phase 18]: children defaults to [] via .get("children", []) in _build_section for backward compat with flat callers
 
 ### Pending Todos
 
@@ -268,6 +273,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T23:11:51.535Z
-Stopped at: Completed 17-02-PLAN.md
+Last session: 2026-04-01T17:55:12Z
+Stopped at: Completed 18-01-PLAN.md
 Resume file: None

@@ -245,15 +245,15 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Recursive Section XML
 
-- [ ] **XML-01**: Building the XML document from a markdown file with multiple heading levels (`##` through `#####`) produces a recursive tree of nested `<section>` elements — one uniform element type at every depth with no depth cutoff
-- [ ] **XML-02**: Each section's body contains only the prose between its own heading and the next child heading — never content that belongs to a child section
-- [ ] **XML-03**: Each section's refs declare exactly the entities mentioned in that section's own body — an entity appearing only in a child's body is declared in the child's refs, not the parent's
-- [ ] **XML-04**: Parsing the XML document returns a nested structure that can be traversed depth-first, yielding each section with its slash-separated path (e.g. `"parent-slug/child-slug"`)
-- [ ] **XML-05**: All section-addressing operations (find, update body, update refs, list paths) accept a slash-separated path to identify a section at any depth, with bare slugs remaining valid for top-level sections
-- [ ] **XML-06**: Slugs must be unique among siblings — two sections under different parents may share a slug, but no two siblings may
-- [ ] **XML-07**: Old flat-section XML files are regenerated from scratch rather than migrated — no code reads both old and new formats
+- [x] **XML-01**: Building the XML document from a markdown file with multiple heading levels (`##` through `#####`) produces a recursive tree of nested `<section>` elements — one uniform element type at every depth with no depth cutoff
+- [x] **XML-02**: Each section's body contains only the prose between its own heading and the next child heading — never content that belongs to a child section
+- [x] **XML-03**: Each section's refs declare exactly the entities mentioned in that section's own body — an entity appearing only in a child's body is declared in the child's refs, not the parent's
+- [x] **XML-04**: Parsing the XML document returns a nested structure that can be traversed depth-first, yielding each section with its slash-separated path (e.g. `"parent-slug/child-slug"`)
+- [x] **XML-05**: All section-addressing operations (find, update body, update refs, list paths) accept a slash-separated path to identify a section at any depth, with bare slugs remaining valid for top-level sections
+- [x] **XML-06**: Slugs must be unique among siblings — two sections under different parents may share a slug, but no two siblings may
+- [x] **XML-07**: Old flat-section XML files are regenerated from scratch rather than migrated — no code reads both old and new formats
 - [ ] **XML-08**: The schema reference document describes the nested section XML model with examples at two or more levels of nesting
-- [ ] **XML-09**: Round-trip fidelity is preserved: parsing a serialized XML tree and re-serializing it yields an equivalent structure including slugs, bodies, refs, and children at all depths
+- [x] **XML-09**: Round-trip fidelity is preserved: parsing a serialized XML tree and re-serializing it yields an equivalent structure including slugs, bodies, refs, and children at all depths
 
 ## v2 Requirements
 
@@ -471,15 +471,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GEN-11 | Phase 17 | Complete |
 | GEN-12 | Phase 17 | Complete |
 | GEN-13 | Phase 17 | Complete |
-| XML-01 | Phase 18 | Pending |
-| XML-02 | Phase 18 | Pending |
-| XML-03 | Phase 18 | Pending |
-| XML-04 | Phase 18 | Pending |
-| XML-05 | Phase 18 | Pending |
-| XML-06 | Phase 18 | Pending |
-| XML-07 | Phase 18 | Pending |
+| XML-01 | Phase 18 | Complete |
+| XML-02 | Phase 18 | Complete |
+| XML-03 | Phase 18 | Complete |
+| XML-04 | Phase 18 | Complete |
+| XML-05 | Phase 18 | Complete |
+| XML-06 | Phase 18 | Complete |
+| XML-07 | Phase 18 | Complete |
 | XML-08 | Phase 18 | Pending |
-| XML-09 | Phase 18 | Pending |
+| XML-09 | Phase 18 | Complete |
 
 **Coverage:**
 - v1 requirements: 194 total
