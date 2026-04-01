@@ -316,10 +316,11 @@ Plans:
 **Goal:** write-section.py supports `--parent` flag for hierarchical child section emission with nested state format and recursive XML finalization, and assemble-markdown.py concatenates sections depth-first
 **Requirements**: WSA-01, WSA-02, WSA-03, WSA-04, WSA-05, WSA-06, WSA-07
 **Depends on:** Phase 18
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 19 to break down)
+- [ ] 19-01-PLAN.md — TDD: write-section.py --parent flag, nested state format, recursive finalize and merge mode
+- [ ] 19-02-PLAN.md — TDD: assemble-markdown.py recursive depth-first concatenation via walk_sections
 
 ### Phase 20: Recursive Pipeline Script Updates
 
