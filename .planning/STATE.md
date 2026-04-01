@@ -260,6 +260,7 @@ Recent decisions affecting current work:
 - Phase 18 added: Recursive Section XML Core
 - Phase 19 added: Nested Write-Section & Assembly
 - Phase 20 added: Recursive Pipeline Script Updates
+- Phase 21 added: Writer Agent Per-Heading Emission
 
 ### Blockers/Concerns
 
