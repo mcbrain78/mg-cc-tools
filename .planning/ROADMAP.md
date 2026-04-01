@@ -301,7 +301,7 @@ Plans:
 
 ### Phase 18: Recursive Section XML Core
 
-**Goal:** [To be planned]
+**Goal:** xml_doc.py supports recursive section nesting with `_find_section_by_path`, `walk_sections`, `get_section_paths`, and path-based navigation functions, and schema.md documents the nested XML model
 **Requirements**: TBD
 **Depends on:** Phase 17
 **Plans:** 0 plans
@@ -311,7 +311,7 @@ Plans:
 
 ### Phase 19: Nested Write-Section & Assembly
 
-**Goal:** [To be planned]
+**Goal:** write-section.py supports `--parent` flag for hierarchical child section emission with nested state format and recursive XML finalization, and assemble-markdown.py concatenates sections depth-first
 **Requirements**: TBD
 **Depends on:** Phase 18
 **Plans:** 0 plans
@@ -321,7 +321,7 @@ Plans:
 
 ### Phase 20: Recursive Pipeline Script Updates
 
-**Goal:** [To be planned]
+**Goal:** verify-xml-refs.py, prepare-prose-verify.py, extract-edit-xml.py, merge-edit-xml.py, sync-edits-to-xml.py, and load-audit-findings.py operate on the recursive section tree using slash-separated section paths
 **Requirements**: TBD
 **Depends on:** Phase 19
 **Plans:** 0 plans
@@ -331,7 +331,7 @@ Plans:
 
 ### Phase 21: Writer Agent Per-Heading Emission
 
-**Goal:** [To be planned]
+**Goal:** Writer agent prompts emit per-heading sections via write-section.py with `--parent`, section markers appear at every heading level, and end-to-end verification confirms round-trip fidelity and ref precision
 **Requirements**: TBD
 **Depends on:** Phase 20
 **Plans:** 0 plans
