@@ -36,7 +36,7 @@ from lib.symbols import (
     extract_python_symbols,
     extract_sqlalchemy_models,
 )
-from lib.xml_doc import parse_xml_doc
+from lib.xml_doc import parse_xml_doc, walk_sections
 
 
 # ---------------------------------------------------------------------------
@@ -480,8 +480,7 @@ def verify_xml_file(xml_path, cache):
     doc_name = _doc_name_from_path(xml_path)
 
     findings = []
-    for section in doc["sections"]:
-        slug = section["slug"]
+    for path, section in walk_sections(doc["sections"]):
         for ref in section["refs"]:
             ref_type = ref.get("type", "")
             checker = CHECKER_BY_TYPE.get(ref_type)
@@ -492,7 +491,7 @@ def verify_xml_file(xml_path, cache):
             if error:
                 findings.append(_make_finding(
                     document=doc_name,
-                    section=slug,
+                    section=path,
                     audience=audience,
                     description=error,
                     suggestion=_suggestion_for_type(ref_type),
@@ -574,7 +573,7 @@ def main():
             continue
 
         doc_findings = verify_xml_file(xml_path, cache)
-        doc_refs = sum(len(s["refs"]) for s in doc["sections"])
+        doc_refs = sum(len(s["refs"]) for _, s in walk_sections(doc["sections"]))
         total_refs += doc_refs
         new_findings.extend(doc_findings)
 

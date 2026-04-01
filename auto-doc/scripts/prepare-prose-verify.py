@@ -13,9 +13,10 @@ Usage:
         --xml-file PATH \
         --output-dir PATH
 
-Creates one JSON file per section: {output_dir}/{slug}.json with keys
-"slug", "body", "refs_as_text". Also writes a manifest.json listing
-all sections.
+Creates one JSON file per section in nested directories mirroring the
+section tree: {output_dir}/{path}.json with keys "path", "slug",
+"body", "refs_as_text". Also writes a manifest.json listing all
+section paths.
 """
 
 import argparse
@@ -24,7 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import save_json
-from lib.xml_doc import parse_xml_doc
+from lib.xml_doc import parse_xml_doc, walk_sections
 
 
 def format_refs_as_text(refs):
@@ -110,19 +111,20 @@ def prepare(xml_path, output_dir):
         output_dir: Directory to write per-section JSON files.
 
     Returns:
-        List of section slug strings that were written.
+        List of section path strings that were written.
     """
     doc = parse_xml_doc(xml_path)
     doc_name = os.path.splitext(os.path.basename(xml_path))[0]
     os.makedirs(output_dir, exist_ok=True)
 
-    slugs = []
-    for section in doc["sections"]:
+    paths = []
+    for path, section in walk_sections(doc["sections"]):
         slug = section["slug"]
         body = section["body"]
         refs_text = format_refs_as_text(section["refs"])
 
         section_data = {
+            "path": path,
             "slug": slug,
             "document": doc_name,
             "audience": doc["audience"],
@@ -130,20 +132,22 @@ def prepare(xml_path, output_dir):
             "refs_as_text": refs_text,
         }
 
-        section_path = os.path.join(output_dir, f"{slug}.json")
-        save_json(section_path, section_data)
-        slugs.append(slug)
+        # Nested directory structure: monitoring-alerting/etl-run-logging.json
+        parent_dir = os.path.join(output_dir, os.path.dirname(path))
+        os.makedirs(parent_dir, exist_ok=True)
+        save_json(os.path.join(parent_dir, f"{slug}.json"), section_data)
+        paths.append(path)
 
     # Write manifest
     manifest = {
         "xml_file": xml_path,
         "audience": doc["audience"],
         "document": doc_name,
-        "sections": slugs,
+        "sections": paths,
     }
     save_json(os.path.join(output_dir, "manifest.json"), manifest)
 
-    return slugs
+    return paths
 
 
 def main():
@@ -165,8 +169,8 @@ def main():
         print(f"Error: XML file not found: {args.xml_file}", file=sys.stderr)
         sys.exit(1)
 
-    slugs = prepare(args.xml_file, args.output_dir)
-    print(f"Prepared {len(slugs)} sections for prose verification", file=sys.stderr)
+    paths = prepare(args.xml_file, args.output_dir)
+    print(f"Prepared {len(paths)} sections for prose verification", file=sys.stderr)
 
 
 if __name__ == "__main__":
