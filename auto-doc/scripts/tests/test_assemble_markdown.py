@@ -9,7 +9,20 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import importlib.machinery
+import importlib.util
+
 from lib.xml_doc import build_xml_doc, serialize_xml_doc
+
+# Import assemble function directly for unit tests (hyphenated filename)
+_loader = importlib.machinery.SourceFileLoader(
+    "assemble_markdown",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assemble-markdown.py"),
+)
+_spec = importlib.util.spec_from_loader("assemble_markdown", _loader)
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+assemble = _mod.assemble
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 ASSEMBLE_SCRIPT = os.path.join(SCRIPTS_DIR, "assemble-markdown.py")
@@ -115,3 +128,138 @@ class TestAssembleMarkdown:
             with open(md_path, "r") as f:
                 content = f.read()
             assert content.strip() == "# Just a Title"
+
+
+class TestNestedAssembly:
+    """assemble-markdown.py handles nested XML sections correctly."""
+
+    def test_nested_2_level(self):
+        """2-level nesting: parent with child produces both bodies depth-first."""
+        sections = [
+            {
+                "slug": "parent",
+                "body": "<!-- section: parent -->\n## Parent\n\nIntro paragraph.",
+                "children": [
+                    {
+                        "slug": "child",
+                        "body": "<!-- section: child -->\n### Child\n\nChild details here.",
+                    },
+                ],
+            },
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = os.path.join(td, "nested.xml")
+            tree = build_xml_doc("devops", "how-to", "# Nested Doc", sections,
+                                 title="Nested Doc")
+            serialize_xml_doc(tree, xml_path)
+
+            content = assemble(xml_path)
+
+            assert "## Parent" in content
+            assert "### Child" in content
+            assert "Intro paragraph." in content
+            assert "Child details here." in content
+            # Parent appears before child (depth-first)
+            assert content.index("## Parent") < content.index("### Child")
+
+    def test_nested_3_level(self):
+        """3-level nesting: parent/child/grandchild all appear depth-first."""
+        sections = [
+            {
+                "slug": "root-section",
+                "body": "<!-- section: root-section -->\n## Root Section\n\nRoot body.",
+                "children": [
+                    {
+                        "slug": "mid-section",
+                        "body": "<!-- section: mid-section -->\n### Mid Section\n\nMid body.",
+                        "children": [
+                            {
+                                "slug": "leaf-section",
+                                "body": "<!-- section: leaf-section -->\n#### Leaf Section\n\nLeaf body.",
+                            },
+                        ],
+                    },
+                ],
+            },
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = os.path.join(td, "deep.xml")
+            tree = build_xml_doc("devops", "how-to", "# Deep Doc", sections,
+                                 title="Deep Doc")
+            serialize_xml_doc(tree, xml_path)
+
+            content = assemble(xml_path)
+
+            assert "Root body." in content
+            assert "Mid body." in content
+            assert "Leaf body." in content
+            # Depth-first order: root -> mid -> leaf
+            root_pos = content.index("Root body.")
+            mid_pos = content.index("Mid body.")
+            leaf_pos = content.index("Leaf body.")
+            assert root_pos < mid_pos < leaf_pos
+
+    def test_nested_mixed(self):
+        """Mixed nesting: parent with children + standalone sibling in order."""
+        sections = [
+            {
+                "slug": "with-children",
+                "body": "<!-- section: with-children -->\n## With Children\n\nParent text.",
+                "children": [
+                    {
+                        "slug": "child-a",
+                        "body": "<!-- section: child-a -->\n### Child A\n\nChild A text.",
+                    },
+                ],
+            },
+            {
+                "slug": "standalone",
+                "body": "<!-- section: standalone -->\n## Standalone\n\nStandalone text.",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = os.path.join(td, "mixed.xml")
+            tree = build_xml_doc("devops", "how-to", "# Mixed Doc", sections,
+                                 title="Mixed Doc")
+            serialize_xml_doc(tree, xml_path)
+
+            content = assemble(xml_path)
+
+            assert "Parent text." in content
+            assert "Child A text." in content
+            assert "Standalone text." in content
+            # Depth-first: parent -> child-a -> standalone
+            parent_pos = content.index("Parent text.")
+            child_pos = content.index("Child A text.")
+            standalone_pos = content.index("Standalone text.")
+            assert parent_pos < child_pos < standalone_pos
+
+    def test_nested_section_count_in_stderr(self):
+        """Section count in stderr includes all nested sections."""
+        sections = [
+            {
+                "slug": "top",
+                "body": "<!-- section: top -->\n## Top\n\nTop body.",
+                "children": [
+                    {
+                        "slug": "nested",
+                        "body": "<!-- section: nested -->\n### Nested\n\nNested body.",
+                    },
+                ],
+            },
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = os.path.join(td, "count.xml")
+            tree = build_xml_doc("devops", "how-to", "# Count Doc", sections,
+                                 title="Count Doc")
+            serialize_xml_doc(tree, xml_path)
+            md_path = os.path.join(td, "out.md")
+
+            result = subprocess.run(
+                [sys.executable, ASSEMBLE_SCRIPT,
+                 "--xml-file", xml_path, "--output", md_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, result.stderr
+            # Should report "2 sections" (1 parent + 1 child), not "1 section"
+            assert "2 sections" in result.stderr
