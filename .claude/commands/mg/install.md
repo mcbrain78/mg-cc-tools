@@ -23,6 +23,10 @@ MG_INSTALL_LIB="./install/scripts/mg-install-lib.py"
 
 **CRITICAL INSTRUCTION:** All `render-*` subcommands wrap their output in `<verbatim>` tags. You MUST reproduce EVERY line between `<verbatim>` and `</verbatim>` exactly as-is in your response text. Do not drop, truncate, reformat, or summarize ANY line — this includes legends, footnotes, and separators. Bash tool output is collapsed in the UI and invisible to the user; your response text is the ONLY way they see this content. All other subcommand output is machine-readable JSON — do NOT echo to the user. Parse it for the next step.
 
+## Execution Rule
+
+`<command>` blocks MUST be executed exactly as written — do not substitute your own logic.
+
 ---
 
 ## Mode Detection
@@ -35,7 +39,12 @@ Parse `$ARGUMENTS` into space-separated tokens:
 
 **Quick mode** skips Steps 1 and 3 (target selection and action menus). All other steps run normally:
 
-1. Validate the target path exists. If it does not have a `.claude/` directory:
+1. Resolve the target path:
+   <command>
+   python3 "$MG_INSTALL_LIB" resolve-target --target "<first_token>"
+   </command>
+   If `"error"` is returned: STOP. Show the error message.
+   Otherwise, use the returned `"target"` value (an absolute path) as `TARGET_PATH` for ALL subsequent commands. If it does not have a `.claude/` directory:
    ```bash
    mkdir -p "$TARGET_PATH/.claude/commands/mg"
    ```
@@ -58,14 +67,16 @@ For **interactive mode**, proceed with Steps 1-8 below.
 
 ## Step 1: Target Selection
 
-**If `$ARGUMENTS` contains a path**, use it directly:
-```bash
-test -d "$TARGET_PATH" || echo "ERROR: Directory does not exist: $TARGET_PATH"
-```
+**If `$ARGUMENTS` contains a target**, resolve it:
+<command>
+python3 "$MG_INSTALL_LIB" resolve-target --target "<argument>"
+</command>
+If `"error"` is returned: STOP. Show the error message.
+Otherwise, use the returned `"target"` value (an absolute path) as `TARGET_PATH` for ALL subsequent commands.
 
-**Otherwise**, scan sibling directories (`../*/`) and present them via AskUserQuestion (header: "Target Project", multiSelect: false) with sibling paths (alphabetical) plus "Enter path manually". If no siblings found, offer only "Enter path manually". If user selects manual entry, ask for the path via a follow-up AskUserQuestion.
+**If no arguments**, scan sibling directories (`../*/`) and present them via AskUserQuestion (header: "Target Project", multiSelect: false) with sibling paths (alphabetical) plus "Enter path manually". If no siblings found, offer only "Enter path manually". If user selects manual entry, ask for the path via a follow-up AskUserQuestion. Then resolve the selected path with `resolve-target` as above.
 
-Validate the target path exists. If it does not have a `.claude/` directory:
+If `TARGET_PATH` does not have a `.claude/` directory:
    ```bash
    mkdir -p "$TARGET_PATH/.claude/commands/mg"
    ```

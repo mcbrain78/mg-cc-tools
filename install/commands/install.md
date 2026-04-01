@@ -23,6 +23,10 @@ MG_INSTALL_LIB="./install/scripts/mg-install-lib.py"
 
 **CRITICAL INSTRUCTION:** All `render-*` subcommands wrap their output in `<verbatim>` tags. You MUST reproduce EVERY line between `<verbatim>` and `</verbatim>` exactly as-is in your response text. Do not drop, truncate, reformat, or summarize ANY line — this includes legends, footnotes, and separators. Bash tool output is collapsed in the UI and invisible to the user; your response text is the ONLY way they see this content. All other subcommand output is machine-readable JSON — do NOT echo to the user. Parse it for the next step.
 
+## Execution Rule
+
+`<command>` blocks MUST be executed exactly as written — do not substitute your own logic.
+
 ---
 
 ## Mode Detection
@@ -35,12 +39,12 @@ Parse `$ARGUMENTS` into space-separated tokens:
 
 **Quick mode** skips Steps 1 and 3 (target selection and action menus). All other steps run normally:
 
-1. Resolve the target path — **you MUST call resolve-target, do NOT resolve paths yourself**:
-   ```bash
+1. Resolve the target path:
+   <command>
    python3 "$MG_INSTALL_LIB" resolve-target --target "<first_token>"
-   ```
+   </command>
    If `"error"` is returned: STOP. Show the error message.
-   Otherwise, use the returned `"target"` value (an absolute path) as `TARGET_PATH` for ALL subsequent commands. **Never use relative paths like `../` as TARGET_PATH.** If it does not have a `.claude/` directory:
+   Otherwise, use the returned `"target"` value (an absolute path) as `TARGET_PATH` for ALL subsequent commands. If it does not have a `.claude/` directory:
    ```bash
    mkdir -p "$TARGET_PATH/.claude/commands/mg"
    ```
@@ -63,10 +67,10 @@ For **interactive mode**, proceed with Steps 1-8 below.
 
 ## Step 1: Target Selection
 
-**If `$ARGUMENTS` contains a target**, resolve it — **you MUST call resolve-target, do NOT resolve paths yourself**:
-```bash
+**If `$ARGUMENTS` contains a target**, resolve it:
+<command>
 python3 "$MG_INSTALL_LIB" resolve-target --target "<argument>"
-```
+</command>
 If `"error"` is returned: STOP. Show the error message.
 Otherwise, use the returned `"target"` value (an absolute path) as `TARGET_PATH` for ALL subsequent commands.
 
