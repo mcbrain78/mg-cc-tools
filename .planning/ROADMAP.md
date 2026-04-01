@@ -327,10 +327,11 @@ Plans:
 **Goal:** verify-xml-refs.py, prepare-prose-verify.py, extract-edit-xml.py, merge-edit-xml.py, sync-edits-to-xml.py, and load-audit-findings.py operate on the recursive section tree using slash-separated section paths
 **Requirements**: RPS-01, RPS-02, RPS-03, RPS-04, RPS-05, RPS-06
 **Depends on:** Phase 19
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 20 to break down)
+- [ ] 20-01-PLAN.md — Recursive iteration: verify-xml-refs.py, prepare-prose-verify.py, load-audit-findings.py with walk_sections and nested output
+- [ ] 20-02-PLAN.md — Path-based navigation: extract-edit-xml.py, merge-edit-xml.py path attribute round-trip, sync-edits-to-xml.py heading-level reconstruction
 
 ### Phase 21: Writer Agent Per-Heading Emission
 
