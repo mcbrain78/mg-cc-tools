@@ -37,22 +37,40 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
 
    b. **Review prior findings for this section.** From the findings you read in step 1, identify which issues were already flagged for this section's `slug`. These are off-limits — do not re-report them.
 
-   c. **Audit this section** — run checks 4a–4d (below) against the section data, looking specifically for issues the prior pass missed. Focus on:
-      - Refs that were not flagged but should have been (the prior pass may have been lenient)
-      - Prose claims that were overlooked
-      - Subtle contradictions or specificity mismatches
+   c. **EXTRACT — build the scratchpad.** You MUST extract EVERY code entity from the section body before cross-checking. Do not skip this step. Do not combine extraction and cross-checking into a single pass. The extraction is your working memory — if an entity is not in the file, it will not be checked. Your extraction is independent of prior waves — extract everything, even entities that were already flagged.
 
-   d. **Record new findings** for this section (step 5 below). Only record findings that are genuinely new — not already in the prior findings.
+      Scan the section body and write every code entity to a scratchpad file:
+      ```bash
+      cat > {prose_verify_dir}/{slug}.entities.txt << 'SCRATCHPAD'
+      # Prose code entities — extracted from body
+      entity_name | source_context
+      SCRATCHPAD
+      ```
 
-   e. **Get next section.** Call next-section again (same command as step 2).
-      If `done` is `true`, proceed to step 6 (report).
-      Otherwise, go to step 3a.
+      **Extraction rules — extract ALL of the following:**
+      - Every backtick-quoted identifier in prose
+      - Every table name, column name, and schema-qualified name in SQL blocks
+      - Every filename/path in code blocks (`.py`, `.yaml`, `.ini`, `.service`, etc.)
+      - Every env var (`UPPER_SNAKE_CASE` in backticks or code blocks)
+      - Every class name, function name, or flow name referenced in prose
+      - Include the source context (which SQL block, which prose sentence) for each entity
+      - One entity per line, format: `entity_name | source_context`
 
-4. **Checks to run per section.** Compare prose against refs:
+      Example scratchpad content:
+      ```
+      flow_name | SQL: "SELECT flow_name, started_at FROM road_runner.etl_runs"
+      started_at | SQL: "SELECT flow_name, started_at FROM road_runner.etl_runs"
+      .env.production | prose: "loaded from `.env.production`"
+      alembic_road_runner.ini | code block: "alembic -c alembic_road_runner.ini upgrade head"
+      FMPRateLimitError | prose: "raises `FMPRateLimitError`"
+      PREFECT_API_URL | prose: "check that `PREFECT_API_URL` is set"
+      ```
 
-   a. **Prose claims not in refs:** Does the prose mention specific code entities (function names, class names, table names, column names, env vars, config paths) that are NOT listed in the refs? If so, the prose may be referencing something the ref extraction missed, or referencing something that doesn't exist.
+   d. **CROSS-CHECK — process the scratchpad entity by entity.** Read back your scratchpad file at `{prose_verify_dir}/{slug}.entities.txt`. Process each entity one at a time against `refs_as_text`. For each entity that has no matching ref AND was not already flagged by a prior wave, file a finding immediately before moving to the next entity.
 
-   b. **Refs not mentioned in prose (exact-name rule):** For each declared ref, extract its identifier — the function name, class name, table name, env var name, flow name, or config filename. Search the section body (prose, inline code, and code blocks) for that exact identifier string. **If the identifier does not appear anywhere in the body, flag it.** If it does appear — even once, in any context — the ref is covered; do not flag it.
+      **Check A (dangling-prose-reference):** For each entity in the scratchpad, search `refs_as_text` for a matching ref. If no ref covers it and this was not already flagged → file a `dangling-prose-reference` finding immediately (step 4 below).
+
+      **Check B (reference-integrity / exact-name rule):** For each declared ref in `refs_as_text`, extract its identifier — the function name, class name, table name, env var name, flow name, or config filename. Search the section body for that exact identifier string. **If the identifier does not appear anywhere in the body, flag it** (unless already flagged by a prior wave). If it does appear — even once, in any context — the ref is covered; do not flag it. File each finding immediately.
 
       This is a mechanical check, not a judgment call. Do not consider whether the "concept" is covered — only whether the literal name string is present. Examples:
       - Ref declares function `start_run` → search body for `start_run`. If the string `start_run` appears anywhere (prose, code block, backtick-quoted), covered. If not, flag it.
@@ -60,11 +78,17 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
       - Ref declares table `etl_runs` → search for `etl_runs`. If body has `road_runner.etl_runs`, covered (the name appears as a substring). If body never contains `etl_runs`, flag it.
       - Ref declares config `config/field-mapping.yaml` → the identifier is the **filename** (`field-mapping.yaml`), not the full path. If body contains `field-mapping.yaml`, covered — even without the `config/` prefix. Same for systemd unit files: `road-runner-compute.service` covers a ref declared as `systemd/road-runner-compute.service`.
 
-   c. **Contradictions:** Does the prose make claims that contradict the refs? For example, prose says "the `users` table" but refs declare `etl_runs` table. Or prose says function takes `timeout` parameter but refs declare `recompute_stale`.
+   e. **JUDGMENT CHECKS — holistic review.** These checks are judgment calls that don't use the scratchpad. Apply them while you have the section in context, looking specifically for issues the prior pass missed — subtle contradictions or specificity mismatches:
 
-   d. **Specificity mismatches:** Does prose mention a table without specifying which schema, when the refs declare a specific schema? Or does prose claim a function is in one module when refs say another?
+      **Check C (contradictions):** Does the prose make claims that contradict the refs? For example, prose says "the `users` table" but refs declare `etl_runs` table. Or prose says function takes `timeout` parameter but refs declare `recompute_stale`. File each finding immediately (if not already flagged).
 
-5. **Record findings.** For each NEW issue found (not already in prior findings), pick the most appropriate check type and record it via:
+      **Check D (specificity mismatches):** Does prose mention a table without specifying which schema, when the refs declare a specific schema? Or does prose claim a function is in one module when refs say another? File each finding immediately (if not already flagged).
+
+   f. **Get next section.** Call next-section again (same command as step 2).
+      If `done` is `true`, proceed to step 5 (report).
+      Otherwise, go to step 3a.
+
+4. **Record findings.** For each NEW issue found (not already in prior findings), pick the most appropriate check type and record it via:
    ```bash
    python3 {scripts_dir}/add-verify-finding.py \
        --findings-file {findings_file} \
@@ -83,7 +107,7 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
    - `code-example-fact-check` — code example references entities not in declared refs
    - `internal-contradiction` — prose contradicts itself or contradicts declared refs on specifics
 
-6. **Report.** In your final response, report the number of NEW findings added per section in this re-audit pass.
+5. **Report.** In your final response, report the number of NEW findings added per section in this re-audit pass.
 
 ## What NOT to Check
 
