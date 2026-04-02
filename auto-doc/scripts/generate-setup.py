@@ -195,6 +195,7 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         "manifest-*.json", "manifest-entry-*.json",
         "write-state-*.json", "section-*.md",
         "refs-*.json", "header-*.md",
+        "heading-state-*.json",
     ]:
         for f in glob_mod.glob(os.path.join(tmp_dir, pattern)):
             os.remove(f)

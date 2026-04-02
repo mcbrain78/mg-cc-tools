@@ -49,8 +49,18 @@ Parse the JSON output to get all runtime values:
 - **Audience filter:** `audience_filter_active` (boolean)
 - **Scan views:** `scan_views` (dict of audience/glossary → view file path)
 - **Notes:** `notes_by_audience` (dict of audience → list of notes)
+- **Refined templates:** `refined_templates` (dict of audience → document → `{"path": str, "stale": bool}` or `null`)
+- **Stale templates:** `stale_templates` (list of `"audience/document"` strings)
 
 If non-zero exit, print the error and abort.
+
+**Stale template warning:** If `stale_templates` is non-empty, print a warning before continuing:
+```
+Warning: Refined templates may be stale (scan is newer than template):
+  - devops/TROUBLESHOOTING
+Run /mg:auto-doc-prepare-templates to refresh.
+```
+This is a warning only -- do NOT abort. Continue with stale templates.
 
 Print:
 ```
@@ -125,7 +135,42 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    - `agents` -> `agents/agent-writer.md`
    - `devops` -> `agents/devops-writer.md`
 
-2. **Spawn one Agent call per audience in `audiences`** (from setup output) in a SINGLE message (parallel foreground — do NOT set `run_in_background`). Each subagent reads its own instructions. For each audience:
+2. **Spawn one Agent call per audience** in `audiences` (from setup output) in a SINGLE message (parallel foreground -- do NOT set `run_in_background`). Each subagent reads its own instructions.
+
+   **For devops audience with orient-write routing:** Check `refined_templates["devops"]` for each document. If a document has a non-null refined template entry, spawn a dedicated orient-write Agent for that document. If a document has a null entry, use the standard prompt for that document.
+
+   When using orient-write, each devops document gets its OWN Agent call (not a single agent for all devops documents) because each document needs its own state file.
+
+   For each devops document where `refined_templates["devops"][DOCUMENT]` is **not null**:
+
+   ```
+   Agent(
+     description="Generate devops {DOCUMENT} documentation ({mode} mode, orient-write)",
+     prompt="You are a devops writer agent.
+
+   Read and follow the instructions in: {AGENTS_DIR}/devops-writer.md
+
+   Project root: {project_root}
+   Docs dir: {docs_dir_abs}
+   Scan data path: {scan_views["devops"]}
+   Project model path: {project_model_path}
+   Style guide path: references/style-guide.md
+   Glossary path: {docs_dir_abs}/GLOSSARY.md
+   Documents: {DOCUMENT}
+   Mode: {mode}
+   Refined template path: {refined_templates["devops"][DOCUMENT]["path"]}
+   State file path: {tmp_dir}/heading-state-devops-{DOCUMENT}.json
+   Scripts dir: {SCRIPTS_DIR}
+   Tmp dir: {tmp_dir}
+
+   Standing notes (incorporate into relevant sections):
+   {notes for this document, or 'None'}"
+   )
+   ```
+
+   For each devops document where `refined_templates["devops"][DOCUMENT]` **is null**, use the standard prompt (same as non-devops audiences, with `Templates dir`).
+
+   **For all other audiences (end-users, developers, agents):** Always use the standard prompt (current behavior, unchanged):
 
    ```
    Agent(
@@ -149,7 +194,14 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    )
    ```
 
-   For standing notes: format each as `- {note_id} ({document}/{section}): "{note_text}"`. If none, set to `None`.
+   **Key differences in orient-write prompt vs standard prompt:**
+   - `Refined template path` replaces `Templates dir` -- writer sees ONLY the refined template
+   - `State file path` is new -- scoped per document (`heading-state-devops-{DOCUMENT}.json`)
+   - `Scripts dir` is new -- writer needs it for next-heading.py calls
+   - `Tmp dir` is new -- writer needs it for temp files
+   - `Documents` is singular (one document per agent call when using orient-write)
+
+   For standing notes: format each as `- {note_id} ({document}/{section}): "{note_text}"`. If none, set to `None`. For orient-write agents, filter notes to only those matching the specific document.
 
    The `{audience}` in the templates dir path uses the CONFIG KEY (e.g., `developers/`, `end-users/`, `agents/`, `devops/`).
 
