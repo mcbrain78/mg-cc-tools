@@ -293,6 +293,16 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **HIT-06**: Output ordering follows depth-first traversal: orient then writes for each `##` section in template order, ending with done; source files appear only in orient responses, never in write responses
 - [x] **HIT-07**: The heading_path field uses slash-separated slug convention where the last segment maps to write-section.py's `--section` argument and all preceding segments map to `--parent`
 
+### Template Refiner
+
+- [ ] **TRF-01**: Running `/mg:auto-doc-prepare-templates` reads scan data and produces per-audience refined templates at `.mg/docs/templates/{audience}/{DOCUMENT}.template.md`, overwriting any previous versions
+- [ ] **TRF-02**: Each refiner agent performs shallow source exploration (symbol overviews for code, full reads for config files) and decides what `###`/`####` headings each `##` section needs based on scan data and source findings
+- [ ] **TRF-03**: PURPOSE comments in refined template headings contain project-specific structural facts (counts, names, relationships) grounded in scan data and source exploration
+- [ ] **TRF-04**: EXAMPLE blocks in refined template headings are generic format demonstrations with placeholder data, containing no project-specific values
+- [ ] **TRF-05**: `##` sections preserve the same slugs and structure from the generic template — the refiner does not rename or reorganize top-level sections
+- [ ] **TRF-06**: The refined template fully replaces the generic template for the writer — the writer sees only the refined version
+- [ ] **TRF-07**: Running `prepare-templates` twice on the same scan data produces structurally equivalent refined templates (same heading tree, same PURPOSE topics)
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -544,12 +554,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HIT-05 | Phase 22 | Complete |
 | HIT-06 | Phase 22 | Complete |
 | HIT-07 | Phase 22 | Complete |
+| TRF-01 | Phase 23 | Pending |
+| TRF-02 | Phase 23 | Pending |
+| TRF-03 | Phase 23 | Pending |
+| TRF-04 | Phase 23 | Pending |
+| TRF-05 | Phase 23 | Pending |
+| TRF-06 | Phase 23 | Pending |
+| TRF-07 | Phase 23 | Pending |
 
 **Coverage:**
-- v1 requirements: 220 total
-- Mapped to phases: 220
+- v1 requirements: 227 total
+- Mapped to phases: 227
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-04-02 after Phase 22 requirement generation*
+*Last updated: 2026-04-02 after Phase 23 requirement generation*

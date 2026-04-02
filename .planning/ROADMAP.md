@@ -357,7 +357,7 @@ Plans:
 ### Phase 23: Template Refiner Pipeline
 
 **Goal:** prepare-templates command and template-refiner agent produce project-specific refined templates with ###/#### headings, PURPOSE comments, and structural EXAMPLE blocks from scan data and shallow source exploration
-**Requirements**: TBD
+**Requirements**: TRF-01, TRF-02, TRF-03, TRF-04, TRF-05, TRF-06, TRF-07
 **Depends on:** Phase 22
 **Plans:** 0 plans
 
