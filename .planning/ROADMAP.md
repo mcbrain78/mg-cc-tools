@@ -343,3 +343,33 @@ Plans:
 Plans:
 - [ ] 21-01-PLAN.md — Integration tests: per-heading ref scoping and e2e round-trip fidelity through finalize/assemble/sync pipeline
 - [ ] 21-02-PLAN.md — Writer agent prompt updates: per-heading emission with --parent in devops-writer, glossary-writer, overview-writer
+
+### Phase 22: Heading Iterator Script
+
+**Goal:** next-heading.py parses refined templates, manages heading queue state, and returns orient/write/done responses with correct depth-first ordering and source file grouping
+**Requirements**: TBD
+**Depends on:** Phase 21
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 22 to break down)
+
+### Phase 23: Template Refiner Pipeline
+
+**Goal:** prepare-templates command and template-refiner agent produce project-specific refined templates with ###/#### headings, PURPOSE comments, and structural EXAMPLE blocks from scan data and shallow source exploration
+**Requirements**: TBD
+**Depends on:** Phase 22
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 23 to break down)
+
+### Phase 24: Writer Orient-Write Integration
+
+**Goal:** devops-writer uses next-heading.py orient-then-write loop, generate command detects and routes refined templates, and end-to-end pipeline produces complete documents from refined templates
+**Requirements**: TBD
+**Depends on:** Phase 23
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 24 to break down)

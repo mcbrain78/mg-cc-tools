@@ -288,6 +288,9 @@ Recent decisions affecting current work:
 - Phase 19 added: Nested Write-Section & Assembly
 - Phase 20 added: Recursive Pipeline Script Updates
 - Phase 21 added: Writer Agent Per-Heading Emission
+- Phase 22 added: Heading Iterator Script
+- Phase 23 added: Template Refiner Pipeline
+- Phase 24 added: Writer Orient-Write Integration
 
 ### Blockers/Concerns
 
