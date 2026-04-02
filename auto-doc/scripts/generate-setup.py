@@ -88,6 +88,22 @@ def read_project_root(scan_path):
     sys.exit(1)
 
 
+def _read_scan_date(scan_path):
+    """Extract scan_date from the scan file.
+
+    Returns the scan_date string, or empty string if not found.
+    """
+    if not os.path.isfile(scan_path):
+        return ""
+    try:
+        with open(scan_path, "r", encoding="utf-8") as f:
+            head = f.read(2048)
+        obj = json.loads(head)
+        return obj.get("scan_date", "")
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+
 def detect_mode(docs_dir_abs):
     """Detect initial vs update mode from existing docs."""
     md_files = glob_mod.glob(os.path.join(docs_dir_abs, "**", "*.md"), recursive=True)
@@ -260,6 +276,81 @@ def _load_notes(paths, scripts_dir, audiences):
     return grouped
 
 
+def _has_headings(template_path):
+    """Check if a refined template has at least one ## heading.
+
+    Reads the first 2000 bytes and looks for a line starting with '## '.
+    Returns False if no heading found (empty/malformed template).
+    """
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            head = f.read(2000)
+    except OSError:
+        return False
+
+    for line in head.splitlines():
+        if line.startswith("## "):
+            return True
+    return False
+
+
+def _check_stale(template_path, current_scan_date):
+    """Check if a refined template is stale relative to scan date.
+
+    Reads first 500 bytes for the REFINED metadata comment.
+    Compares scan date in REFINED comment against current_scan_date.
+    Both dates are normalized to YYYY-MM-DD (first 10 chars) before comparison.
+
+    Returns True if stale, unreadable, or missing REFINED comment.
+    """
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            head = f.read(500)
+    except OSError:
+        return True  # Can't read = treat as stale
+
+    m = re.search(r"<!--\s*REFINED:.*?scan:\s*(\S+)", head)
+    if not m:
+        return True  # No REFINED comment = treat as stale
+
+    refined_scan_date = m.group(1).rstrip(",").rstrip("-->").strip()[:10]
+    current_date = current_scan_date[:10] if current_scan_date else ""
+
+    return current_date > refined_scan_date
+
+
+def detect_refined_templates(project_root, audiences, scan_date):
+    """Detect refined templates for each audience/document pair.
+
+    Args:
+        project_root: Absolute path to project root.
+        audiences: Dict from get_enabled_audiences().
+        scan_date: scan_date string from docs-scan.json.
+
+    Returns:
+        Tuple of (refined_templates dict, stale_templates list).
+        refined_templates: {audience: {document: {"path": str, "stale": bool} | None}}
+        stale_templates: list of "audience/document" strings for stale entries.
+    """
+    templates_base = os.path.join(project_root, ".mg", "docs", "templates")
+    refined = {}
+    stale = []
+
+    for aud_name, aud_conf in audiences.items():
+        refined[aud_name] = {}
+        for doc in aud_conf.get("documents", []):
+            path = os.path.join(templates_base, aud_name, f"{doc}.template.md")
+            if os.path.isfile(path) and _has_headings(path):
+                is_stale = _check_stale(path, scan_date)
+                refined[aud_name][doc] = {"path": path, "stale": is_stale}
+                if is_stale:
+                    stale.append(f"{aud_name}/{doc}")
+            else:
+                refined[aud_name][doc] = None
+
+    return refined, stale
+
+
 def _run_script(cmd, label, critical=True):
     """Run a subprocess, handling errors."""
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -327,6 +418,14 @@ def main():
         print("Error: no matching audiences found", file=sys.stderr)
         sys.exit(1)
 
+    # Read scan_date from scan file for stale template detection
+    scan_date = _read_scan_date(scan_file)
+
+    # Detect refined templates
+    refined_templates, stale_templates = detect_refined_templates(
+        project_root, audiences, scan_date,
+    )
+
     # Prepare workspace
     scan_views, notes_by_audience = prepare_workspace(
         paths, mode, audiences, scripts_dir,
@@ -340,6 +439,8 @@ def main():
         "audience_filter_active": audience_filter is not None,
         "scan_views": scan_views,
         "notes_by_audience": notes_by_audience,
+        "refined_templates": refined_templates,
+        "stale_templates": stale_templates,
     }
     print(json.dumps(result, indent=2))
 
