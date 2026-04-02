@@ -359,7 +359,7 @@ Plans:
 **Goal:** prepare-templates command and template-refiner agent produce project-specific refined templates with ###/#### headings, PURPOSE comments, and structural EXAMPLE blocks from scan data and shallow source exploration
 **Requirements**: TRF-01, TRF-02, TRF-03, TRF-04, TRF-05, TRF-06, TRF-07
 **Depends on:** Phase 22
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 23-01-PLAN.md — Command orchestrator: prepare-templates.md with config loading, audience discovery, agent spawning, and install.sh registration
