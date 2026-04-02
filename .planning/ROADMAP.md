@@ -368,7 +368,7 @@ Plans:
 ### Phase 24: Writer Orient-Write Integration
 
 **Goal:** devops-writer uses next-heading.py orient-then-write loop, generate command detects and routes refined templates, and end-to-end pipeline produces complete documents from refined templates
-**Requirements**: TBD
+**Requirements**: OWI-01, OWI-02, OWI-03, OWI-04, OWI-05, OWI-06, OWI-07
 **Depends on:** Phase 23
 **Plans:** 0 plans
 
