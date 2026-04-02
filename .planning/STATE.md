@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 22-01-PLAN.md
-last_updated: "2026-04-02T18:32:53.782Z"
-last_activity: 2026-04-02 -- Plan 22-01 complete (next-heading.py heading iterator)
+stopped_at: Completed 23-01-PLAN.md
+last_updated: "2026-04-02T19:05:35.401Z"
+last_activity: 2026-04-02 -- Plan 23-01 complete (prepare-templates command and install.sh)
 progress:
   total_phases: 24
   completed_phases: 21
-  total_plans: 59
-  completed_plans: 58
-  percent: 98
+  total_plans: 61
+  completed_plans: 59
+  percent: 97
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Automate the creation and maintenance of audience-specific documentation so it stays current as code evolves
-**Current focus:** Phase 22 - Heading Iterator Script
+**Current focus:** Phase 23 - Template Refiner Pipeline
 
 ## Current Position
 
-Phase: 22 of 24 (Heading Iterator Script)
-Plan: 1 of 1 in current phase
+Phase: 23 of 24 (Template Refiner Pipeline)
+Plan: 1 of 2 in current phase
 Status: In Progress
-Last activity: 2026-04-02 -- Plan 22-01 complete (next-heading.py heading iterator)
+Last activity: 2026-04-02 -- Plan 23-01 complete (prepare-templates command and install.sh)
 
-Progress: [██████████] 98%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -108,6 +108,7 @@ Progress: [██████████] 98%
 | Phase 21 P02 | 3min | 2 tasks | 3 files |
 | Phase 21 P01 | 3min | 1 tasks | 1 files |
 | Phase 22 P01 | 4min | 2 tasks | 2 files |
+| Phase 23 P01 | 2min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -261,6 +262,9 @@ Recent decisions affecting current work:
 - [Phase 22]: Copied slugify_heading() verbatim from write-section.py for heading_path compatibility rather than extracting to shared lib
 - [Phase 22]: Flat emission queue built at init (Pitfall 5): no complex two-index tracking, sequential pop per call
 - [Phase 22]: Strip HTML comments before heading detection to prevent EXAMPLE block headings from being treated as real template headings (Pitfall 3)
+- [Phase 23]: Sequential agent spawning (one per document) for simplicity and deterministic error handling
+- [Phase 23]: Shared documents (OVERVIEW, GLOSSARY) excluded from refinement -- consumed by writers that do not use orient-write loop
+- [Phase 23]: Config-driven audience/document discovery from .docs.config.json (same source of truth as generate command)
 
 ### Pending Todos
 
@@ -302,6 +306,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T18:27:08.716Z
-Stopped at: Completed 22-01-PLAN.md
+Last session: 2026-04-02T19:05:35.397Z
+Stopped at: Completed 23-01-PLAN.md
 Resume file: None
