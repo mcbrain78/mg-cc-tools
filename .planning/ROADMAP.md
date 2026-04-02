@@ -359,10 +359,11 @@ Plans:
 **Goal:** prepare-templates command and template-refiner agent produce project-specific refined templates with ###/#### headings, PURPOSE comments, and structural EXAMPLE blocks from scan data and shallow source exploration
 **Requirements**: TRF-01, TRF-02, TRF-03, TRF-04, TRF-05, TRF-06, TRF-07
 **Depends on:** Phase 22
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 23 to break down)
+- [ ] 23-01-PLAN.md — Command orchestrator: prepare-templates.md with config loading, audience discovery, agent spawning, and install.sh registration
+- [ ] 23-02-PLAN.md — Agent definition: template-refiner.md with shallow source exploration, PURPOSE/EXAMPLE generation, OPTIONAL resolution
 
 ### Phase 24: Writer Orient-Write Integration
 
