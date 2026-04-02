@@ -155,29 +155,31 @@ Exit.
 
 ## 6. Create Phases
 
-For each approved phase, in order:
+For each approved phase **sequentially** (one at a time, wait for each to complete before starting the next — ordering matters for phase numbering):
 
 ```
 Creating phase {relative_number}/{total}: {phase name}...
 ```
 
-Invoke:
+Spawn an Agent subagent with this prompt (filling in `{phase_name}` and `{goal}`):
+
 ```
-Skill("gsd:add-phase", "{phase name}")
+Create a GSD phase and set its goal. Follow these steps exactly:
+
+1. Invoke Skill("gsd:add-phase", "{phase_name}") and follow the workflow it loads to completion.
+2. After the phase is created, read .planning/ROADMAP.md and find the newly created phase entry.
+   It will contain: **Goal:** [To be planned]
+3. Edit ROADMAP.md to replace `[To be planned]` with: {goal}
+4. Report back the phase number that was assigned.
 ```
 
-**Do NOT call `gsd-tools.cjs phase add` directly via Bash.** The Skill handles STATE.md updates that gsd-tools.cjs does not. Calling gsd-tools.cjs directly requires manually replicating Skill behavior and will miss future Skill additions.
+**Why a subagent?** The `gsd:add-phase` Skill loads a workflow with its own completion output. Running it directly in the orchestrator causes the workflow's "done" template to interrupt the creation loop. The subagent contains the workflow naturally — the orchestrator only receives a result summary.
 
-After the Skill completes, read `.planning/ROADMAP.md` to find the newly created phase entry. The entry will have:
-```
-**Goal:** [To be planned]
-```
+**Do NOT call `gsd-tools.cjs phase add` directly via Bash.** The Skill handles STATE.md updates that gsd-tools.cjs does not.
 
-Edit ROADMAP.md to replace `[To be planned]` with the actual goal from the proposal.
+**Important:** Each agent must complete before the next starts — `gsd:add-phase` reads ROADMAP.md to determine the next phase number, so sequential execution is required. Do NOT launch agents in parallel.
 
-**Important:** Each `gsd:add-phase` call reads the current ROADMAP.md to determine the next phase number, so sequential calls work correctly. Do NOT try to predict phase numbers — read them from the Skill output or from the ROADMAP.md after each call.
-
-After all phases are created, track the first and last phase numbers that were assigned.
+After all phases are created, track the first and last phase numbers from the agent results.
 
 ## 7. Commit Goal Updates
 
@@ -220,7 +222,7 @@ Split the concept into per-phase files and create CONTEXT.md for each phase:
 - This command creates phases with `Requirements: TBD`. Requirement generation happens later in `mg:plan-phase` (Step 5c) which derives REQ-IDs from CONTEXT.md decisions. This is the correct separation — phases exist before requirements are formalized.
 - Phase numbers are assigned by `gsd:add-phase`, not by this command. The proposal table uses relative numbers (1, 2, 3) for readability; actual GSD numbers depend on existing phases in the roadmap.
 - Goals are edited directly in ROADMAP.md after `gsd:add-phase` creates the entry. There is no gsd-tools command to set a goal — direct file editing is required.
-- The analysis runs in the orchestrator (no subagent) so the concept content stays in context for the adjustment loop. Concept docs are typically 200-400 lines — well within budget.
+- The analysis and adjustment loop runs in the orchestrator so the concept content stays in context. Phase creation uses subagents to contain the `gsd:add-phase` workflow output — preventing the workflow's completion template from interrupting the creation loop.
 - This command does NOT modify REQUIREMENTS.md. It does NOT create CONTEXT.md files. It does NOT run spec-prepare-context or spec-create-context. It only creates phases and sets goals.
 - The `gsd:add-phase` Skill updates both ROADMAP.md (via gsd-tools.cjs) and STATE.md (Roadmap Evolution). Calling gsd-tools.cjs directly skips the STATE.md update. Always use the Skill.
 - Dependencies between proposed phases are noted in the proposal for the user's benefit, but `gsd:add-phase` sets a default `**Depends on:** Phase {N-1}`. If the dependency structure differs from simple sequential, the user should manually adjust ROADMAP.md after creation.
