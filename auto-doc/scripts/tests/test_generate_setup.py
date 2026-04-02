@@ -4,8 +4,11 @@ Uses subprocess to invoke the script as a CLI tool, matching the
 project's test pattern (no direct imports of kebab-case modules).
 """
 
+import importlib.machinery
+import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -148,6 +151,7 @@ class TestOutput:
                 "notes_inbox", "manifests_dir", "scan_logs_dir",
                 "mode", "audiences", "audience_filter_active",
                 "scan_views", "notes_by_audience",
+                "refined_templates", "stale_templates",
             }
             assert expected == set(result.keys())
 
@@ -416,3 +420,250 @@ class TestErrors:
             ], check=False)
             assert rc != 0
             assert "no config found" in stderr.lower()
+
+
+# =============================================================================
+# Import generate-setup module for direct function testing
+# =============================================================================
+
+def _load_module():
+    """Load generate-setup.py as a module via importlib (kebab-case filename)."""
+    loader = importlib.machinery.SourceFileLoader("generate_setup", SCRIPT_PATH)
+    spec = importlib.util.spec_from_loader("generate_setup", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+_mod = _load_module()
+
+
+def _write_refined_template(path, scan_date="2026-04-01", with_headings=True):
+    """Write a mock refined template file."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    content = f"<!-- REFINED: 2026-04-01, scan: {scan_date} -->\n"
+    if with_headings:
+        content += "\n## Infrastructure Overview\n\nContent here.\n"
+        content += "\n### Deployment Topology\n\nMore content.\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+# =============================================================================
+# Refined template detection (direct function tests)
+# =============================================================================
+
+class TestCheckStale:
+    """_check_stale helper function tests."""
+
+    def test_stale_when_scan_newer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-03-30")
+            # Scan date 2026-04-02 is newer than template scan date 2026-03-30
+            assert _mod._check_stale(path, "2026-04-02") is True
+
+    def test_not_stale_when_dates_equal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-04-01")
+            assert _mod._check_stale(path, "2026-04-01") is False
+
+    def test_not_stale_when_template_newer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-04-05")
+            assert _mod._check_stale(path, "2026-04-01") is False
+
+    def test_stale_when_no_refined_comment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "OPERATIONS.template.md")
+            with open(path, "w") as f:
+                f.write("## Some Heading\n\nNo REFINED comment.\n")
+            assert _mod._check_stale(path, "2026-04-01") is True
+
+    def test_stale_when_file_unreadable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "OPERATIONS.template.md")
+            with open(path, "w") as f:
+                f.write("content")
+            os.chmod(path, 0o000)
+            try:
+                assert _mod._check_stale(path, "2026-04-01") is True
+            finally:
+                os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+
+    def test_handles_iso8601_scan_date(self):
+        """scan_date from docs-scan.json may be ISO 8601 with time component."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-04-01")
+            # ISO 8601 with time, same date -> not stale
+            assert _mod._check_stale(path, "2026-04-01T14:30:00Z") is False
+
+    def test_handles_iso8601_newer_scan_date(self):
+        """ISO 8601 scan date that is newer than template scan date."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-03-31")
+            assert _mod._check_stale(path, "2026-04-01T14:30:00Z") is True
+
+
+class TestDetectRefinedTemplates:
+    """detect_refined_templates function tests."""
+
+    def test_returns_path_for_existing_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = os.path.join(tmp, "project")
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops"
+            )
+            path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-04-01")
+
+            audiences = {"devops": {"documents": ["OPERATIONS"]}}
+            refined, stale_list = _mod.detect_refined_templates(
+                project_root, audiences, "2026-04-01"
+            )
+            assert refined["devops"]["OPERATIONS"] is not None
+            assert refined["devops"]["OPERATIONS"]["path"] == path
+            assert refined["devops"]["OPERATIONS"]["stale"] is False
+
+    def test_returns_null_for_missing_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = os.path.join(tmp, "project")
+            os.makedirs(project_root)
+
+            audiences = {"end-users": {"documents": ["USER_GUIDE"]}}
+            refined, stale_list = _mod.detect_refined_templates(
+                project_root, audiences, "2026-04-01"
+            )
+            assert refined["end-users"]["USER_GUIDE"] is None
+
+    def test_stale_true_when_scan_newer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = os.path.join(tmp, "project")
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops"
+            )
+            path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-03-30")
+
+            audiences = {"devops": {"documents": ["OPERATIONS"]}}
+            refined, stale_list = _mod.detect_refined_templates(
+                project_root, audiences, "2026-04-01"
+            )
+            assert refined["devops"]["OPERATIONS"]["stale"] is True
+
+    def test_no_headings_treated_as_absent(self):
+        """Template with no ## headings should return null."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = os.path.join(tmp, "project")
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops"
+            )
+            path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-04-01", with_headings=False)
+
+            audiences = {"devops": {"documents": ["OPERATIONS"]}}
+            refined, stale_list = _mod.detect_refined_templates(
+                project_root, audiences, "2026-04-01"
+            )
+            assert refined["devops"]["OPERATIONS"] is None
+
+    def test_stale_templates_list(self):
+        """stale_templates list contains audience/document strings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = os.path.join(tmp, "project")
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops"
+            )
+            path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-03-01")
+
+            audiences = {"devops": {"documents": ["OPERATIONS"]}}
+            refined, stale_list = _mod.detect_refined_templates(
+                project_root, audiences, "2026-04-01"
+            )
+            assert "devops/OPERATIONS" in stale_list
+
+    def test_stale_list_empty_when_not_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = os.path.join(tmp, "project")
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops"
+            )
+            path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(path, scan_date="2026-04-01")
+
+            audiences = {"devops": {"documents": ["OPERATIONS"]}}
+            refined, stale_list = _mod.detect_refined_templates(
+                project_root, audiences, "2026-04-01"
+            )
+            assert stale_list == []
+
+
+# =============================================================================
+# CLI integration: refined_templates in full output
+# =============================================================================
+
+class TestRefinedTemplatesCLI:
+    """Full CLI run includes refined_templates and stale_templates keys."""
+
+    def test_output_includes_refined_templates_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, result = _run_setup(tmp)
+            assert "refined_templates" in result
+            assert "stale_templates" in result
+
+    def test_cli_detects_existing_refined_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+
+            # Add scan_date to scan file
+            scan_data = _read_json(scan_path)
+            scan_data["scan_date"] = "2026-04-01T14:30:00Z"
+            _write_json(scan_path, scan_data)
+
+            # Create a refined template for devops/OPERATIONS
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops"
+            )
+            tpl_path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(tpl_path, scan_date="2026-04-01")
+
+            stdout, _, _ = _run([
+                "--scan-file", scan_path,
+                "--config", config_path,
+                "--global-config", config_path,
+                "--scripts-dir", SCRIPTS_DIR,
+            ])
+            result = json.loads(stdout)
+
+            assert result["refined_templates"]["devops"]["OPERATIONS"] is not None
+            assert result["refined_templates"]["devops"]["OPERATIONS"]["stale"] is False
+            assert result["refined_templates"]["end-users"]["USER_GUIDE"] is None
+
+    def test_cli_stale_template_in_stale_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+
+            scan_data = _read_json(scan_path)
+            scan_data["scan_date"] = "2026-04-02T10:00:00Z"
+            _write_json(scan_path, scan_data)
+
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops"
+            )
+            tpl_path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(tpl_path, scan_date="2026-03-15")
+
+            stdout, _, _ = _run([
+                "--scan-file", scan_path,
+                "--config", config_path,
+                "--global-config", config_path,
+                "--scripts-dir", SCRIPTS_DIR,
+            ])
+            result = json.loads(stdout)
+
+            assert "devops/OPERATIONS" in result["stale_templates"]
