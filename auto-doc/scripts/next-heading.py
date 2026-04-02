@@ -37,18 +37,6 @@ def slugify_heading(heading):
     return slug.strip("-")
 
 
-def _strip_html_comments(text):
-    """Remove all HTML comments from text, returning cleaned text.
-
-    Returns:
-        Tuple of (cleaned_text, list of (start_pos_in_original, comment_content) tuples)
-    """
-    comments = []
-    for m in re.finditer(r'<!--(.*?)-->', text, re.DOTALL):
-        comments.append((m.start(), m.group(1)))
-    cleaned = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
-    return cleaned, comments
-
 
 def _extract_comment(content_block, prefix):
     """Extract content from a comment like <!-- PREFIX: content -->.
@@ -89,17 +77,8 @@ def parse_template(template_text):
             },
         ]
     """
-    # Step 1: Split template into blocks delimited by headings.
-    # First, strip all HTML comments to get the raw heading structure.
-    cleaned, _ = _strip_html_comments(template_text)
-
-    # Find all ## - #### headings in cleaned text (not inside comments).
-    heading_pattern = re.compile(r'^(#{2,4})\s+(.+)$', re.MULTILINE)
-    headings_in_cleaned = list(heading_pattern.finditer(cleaned))
-
-    # Step 2: For each heading found in cleaned text, locate its position
-    # in the original text to extract PURPOSE/EXAMPLE from the raw content.
-    # We match headings by finding them in the original text outside comments.
+    # Find headings in the original text, skipping those inside HTML comments.
+    # We work on the original to preserve PURPOSE/EXAMPLE comment positions.
 
     # Build list of (level, title, raw_content_after) from original text.
     # Strategy: find each heading line in the original, grab content until next heading.

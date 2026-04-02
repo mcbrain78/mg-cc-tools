@@ -198,7 +198,7 @@ def _write_fixtures(td, template_text=SIMPLE_TEMPLATE, scan=None, document="OPER
     }
 
 
-def _run(paths, expect_success=True):
+def _run(paths) -> dict:
     """Run next-heading.py and return parsed JSON output."""
     result = subprocess.run(
         [sys.executable, SCRIPT,
@@ -208,10 +208,8 @@ def _run(paths, expect_success=True):
          "--document", paths["document"]],
         capture_output=True, text=True,
     )
-    if expect_success:
-        assert result.returncode == 0, f"stderr: {result.stderr}"
-        return json.loads(result.stdout)
-    return result
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    return json.loads(result.stdout)
 
 
 def _drain_all(paths):
@@ -364,8 +362,14 @@ Some example content.
         """Non-existent template file exits with code 1."""
         with tempfile.TemporaryDirectory() as td:
             paths = _write_fixtures(td)
-            paths["template"] = os.path.join(td, "nonexistent.md")
-            result = _run(paths, expect_success=False)
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", paths["state"],
+                 "--template", os.path.join(td, "nonexistent.md"),
+                 "--scan-file", paths["scan"],
+                 "--document", paths["document"]],
+                capture_output=True, text=True,
+            )
             assert result.returncode == 1
             assert "template" in result.stderr.lower() or "not found" in result.stderr.lower()
 
@@ -373,8 +377,14 @@ Some example content.
         """Non-existent scan file exits with code 1."""
         with tempfile.TemporaryDirectory() as td:
             paths = _write_fixtures(td)
-            paths["scan"] = os.path.join(td, "nonexistent.json")
-            result = _run(paths, expect_success=False)
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", paths["state"],
+                 "--template", paths["template"],
+                 "--scan-file", os.path.join(td, "nonexistent.json"),
+                 "--document", paths["document"]],
+                capture_output=True, text=True,
+            )
             assert result.returncode == 1
             assert "scan" in result.stderr.lower() or "not found" in result.stderr.lower()
 
