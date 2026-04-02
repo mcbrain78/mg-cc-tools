@@ -285,13 +285,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Heading Iterator
 
-- [ ] **HIT-01**: The script accepts four required arguments (`--state-file`, `--template`, `--scan-file`, `--document`) and all four must be provided for invocation
-- [ ] **HIT-02**: On the first call with a given state file, the script parses the refined template and extracts the full heading tree with each heading's PURPOSE and EXAMPLE content, including multi-line HTML comments; subsequent calls with the same state file skip parsing and resume from persisted state
-- [ ] **HIT-03**: The script emits an orient JSON response at each `##` section boundary containing the section slug, a slug-only heading outline for that section, and the source files resolved from the scan file's `source_material_index`
-- [ ] **HIT-04**: The script emits a write JSON response for every heading (`##` and below) containing the heading_path, heading level, purpose, and example; `##`-level writes omit parent_path while deeper headings include it
-- [ ] **HIT-05**: The script emits a done JSON response after all headings have been processed, reporting the total number of headings processed
-- [ ] **HIT-06**: Output ordering follows depth-first traversal: orient then writes for each `##` section in template order, ending with done; source files appear only in orient responses, never in write responses
-- [ ] **HIT-07**: The heading_path field uses slash-separated slug convention where the last segment maps to write-section.py's `--section` argument and all preceding segments map to `--parent`
+- [x] **HIT-01**: The script accepts four required arguments (`--state-file`, `--template`, `--scan-file`, `--document`) and all four must be provided for invocation
+- [x] **HIT-02**: On the first call with a given state file, the script parses the refined template and extracts the full heading tree with each heading's PURPOSE and EXAMPLE content, including multi-line HTML comments; subsequent calls with the same state file skip parsing and resume from persisted state
+- [x] **HIT-03**: The script emits an orient JSON response at each `##` section boundary containing the section slug, a slug-only heading outline for that section, and the source files resolved from the scan file's `source_material_index`
+- [x] **HIT-04**: The script emits a write JSON response for every heading (`##` and below) containing the heading_path, heading level, purpose, and example; `##`-level writes omit parent_path while deeper headings include it
+- [x] **HIT-05**: The script emits a done JSON response after all headings have been processed, reporting the total number of headings processed
+- [x] **HIT-06**: Output ordering follows depth-first traversal: orient then writes for each `##` section in template order, ending with done; source files appear only in orient responses, never in write responses
+- [x] **HIT-07**: The heading_path field uses slash-separated slug convention where the last segment maps to write-section.py's `--section` argument and all preceding segments map to `--parent`
 
 ## v2 Requirements
 
@@ -537,13 +537,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WHE-04 | Phase 21 | Complete |
 | WHE-05 | Phase 21 | Complete |
 | WHE-06 | Phase 21 | Complete |
-| HIT-01 | Phase 22 | Pending |
-| HIT-02 | Phase 22 | Pending |
-| HIT-03 | Phase 22 | Pending |
-| HIT-04 | Phase 22 | Pending |
-| HIT-05 | Phase 22 | Pending |
-| HIT-06 | Phase 22 | Pending |
-| HIT-07 | Phase 22 | Pending |
+| HIT-01 | Phase 22 | Complete |
+| HIT-02 | Phase 22 | Complete |
+| HIT-03 | Phase 22 | Complete |
+| HIT-04 | Phase 22 | Complete |
+| HIT-05 | Phase 22 | Complete |
+| HIT-06 | Phase 22 | Complete |
+| HIT-07 | Phase 22 | Complete |
 
 **Coverage:**
 - v1 requirements: 220 total

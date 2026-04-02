@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-04-01T21:03:10.927Z"
-last_activity: 2026-04-01 -- Plan 21-02 complete (devops/glossary/overview per-heading emission)
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-04-02T18:27:08.720Z"
+last_activity: 2026-04-02 -- Plan 22-01 complete (next-heading.py heading iterator)
 progress:
-  total_phases: 21
-  completed_phases: 20
-  total_plans: 58
-  completed_plans: 57
-  percent: 97
+  total_phases: 24
+  completed_phases: 21
+  total_plans: 59
+  completed_plans: 58
+  percent: 98
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Automate the creation and maintenance of audience-specific documentation so it stays current as code evolves
-**Current focus:** Phase 21 - Writer Agent Per-Heading Emission
+**Current focus:** Phase 22 - Heading Iterator Script
 
 ## Current Position
 
-Phase: 21 of 21 (Writer Agent Per-Heading Emission)
-Plan: 2 of 2 in current phase
+Phase: 22 of 24 (Heading Iterator Script)
+Plan: 1 of 1 in current phase
 Status: In Progress
-Last activity: 2026-04-01 -- Plan 21-02 complete (devops/glossary/overview per-heading emission)
+Last activity: 2026-04-02 -- Plan 22-01 complete (next-heading.py heading iterator)
 
-Progress: [██████████] 97%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -107,6 +107,7 @@ Progress: [██████████] 97%
 | Phase 20 P02 | 7min | 2 tasks | 6 files |
 | Phase 21 P02 | 3min | 2 tasks | 3 files |
 | Phase 21 P01 | 3min | 1 tasks | 1 files |
+| Phase 22 P01 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -257,6 +258,9 @@ Recent decisions affecting current work:
 - [Phase 21]: Devops-writer gets full 3-level pattern (##/###/####); glossary and overview get 2-level (##/###) since ### headings are rare for those document types
 - [Phase 21]: Glossary reconciliation pass uses the same per-heading pattern as initial pass for consistency
 - [Phase 21]: Used CLI subprocess calls for all pipeline scripts in integration tests, matching existing test patterns
+- [Phase 22]: Copied slugify_heading() verbatim from write-section.py for heading_path compatibility rather than extracting to shared lib
+- [Phase 22]: Flat emission queue built at init (Pitfall 5): no complex two-index tracking, sequential pop per call
+- [Phase 22]: Strip HTML comments before heading detection to prevent EXAMPLE block headings from being treated as real template headings (Pitfall 3)
 
 ### Pending Todos
 
@@ -298,6 +302,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-01T20:57:51.764Z
-Stopped at: Completed 21-01-PLAN.md
+Last session: 2026-04-02T18:27:08.716Z
+Stopped at: Completed 22-01-PLAN.md
 Resume file: None

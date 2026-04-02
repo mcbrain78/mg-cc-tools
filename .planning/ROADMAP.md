@@ -349,7 +349,7 @@ Plans:
 **Goal:** next-heading.py parses refined templates, manages heading queue state, and returns orient/write/done responses with correct depth-first ordering and source file grouping
 **Requirements**: HIT-01, HIT-02, HIT-03, HIT-04, HIT-05, HIT-06, HIT-07
 **Depends on:** Phase 21
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 22-01-PLAN.md — TDD: next-heading.py heading iterator with template parsing, orient/write/done responses, and pytest suite
