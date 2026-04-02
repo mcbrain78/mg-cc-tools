@@ -305,11 +305,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Orient-Write Integration
 
-- [ ] **OWI-01**: The devops-writer agent processes documents in a two-phase orient-then-write loop: orient once per `##` section to load source context, then write each heading within that section
+- [x] **OWI-01**: The devops-writer agent processes documents in a two-phase orient-then-write loop: orient once per `##` section to load source context, then write each heading within that section
 - [ ] **OWI-02**: The generate command detects refined templates at the project-level path and uses them when present, falling back to generic templates when no refined template exists
 - [ ] **OWI-03**: The generate command prints a warning when a refined template is stale relative to the latest scan
-- [ ] **OWI-04**: The writer produces content for every heading in the template, skipping none and inventing none — it never decides what headings to create or manages document-level structure
-- [ ] **OWI-05**: When a refined template is present, the writer sees only the refined template, not the generic template
+- [x] **OWI-04**: The writer produces content for every heading in the template, skipping none and inventing none — it never decides what headings to create or manages document-level structure
+- [x] **OWI-05**: When a refined template is present, the writer sees only the refined template, not the generic template
 - [ ] **OWI-06**: Content quality and reference accuracy of the orient-write pipeline are at least as good as the previous generation approach
 - [ ] **OWI-07**: Only devops-writer is modified in this phase; all other writers, including glossary-writer and overview-writer, are unchanged
 
@@ -571,11 +571,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRF-05 | Phase 23 | Complete |
 | TRF-06 | Phase 23 | Complete |
 | TRF-07 | Phase 23 | Complete |
-| OWI-01 | Phase 24 | Pending |
+| OWI-01 | Phase 24 | Complete |
 | OWI-02 | Phase 24 | Pending |
 | OWI-03 | Phase 24 | Pending |
-| OWI-04 | Phase 24 | Pending |
-| OWI-05 | Phase 24 | Pending |
+| OWI-04 | Phase 24 | Complete |
+| OWI-05 | Phase 24 | Complete |
 | OWI-06 | Phase 24 | Pending |
 | OWI-07 | Phase 24 | Pending |
 

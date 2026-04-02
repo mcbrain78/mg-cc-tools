@@ -370,7 +370,7 @@ Plans:
 **Goal:** devops-writer uses next-heading.py orient-then-write loop, generate command detects and routes refined templates, and end-to-end pipeline produces complete documents from refined templates
 **Requirements**: OWI-01, OWI-02, OWI-03, OWI-04, OWI-05, OWI-06, OWI-07
 **Depends on:** Phase 23
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 24-01-PLAN.md — TDD: generate-setup.py refined template detection and stale warning with tests

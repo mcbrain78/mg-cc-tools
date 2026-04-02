@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 23-02-PLAN.md
-last_updated: "2026-04-02T19:11:26.119Z"
-last_activity: 2026-04-02 -- Plan 23-02 complete (template-refiner agent definition)
+stopped_at: Completed 24-02-PLAN.md
+last_updated: "2026-04-02T19:39:37.442Z"
+last_activity: 2026-04-02 -- Plan 24-02 complete (devops-writer orient-write loop)
 progress:
   total_phases: 24
   completed_phases: 22
-  total_plans: 61
-  completed_plans: 60
-  percent: 97
+  total_plans: 64
+  completed_plans: 61
+  percent: 95
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Automate the creation and maintenance of audience-specific documentation so it stays current as code evolves
-**Current focus:** Phase 23 - Template Refiner Pipeline
+**Current focus:** Phase 24 - Writer Orient-Write Integration
 
 ## Current Position
 
-Phase: 23 of 24 (Template Refiner Pipeline)
-Plan: 2 of 2 in current phase
+Phase: 24 of 24 (Writer Orient-Write Integration)
+Plan: 2 of 3 in current phase
 Status: In Progress
-Last activity: 2026-04-02 -- Plan 23-02 complete (template-refiner agent definition)
+Last activity: 2026-04-02 -- Plan 24-02 complete (devops-writer orient-write loop)
 
-Progress: [██████████] 97%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -110,6 +110,7 @@ Progress: [██████████] 97%
 | Phase 22 P01 | 4min | 2 tasks | 2 files |
 | Phase 23 P01 | 2min | 1 tasks | 2 files |
 | Phase 23 P02 | 2min | 1 tasks | 1 files |
+| Phase 24 P02 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -269,6 +270,10 @@ Recent decisions affecting current work:
 - [Phase 23]: Agent uses get_symbols_overview (Serena) for Python source exploration with Read fallback when Serena unavailable
 - [Phase 23]: 7 MUST NOT rules enforce content boundaries: no heading text changes, no project-specific EXAMPLE values, no function body reads
 - [Phase 23]: OPTIONAL resolution uses conservative keep-if-any-evidence heuristic per CONTEXT.md recommendation
+- [Phase 24]: Writer reads source files once per ## section during orient phase, not per heading -- write phase works from already-loaded context
+- [Phase 24]: Principles updated to forbid direct template reading -- next-heading.py reads the refined template for the writer
+- [Phase 24]: Error handling: retry once on non-zero exit code or malformed JSON from next-heading.py, then skip to next document
+- [Phase 24]: Source files from orient response replace get-section-sources.py calls -- orient response is primary source
 
 ### Pending Todos
 
@@ -310,6 +315,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T19:06:58.975Z
-Stopped at: Completed 23-02-PLAN.md
+Last session: 2026-04-02T19:39:37.438Z
+Stopped at: Completed 24-02-PLAN.md
 Resume file: None
