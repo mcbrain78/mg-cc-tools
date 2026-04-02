@@ -38,7 +38,7 @@
     },
     "spec": {
       "version": "0.1.0",
-      "installed_at": "2026-04-01T17:48:25.374351+00:00",
+      "installed_at": "2026-04-02T16:03:18.568204+00:00",
       "commands": [
         "spec-create-context.md",
         "spec-draft.md",
@@ -52,15 +52,17 @@
         "commands/spec-draft.md": "sha256:afcac5a5073421c58ecfbd084f10ea3c5d6668167796b3ea88ae201a8bfeac85",
         "commands/spec-gsd-phases.md": "sha256:4a84747d2966e185607200efa706089b4b92fd562fcd0209c472da1fea4b9370",
         "commands/spec-help.md": "sha256:b96efca5a02a7fdd82de293db9975347266baf089ab05dd5acf5872ab4b2fc64",
-        "commands/spec-improve.md": "sha256:31904a0520e9111bbf76b6990de36fbcf19fdb8fce8175bca0f9d5968aa16be1",
+        "commands/spec-improve.md": "sha256:8e9e9e67e998a94518e5b261dd7bfdfc4ef99c172b56baced3639cc8ee584516",
         "commands/spec-prepare-context.md": "sha256:e9b67366eeb4f20b3f31ebb8f068b9c5154b53078ca2ec05964217ac5c23f355",
-        "install.sh": "sha256:3e491e51a2d95ef7c02ac225e183309345f4fc809f8d129baf87aef3591bc7a3",
-        "references/concept-spec-template.md": "sha256:d2af0abd56f568d6a7370e9fe46d6d29be1240201840f36aaea6a065803411dd"
+        "install.sh": "sha256:396cc624693c8fd615b20f573341c03b6c6b2af04dbab793026607fe8bca06b6",
+        "references/concept-spec-template.md": "sha256:d2af0abd56f568d6a7370e9fe46d6d29be1240201840f36aaea6a065803411dd",
+        "scripts/__init__.py": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "scripts/improve_files.py": "sha256:16ef92f5df849de8939a4d1590b89fb4e7aeeb02617bf2d6595b23a3ef10a378"
       }
     }
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools",
-  "last_updated": "2026-04-01T17:48:25.373260+00:00"
+  "last_updated": "2026-04-02T16:03:18.566631+00:00"
 }

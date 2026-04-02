@@ -152,6 +152,13 @@ for cmd in "${COMMANDS[@]}"; do
 done
 echo "  Commands → ${COMMANDS_DIR}/"
 
+# Scripts
+SCRIPTS_DIR="${TARGET_DIR}/spec/scripts"
+mkdir -p "$SCRIPTS_DIR"
+cp "${SCRIPT_DIR}/scripts/"*.py "$SCRIPTS_DIR/"
+chmod +x "$SCRIPTS_DIR/"*.py
+echo "  Scripts → ${SCRIPTS_DIR}/"
+
 # References
 REFS_DIR="${TARGET_DIR}/spec/references"
 mkdir -p "$REFS_DIR"
@@ -165,6 +172,8 @@ echo "  References → ${REFS_DIR}/"
 SNAPSHOT_ABSOLUTE="${REFS_DIR}/context-template.snapshot"
 TEMPLATE_ABSOLUTE="${REFS_DIR}/concept-spec-template.md"
 
+SCRIPTS_ABSOLUTE="${SCRIPTS_DIR}"
+
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
   [[ -f "$cmd_file" ]] || continue
@@ -174,6 +183,9 @@ for cmd in "${COMMANDS[@]}"; do
   fi
   if grep -q '{CONCEPT_TEMPLATE}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{CONCEPT_TEMPLATE}|${TEMPLATE_ABSOLUTE}|g" "$cmd_file"
+  fi
+  if grep -q '{SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
   fi
 done
 echo "  Placeholders resolved"

@@ -5,6 +5,7 @@ name: mg:spec-improve
 description: Iterative subagent-review improvement of a concept spec
 argument-hint: "<file-path>"
 allowed-tools:
+  - Bash
   - Read
   - Write
   - Glob
@@ -25,6 +26,8 @@ Arguments: $ARGUMENTS
 Expected: a path to the file to improve (typically a concept spec at `docs/work-queue/todo/{name}/concept.md`).
 
 Concept spec template: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/references/concept-spec-template.md`
+
+File operations script: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/scripts/improve_files.py`
 </context>
 
 <process>
@@ -44,17 +47,25 @@ Concept spec template: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/refer
 
 2. Read the target file. If it doesn't exist or is empty, report the error and exit.
 
-3. Create a working copy by appending `-auto-improve` to the filename before the extension:
-   - `concept.md` → `concept-auto-improve.md`
-   - `DESIGN.md` → `DESIGN-auto-improve.md`
+3. Initialize the working session by running:
+   ```
+   uv run /home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/scripts/improve_files.py init <target-file-path>
+   ```
+   This backs up the original (once), creates the working copy, and outputs JSON with all resolved paths:
+   ```json
+   {
+     "auto_improve": "...-auto-improve.md",
+     "non_goals": "...-NON-GOALS.md",
+     "non_goals_exists": true/false,
+     "original_backup": "....original.md",
+     "backup_created": true/false
+   }
+   ```
+   If `backup_created` is true, report: `Backed up original to <original_backup>`
 
-   We will refer to this copy as `AUTO_IMPROVE_FILE`.
-
-4. Check if a non-goals file exists alongside the original:
-   - For `concept.md` → check for `concept-NON-GOALS.md`
-   - For `DESIGN.md` → check for `DESIGN-NON-GOALS.md`
-
-   Pattern: replace the extension with `-NON-GOALS.md`. We will refer to this as `NON_GOALS_FILE`. If it doesn't exist, that's fine — it may be created during the workflow.
+   Store the paths from the JSON output — use them for all subsequent file references:
+   - `AUTO_IMPROVE_FILE` = `auto_improve`
+   - `NON_GOALS_FILE` = `non_goals` (may not exist yet; `non_goals_exists` tells you)
 
 **CRITICAL: All modifications happen exclusively on AUTO_IMPROVE_FILE. Do not touch the original until the user explicitly approves.**
 
@@ -68,7 +79,7 @@ You have NO prior context about this project.
 
 Read the file at: {AUTO_IMPROVE_FILE path}
 
-{If NON_GOALS_FILE exists, include:}
+{If non_goals_exists is true, include:}
 Also read the non-goals file at: {NON_GOALS_FILE path}
 These are explicit scoping decisions — do not flag issues that fall
 under a listed non-goal. You may still flag severe bugs in non-goal
@@ -213,8 +224,16 @@ Then ask the user to approve or reject **fixes** and **proposed non-goals** inde
 
 After delivering the report, **stop and wait for the user**. Do not proceed until the user responds. The user approves **fixes** and **non-goals** independently.
 
-- **Fixes**: `approve` copies AUTO_IMPROVE_FILE over the original and deletes AUTO_IMPROVE_FILE. `reject` deletes AUTO_IMPROVE_FILE and leaves the original untouched. The user may also request further changes (repeat from Step 5) or another round (repeat from Step 1).
-- **Non-goals**: For each proposed non-goal the user approves, append it to NON_GOALS_FILE (create the file if it doesn't exist yet). Drop any the user rejects — they remain fair game for future reviewers.
+- **Fixes**:
+  - `approve` → run: `uv run /home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/scripts/improve_files.py approve <target-file-path>`
+  - `reject` → run: `uv run /home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/scripts/improve_files.py reject <target-file-path>`
+  - The user may also request further changes (repeat from Step 5) or another round (repeat from Step 1).
+
+- **Non-goals**: For each proposed non-goal the user approves, run:
+  ```
+  uv run /home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/scripts/improve_files.py append-non-goal <target-file-path> "<non-goal text>"
+  ```
+  Drop any the user rejects — they remain fair game for future reviewers.
 
 </process>
 
@@ -225,4 +244,5 @@ After delivering the report, **stop and wait for the user**. Do not proceed unti
 - AUTO_IMPROVE_FILE is the safety net. The original is never touched until explicit approval. This allows the user to reject changes cleanly.
 - NON_GOALS_FILE accumulates across rounds. Once a non-goal is approved, future reviewers skip it, preventing the same intentional exclusion from being flagged repeatedly.
 - When running multiple rounds, each round starts fresh — the reviewer re-reads the file and produces a new list. Do not carry state from previous rounds except for the NON_GOALS_FILE.
+- All file operations (backup, copy, delete, approve, reject, non-goal append) are handled by `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/scripts/improve_files.py`. Do not perform these operations manually.
 </important_notes>
