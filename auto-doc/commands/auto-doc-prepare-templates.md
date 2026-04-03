@@ -27,6 +27,10 @@ This tells you the JSON format of `docs-scan.json` -- the input produced by the 
 
 ## Process
 
+### Step 0: Parse Arguments
+
+Parse `$ARGUMENTS` for optional audience names. Example: user types `/mg:auto-doc-prepare-templates devops` or `/mg:auto-doc-prepare-templates end-users developers`. Extract as a list of audience names to filter on. If no arguments provided, process all enabled audiences.
+
 ### Step 1: Load Config and Scan Data
 
 1. **Load configuration.** Read the project-local config file:
@@ -65,15 +69,14 @@ This tells you the JSON format of `docs-scan.json` -- the input produced by the 
 Build a list of `(audience, document)` pairs to process:
 
 1. Iterate over `config.audiences` -- skip any audience where `enabled` is `false`.
-2. For each enabled audience, iterate its `documents` array.
-3. Do NOT process `config.shared_documents` (OVERVIEW, GLOSSARY). These are shared documents that do not use audience-specific templates and are not consumed by the orient-write loop.
+2. **If audience filter is active** (from Step 0), skip any audience not in the filter list. If a filtered name doesn't match any enabled audience, print a warning: `"Warning: audience '{name}' not found or not enabled -- skipping"`
+3. For each remaining audience, iterate its `documents` array.
+4. Do NOT process `config.shared_documents` (OVERVIEW, GLOSSARY). These are shared documents that do not use audience-specific templates and are not consumed by the orient-write loop.
 
 Print the discovery result:
 ```
+Audience filter: devops          <-- only if filter active; omit line otherwise
 Audiences to process:
-  end-users: USER_GUIDE
-  developers: ARCHITECTURE, DEVELOPER_GUIDE, QUICK_REFERENCE
-  agents: SYSTEM_MAP, CONVENTIONS, GOTCHAS, TESTING
   devops: OPERATIONS, TROUBLESHOOTING
 Total: {count} documents across {audience_count} audiences
 ```
@@ -89,7 +92,7 @@ This creates the project-local directory structure where refined templates will 
 
 ### Step 4: Spawn Refiner Agents
 
-For each `(audience, document)` pair, spawn one Agent call **sequentially** (one agent at a time):
+Spawn **all** Agent calls **in parallel** (all agents in a single message). For each `(audience, document)` pair:
 
 ```
 Agent(
@@ -113,14 +116,14 @@ Scripts dir: {SCRIPTS_DIR}"
 - `{TEMPLATES_DIR}` resolves to the installed generic templates directory (e.g., `.claude/auto-doc/references/templates/`)
 - Output goes to `.mg/docs/templates/` (project-local, not inside `.claude/`)
 - Each Agent call passes `{SCRIPTS_DIR}` so the refiner can invoke `get-section-sources.py` and `list-optional-sections.py`
-- Spawn agents **sequentially** (one at a time) -- simpler error handling and avoids concurrent reads on shared scan data
+- Parallel execution is safe: all shared resources (docs-scan.json, generic templates, scripts) are read-only; each agent writes to a unique output path
 
-After each agent completes, log:
+After all agents complete, log each result:
 ```
   Refined: .mg/docs/templates/{audience}/{document}.template.md
 ```
 
-If an agent fails, log a warning and continue with the remaining documents. Partial refinement is acceptable.
+If any agent fails, log a warning for that document. Partial refinement is acceptable.
 
 ### Step 5: Summary
 
