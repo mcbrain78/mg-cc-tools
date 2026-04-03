@@ -76,7 +76,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
         | `config-reference/environment-variables/required-variables` | `required-variables` | `config-reference/environment-variables` | `####` |
 
         Generate content for this heading:
-        - Use the `purpose` field as the generation goal (what this section must accomplish).
+        - Use the `purpose` field as the generation goal -- it describes what this section should cover, not specific values. Discover all specific values (counts, names, configurations, commands) from source code read during the orient phase.
         - Use the `example` field as the format template (what "good" looks like -- structure, not content).
         - Draw on source code already read during the most recent orient phase.
         - Follow style guide conventions and use glossary terms consistently.

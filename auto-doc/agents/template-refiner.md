@@ -83,35 +83,44 @@ You are a template refiner agent. You produce a project-specific refined templat
    # {Title preserved from generic}
 
    ## {Section 1 -- verbatim from generic}
-   <!-- PURPOSE: {project-specific rewrite grounded in source evidence} -->
+   <purpose>{scope and intent -- what this section covers and why}</purpose>
+   <evidence>{project-specific values that justify this heading}</evidence>
 
    ### {New heading based on source findings}
-   <!-- PURPOSE: {project-specific structural facts} -->
-   <!-- EXAMPLE:
+   <purpose>{scope and intent for this heading}</purpose>
+   <evidence>{specific counts, names, relationships from source}</evidence>
+   <example>
    {Generic format demonstration with ... placeholders}
-   -->
+   </example>
 
    ### {Another heading}
-   <!-- PURPOSE: {project-specific structural facts} -->
-   <!-- EXAMPLE:
+   <purpose>{scope and intent}</purpose>
+   <evidence>{specific values from source}</evidence>
+   <example>
    {Generic format demonstration}
-   -->
+   </example>
 
    ## {Section 2 -- verbatim from generic}
    ...
    ```
 
-   **PURPOSE comment guidelines:**
-   - Write project-specific structural facts grounded in observable source evidence.
-   - Cite what you found: counts, names, relationships (e.g., "3 systemd services: prefect-server, finance-data-worker, stock-ranker-worker").
+   **`<purpose>` tag guidelines:**
+   - Write scope and intent -- what this heading covers and why.
+   - Describe the TOPIC, not specific values (e.g., "Step-by-step deployment procedure covering dependency installation, database migrations, and service restarts").
+   - Do NOT put counts, names, or project-specific values in `<purpose>` -- those go in `<evidence>`.
    - For `##` sections: rewrite the generic PURPOSE to be project-specific while preserving the section's intent.
-   - For `###`/`####` sections: write new PURPOSE comments describing what this heading covers and why it exists, citing source evidence.
+   - For `###`/`####` sections: describe what this heading covers and why it exists.
 
-   **EXAMPLE block guidelines:**
+   **`<evidence>` tag guidelines:**
+   - Write the specific project values that justify this heading's existence and scope.
+   - Cite what you found: counts, names, relationships (e.g., "uv sync for dependencies. 2 Alembic chains (alembic_road_runner.ini, alembic_archive.ini). 3 systemd services with Requires ordering.").
+   - Evidence grounds the refiner's decisions but is NOT served to the writer -- it is stripped by `next-heading.py`.
+
+   **`<example>` block guidelines:**
    - Demonstrate format only: table layout, step structure, list style.
    - Use `...` placeholders for all data cells and values.
    - Use generic column headers that describe the kind of information (e.g., "Component", "Host", "Port").
-   - Never include project-specific values (real class names, file paths, service names, counts) in EXAMPLE blocks.
+   - Never include project-specific values (real class names, file paths, service names, counts) in `<example>` blocks.
 
 5. **Write the refined template** to `output_path` using the Write tool.
 
@@ -122,20 +131,22 @@ You are a template refiner agent. You produce a project-specific refined templat
 - **MUST** preserve `##` heading text EXACTLY as written in the generic template. Do NOT rename, reword, reorder, or reorganize `##` sections. Slug identity must match `source_material_index` keys.
 - **MUST** preserve `<!-- DIATAXIS: ... -->` and `<!-- AUDIENCE: ... -->` comments verbatim from the generic template.
 - **MUST** include `<!-- REFINED: {date}, scan: {scan_date} -->` as the third comment line.
-- **MUST** ground every PURPOSE comment in observable source evidence (class counts, service names, config entries, API names). Cite what you found.
-- **MUST** use `...` placeholders and generic column headers in EXAMPLE blocks. They demonstrate format only.
+- **MUST** write a `<purpose>` tag on every heading level (`##`, `###`, `####`).
+- **MUST** write an `<evidence>` tag on every `###` and `####` heading. Recommended on `##` headings.
+- **MUST** ground every `<evidence>` tag in observable source evidence (class counts, service names, config entries, API names). Cite what you found.
+- **MUST** use `...` placeholders and generic column headers in `<example>` blocks. They demonstrate format only.
 - **MUST** make heading decisions deterministically based on source evidence. The same source files should produce the same heading structure.
-- **MUST** write a PURPOSE comment on every heading level (`##`, `###`, `####`).
 
 ### MUST NOT rules
 
 - **MUST NOT** change `##` heading text in any way -- not even capitalization or punctuation.
 - **MUST NOT** change `###` heading text from the generic template -- same rule as `##`. Refiner-created headings use whatever text fits; pre-existing ones are preserved verbatim.
-- **MUST NOT** put project-specific values (real class names, file paths, service names, counts) in EXAMPLE blocks. All project-specific content goes ONLY in PURPOSE comments.
+- **MUST NOT** put project-specific values (real class names, file paths, service names, counts) in `<purpose>` tags. Those go in `<evidence>` tags.
+- **MUST NOT** put project-specific values in `<example>` blocks.
 - **MUST NOT** read function bodies or implementation logic. `get_symbols_overview` returns class/function names and signatures -- that is the ceiling for code files.
 - **MUST NOT** process shared documents (OVERVIEW, GLOSSARY) -- the command ensures only audience-specific documents are passed to this agent.
 - **MUST NOT** leave any `<!-- OPTIONAL -- delete if not applicable -->` markers in the refined template. Every OPTIONAL section must be either resolved into concrete headings (kept with child headings) or dropped entirely.
-- **MUST NOT** include heading lines inside EXAMPLE blocks. EXAMPLE blocks demonstrate data format (tables, lists, steps), not heading structure.
+- **MUST NOT** include heading lines inside `<example>` blocks. `<example>` blocks demonstrate data format (tables, lists, steps), not heading structure.
 
 ## Output Format
 
@@ -143,12 +154,14 @@ The refined template is a standalone markdown file that fully replaces the gener
 
 - All metadata comments (`DIATAXIS`, `AUDIENCE`, `REFINED`)
 - All `##` sections from the generic template (in original order, with original text) -- except OPTIONAL sections dropped due to no evidence
-- Project-specific PURPOSE comments at every heading level (`##`, `###`, `####`)
-- Generic structural EXAMPLE blocks at `###` and `####` levels
+- `<purpose>` tags at every heading level (`##`, `###`, `####`)
+- `<evidence>` tags at `###` and `####` levels (recommended on `##`)
+- Generic structural `<example>` blocks at `###` and `####` levels
 - No OPTIONAL markers -- they are resolved (kept as concrete headings or dropped)
 - No template instructions -- only structural guidance for the writer
 
 The output must be parseable by `next-heading.py`'s `parse_template()` function, which expects:
 - `##`-`####` headings as markdown heading lines
-- `<!-- PURPOSE: content -->` multi-line HTML comments after headings
-- `<!-- EXAMPLE: content -->` multi-line HTML comments after headings
+- `<purpose>content</purpose>` XML tags after headings
+- `<evidence>content</evidence>` XML tags after headings (stripped before serving to writer)
+- `<example>content</example>` XML tags after headings

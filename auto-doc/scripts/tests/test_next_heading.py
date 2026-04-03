@@ -27,18 +27,18 @@ SIMPLE_TEMPLATE = """\
 <!-- docs-meta: last-updated: 2026-01-01 -->
 
 ## Infrastructure Overview
-<!-- PURPOSE: Mental model of deployment topology. -->
-<!-- EXAMPLE:
+<purpose>Mental model of deployment topology.</purpose>
+<example>
 ### Deployment Topology
 
 | Component | Host |
 |-----------|------|
 | API | app-01 |
--->
+</example>
 
 ## Deployment
-<!-- PURPOSE: Step-by-step deploy procedure. -->
-<!-- EXAMPLE:
+<purpose>Step-by-step deploy procedure.</purpose>
+<example>
 ### Deploy
 
 ```bash
@@ -50,7 +50,7 @@ ssh app-01
 ```bash
 git checkout PREV
 ```
--->
+</example>
 """
 
 NESTED_TEMPLATE = """\
@@ -62,39 +62,39 @@ NESTED_TEMPLATE = """\
 <!-- docs-meta: last-updated: 2026-01-01 -->
 
 ## Infrastructure Overview
-<!-- PURPOSE: System topology overview. -->
-<!-- EXAMPLE:
+<purpose>System topology overview.</purpose>
+<example>
 ### Topology Table
 
 | Component | Host |
 |-----------|------|
 | API | app-01 |
--->
+</example>
 
 ### Deployment Topology
-<!-- PURPOSE: Where each component runs. -->
-<!-- EXAMPLE:
+<purpose>Where each component runs.</purpose>
+<example>
 | Component | Host | Port |
 |-----------|------|------|
 | API | app-01 | 8080 |
--->
+</example>
 
 ### External Dependencies
-<!-- PURPOSE: Third-party services and fallbacks. -->
-<!-- EXAMPLE:
+<purpose>Third-party services and fallbacks.</purpose>
+<example>
 | Service | Purpose |
 |---------|---------|
 | OpenAI | LLM scoring |
--->
+</example>
 
 ## Deployment
-<!-- PURPOSE: Step-by-step deploy. -->
-<!-- EXAMPLE:
+<purpose>Step-by-step deploy.</purpose>
+<example>
 ### Deploy Steps
 
 1. Pull code
 2. Build
--->
+</example>
 """
 
 DEEP_TEMPLATE = """\
@@ -104,56 +104,56 @@ DEEP_TEMPLATE = """\
 # Deep Guide
 
 ## Config Reference
-<!-- PURPOSE: All config knobs. -->
-<!-- EXAMPLE:
+<purpose>All config knobs.</purpose>
+<example>
 ### Env Vars Table
 
 | Var | Default |
 |-----|---------|
 | PORT | 8080 |
--->
+</example>
 
 ### Environment Variables
-<!-- PURPOSE: Env var reference. -->
-<!-- EXAMPLE:
+<purpose>Env var reference.</purpose>
+<example>
 | Var | Default |
 |-----|---------|
 | PORT | 8080 |
--->
+</example>
 
 #### Required Variables
-<!-- PURPOSE: Must-set vars. -->
-<!-- EXAMPLE:
+<purpose>Must-set vars.</purpose>
+<example>
 | Var | Description |
 |-----|-------------|
 | DATABASE_URL | Connection string |
--->
+</example>
 
 #### Optional Variables
-<!-- PURPOSE: Nice-to-have vars. -->
-<!-- EXAMPLE:
+<purpose>Nice-to-have vars.</purpose>
+<example>
 | Var | Default |
 |-----|---------|
 | LOG_LEVEL | INFO |
--->
+</example>
 
 ### Configuration Files
-<!-- PURPOSE: Config file reference. -->
-<!-- EXAMPLE:
+<purpose>Config file reference.</purpose>
+<example>
 | File | Purpose |
 |------|---------|
 | .env | Env vars |
--->
+</example>
 
 ## Monitoring
-<!-- PURPOSE: Key metrics to watch. -->
-<!-- EXAMPLE:
+<purpose>Key metrics to watch.</purpose>
+<example>
 ### Metrics
 
 | Metric | Threshold |
 |--------|-----------|
 | p95 latency | 2s |
--->
+</example>
 """
 
 EMPTY_TEMPLATE = """\
@@ -330,11 +330,11 @@ class TestTemplateParsing:
 # Title
 
 ## Test Section
-<!-- PURPOSE: This is a multi-line purpose.
-     It spans two lines with indentation. -->
-<!-- EXAMPLE:
+<purpose>This is a multi-line purpose.
+     It spans two lines with indentation.</purpose>
+<example>
 Some example content.
--->
+</example>
 """
         with tempfile.TemporaryDirectory() as td:
             paths = _write_fixtures(td, template_text=template,
@@ -729,3 +729,88 @@ class TestHeadingPathConvention:
             for cw in child_writes:
                 expected_parent = cw["heading_path"].rsplit("/", 1)[0]
                 assert cw["parent_path"] == expected_parent
+
+
+# ---------------------------------------------------------------------------
+# XML format-specific tests
+# ---------------------------------------------------------------------------
+
+class TestXMLFormat:
+    """Tests specific to the XML tag annotation format."""
+
+    def test_evidence_not_served_to_writer(self):
+        """Evidence tag content is stripped — not included in purpose field."""
+        template = """\
+<!-- DIATAXIS: how-to -->
+# Title
+
+## Deploy Steps
+<purpose>Step-by-step deployment procedure covering dependency installation
+and service restarts.</purpose>
+<evidence>uv sync for dependencies. 2 Alembic chains (alembic_road_runner.ini,
+alembic_archive.ini). 3 systemd services with Requires ordering.</evidence>
+<example>
+1. ...
+</example>
+"""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td, template_text=template,
+                                    scan={"source_material_index": {}},
+                                    document="TEST")
+            responses = _drain_all(paths)
+            writes = [r for r in responses if r.get("type") == "write"]
+            assert len(writes) == 1
+            # Purpose should contain the scope text, not the evidence values
+            assert "deployment procedure" in writes[0]["purpose"].lower()
+            assert "alembic" not in writes[0]["purpose"].lower()
+            assert "systemd" not in writes[0]["purpose"].lower()
+
+    def test_inline_optional_stripped_from_title(self):
+        """Inline <!-- optional --> is stripped from heading title and slug."""
+        template = """\
+<!-- DIATAXIS: reference -->
+# Title
+
+## Main Section
+<purpose>Main section.</purpose>
+
+### Sub Section <!-- optional -->
+<purpose>Optional subsection.</purpose>
+"""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td, template_text=template,
+                                    scan={"source_material_index": {}},
+                                    document="TEST")
+            responses = _drain_all(paths)
+            writes = [r for r in responses if r.get("type") == "write"]
+            child_writes = [w for w in writes if w.get("level") == 3]
+            assert len(child_writes) == 1
+            # Slug should be clean — no "optional" artifact
+            slug = child_writes[0]["heading_path"].split("/")[-1]
+            assert slug == "sub-section"
+
+    def test_headings_inside_xml_example_not_treated_as_real(self):
+        """Headings inside <example> tags are not treated as real headings."""
+        template = """\
+<!-- DIATAXIS: how-to -->
+# Title
+
+## Overview
+<purpose>System overview.</purpose>
+<example>
+### Fake Heading Inside Example
+
+| Col | Val |
+|-----|-----|
+| A | B |
+</example>
+"""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td, template_text=template,
+                                    scan={"source_material_index": {}},
+                                    document="TEST")
+            responses = _drain_all(paths)
+            writes = [r for r in responses if r.get("type") == "write"]
+            # Only 1 real heading (## Overview), the ### inside <example> is excluded
+            assert len(writes) == 1
+            assert writes[0]["heading_path"] == "overview"

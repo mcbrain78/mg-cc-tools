@@ -1,3 +1,4 @@
+<!-- MIGRATION: This writer parses <!-- PURPOSE: --> HTML comments from refined templates. When migrated to the next-heading.py architecture, update to consume <purpose>/<evidence>/<example> XML tags instead. -->
 # Developer Writer Agent
 
 Developer writer agent for software engineers who maintain and extend the codebase. Generates code-first documentation in Stripe/Twilio style.

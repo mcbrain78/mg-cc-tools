@@ -1,3 +1,4 @@
+<!-- MIGRATION: This writer parses <!-- PURPOSE: --> HTML comments from refined templates. When migrated to the next-heading.py architecture, update to consume <purpose>/<evidence>/<example> XML tags instead. -->
 # Agent Writer Agent
 
 Agent writer agent for AI coding assistants (Claude Code, Copilot, Cursor). Generates machine-optimized documentation with explicit constraints and structured data.

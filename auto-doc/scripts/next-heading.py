@@ -38,17 +38,17 @@ def slugify_heading(heading):
 
 
 
-def _extract_comment(content_block, prefix):
-    """Extract content from a comment like <!-- PREFIX: content -->.
+def _extract_xml_tag(content_block, tag_name):
+    """Extract content from an XML tag like <tag_name>content</tag_name>.
 
     Args:
-        content_block: Raw text between headings (before comment stripping).
-        prefix: Comment prefix to match (e.g., "PURPOSE", "EXAMPLE").
+        content_block: Raw text between headings.
+        tag_name: XML tag name to match (e.g., "purpose", "example").
 
     Returns:
         Extracted content string, or empty string if not found.
     """
-    pattern = rf'<!--\s*{prefix}:\s*(.*?)-->'
+    pattern = rf'<{tag_name}>(.*?)</{tag_name}>'
     m = re.search(pattern, content_block, re.DOTALL)
     if m:
         return m.group(1).strip()
@@ -84,9 +84,12 @@ def parse_template(template_text):
     # Strategy: find each heading line in the original, grab content until next heading.
     heading_line_pattern = re.compile(r'^(#{2,4})\s+(.+)$', re.MULTILINE)
 
-    # Get heading positions in original text, but only those NOT inside comments.
+    # Get heading positions in original text, but only those NOT inside
+    # HTML comments or XML example tags.
     comment_ranges = []
     for m in re.finditer(r'<!--.*?-->', template_text, re.DOTALL):
+        comment_ranges.append((m.start(), m.end()))
+    for m in re.finditer(r'<example>.*?</example>', template_text, re.DOTALL):
         comment_ranges.append((m.start(), m.end()))
 
     def _in_comment(pos):
@@ -100,6 +103,8 @@ def parse_template(template_text):
         if not _in_comment(m.start()):
             level = len(m.group(1))
             title = m.group(2).strip()
+            title = re.sub(r'\s*<!--\s*optional\s*-->\s*$', '', title,
+                           flags=re.IGNORECASE).strip()
             original_headings.append({
                 "level": level,
                 "title": title,
@@ -118,8 +123,9 @@ def parse_template(template_text):
         else:
             content = template_text[h["pos"]:]
 
-        purpose = _extract_comment(content, "PURPOSE")
-        example = _extract_comment(content, "EXAMPLE")
+        purpose = _extract_xml_tag(content, "purpose")
+        example = _extract_xml_tag(content, "example")
+        # evidence intentionally NOT extracted — stripped before reaching writer
 
         parsed.append({
             "level": h["level"],

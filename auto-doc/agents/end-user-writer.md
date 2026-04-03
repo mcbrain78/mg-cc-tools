@@ -1,3 +1,4 @@
+<!-- MIGRATION: This writer parses <!-- PURPOSE: --> HTML comments from refined templates. When migrated to the next-heading.py architecture, update to consume <purpose>/<evidence>/<example> XML tags instead. -->
 # End-User Writer Agent
 
 End-user writer agent for non-technical audiences. Generates interface-aware, task-oriented documentation in plain language.
