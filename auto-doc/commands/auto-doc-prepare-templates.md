@@ -92,7 +92,7 @@ This creates the project-local directory structure where refined templates will 
 
 ### Step 4: Spawn Refiner Agents
 
-Spawn **all** Agent calls **in parallel** (all agents in a single message). For each `(audience, document)` pair:
+Spawn **all** Agent calls in a **single message** (parallel foreground -- do NOT set `run_in_background`). For each `(audience, document)` pair:
 
 ```
 Agent(
