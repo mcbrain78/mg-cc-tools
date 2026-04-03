@@ -126,6 +126,30 @@ def run_ingest(input_dir: str) -> BatchRun:
 ```
 -->
 
+### Type Annotation Policy
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: Whether the project uses strict or gradual typing, and where
+     annotations are required. Agents generating code need to match the
+     project's typing approach. -->
+<!-- EXAMPLE:
+| Context | Policy | Example |
+|---------|--------|---------|
+| Do | ... | ... |
+| Don't | ... | ... |
+-->
+
+### Async/Concurrency Patterns
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: If the project uses async or concurrent patterns, the specific
+     patterns agents must follow. Prevents introducing incompatible async
+     styles or unsafe concurrent access. -->
+<!-- EXAMPLE:
+| Pattern | Do | Don't |
+|---------|-----|-------|
+| ... | ... | ... |
+| ... | ... | ... |
+-->
+
 ## Do / Don't Rules
 <!-- PURPOSE: Explicit do/don't pairs with concrete examples. Agents MUST
      follow these rules when generating code. Each rule includes a correct

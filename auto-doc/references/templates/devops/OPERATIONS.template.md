@@ -229,6 +229,28 @@ docker compose down && docker compose up -d
    ```
 -->
 
+### Changing Configuration
+<!-- PURPOSE: How to change a configuration value and make it take effect.
+     Operators need clear steps covering edit, validate, and restart/reload
+     to prevent misconfigurations. -->
+<!-- EXAMPLE:
+1. Edit the configuration file:
+   ```bash
+   ...
+   ```
+
+2. Validate the change:
+   ```bash
+   ...
+   # Expected: ...
+   ```
+
+3. Apply the change:
+   ```bash
+   ...
+   ```
+-->
+
 ## Monitoring & Alerting
 <!-- OPTIONAL -- delete if not applicable -->
 <!-- PURPOSE: What to monitor, where alerts are configured, and how to
@@ -252,6 +274,22 @@ docker compose down && docker compose up -d
 3. **Fix** using the relevant runbook entry
 4. **Verify** the fix resolved the alert condition
 5. **Document** the incident in the incident log
+-->
+
+### Health Check Script
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: Composite script that checks all components in one run.
+     Provides a single command for operators to validate full system health
+     after a change or during an incident. -->
+<!-- EXAMPLE:
+```bash
+#!/bin/bash
+echo "=== Health Check ==="
+for component in ...; do
+  echo -n "$component: "
+  ... && echo "OK" || echo "FAIL"
+done
+```
 -->
 
 ## Backup & Recovery

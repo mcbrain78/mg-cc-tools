@@ -182,3 +182,29 @@ RawRecord (1) ──ingestion──> (1) StagingRow ──scoring──> (1) Sco
 The pipeline runs as a single user process. No multi-tenant access control.
 Database writes use parameterized queries (no SQL injection risk).
 -->
+
+## Error Handling & Resilience
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: Error recovery patterns, retry strategies, and failure boundaries.
+     Developers modifying error-handling code need to understand the established
+     patterns for catching, propagating, and recovering from errors. -->
+<!-- EXAMPLE:
+| Error Type | Handling Pattern | Recovery |
+|------------|-----------------|----------|
+| ... | ... | ... |
+| ... | ... | ... |
+| ... | ... | ... |
+-->
+
+## Concurrency Model
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: Threading model, async patterns, and locking strategies.
+     Developers working on concurrent code need to understand the established
+     patterns for parallelism, synchronization, and shared state management. -->
+<!-- EXAMPLE:
+| Pattern | Where Used | Notes |
+|---------|-----------|-------|
+| ... | ... | ... |
+| ... | ... | ... |
+| ... | ... | ... |
+-->

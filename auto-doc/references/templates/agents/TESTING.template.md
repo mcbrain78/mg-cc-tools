@@ -90,6 +90,19 @@ python3 -m pytest -x
 ```
 -->
 
+### Test Debugging
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: How to debug test failures, useful flags, and debugger
+     integration. Agents running tests need to know how to investigate
+     failures beyond re-reading test output. -->
+<!-- EXAMPLE:
+| Task | Command |
+|------|---------|
+| ... | `...` |
+| ... | `...` |
+| ... | `...` |
+-->
+
 ## Test Patterns
 <!-- PURPOSE: Established testing patterns used in this codebase. Agents MUST
      follow these patterns when writing new tests. Each pattern includes a

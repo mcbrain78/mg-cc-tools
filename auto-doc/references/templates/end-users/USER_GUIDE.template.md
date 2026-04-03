@@ -220,6 +220,29 @@ instead of a numeric score.
    to complete, then re-run scoring.
 -->
 
+### Getting Help
+<!-- PURPOSE: Support channels, issue tracker, and community resources.
+     Users who cannot resolve an issue through troubleshooting need to know
+     where to go next for human assistance. -->
+<!-- EXAMPLE:
+| Resource | Where | When to Use |
+|----------|-------|-------------|
+| ... | ... | ... |
+| ... | ... | ... |
+| ... | ... | ... |
+-->
+
+### Known Limitations
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: What the system cannot do and known constraints.
+     Users need to understand boundaries to avoid frustration and
+     set correct expectations. -->
+<!-- EXAMPLE:
+- ...
+- ...
+- ...
+-->
+
 <!-- WRITER NOTE: Exemplars above demonstrate web-UI style as the reference case.
      If the project's primary interface is CLI or API, follow the same structure --
      functional context before procedure, expected results after steps -- but use

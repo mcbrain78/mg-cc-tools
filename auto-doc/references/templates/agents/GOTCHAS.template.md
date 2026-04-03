@@ -45,6 +45,30 @@
   from output, creating silent data loss.
 -->
 
+### Concurrency Gotchas
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: Race conditions, atomicity requirements, and locking pitfalls.
+     Agents modifying concurrent code need to know the non-obvious failure
+     modes specific to this codebase. -->
+<!-- EXAMPLE:
+- **Trigger:** ...
+- **Behavior:** ...
+- **Correct handling:** ...
+- **What breaks if ignored:** ...
+-->
+
+### Error Recovery Gotchas
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: Partial failure scenarios and idempotency requirements.
+     Agents need to understand where operations can partially complete
+     and what cleanup or retry behavior is expected. -->
+<!-- EXAMPLE:
+- **Trigger:** ...
+- **Behavior:** ...
+- **Correct handling:** ...
+- **What breaks if ignored:** ...
+-->
+
 ## Ordering Constraints
 <!-- PURPOSE: Operations that MUST happen in a specific sequence. Agents MUST
      respect these ordering requirements when modifying code flow. Each

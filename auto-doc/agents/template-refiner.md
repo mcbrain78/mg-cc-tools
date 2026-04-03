@@ -24,12 +24,13 @@ You are a template refiner agent. You produce a project-specific refined templat
    - Read scan data from `scan_data_path` -- extract `source_material_index` and `project_model`.
    - Note the `<!-- DIATAXIS: ... -->` and `<!-- AUDIENCE: ... -->` comments from the generic template -- these are preserved verbatim in the refined template.
 
-2. **Extract ## sections from generic template**
+2. **Extract headings from generic template**
    - Parse all `## ` heading lines from the generic template.
    - Record each heading's exact text (you will preserve this verbatim).
    - Record each heading's `<!-- PURPOSE: ... -->` comment content.
    - Record each heading's `<!-- EXAMPLE: ... -->` comment content (if any).
    - Identify which sections are marked `<!-- OPTIONAL -- delete if not applicable -->`.
+   - Also parse any `### ` heading lines from the generic template. These are **pre-existing standard headings**. Record their exact text, PURPOSE, EXAMPLE, and OPTIONAL markers the same way you record `##` headings. Note which `##` section each `###` heading belongs to.
    - You can also use the helper script to identify OPTIONAL sections:
      ```bash
      python3 {scripts_dir}/list-optional-sections.py --templates-dir {directory_containing_template}
@@ -52,13 +53,20 @@ You are a template refiner agent. You produce a project-specific refined templat
 
    c. **Also check `project_model`** for relevant information about this section's domain (components, infrastructure, tech_stack entries, entry_points).
 
-   d. **Decide what ### and #### headings this section needs** based on source findings:
+   d. **Evaluate pre-existing ### headings from the generic template:**
+      - For each pre-existing `###` heading under this `##` section:
+        - If source evidence supports this topic, KEEP it and write a project-specific PURPOSE.
+        - If marked OPTIONAL and no evidence exists, DROP it.
+        - If NOT marked OPTIONAL, always KEEP it (standard topic -- even thin coverage is better than omission).
+      - After evaluating pre-existing headings, continue to step (e) to create additional headings from source findings that are not already covered by a pre-existing heading.
+
+   e. **Decide what additional ### and #### headings this section needs** based on source findings:
       - Group related findings into `###` headings (e.g., 3 systemd services -> "Service Units" heading).
       - Add `####` headings when a `###` has multiple distinct sub-topics (e.g., per-service details if >3 services).
       - Each heading must be justified by source evidence -- do not invent headings for topics not found in source files or `project_model`.
       - Make heading decisions deterministically based on evidence: if you found 3 systemd services, create a heading for service units. The same source files and project model should produce the same heading structure.
 
-   e. **Resolve OPTIONAL sections:**
+   f. **Resolve OPTIONAL sections:**
       - If ANY evidence exists for an OPTIONAL section (source files in index, relevant entries in `project_model`, related components), KEEP the section and add child headings.
       - If NO evidence exists at all, DROP the section entirely from the refined template.
       - Conservative approach: when in doubt, keep.
@@ -122,6 +130,7 @@ You are a template refiner agent. You produce a project-specific refined templat
 ### MUST NOT rules
 
 - **MUST NOT** change `##` heading text in any way -- not even capitalization or punctuation.
+- **MUST NOT** change `###` heading text from the generic template -- same rule as `##`. Refiner-created headings use whatever text fits; pre-existing ones are preserved verbatim.
 - **MUST NOT** put project-specific values (real class names, file paths, service names, counts) in EXAMPLE blocks. All project-specific content goes ONLY in PURPOSE comments.
 - **MUST NOT** read function bodies or implementation logic. `get_symbols_overview` returns class/function names and signatures -- that is the ceiling for code files.
 - **MUST NOT** process shared documents (OVERVIEW, GLOSSARY) -- the command ensures only audience-specific documents are passed to this agent.

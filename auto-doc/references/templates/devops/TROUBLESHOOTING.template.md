@@ -312,6 +312,22 @@ MEM_AVAIL=$(free -m | awk 'NR==2{print $7}')
 ```
 -->
 
+### Full System Health Check
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: Single script or procedure that validates all components.
+     Provides a comprehensive check that operators can run to confirm
+     the entire system is healthy after a change or incident. -->
+<!-- EXAMPLE:
+```bash
+#!/bin/bash
+echo "=== Full System Health Check ==="
+for component in ...; do
+  echo -n "$component: "
+  ... && echo "OK" || echo "FAIL"
+done
+```
+-->
+
 ## Performance Issues
 <!-- OPTIONAL -- delete if not applicable -->
 <!-- PURPOSE: Diagnosis and remediation for performance-related problems.
@@ -437,5 +453,41 @@ docker compose restart api
 6. Notify stakeholders:
    ```bash
    echo "System restored at $(date -u). Last backup: $LATEST_BACKUP" >> /var/log/incidents.log
+   ```
+-->
+
+### Full Service Restart
+<!-- PURPOSE: Ordered restart of all services respecting dependencies.
+     During major incidents, operators need a safe restart sequence that
+     brings services up in the correct order. -->
+<!-- EXAMPLE:
+**Stop order** (reverse dependency):
+
+1. Stop application services:
+   ```bash
+   ...
+   ```
+
+2. Stop supporting services:
+   ```bash
+   ...
+   ```
+
+**Start order** (dependency-first):
+
+1. Start supporting services:
+   ```bash
+   ...
+   ```
+
+2. Start application services:
+   ```bash
+   ...
+   ```
+
+3. Verify:
+   ```bash
+   ...
+   # Expected: ...
    ```
 -->

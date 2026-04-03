@@ -38,10 +38,26 @@ def extract_document_name(filename):
     return base.replace(".template.md", "")
 
 
+def _is_optional(lines, start):
+    """Check if the line after heading or inline contains OPTIONAL marker."""
+    # Check inline first (e.g., ### Heading <!-- OPTIONAL -->)
+    if "<!-- OPTIONAL" in lines[start]:
+        return True
+    # Check next non-empty line
+    for j in range(start + 1, len(lines)):
+        next_line = lines[j].strip()
+        if not next_line:
+            continue
+        return "<!-- OPTIONAL" in next_line
+    return False
+
+
 def find_optional_sections(templates_dir):
     """Find all optional sections across all templates.
 
-    Returns a sorted list of 'DOCUMENT/section-slug' strings.
+    Returns a sorted list of keys:
+    - '## ' headings: 'DOCUMENT/section-slug'
+    - '### ' headings: 'DOCUMENT/section-slug/subsection-slug'
     """
     optional = []
 
@@ -59,22 +75,24 @@ def find_optional_sections(templates_dir):
             except OSError:
                 continue
 
+            current_h2_slug = None
+
             for i, line in enumerate(lines):
-                # Look for ## headings
-                if not line.startswith("## "):
-                    continue
-
-                heading = line[3:].strip()
-                slug = slugify(heading)
-
-                # Check if next non-empty line contains <!-- OPTIONAL
-                for j in range(i + 1, len(lines)):
-                    next_line = lines[j].strip()
-                    if not next_line:
-                        continue
-                    if "<!-- OPTIONAL" in next_line:
-                        optional.append(f"{doc_name}/{slug}")
-                    break
+                if line.startswith("## "):
+                    heading = line[3:].strip()
+                    current_h2_slug = slugify(heading)
+                    if _is_optional(lines, i):
+                        optional.append(f"{doc_name}/{current_h2_slug}")
+                elif line.startswith("### "):
+                    # Extract heading text, stripping inline OPTIONAL comment
+                    heading_text = re.sub(
+                        r"\s*<!--.*?-->\s*$", "", line[4:]
+                    ).strip()
+                    h3_slug = slugify(heading_text)
+                    if current_h2_slug and _is_optional(lines, i):
+                        optional.append(
+                            f"{doc_name}/{current_h2_slug}/{h3_slug}"
+                        )
 
     return sorted(optional)
 
@@ -84,18 +102,19 @@ def main():
         description="List optional sections from documentation templates"
     )
     parser.add_argument(
-        "--templates-dir", required=True,
-        help="Path to templates directory (searched recursively)",
+        "--templates-dir", required=True, action="append",
+        help="Path to templates directory (searched recursively, repeatable)",
     )
 
     args = parser.parse_args()
-    templates_dir = os.path.abspath(args.templates_dir)
 
-    if not os.path.isdir(templates_dir):
-        print(f"Error: templates directory not found: {templates_dir}", file=sys.stderr)
-        sys.exit(1)
-
-    sections = find_optional_sections(templates_dir)
+    sections = []
+    for tdir in args.templates_dir:
+        templates_dir = os.path.abspath(tdir)
+        if not os.path.isdir(templates_dir):
+            print(f"Error: templates directory not found: {templates_dir}", file=sys.stderr)
+            sys.exit(1)
+        sections.extend(find_optional_sections(templates_dir))
     json.dump(sections, sys.stdout, indent=2)
     print()  # trailing newline
 

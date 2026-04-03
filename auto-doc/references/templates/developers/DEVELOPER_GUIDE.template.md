@@ -99,6 +99,29 @@ dataforge/
 | Modify the staging schema | `lib/db.py:create_tables()` | Add column, update migration |
 -->
 
+### Database Migrations
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: How to create, run, and rollback database migrations.
+     Developers modifying the data model need a clear procedure for
+     schema changes that is safe for production. -->
+<!-- EXAMPLE:
+1. Create a new migration:
+   ```bash
+   ...
+   ```
+
+2. Run the migration:
+   ```bash
+   ...
+   # Expected: ...
+   ```
+
+3. Rollback if needed:
+   ```bash
+   ...
+   ```
+-->
+
 ## Adding a New Scoring Model
 <!-- PURPOSE: Step-by-step guide for the most common extension pattern. Shows
      the complete workflow from creating the file to integrating and testing
@@ -249,4 +272,26 @@ Use conventional commits: `feat:`, `fix:`, `test:`, `refactor:`, `chore:`.
 - [ ] No lint errors: `ruff check .`
 - [ ] New code has tests
 - [ ] Config changes documented in QUICK_REFERENCE.md
+-->
+
+## Dependency Management
+<!-- OPTIONAL -- delete if not applicable -->
+<!-- PURPOSE: How to add, remove, and update project dependencies.
+     Developers need to know the correct workflow for managing packages
+     to keep the dependency tree clean and the lock file consistent. -->
+<!-- EXAMPLE:
+1. Add a new dependency:
+   ```bash
+   ...
+   ```
+
+2. Remove a dependency:
+   ```bash
+   ...
+   ```
+
+3. Update dependencies:
+   ```bash
+   ...
+   ```
 -->
