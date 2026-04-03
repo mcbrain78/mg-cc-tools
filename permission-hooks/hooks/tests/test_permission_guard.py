@@ -1688,7 +1688,7 @@ import tempfile
 
 
 class TestEmitScriptGate:
-    """Stage 0: emit-context.py always requires human approval."""
+    """Stage 0: emitter scripts always require human approval."""
 
     def test_detects_emit_context_bare(self):
         assert _EMIT_SCRIPT_RE.search("python3 emit-context.py AUTO-DOC")
@@ -1703,6 +1703,14 @@ class TestEmitScriptGate:
             "python3 ./scripts/emit-context.py CODEBASE-HEALTH"
         )
 
+    def test_detects_emit_edit_guard_bare(self):
+        assert _EMIT_SCRIPT_RE.search("python3 emit-edit-guard.py OFF")
+
+    def test_detects_emit_edit_guard_full_path(self):
+        assert _EMIT_SCRIPT_RE.search(
+            "python3 /home/user/.claude/permission-hooks/scripts/emit-edit-guard.py ON"
+        )
+
     def test_ignores_unrelated_scripts(self):
         assert not _EMIT_SCRIPT_RE.search("python3 verify-setup.py")
         assert not _EMIT_SCRIPT_RE.search("uv run check-references.py")
@@ -1710,6 +1718,7 @@ class TestEmitScriptGate:
     def test_ignores_partial_name(self):
         assert not _EMIT_SCRIPT_RE.search("python3 emit-context.pyc")
         assert not _EMIT_SCRIPT_RE.search("python3 emit-contexty.py")
+        assert not _EMIT_SCRIPT_RE.search("python3 emit-edit-guardy.py")
 
 
 class TestEmitterFollowsCommand:
@@ -2164,3 +2173,123 @@ class TestEditGuard:
             assert check_edit_guard(path) is False
         finally:
             os.unlink(path)
+
+
+# ── Edit guard bridge writer tests ───────────────────────────────────────────
+
+import glob as _glob
+import shutil as _shutil
+
+_write_edit_guard_bridge = guard._write_edit_guard_bridge
+
+
+class TestEditGuardBridge:
+    """_write_edit_guard_bridge writes edit guard state to a session-scoped bridge file."""
+
+    SESSION_PREFIX = "test-bridge-guard"
+
+    def _session_dir(self, session_id):
+        return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
+
+    def _bridge_path(self, session_id):
+        return os.path.join(self._session_dir(session_id), "edit-guard.json")
+
+    def _make_event(self, transcript_path):
+        return {"transcript_path": transcript_path}
+
+    def _write_transcript(self, lines, session_id):
+        """Write a transcript file named like a real session."""
+        tdir = tempfile.mkdtemp()
+        path = os.path.join(tdir, f"{session_id}.jsonl")
+        with open(path, "w") as f:
+            f.write("\n".join(lines))
+        return path, tdir
+
+    def _guard_marker(self, state, age_s=0):
+        ts = int((time.time() - age_s) * 1000)
+        return f"SESSION_FEATURE: MG:EDIT_GUARD_{state}_{ts}"
+
+    def _tool_result_line(self, content):
+        entry = {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": "toolu_test", "content": content}],
+            },
+        }
+        return json.dumps(entry)
+
+    def teardown_method(self):
+        """Clean up test session directories."""
+        for d in _glob.glob(f"/tmp/claude-code/mg-session-{self.SESSION_PREFIX}-*"):
+            _shutil.rmtree(d, ignore_errors=True)
+
+    def test_bridge_writes_on_state(self):
+        """No OFF markers → state ON."""
+        sid = f"{self.SESSION_PREFIX}-on"
+        path, tdir = self._write_transcript(
+            [self._tool_result_line("some output")], sid
+        )
+        try:
+            _write_edit_guard_bridge(self._make_event(path))
+            bridge = json.loads(open(self._bridge_path(sid)).read())
+            assert bridge["state"] == "ON"
+            assert "ts" in bridge
+        finally:
+            _shutil.rmtree(tdir, ignore_errors=True)
+
+    def test_bridge_writes_off_state(self):
+        """OFF marker → state OFF."""
+        sid = f"{self.SESSION_PREFIX}-off"
+        path, tdir = self._write_transcript(
+            [self._tool_result_line(self._guard_marker("OFF"))], sid
+        )
+        try:
+            _write_edit_guard_bridge(self._make_event(path))
+            bridge = json.loads(open(self._bridge_path(sid)).read())
+            assert bridge["state"] == "OFF"
+        finally:
+            _shutil.rmtree(tdir, ignore_errors=True)
+
+    def test_bridge_no_transcript_path(self):
+        """Empty transcript path → no crash, no file."""
+        sid = f"{self.SESSION_PREFIX}-nopath"
+        _write_edit_guard_bridge({"transcript_path": ""})
+        assert not os.path.exists(self._bridge_path(sid))
+
+    def test_bridge_missing_transcript_file(self):
+        """Nonexistent transcript path → no crash."""
+        sid = f"{self.SESSION_PREFIX}-missing"
+        _write_edit_guard_bridge({"transcript_path": f"/nonexistent/{sid}.jsonl"})
+        # Should not crash — bridge may or may not be written (state defaults to ON)
+
+    def test_bridge_creates_session_directory(self):
+        """Session directory is auto-created."""
+        sid = f"{self.SESSION_PREFIX}-mkdir"
+        path, tdir = self._write_transcript(
+            [self._tool_result_line("output")], sid
+        )
+        try:
+            assert not os.path.exists(self._session_dir(sid))
+            _write_edit_guard_bridge(self._make_event(path))
+            assert os.path.isdir(self._session_dir(sid))
+        finally:
+            _shutil.rmtree(tdir, ignore_errors=True)
+
+    def test_bridge_updates_existing_file(self):
+        """State change is reflected in the bridge file."""
+        sid = f"{self.SESSION_PREFIX}-update"
+        path, tdir = self._write_transcript(
+            [self._tool_result_line(self._guard_marker("OFF"))], sid
+        )
+        try:
+            _write_edit_guard_bridge(self._make_event(path))
+            assert json.loads(open(self._bridge_path(sid)).read())["state"] == "OFF"
+
+            # Now write ON marker and re-run
+            with open(path, "a") as f:
+                f.write("\n" + self._tool_result_line(self._guard_marker("ON")))
+            _write_edit_guard_bridge(self._make_event(path))
+            assert json.loads(open(self._bridge_path(sid)).read())["state"] == "ON"
+        finally:
+            _shutil.rmtree(tdir, ignore_errors=True)

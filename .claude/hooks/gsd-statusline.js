@@ -20,10 +20,16 @@ process.stdin.on('end', () => {
     const model = data.model?.display_name || 'Claude';
     const dir = data.workspace?.current_dir || process.cwd();
     const session = data.session_id || '';
+    // Session directory for all session-scoped temp files
+    const sessionDir = session ? path.join('/tmp/claude-code', `mg-session-${session}`) : null;
+    if (sessionDir) {
+      try { fs.mkdirSync(sessionDir, { recursive: true }); } catch (e) {}
+    }
+
     let remaining = data.context_window?.remaining_percentage;
 
     // Cache context window value to survive intermittent omissions from Claude Code
-    const ctxCachePath = session ? path.join(os.tmpdir(), `claude-ctx-cache-${session}.json`) : null;
+    const ctxCachePath = sessionDir ? path.join(sessionDir, 'context.json') : null;
     if (remaining != null && ctxCachePath) {
       try { fs.writeFileSync(ctxCachePath, JSON.stringify({ remaining, ts: Date.now() })); } catch (e) {}
     } else if (remaining == null && ctxCachePath) {
@@ -34,16 +40,28 @@ process.stdin.on('end', () => {
       } catch (e) {}
     }
 
-    // Cleanup stale cache and bridge files older than 1 week
+    // Cleanup stale session directories older than 1 week
     try {
       const ONE_WEEK = 7 * 24 * 60 * 60 * 1000;
       const now = Date.now();
+      const ccDir = '/tmp/claude-code';
+      if (fs.existsSync(ccDir)) {
+        for (const d of fs.readdirSync(ccDir)) {
+          if (d.startsWith('mg-session-')) {
+            const dp = path.join(ccDir, d);
+            try {
+              if (now - fs.statSync(dp).mtimeMs > ONE_WEEK) fs.rmSync(dp, { recursive: true, force: true });
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {}
+
+    // One-time migration: clean up old flat files from /tmp/
+    try {
       for (const f of fs.readdirSync(os.tmpdir())) {
         if (f.startsWith('claude-ctx-') && f.endsWith('.json')) {
-          const fp = path.join(os.tmpdir(), f);
-          try {
-            if (now - fs.statSync(fp).mtimeMs > ONE_WEEK) fs.unlinkSync(fp);
-          } catch (e) {}
+          try { fs.unlinkSync(path.join(os.tmpdir(), f)); } catch (e) {}
         }
       }
     } catch (e) {}
@@ -60,9 +78,9 @@ process.stdin.on('end', () => {
 
       // Write context metrics to bridge file for the context-monitor PostToolUse hook.
       // The monitor reads this file to inject agent-facing warnings when context is low.
-      if (session) {
+      if (sessionDir) {
         try {
-          const bridgePath = path.join(os.tmpdir(), `claude-ctx-${session}.json`);
+          const bridgePath = path.join(sessionDir, 'context-bridge.json');
           const bridgeData = JSON.stringify({
             session_id: session,
             remaining_percentage: remaining,
@@ -128,12 +146,27 @@ process.stdin.on('end', () => {
       } catch (e) {}
     }
 
+    // Edit guard badge (reads bridge file written by permission-guard.py)
+    let editBadge = '';
+    if (sessionDir) {
+      try {
+        const guard = JSON.parse(fs.readFileSync(path.join(sessionDir, 'edit-guard.json'), 'utf8'));
+        if (guard.state === 'OFF') {
+          editBadge = '\x1b[31m\u{1F512} EDITS OFF\x1b[0m \u2502 ';
+        } else {
+          editBadge = '\x1b[2m\u270F\uFE0F EDITS ON\x1b[0m \u2502 ';
+        }
+      } catch (e) {
+        // No bridge file yet (permission-hooks not active) — show nothing
+      }
+    }
+
     // Output
     const dirname = path.basename(dir);
     if (task) {
-      process.stdout.write(`${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[1m${task}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}`);
+      process.stdout.write(`${editBadge}${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[1m${task}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}`);
     } else {
-      process.stdout.write(`${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}`);
+      process.stdout.write(`${editBadge}${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}`);
     }
   } catch (e) {
     // Silent fail - don't break statusline on parse errors

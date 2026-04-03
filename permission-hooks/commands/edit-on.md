@@ -1,5 +1,5 @@
 ---
-name: edit_on
+name: edit-on
 description: Re-enable Edit/Write tools (disable edit guard)
 argument-hint: "[<instruction>]"
 allowed-tools: Bash
@@ -9,6 +9,12 @@ Run the edit guard emitter to re-enable edits:
 
 ```
 python3 {EMIT_EDIT_GUARD_SCRIPT} ON
+```
+
+Then trigger a statusline bridge update:
+
+```
+echo "Statusline Update: EDITS ON"
 ```
 
 Edit/Write tools are now enabled.

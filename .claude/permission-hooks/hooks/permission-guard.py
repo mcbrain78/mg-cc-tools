@@ -106,7 +106,7 @@ SAFE_ABSOLUTE_PATHS = ["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", 
 # transcript.  The hook always forces human approval for that script (stage 0).
 # Once approved, subsequent tool calls are auto-approved for CONTEXT_TTL_S.
 _CONTEXT_RE = re.compile(r"SESSION_CONTEXT_ID: MG:([\w-]+)_(\d+)")
-_EMIT_SCRIPT_RE = re.compile(r"\bemit-context\.py\b")
+_EMIT_SCRIPT_RE = re.compile(r"\bemit-(context|edit-guard)\.py\b")
 CONTEXT_TTL_S = 30 * 60  # 30 minutes
 
 # Number of trailing JSONL lines to inspect for recent command invocation.
@@ -172,7 +172,7 @@ def check_session_context(transcript_path):
 # ── Edit guard (manual toggle for Edit/Write/NotebookEdit) ──────────────────
 # The emit-edit-guard.py script prints a SESSION_FEATURE marker into the
 # transcript.  Default is ON (edits allowed).  When the latest marker is OFF,
-# Edit/Write/NotebookEdit are blocked until the user runs /mg:edit_on.
+# Edit/Write/NotebookEdit are blocked until the user runs /mg:edit-on.
 _EDIT_GUARD_RE = re.compile(r"SESSION_FEATURE: MG:EDIT_GUARD_(ON|OFF)_(\d{10,})")
 
 
@@ -207,6 +207,34 @@ def check_edit_guard(transcript_path):
         return match.group(1) == "OFF"
 
     return False  # all markers stale → default ON
+
+
+# ── Edit guard bridge writer (best-effort status for statusline) ──────────
+def _write_edit_guard_bridge(event):
+    """Write edit guard state to a session-scoped bridge file.
+
+    The statusline hook reads this file to show an edit guard badge.
+    Best-effort: never raises, never breaks the hook.
+    """
+    try:
+        transcript_path = event.get("transcript_path", "")
+        if not transcript_path:
+            return
+        # Extract session ID from transcript filename (strip .jsonl)
+        session = os.path.basename(transcript_path)
+        if session.endswith(".jsonl"):
+            session = session[:-6]
+        if not session:
+            return
+        blocked = check_edit_guard(transcript_path)
+        state = "OFF" if blocked else "ON"
+        session_dir = os.path.join("/tmp/claude-code", f"mg-session-{session}")
+        os.makedirs(session_dir, exist_ok=True)
+        bridge_path = os.path.join(session_dir, "edit-guard.json")
+        with open(bridge_path, "w") as f:
+            json.dump({"state": state, "ts": int(time.time())}, f)
+    except Exception:
+        pass
 
 
 # Claude's internal directory (memory, settings, etc.) — always allowed
@@ -796,6 +824,9 @@ def main():
         event = json.load(sys.stdin)
     except (json.JSONDecodeError, EOFError):
         return
+
+    # Best-effort: write edit guard state for statusline badge
+    _write_edit_guard_bridge(event)
 
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {})

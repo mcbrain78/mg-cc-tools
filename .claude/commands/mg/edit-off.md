@@ -7,7 +7,7 @@ allowed-tools: Bash
 Run the edit guard emitter to block edits:
 
 ```
-python3 {EMIT_EDIT_GUARD_SCRIPT} OFF
+python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/scripts/emit-edit-guard.py OFF
 ```
 
 Then trigger a statusline bridge update:

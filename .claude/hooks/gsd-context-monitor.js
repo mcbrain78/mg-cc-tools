@@ -5,7 +5,7 @@
 // context limits (the statusline only shows the user).
 //
 // How it works:
-// 1. The statusline hook writes metrics to /tmp/claude-ctx-{session_id}.json
+// 1. The statusline hook writes metrics to /tmp/claude-code/mg-session-{session_id}/context-bridge.json
 // 2. This hook reads those metrics after each tool use
 // 3. When remaining context drops below thresholds, it injects a warning
 //    as additionalContext, which the agent sees in its conversation
@@ -18,7 +18,6 @@
 // Severity escalation bypasses debounce (WARNING -> CRITICAL fires immediately)
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const WARNING_THRESHOLD = 35;  // remaining_percentage <= 35%
@@ -43,8 +42,8 @@ process.stdin.on('end', () => {
       process.exit(0);
     }
 
-    const tmpDir = os.tmpdir();
-    const metricsPath = path.join(tmpDir, `claude-ctx-${sessionId}.json`);
+    const sessionDir = path.join('/tmp/claude-code', `mg-session-${sessionId}`);
+    const metricsPath = path.join(sessionDir, 'context-bridge.json');
 
     // If no metrics file, this is a subagent or fresh session -- exit silently
     if (!fs.existsSync(metricsPath)) {
@@ -68,7 +67,7 @@ process.stdin.on('end', () => {
     }
 
     // Debounce: check if we warned recently
-    const warnPath = path.join(tmpDir, `claude-ctx-${sessionId}-warned.json`);
+    const warnPath = path.join(sessionDir, 'context-warned.json');
     let warnData = { callsSinceWarn: 0, lastLevel: null };
     let firstWarn = true;
 

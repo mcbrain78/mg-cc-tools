@@ -132,9 +132,9 @@ echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
 
 # Commands
 mkdir -p "${COMMANDS_DIR}"
-cp "${SCRIPT_DIR}/commands/edit_on.md" "${COMMANDS_DIR}/"
-cp "${SCRIPT_DIR}/commands/edit_off.md" "${COMMANDS_DIR}/"
-echo "  Commands → ${COMMANDS_DIR}/ (edit_on.md, edit_off.md)"
+cp "${SCRIPT_DIR}/commands/edit-on.md" "${COMMANDS_DIR}/"
+cp "${SCRIPT_DIR}/commands/edit-off.md" "${COMMANDS_DIR}/"
+echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md)"
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 
@@ -146,7 +146,7 @@ sed -i "s|{PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
 
 # Command files: {EMIT_EDIT_GUARD_SCRIPT}
 EMIT_EDIT_GUARD_ABS="${SUPPORT_DIR}/scripts/emit-edit-guard.py"
-for cmd_file in "${COMMANDS_DIR}/edit_on.md" "${COMMANDS_DIR}/edit_off.md"; do
+for cmd_file in "${COMMANDS_DIR}/edit-on.md" "${COMMANDS_DIR}/edit-off.md"; do
   if [[ -f "$cmd_file" ]]; then
     sed -i "s|{EMIT_EDIT_GUARD_SCRIPT}|${EMIT_EDIT_GUARD_ABS}|g" "$cmd_file"
   fi
@@ -160,6 +160,14 @@ if [[ -f "$STALE_CMD" ]]; then
   rm "$STALE_CMD"
   echo "  Removed stale: install-permission-hooks.md"
 fi
+
+# Clean up stale underscore-named commands (renamed to hyphenated in v2.1)
+for stale in "edit_on.md" "edit_off.md"; do
+  if [[ -f "${COMMANDS_DIR}/${stale}" ]]; then
+    rm "${COMMANDS_DIR}/${stale}"
+    echo "  Removed stale: ${stale}"
+  fi
+done
 
 # ── Update manifest ──────────────────────────────────────────────────────────
 TOOL_SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
