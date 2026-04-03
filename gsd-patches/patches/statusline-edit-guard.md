@@ -8,7 +8,7 @@
 
 ### 1. Add edit guard badge before output
 
-Read the edit guard bridge file and prepend a badge to the statusline output. Shows red lock when edits are OFF, dim pencil when ON. No badge if bridge file doesn't exist (permission-hooks not installed).
+Read the edit guard bridge file and prepend a badge to the statusline output. Shows red lock when edits are OFF, dim pencil when ON. Defaults to EDITS ON if bridge file doesn't exist but permission-hooks are installed.
 
 **Anchor:**
 ```
@@ -34,7 +34,11 @@ Read the edit guard bridge file and prepend a badge to the statusline output. Sh
           editBadge = '\x1b[2m\u270F\uFE0F EDITS ON\x1b[0m \u2502 ';
         }
       } catch (e) {
-        // No bridge file yet (permission-hooks not active) — show nothing
+        // No bridge file yet — default to EDITS ON if permission-hooks are installed
+        const hookPath = path.join(dir, '.claude', 'permission-hooks', 'hooks', 'permission-guard.py');
+        if (fs.existsSync(hookPath)) {
+          editBadge = '\x1b[2m\u270F\uFE0F EDITS ON\x1b[0m \u2502 ';
+        }
       }
     }
 

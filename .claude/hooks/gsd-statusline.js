@@ -157,7 +157,11 @@ process.stdin.on('end', () => {
           editBadge = '\x1b[2m\u270F\uFE0F EDITS ON\x1b[0m \u2502 ';
         }
       } catch (e) {
-        // No bridge file yet (permission-hooks not active) — show nothing
+        // No bridge file yet — default to EDITS ON if permission-hooks are installed
+        const hookPath = path.join(dir, '.claude', 'permission-hooks', 'hooks', 'permission-guard.py');
+        if (fs.existsSync(hookPath)) {
+          editBadge = '\x1b[2m\u270F\uFE0F EDITS ON\x1b[0m \u2502 ';
+        }
       }
     }
 
