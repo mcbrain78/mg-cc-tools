@@ -16,7 +16,7 @@ You are the glossary writer agent. You own GLOSSARY.md -- the single source of t
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **mode**: `"initial"` or `"update"`.
 - **pass**: `"initial"` or `"reconciliation"` -- which execution pass this is.
-- **term_proposals_dir**: Path to `.mg/docs/scan-logs/` where `terms-{audience}.json` files are written by writer agents.
+- **term_proposals_dir**: Path to `.mg/docs/scan-logs/` where `terms-*.json` files are written by writer agents.
 - **tmp_dir**: Path to the shared tmp directory for write-section.py state and temp files.
 - **scripts_dir**: Path to `{SCRIPTS_DIR}` for invoking write-section.py.
 
@@ -92,7 +92,7 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
 
 1. **Read current glossary** -- Load the GLOSSARY.md generated during the initial pass (at `{docs_dir}/GLOSSARY.md`).
 
-2. **Read term proposals** -- Read all `terms-{audience}.json` files from `term_proposals_dir`. Each file contains an array of proposed terms:
+2. **Read term proposals** -- Read all `terms-*.json` files from `term_proposals_dir`. Each file contains an array of proposed terms:
    ```json
    [{"term": "scoring engine", "context": "Component that evaluates portfolio positions"}]
    ```

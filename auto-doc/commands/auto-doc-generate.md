@@ -413,7 +413,7 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
 After all generation is complete, present a generation report.
 
 1. **Collect stats for each generated file.** For every `.md` file in `{docs_dir_abs}` (including subdirectories):
-   - Count sections (`## ` headings)
+   - Count sections (`<!-- section:` markers)
    - Count words (approximate: split by whitespace, excluding HTML comments and frontmatter)
 
 2. **Present the summary table:**

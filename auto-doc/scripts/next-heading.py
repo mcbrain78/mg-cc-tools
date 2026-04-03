@@ -15,7 +15,7 @@ Usage:
 
 Returns JSON to stdout:
     {"type": "orient", "section": "...", "heading_outline": [...], "source_files": [...]}
-    {"type": "write", "heading_path": "...", "level": N, "purpose": "...", "example": "..."}
+    {"type": "write", "heading_path": "...", "level": N, "title": "...", "heading_line": "## ...", "purpose": "...", "example": "..."}
     {"done": true, "headings_processed": N}
 """
 
@@ -26,15 +26,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib.heading_map import slugify_heading
 from lib.json_io import load_json, save_json
-
-
-def slugify_heading(heading):
-    """Convert a heading to a slug: lowercase, spaces to hyphens, strip non-alnum."""
-    slug = heading.strip().lower()
-    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
-    slug = re.sub(r"[\s]+", "-", slug)
-    return slug.strip("-")
 
 
 
@@ -192,6 +185,7 @@ def _walk_headings_depth_first(section):
     yield {
         "path": section["slug"],
         "level": section["level"],
+        "title": section["title"],
         "purpose": section["purpose"],
         "example": section["example"],
     }
@@ -200,6 +194,7 @@ def _walk_headings_depth_first(section):
         yield {
             "path": child_path,
             "level": child["level"],
+            "title": child["title"],
             "purpose": child["purpose"],
             "example": child["example"],
         }
@@ -207,6 +202,7 @@ def _walk_headings_depth_first(section):
             yield {
                 "path": f"{child_path}/{grandchild['slug']}",
                 "level": grandchild["level"],
+                "title": grandchild["title"],
                 "purpose": grandchild["purpose"],
                 "example": grandchild["example"],
             }
@@ -246,6 +242,8 @@ def build_emission_queue(sections, document, source_material_index):
                 "type": "write",
                 "heading_path": heading["path"],
                 "level": heading["level"],
+                "title": heading["title"],
+                "heading_line": "#" * heading["level"] + " " + heading["title"],
                 "purpose": heading["purpose"],
                 "example": heading["example"],
             }

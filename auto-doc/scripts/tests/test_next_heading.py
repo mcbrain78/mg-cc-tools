@@ -449,7 +449,7 @@ class TestWriteResponse:
     """HIT-04: Write response for every heading."""
 
     def test_write_has_required_fields(self):
-        """Write response has type, heading_path, level, purpose, example."""
+        """Write response has type, heading_path, level, title, heading_line, purpose, example."""
         with tempfile.TemporaryDirectory() as td:
             paths = _write_fixtures(td)
             _run(paths)  # orient
@@ -457,8 +457,54 @@ class TestWriteResponse:
             assert out["type"] == "write"
             assert "heading_path" in out
             assert "level" in out
+            assert "title" in out
+            assert "heading_line" in out
             assert "purpose" in out
             assert "example" in out
+
+    def test_write_title_matches_template_heading(self):
+        """Write response title is the original heading text from template."""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            _run(paths)  # orient
+            out = _run(paths)  # write
+            assert out["title"] == "Infrastructure Overview"
+
+    def test_write_heading_line_format(self):
+        """heading_line is '#' * level + ' ' + title."""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            _run(paths)  # orient
+            out = _run(paths)  # write
+            assert out["heading_line"] == "## Infrastructure Overview"
+
+    def test_child_write_heading_line_level_3(self):
+        """### child has heading_line with 3 hashes."""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td, template_text=NESTED_TEMPLATE,
+                                    scan={"source_material_index": {}},
+                                    document="TEST")
+            responses = _drain_all(paths)
+            child_writes = [r for r in responses
+                           if r.get("type") == "write" and r.get("level") == 3]
+            assert len(child_writes) > 0
+            for cw in child_writes:
+                assert cw["heading_line"].startswith("### ")
+                assert cw["heading_line"] == "### " + cw["title"]
+
+    def test_grandchild_write_heading_line_level_4(self):
+        """#### grandchild has heading_line with 4 hashes."""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td, template_text=DEEP_TEMPLATE,
+                                    scan={"source_material_index": {}},
+                                    document="DEEP")
+            responses = _drain_all(paths)
+            grandchild_writes = [r for r in responses
+                                if r.get("type") == "write" and r.get("level") == 4]
+            assert len(grandchild_writes) > 0
+            for gw in grandchild_writes:
+                assert gw["heading_line"].startswith("#### ")
+                assert gw["heading_line"] == "#### " + gw["title"]
 
     def test_section_level_write_omits_parent_path(self):
         """## level write has NO parent_path key (not null, absent)."""

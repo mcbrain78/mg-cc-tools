@@ -38,6 +38,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib.heading_map import read_heading_map, slugify_heading  # noqa: F811
 from lib.json_io import load_json, save_json, save_text
 from lib.symbols import extract_python_symbols
 from lib.xml_doc import (
@@ -85,14 +86,6 @@ def _extract_diataxis(header):
     """Extract DIATAXIS type from header comment like <!-- DIATAXIS: how-to -->."""
     m = re.search(r"<!--\s*DIATAXIS:\s*(.+?)\s*-->", header)
     return m.group(1) if m else ""
-
-
-def slugify_heading(heading):
-    """Convert a heading to a slug: lowercase, spaces to hyphens, strip non-alnum."""
-    slug = heading.strip().lower()
-    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
-    slug = re.sub(r"[\s]+", "-", slug)
-    return slug.strip("-")
 
 
 def check_symbols(symbols, file_paths, project_root):
@@ -188,6 +181,24 @@ def section_write(args):
     marker = f"<!-- section: {section_name} -->"
     if marker not in content:
         content = f"{marker}\n{content}"
+
+    # Deterministic heading injection from next-heading.py state
+    heading_state_path = getattr(args, "heading_state", None)
+    if heading_state_path:
+        parent_path = getattr(args, "parent", None)
+        full_path = f"{parent_path}/{section_name}" if parent_path else section_name
+        heading_map = read_heading_map(heading_state_path)
+        info = heading_map.get(full_path)
+        if info:
+            heading_line = "#" * info["level"] + " " + info["title"]
+            # Strip any leading heading the agent may have written
+            content = re.sub(r"^(<!-- section: [^>]+ -->\n?)#{2,4}\s+.+\n?", r"\1", content)
+            # Insert heading after the section marker
+            content = content.replace(
+                marker + "\n",
+                marker + "\n" + heading_line + "\n",
+                1,
+            )
 
     # Read refs-file, validate JSON with typed_refs key
     if not os.path.isfile(args.refs_file):
@@ -606,9 +617,6 @@ def finalize(args):
 
             serialize_xml_doc(tree, xml_path)
 
-    # Delete state file
-    os.remove(args.state_file)
-
     # Print summary to stderr
     total_sections = sum(
         len(_collect_all_paths(
@@ -658,6 +666,10 @@ def main():
     parser.add_argument(
         "--parent",
         help="Parent section path for nesting (e.g., 'monitoring-alerting/health-artifact')",
+    )
+    parser.add_argument(
+        "--heading-state",
+        help="Path to next-heading.py state file for deterministic heading injection",
     )
     # Finalize mode args
     parser.add_argument("--docs-dir", help="Absolute path to docs output root")

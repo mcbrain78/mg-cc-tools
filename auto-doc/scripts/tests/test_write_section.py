@@ -67,7 +67,8 @@ def _make_typed_refs(symbols=None, file_paths=None):
 
 def _run_section(tmp, state_file, document, section, content_text,
                  symbols=None, file_paths=None, header_text=None,
-                 project_root=None, typed_refs=None, parent=None):
+                 project_root=None, typed_refs=None, parent=None,
+                 heading_state=None):
     """Helper: write content + refs files and call write-section.py in section mode."""
     content_file = _write_content(
         tmp, f"section-{document}-{section}.md", content_text
@@ -92,6 +93,8 @@ def _run_section(tmp, state_file, document, section, content_text,
         cmd.extend(["--project-root", project_root])
     if parent:
         cmd.extend(["--parent", parent])
+    if heading_state:
+        cmd.extend(["--heading-state", heading_state])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -525,8 +528,8 @@ class TestFinalize:
             assert entry["file_paths"] == ["lib/json_io.py", "config/app.yaml"]
             assert "calls" not in entry
 
-    def test_finalize_cleans_state_file(self):
-        """State file deleted after finalize."""
+    def test_finalize_preserves_state_file(self):
+        """State file preserved after finalize (generate-setup cleans tmp/)."""
         with tempfile.TemporaryDirectory() as tmp:
             sections = [
                 ("overview", "## Overview\n\nText", [], ["a.py"]),
@@ -536,7 +539,7 @@ class TestFinalize:
             manifest_file = os.path.join(tmp, "manifest.json")
 
             _run_finalize(state_file, docs_dir, "developers", manifest_file)
-            assert not os.path.exists(state_file)
+            assert os.path.exists(state_file)
 
     def test_finalize_missing_state_exits_1(self):
         """No state file exits 1."""
@@ -2098,3 +2101,121 @@ class TestPerHeadingEmission:
             assert "### Health Checks" in content
             assert "log formats, rotation" in content
             assert "endpoint monitoring" in content
+
+
+class TestHeadingInjection:
+    """Deterministic heading injection via --heading-state."""
+
+    def _make_heading_state(self, tmp, entries):
+        """Write a heading state file with given write entries."""
+        state = {
+            "queue": entries + [{"done": True, "headings_processed": len(entries)}],
+            "index": 0,
+        }
+        path = os.path.join(tmp, "heading-state.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        return path
+
+    def test_heading_injected(self):
+        """Content without heading gets heading prepended after section marker."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            heading_state = self._make_heading_state(tmp, [
+                {"type": "write", "heading_path": "overview",
+                 "level": 2, "title": "Overview",
+                 "heading_line": "## Overview", "purpose": "", "example": ""},
+            ])
+
+            result = _run_section(
+                tmp, state_file, "DOC", "overview",
+                "Some body text without a heading.\n",
+                heading_state=heading_state,
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            content = state["documents"]["DOC"]["sections"]["overview"]["content"]
+            assert "<!-- section: overview -->" in content
+            assert "## Overview" in content
+            # Heading comes after marker
+            lines = content.split("\n")
+            assert lines[0] == "<!-- section: overview -->"
+            assert lines[1] == "## Overview"
+
+    def test_duplicate_heading_stripped(self):
+        """Agent-written heading is stripped when --heading-state provides it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            heading_state = self._make_heading_state(tmp, [
+                {"type": "write", "heading_path": "quick-diagnosis",
+                 "level": 2, "title": "Quick Diagnosis",
+                 "heading_line": "## Quick Diagnosis", "purpose": "", "example": ""},
+            ])
+
+            result = _run_section(
+                tmp, state_file, "DOC", "quick-diagnosis",
+                "## Quick Diagnosis\nBody text here.\n",
+                heading_state=heading_state,
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            content = state["documents"]["DOC"]["sections"]["quick-diagnosis"]["content"]
+            # Should have exactly one heading
+            assert content.count("## Quick Diagnosis") == 1
+            assert "Body text here." in content
+
+    def test_child_heading_injected(self):
+        """Nested heading injection uses parent/child path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+
+            # Write parent first
+            _run_section(
+                tmp, state_file, "DOC", "infrastructure",
+                "## Infrastructure\n\nIntro text.\n",
+            )
+
+            heading_state = self._make_heading_state(tmp, [
+                {"type": "write", "heading_path": "infrastructure/topology",
+                 "level": 3, "title": "Deployment Topology",
+                 "heading_line": "### Deployment Topology", "purpose": "", "example": ""},
+            ])
+
+            result = _run_section(
+                tmp, state_file, "DOC", "topology",
+                "Network diagram and details.\n",
+                parent="infrastructure",
+                heading_state=heading_state,
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            child = state["documents"]["DOC"]["sections"]["infrastructure"]["subsections"]["topology"]
+            assert "### Deployment Topology" in child["content"]
+            assert "Network diagram" in child["content"]
+
+    def test_no_heading_state_backward_compat(self):
+        """Without --heading-state, content is unchanged (backward compat)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+
+            result = _run_section(
+                tmp, state_file, "DOC", "overview",
+                "## Overview\n\nBody text.\n",
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            content = state["documents"]["DOC"]["sections"]["overview"]["content"]
+            assert "## Overview" in content
+            assert "Body text." in content

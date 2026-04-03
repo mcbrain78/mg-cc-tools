@@ -88,6 +88,8 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 
         Write typed_refs to `{TMP_DIR}/refs-devops-{DOCUMENT}-{heading_path_dashed}.json` with ONLY the refs for entities mentioned in this heading's content.
 
+        **Do NOT write heading lines** (`##`, `###`, `####`) in your content -- they are injected automatically by `write-section.py` via `--heading-state`.
+
         Call `write-section.py`:
         ```bash
         python3 {SCRIPTS_DIR}/write-section.py \
@@ -98,6 +100,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
           --content-file {TMP_DIR}/section-devops-{DOCUMENT}-{heading_path_dashed}.md \
           --refs-file {TMP_DIR}/refs-devops-{DOCUMENT}-{heading_path_dashed}.json \
           [--header-file {TMP_DIR}/header-devops-{DOCUMENT}.md] \
+          --heading-state {STATE_FILE_PATH} \
           --project-root {project_root}
         ```
 
@@ -124,7 +127,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
    ```json
    [{"term": "health check", "context": "Endpoint or command that reports service status"}]
    ```
-   Write proposals to `.mg/docs/scan-logs/terms-devops.json`.
+   Write proposals to `.mg/docs/scan-logs/terms-devops-{DOCUMENT}.json`.
 
 **Refs scoping rule:** After writing EACH heading's content, IMMEDIATELY write
 its refs file with ONLY the typed_refs for entities you just referenced in that
