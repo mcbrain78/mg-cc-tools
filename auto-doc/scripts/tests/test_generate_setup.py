@@ -147,8 +147,8 @@ class TestOutput:
             _, result = _run_setup(tmp)
             expected = {
                 "project_root", "docs_dir_abs", "scan_data_path",
-                "tmp_dir", "project_model_path", "notes_file",
-                "notes_inbox", "manifests_dir", "scan_logs_dir",
+                "tmp_dir", "project_model_path", "database_model_path",
+                "notes_file", "notes_inbox", "manifests_dir", "scan_logs_dir",
                 "mode", "audiences", "audience_filter_active",
                 "scan_views", "notes_by_audience",
                 "refined_templates", "stale_templates",
@@ -667,3 +667,23 @@ class TestRefinedTemplatesCLI:
             result = json.loads(stdout)
 
             assert "devops/OPERATIONS" in result["stale_templates"]
+
+
+# =============================================================================
+# Database model extraction
+# =============================================================================
+
+class TestDatabaseModelPath:
+    """database_model_path in output."""
+
+    def test_null_when_no_database(self):
+        """No database in project model -> database_model_path is null."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _, result = _run_setup(tmp)
+            assert result["database_model_path"] is None
+
+    def test_present_in_output_keys(self):
+        """database_model_path is always present in output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _, result = _run_setup(tmp)
+            assert "database_model_path" in result

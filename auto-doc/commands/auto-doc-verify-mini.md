@@ -155,6 +155,7 @@ Parameters:
 - project_root: {project_root}
 - review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
 - scan_context_path: {project_root}/.mg/docs/tmp/verify-scan-context.json
+- database_model_path: {project_root}/.mg/docs/tmp/database-model.json
 - findings_file: {project_root}/.mg/docs/docs-verify-findings-data-model.json"
 )
 

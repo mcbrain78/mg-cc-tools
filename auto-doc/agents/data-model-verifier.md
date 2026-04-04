@@ -11,6 +11,7 @@ You are a specialized verification agent that checks data model claims in genera
 - **project_root**: Absolute path to the project root directory.
 - **review_manifest**: Path to `manifest.json` produced by `prepare-doc-review.py`.
 - **scan_context_path**: Path to extracted scan context (has `project_model` with components, database, tech_stack).
+- **database_model_path**: Path to `database-model.json` (authoritative schema->table->column mappings). May be `null` if project has no SQLAlchemy database.
 - **findings_file**: Path to the agent-specific findings file (e.g., `docs-verify-findings-data-model.json`).
 
 ## Constraints
@@ -40,7 +41,7 @@ For each manifest entry, read each file in `review_files`. For each review file,
 For each identified claim:
 
 - **Table/model counts:** Compare against `project_model.components[].database_tables` or count model classes via Serena's `find_symbol`.
-- **Schema names:** Check against `project_model.database.schemas` keys if available.
+- **Schema names:** If `database_model_path` is provided, check against its `schemas` keys (authoritative). Otherwise fall back to `project_model.database.schemas` if available.
 - **Model class names:** Use `find_symbol` (Serena) to verify the class exists in the codebase.
 - **Component counts:** Compare against the number of entries in `project_model.components`.
 

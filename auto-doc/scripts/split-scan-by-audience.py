@@ -130,6 +130,13 @@ def slim_project_model(pm):
     for comp in slimmed.get("components", []):
         comp.pop("public_api", None)
         comp.pop("database_tables", None)
+    # Strip LLM-generated schema detail (now extracted deterministically
+    # into database-model.json). Keep lightweight metadata like engine,
+    # orm_framework, and migration_tool.
+    db = slimmed.get("database")
+    if isinstance(db, dict):
+        db.pop("schemas", None)
+        db.pop("design_notes", None)
     return slimmed
 
 

@@ -160,22 +160,13 @@ Each component object:
 
 - **Type:** `object or null`
 - **Required:** yes
-- **Description:** Database schema information extracted from ORM model definitions. `null` if the project has no database.
+- **Description:** Lightweight database metadata. `null` if the project has no database. The `schemas` field is **stripped** by `slim_project_model()` during generate setup -- detailed schema/table/column data is extracted deterministically into a separate `database-model.json` file (see below). Only `orm_framework`, `migration_tool`, and `engine` survive into the slimmed project model.
 
 ```json
 "database": {
   "orm_framework": "SQLAlchemy 2.0",
   "migration_tool": "Alembic",
-  "schemas": {
-    "road_runner": {
-      "tables": ["etl_runs", "stocks", "data_drift_warnings"],
-      "migration_chain": "alembic_road_runner"
-    },
-    "raw_fmp": {
-      "tables": ["raw_fmp_income_statements", "raw_fmp_balance_sheets"],
-      "migration_chain": "alembic_road_runner"
-    }
-  }
+  "engine": "PostgreSQL"
 }
 ```
 
@@ -183,9 +174,7 @@ Each component object:
 |-------|------|----------|-------------|
 | `database.orm_framework` | `string` | yes | ORM framework name and version |
 | `database.migration_tool` | `string` | yes | Migration tool (or `"none"`) |
-| `database.schemas` | `object` | yes | Map of schema name to schema details |
-| `database.schemas.{name}.tables` | `array of string` | yes | Tables in this schema |
-| `database.schemas.{name}.migration_chain` | `string` | yes | Which migration chain manages this schema |
+| `database.engine` | `string` | no | Database engine (e.g., `"PostgreSQL"`) |
 
 ### `project_model.user_interfaces`
 
@@ -359,6 +348,79 @@ Integration with the Get Shit Done workflow. Captures milestone progress and dev
 | `completed_phases` | `array of string` | yes | List of completed phase identifiers |
 | `deviations` | `array of string` | yes | Plan deviations that affect documentation |
 | `new_requirements_completed` | `array of string` | yes | Requirement IDs completed since last doc generation |
+
+## database-model.json
+
+A deterministic extraction of database schema, table, and column metadata from SQLAlchemy ORM model definitions. Produced by `extract-database-model.py` during generate setup. Separate from `project-model.json` to keep the project model under the 10KB CC read limit.
+
+**Location:** `.mg/docs/tmp/database-model.json`
+
+**Lifecycle:**
+- Created by `generate-setup.py` during workspace preparation (after `project-model.json` is written)
+- Read by devops writer agents as the authoritative source for database schema names, table names, and column details
+- Read by `data-model-verifier.md` during verify to fact-check database claims
+- Regenerated on each generate run (not persisted across runs)
+
+### Structure
+
+```json
+{
+  "engine": "PostgreSQL",
+  "orm_framework": "SQLAlchemy 2.0",
+  "migration_tool": "Alembic",
+  "extracted_at": "2026-04-03T22:00:00Z",
+  "schemas": {
+    "road_runner": {
+      "tables": {
+        "etl_runs": {
+          "columns": [
+            {"name": "id", "type": "Integer", "primary_key": true, "nullable": false, "foreign_key": null},
+            {"name": "flow_name", "type": "String(100)", "primary_key": false, "nullable": false, "foreign_key": null},
+            {"name": "status", "type": "String(20)", "primary_key": false, "nullable": false, "foreign_key": null}
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+### Top-Level Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `engine` | `string or null` | no | Database engine from project model |
+| `orm_framework` | `string or null` | no | ORM framework from project model |
+| `migration_tool` | `string or null` | no | Migration tool from project model |
+| `extracted_at` | `string` (ISO 8601) | yes | Timestamp when extraction ran |
+| `schemas` | `object` | yes | Map of schema name to table details |
+
+### Schema Entry
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `schemas.{name}.tables` | `object` | yes | Map of table name to table details |
+| `schemas.{name}.tables.{name}.columns` | `array of object` | yes | Column definitions |
+
+### Column Entry
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `string` | yes | Column name |
+| `type` | `string` | yes | SQLAlchemy type as string (e.g., `"Integer"`, `"String(100)"`) |
+| `primary_key` | `boolean` | yes | Whether this column is a primary key |
+| `nullable` | `boolean` | yes | Whether this column allows NULL |
+| `foreign_key` | `string or null` | yes | Foreign key target in `table.column` format, or null |
+
+### Skip Marker
+
+When extraction is not applicable (no database, non-SQLAlchemy ORM, no model files found), the file contains a skip marker instead:
+
+```json
+{"extraction": "skipped", "reason": "project does not use SQLAlchemy"}
+```
+
+The `generate-setup.py` script checks for the `schemas` key and only sets `database_model_path` in its output when schemas were actually extracted.
 
 ## Complete Minimal Example
 

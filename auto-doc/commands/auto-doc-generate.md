@@ -43,7 +43,7 @@ python3 {SCRIPTS_DIR}/generate-setup.py \
 Add `--audience` only if the user specified audience names.
 
 Parse the JSON output to get all runtime values:
-- **Paths:** `project_root`, `docs_dir_abs`, `scan_data_path`, `tmp_dir`, `project_model_path`, `notes_file`, `manifests_dir`, `scan_logs_dir`
+- **Paths:** `project_root`, `docs_dir_abs`, `scan_data_path`, `tmp_dir`, `project_model_path`, `database_model_path`, `notes_file`, `manifests_dir`, `scan_logs_dir`
 - **Mode:** `mode` ("initial" or "update")
 - **Audiences:** `audiences` (dict of audience name → {documents: [...]})
 - **Audience filter:** `audience_filter_active` (boolean)
@@ -154,6 +154,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    Docs dir: {docs_dir_abs}
    Scan data path: {scan_views["devops"]}
    Project model path: {project_model_path}
+   Database model path: {database_model_path}
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
    Documents: {DOCUMENT}
@@ -213,7 +214,24 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
 ### Finalize Documents
 
-After all writer agents complete, assemble documents from accumulated sections and generate temp manifests. For each audience in `audiences` (from setup output):
+After all writer agents complete, assemble documents from accumulated sections and generate temp manifests.
+
+**For orient-write audiences** (devops documents that used refined templates): finalize each per-document state file, all accumulating into the same audience manifest:
+
+For each `write-state-{audience}-{DOCUMENT}.json` file in `{TMP_DIR}`:
+
+```bash
+python3 {SCRIPTS_DIR}/write-section.py \
+    --finalize \
+    --state-file {TMP_DIR}/write-state-{audience}-{DOCUMENT}.json \
+    --docs-dir {docs_dir_abs} \
+    --audience {audience} \
+    --manifest-file {TMP_DIR}/manifest-{audience}.json \
+    --mode {mode} \
+    --xml-dir {project_root}/.mg/docs/xml-sources
+```
+
+**For standard audiences** (end-users, developers, agents, and devops documents without refined templates): finalize the single per-audience state file:
 
 ```bash
 python3 {SCRIPTS_DIR}/write-section.py \
@@ -226,7 +244,7 @@ python3 {SCRIPTS_DIR}/write-section.py \
     --xml-dir {project_root}/.mg/docs/xml-sources
 ```
 
-Skip any audience whose state file does not exist (writer was not spawned for that audience).
+Skip any audience whose state file(s) do not exist.
 
 This assembles documents from accumulated sections, generates temp manifests, and builds XML source files in `.mg/docs/xml-sources/{audience}/`.
 

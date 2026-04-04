@@ -869,8 +869,8 @@ class TestProjectModelExtraction:
             expected_keys = {"gsd_context", "source_material_index", "gap_analysis"}
             assert set(view.keys()) == expected_keys
 
-    def test_preserves_database_field_in_project_model(self):
-        """Database field is preserved (not stripped) in slimmed project model."""
+    def test_strips_database_schemas_preserves_metadata(self):
+        """database.schemas is stripped; orm_framework and migration_tool preserved."""
         data = _make_scan_data()
         with tempfile.TemporaryDirectory() as tmp:
             input_path = os.path.join(tmp, "docs-scan.json")
@@ -897,5 +897,64 @@ class TestProjectModelExtraction:
 
             assert "database" in pm
             assert pm["database"]["orm_framework"] == "SQLAlchemy 2.0"
-            assert "public" in pm["database"]["schemas"]
-            assert pm["database"]["schemas"]["public"]["tables"] == ["users", "sessions"]
+            assert pm["database"]["migration_tool"] == "Alembic"
+            # schemas stripped -- now in database-model.json
+            assert "schemas" not in pm["database"]
+
+    def test_strips_database_design_notes(self):
+        """database.design_notes is stripped from slimmed project model."""
+        data = _make_scan_data()
+        data["project_model"]["database"]["design_notes"] = "Some LLM notes"
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE",
+                    "--project-model-output", pm_path,
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(pm_path) as f:
+                pm = json.load(f)
+
+            assert "design_notes" not in pm["database"]
+
+    def test_null_database_unaffected(self):
+        """database: null is preserved as-is by slim_project_model."""
+        data = _make_scan_data()
+        data["project_model"]["database"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, "docs-scan.json")
+            output_path = os.path.join(tmp, "scan-view-developers.json")
+            pm_path = os.path.join(tmp, "project-model.json")
+            with open(input_path, "w") as f:
+                json.dump(data, f)
+
+            subprocess.run(
+                [
+                    sys.executable, SCRIPT_PATH,
+                    "--input", input_path,
+                    "--output", output_path,
+                    "--mode", "audience",
+                    "--audience", "developers",
+                    "--documents", "ARCHITECTURE",
+                    "--project-model-output", pm_path,
+                ],
+                capture_output=True, text=True,
+            )
+
+            with open(pm_path) as f:
+                pm = json.load(f)
+
+            assert pm["database"] is None

@@ -145,6 +145,7 @@ def build_paths(project_root, docs_dir):
         "scan_data_path": os.path.join(mg_docs, "docs-scan.json"),
         "tmp_dir": tmp_dir,
         "project_model_path": os.path.join(tmp_dir, "project-model.json"),
+        "database_model_path": os.path.join(tmp_dir, "database-model.json"),
         "notes_file": os.path.join(tmp_dir, "all-notes.json"),
         "notes_inbox": os.path.join(mg_docs, "notes-inbox.json"),
         "manifests_dir": os.path.join(mg_docs, "reference-manifests"),
@@ -275,6 +276,53 @@ def _load_notes(paths, scripts_dir, audiences):
             grouped[aud].append(note)
 
     return grouped
+
+
+def _extract_database_model(paths, scripts_dir):
+    """Run deterministic DB extraction if project uses SQLAlchemy.
+
+    Returns the database_model_path if extraction succeeded and produced
+    schemas, or None otherwise.
+    """
+    pm_path = paths["project_model_path"]
+    if not os.path.isfile(pm_path):
+        return None
+    pm = load_json(pm_path)
+    if not pm:
+        return None
+    db = pm.get("database")
+    if not db or "sqlalchemy" not in str(
+        db.get("orm", db.get("orm_framework", ""))
+    ).lower():
+        return None
+
+    # Derive search paths from components
+    search_dirs = set()
+    for comp in pm.get("components", []):
+        comp_path = comp.get("path", "")
+        if comp_path:
+            parent = os.path.dirname(comp_path.rstrip("/"))
+            if parent:
+                search_dirs.add(parent)
+    if not search_dirs:
+        return None
+
+    output = paths["database_model_path"]
+    cmd = [
+        "uv", "run", "--directory", paths["project_root"],
+        sys.executable, os.path.join(scripts_dir, "extract-database-model.py"),
+        "--project-root", paths["project_root"],
+        "--search-paths", ",".join(sorted(search_dirs)),
+        "--project-model", pm_path,
+        "--output", output,
+    ]
+    _run_script(cmd, "extract-database-model", critical=False)
+
+    if os.path.isfile(output):
+        result = load_json(output, default={})
+        if result.get("schemas"):
+            return output
+    return None
 
 
 def _has_headings(template_path):
@@ -432,9 +480,13 @@ def main():
         paths, mode, audiences, scripts_dir,
     )
 
+    # Run deterministic database model extraction
+    db_model_path = _extract_database_model(paths, scripts_dir)
+
     # Output everything the orchestrator needs
     result = {
         **paths,
+        "database_model_path": db_model_path,
         "mode": mode,
         "audiences": audiences,
         "audience_filter_active": audience_filter is not None,
