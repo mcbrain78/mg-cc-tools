@@ -54,7 +54,7 @@ The initial pass runs **before** the four writer agents. Its purpose is to estab
 
    a. Write intro content to `{TMP_DIR}/section-glossary-GLOSSARY-{slug}.md`.
    b. Write refs to `{TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json` with ONLY the typed_refs for entities in the intro body.
-      For terms that reference specific code entities, emit typed_refs. Valid types: `db` (schema/table/column), `code` (class/function/variable), `flow` (Prefect flow name), `env` (environment variable), `config` (config file path), `enum` (enum value), `dep` (PyPI dependency name), `literal` (named string literal in project files -- concurrency tags, worker pools, artifact keys, schema names), `ext` (external tool with no codebase footprint -- pg_dump, VACUUM, etc.). Use `{"typed_refs": []}` for purely conceptual terms.
+      For terms that reference specific code entities, emit typed_refs following the format in: references/typed-refs-format.md. Use `{"typed_refs": []}` for purely conceptual terms.
    c. Call:
       ```bash
       python3 {SCRIPTS_DIR}/write-section.py \
@@ -108,7 +108,7 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
 
    a. Write intro content to `{TMP_DIR}/section-glossary-GLOSSARY-{slug}.md`.
    b. Write refs to `{TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json` with ONLY the typed_refs for entities in the intro body.
-      For terms that reference specific code entities, emit typed_refs. Valid types: `db` (schema/table/column), `code` (class/function/variable), `flow` (Prefect flow name), `env` (environment variable), `config` (config file path), `enum` (enum value), `dep` (PyPI dependency name), `literal` (named string literal in project files -- concurrency tags, worker pools, artifact keys, schema names), `ext` (external tool with no codebase footprint -- pg_dump, VACUUM, etc.). Use `{"typed_refs": []}` for purely conceptual terms.
+      For terms that reference specific code entities, emit typed_refs following the format in: references/typed-refs-format.md. Use `{"typed_refs": []}` for purely conceptual terms.
    c. Call:
       ```bash
       python3 {SCRIPTS_DIR}/write-section.py \

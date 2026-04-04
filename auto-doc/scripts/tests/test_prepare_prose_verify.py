@@ -357,3 +357,190 @@ class TestNestedSections:
             with open(manifest_path) as f:
                 manifest = json.load(f)
             assert manifest["sections"] == ["monitoring", "deployment"]
+
+
+class TestEmptyRefFields:
+    """Defense-in-depth: _format_single_ref returns None for empty required fields."""
+
+    def test_db_empty_schema_returns_none(self):
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "db", "schema": "", "table": "runs"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            # Empty schema → ref filtered out → "(no refs declared)"
+            assert data["refs_as_text"] == "(no refs declared)"
+
+    def test_db_empty_table_returns_none(self):
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "db", "schema": "rr", "table": ""},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert data["refs_as_text"] == "(no refs declared)"
+
+    def test_code_empty_name_returns_none(self):
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "code", "kind": "function", "name": ""},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert data["refs_as_text"] == "(no refs declared)"
+
+    def test_dep_empty_name_returns_none(self):
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "dep", "name": ""},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert data["refs_as_text"] == "(no refs declared)"
+
+    def test_enum_empty_class_returns_none(self):
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "enum", "class": "", "field": "f", "value": "v"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert data["refs_as_text"] == "(no refs declared)"
+
+    def test_valid_ref_still_formatted(self):
+        """Non-empty refs still produce formatted text (regression check)."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "dep", "name": "tenacity"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert "[dep] tenacity" in data["refs_as_text"]
+
+
+class TestMalformedRefsField:
+    """prepare-prose-verify.py includes malformed_refs field in output."""
+
+    def test_malformed_refs_empty_when_none(self):
+        """Normal refs → malformed_refs is empty list."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "dep", "name": "tenacity"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert data["malformed_refs"] == []
+
+    def test_malformed_refs_populated(self):
+        """Section with malformed ref → malformed_refs contains the ref."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "malformed", "original_type": "dep", "name": ""},
+                    {"type": "dep", "name": "tenacity"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert len(data["malformed_refs"]) == 1
+            assert data["malformed_refs"][0]["type"] == "malformed"
+            assert data["malformed_refs"][0]["original_type"] == "dep"
+
+    def test_malformed_ref_formatted_with_candidate(self):
+        """Malformed ref with non-empty field produces formatted text."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "malformed", "original_type": "dep", "name": "tenacity"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert "[malformed:dep] tenacity" in data["refs_as_text"]

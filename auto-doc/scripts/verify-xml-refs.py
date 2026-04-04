@@ -61,8 +61,9 @@ def _parse_dep_name(dep_str):
 class SourceCache:
     """Lazy-loading cache for Python source analysis results."""
 
-    def __init__(self, project_root):
+    def __init__(self, project_root, database_model=None):
         self.project_root = project_root
+        self.database_model = database_model  # Optional pre-extracted schema data
         self._source = {}       # rel_path -> source text (or None)
         self._symbols = {}      # rel_path -> set of symbol names
         self._signatures = {}   # rel_path -> dict of func_name -> [params]
@@ -204,23 +205,64 @@ class SourceCache:
 # ---------------------------------------------------------------------------
 
 def check_db_ref(ref, cache):
-    """Check a db ref (schema.table.column) against SQLAlchemy models."""
+    """Check a db ref (schema.table.column) against database model or SQLAlchemy AST."""
     schema = ref.get("schema", "")
     table = ref.get("table", "")
     column = ref.get("column")
 
-    # Scan all Python files for SQLAlchemy models
+    # Prefer database model when available (authoritative, pre-extracted)
+    if cache.database_model:
+        return _check_db_ref_from_model(schema, table, column, cache.database_model)
+
+    # Fallback: scan all Python files for SQLAlchemy models
+    return _check_db_ref_from_ast(schema, table, column, cache)
+
+
+def _check_db_ref_from_model(schema, table, column, db_model):
+    """Check db ref against pre-extracted database-model.json data."""
+    schemas = db_model.get("schemas", {})
+    if schema and schema not in schemas:
+        available = ", ".join(sorted(schemas.keys())) if schemas else "(none)"
+        return f"Schema `{schema}` not found in database model (available: {available})"
+
+    # If schema specified, check within that schema
+    if schema:
+        tables = schemas[schema].get("tables", {})
+        if table not in tables:
+            available = ", ".join(sorted(tables.keys())) if tables else "(none)"
+            return f"Table `{table}` not found in schema `{schema}` (available: {available})"
+        if column:
+            columns = tables[table].get("columns", {})
+            if column not in columns:
+                available = ", ".join(sorted(columns.keys())) if columns else "(none)"
+                return f"Column `{column}` not found on `{schema}.{table}` (columns: {available})"
+        return None
+
+    # No schema specified — search all schemas
+    for s_name, s_data in schemas.items():
+        tables = s_data.get("tables", {})
+        if table in tables:
+            if column:
+                columns = tables[table].get("columns", {})
+                if column not in columns:
+                    available = ", ".join(sorted(columns.keys())) if columns else "(none)"
+                    return f"Column `{column}` not found on `{s_name}.{table}` (columns: {available})"
+            return None
+
+    return f"Table `{table}` not found in database model"
+
+
+def _check_db_ref_from_ast(schema, table, column, cache):
+    """Check db ref against SQLAlchemy models via AST (fallback)."""
     for py_path in cache.walk_py_files():
         models = cache.get_sqla_models(py_path)
         if table in models:
             model = models[table]
-            # Schema check (if ref specifies one)
             if schema and model["schema"] and model["schema"] != schema:
                 return f"Table `{table}` exists but in schema `{model['schema']}`, not `{schema}`"
-            # Column check
             if column and column not in model["columns"]:
                 return f"Column `{column}` not found on table `{table}` (columns: {', '.join(model['columns'])})"
-            return None  # Found and valid
+            return None
 
     return f"Table `{table}` not found in any SQLAlchemy model"
 
@@ -452,13 +494,13 @@ CHECKER_BY_TYPE = {
 }
 
 
-def _make_finding(document, section, audience, description, suggestion):
+def _make_finding(document, section, audience, description, suggestion, check="xml-ref-integrity"):
     """Create a finding dict matching verify-references.py format."""
     return {
         "document": document,
         "section": section,
         "audience": audience,
-        "check": "xml-ref-integrity",
+        "check": check,
         "description": description,
         "suggestion": suggestion,
         "group_id": f"{document}/{section}",
@@ -468,6 +510,41 @@ def _make_finding(document, section, audience, description, suggestion):
 def _doc_name_from_path(xml_path):
     """Extract document name from XML filename (e.g., OPERATIONS.xml → OPERATIONS)."""
     return os.path.splitext(os.path.basename(xml_path))[0]
+
+
+def _check_malformed_ref(ref, body):
+    """Check a malformed ref against the section body.
+
+    Returns (check_type, description) or None if no finding needed.
+    """
+    original_type = ref.get("original_type", "?")
+
+    # Extract candidate identifiers from all non-empty string fields
+    candidates = []
+    for k, v in ref.items():
+        if k in ("type", "original_type") or not isinstance(v, str):
+            continue
+        if v.strip():
+            candidates.append(v.strip())
+
+    if not candidates:
+        return (
+            "malformed-ref-empty",
+            f"Malformed {original_type} ref has no identifiable fields",
+        )
+
+    for candidate in candidates:
+        if candidate in body:
+            return (
+                "malformed-ref-resolved",
+                f"Malformed {original_type} ref has candidate `{candidate}` found in section body",
+            )
+
+    cands_str = ", ".join(f"`{c}`" for c in candidates)
+    return (
+        "malformed-ref-unresolved",
+        f"Malformed {original_type} ref with candidates {cands_str} — none found in section body",
+    )
 
 
 def verify_xml_file(xml_path, cache):
@@ -481,8 +558,25 @@ def verify_xml_file(xml_path, cache):
 
     findings = []
     for path, section in walk_sections(doc["sections"]):
+        body = section.get("body", "")
         for ref in section["refs"]:
             ref_type = ref.get("type", "")
+
+            # Handle malformed refs before normal dispatch
+            if ref_type == "malformed":
+                result = _check_malformed_ref(ref, body)
+                if result:
+                    check_type, description = result
+                    findings.append(_make_finding(
+                        document=doc_name,
+                        section=path,
+                        audience=audience,
+                        description=description,
+                        suggestion="Re-generate this section to emit correct typed refs",
+                        check=check_type,
+                    ))
+                continue
+
             checker = CHECKER_BY_TYPE.get(ref_type)
             if not checker:
                 continue
@@ -536,6 +630,10 @@ def main():
         "--audience",
         help="Audience filter (e.g., 'devops') — only verify matching XML files",
     )
+    parser.add_argument(
+        "--database-model",
+        help="Path to database-model.json for authoritative db ref validation",
+    )
 
     args = parser.parse_args()
     xml_dir = os.path.abspath(args.xml_dir)
@@ -546,7 +644,14 @@ def main():
         print("No xml-sources directory found, skipping XML ref verification", file=sys.stderr)
         sys.exit(0)
 
-    cache = SourceCache(project_root)
+    # Load database model if provided
+    database_model = None
+    if args.database_model and os.path.isfile(args.database_model):
+        database_model = load_json(args.database_model)
+        if database_model:
+            print(f"  Using database model: {args.database_model}", file=sys.stderr)
+
+    cache = SourceCache(project_root, database_model=database_model)
 
     # Collect XML files
     xml_files = []

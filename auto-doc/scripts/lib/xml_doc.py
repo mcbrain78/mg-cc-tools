@@ -192,6 +192,14 @@ def _parse_refs(refs_el):
             result.append({"type": "literal", "name": child.text or ""})
         elif tag == "ext":
             result.append({"type": "ext", "name": child.text or ""})
+        elif tag == "malformed":
+            ref = {"type": "malformed"}
+            for attr_name, attr_val in child.attrib.items():
+                if attr_name == "original-type":
+                    ref["original_type"] = attr_val
+                else:
+                    ref[attr_name] = attr_val
+            result.append(ref)
     return result
 
 
@@ -558,6 +566,19 @@ def _build_refs_xml(refs_el, flat_refs):
     for ref in ext_refs:
         el = etree.SubElement(refs_el, "ext")
         el.text = ref.get("name", "")
+
+    # Malformed refs — preserve all fields as attributes
+    malformed_refs = [r for r in flat_refs if r.get("type") == "malformed"]
+    for ref in malformed_refs:
+        attrs = {}
+        for k, v in ref.items():
+            if k == "type":
+                continue
+            if k == "original_type":
+                attrs["original-type"] = str(v)
+            else:
+                attrs[k] = str(v)
+        etree.SubElement(refs_el, "malformed", **attrs)
 
 
 def _build_db_xml(refs_el, db_refs):

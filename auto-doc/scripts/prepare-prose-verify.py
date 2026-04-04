@@ -51,12 +51,18 @@ def format_refs_as_text(refs):
 
 
 def _format_single_ref(ref_type, ref):
-    """Format a single ref dict as a readable string."""
+    """Format a single ref dict as a readable string.
+
+    Returns None for refs with empty required identifier fields
+    (defense-in-depth for old XML that predates discharge logic).
+    """
     if ref_type == "db":
         schema = ref.get("schema", "")
         table = ref.get("table", "")
+        if not schema or not table:
+            return None
         column = ref.get("column")
-        base = f"[db] {schema}.{table}" if schema else f"[db] {table}"
+        base = f"[db] {schema}.{table}"
         if column:
             base += f".{column}"
         return base
@@ -64,6 +70,8 @@ def _format_single_ref(ref_type, ref):
     if ref_type == "code":
         kind = ref.get("kind", "")
         name = ref.get("name", "")
+        if not kind or not name:
+            return None
         module = ref.get("module", "")
         attr = ref.get("attr")
         param = ref.get("param")
@@ -77,28 +85,50 @@ def _format_single_ref(ref_type, ref):
         return " ".join(parts)
 
     if ref_type == "flow":
-        return f"[flow] {ref.get('name', '')}"
+        name = ref.get("name", "")
+        return f"[flow] {name}" if name else None
 
     if ref_type == "env":
-        return f"[env] {ref.get('name', '')}"
+        name = ref.get("name", "")
+        return f"[env] {name}" if name else None
 
     if ref_type == "config":
-        return f"[config] {ref.get('path', '')}"
+        path = ref.get("path", "")
+        return f"[config] {path}" if path else None
 
     if ref_type == "enum":
         cls = ref.get("class", "")
         field = ref.get("field", "")
         value = ref.get("value", "")
+        if not cls or not field or not value:
+            return None
         return f"[enum] {cls}.{field} = {value}"
 
     if ref_type == "dep":
-        return f"[dep] {ref.get('name', '')}"
+        name = ref.get("name", "")
+        return f"[dep] {name}" if name else None
 
     if ref_type == "literal":
-        return f"[literal] {ref.get('name', '')}"
+        name = ref.get("name", "")
+        return f"[literal] {name}" if name else None
 
     if ref_type == "ext":
-        return f"[ext] {ref.get('name', '')}"
+        name = ref.get("name", "")
+        return f"[ext] {name}" if name else None
+
+    if ref_type == "malformed":
+        original = ref.get("original_type", "?")
+        # Find first non-empty candidate field
+        candidate = ""
+        for k, v in ref.items():
+            if k in ("type", "original_type") or not isinstance(v, str):
+                continue
+            if v.strip():
+                candidate = v.strip()
+                break
+        if candidate:
+            return f"[malformed:{original}] {candidate}"
+        return None
 
     return None
 
@@ -123,6 +153,8 @@ def prepare(xml_path, output_dir):
         body = section["body"]
         refs_text = format_refs_as_text(section["refs"])
 
+        malformed = [r for r in section["refs"] if r.get("type") == "malformed"]
+
         section_data = {
             "path": path,
             "slug": slug,
@@ -130,6 +162,7 @@ def prepare(xml_path, output_dir):
             "audience": doc["audience"],
             "body": body,
             "refs_as_text": refs_text,
+            "malformed_refs": malformed,
         }
 
         # Nested directory structure: monitoring-alerting/etl-run-logging.json

@@ -64,6 +64,7 @@ python3 {SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {project_root}/.mg/docs/xml-sources \
     --project-root {project_root} \
     --findings-file {TMP_DIR}/audit/findings-refs.json \
+    --database-model {project_root}/.mg/docs/tmp/database-model.json \
     [--audience AUDIENCE]
 ```
 
@@ -111,7 +112,7 @@ Scripts dir: {SCRIPTS_DIR}"
 
 a. **Clean up state files** so the next wave's agents start fresh:
 ```bash
-rm -f {TMP_DIR}/audit/*.sectionctl.json
+rm -f {TMP_DIR}/audit/*.sectionctl
 ```
 
 b. **Spawn verify-prose-reaudit agents** (one per document, parallel foreground, **model: sonnet**). They read all prior findings and look for what was missed. Use the **same findings files**:

@@ -12,8 +12,9 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 - **docs_dir**: Absolute path to the output docs directory (from config `docs_dir`).
 - **scan_data_path**: Path to per-audience view file (read for source material index and gap analysis).
 - **project_model_path**: Path to `project-model.json` (read for project model: tech stack, components, entry points, infrastructure).
+- **database_model_path**: Path to `database-model.json` (authoritative schema->table->column mappings extracted deterministically from ORM models). May be `null` if project has no SQLAlchemy database.
 - **refined_template_path**: Path to the project-specific refined template for this document (e.g., `.mg/docs/templates/devops/OPERATIONS.template.md`).
-- **state_file_path**: Path to the `next-heading.py` state file for this document, scoped per document (e.g., `{TMP_DIR}/heading-state-devops-OPERATIONS.json`).
+- **state_file_path**: Path to the `next-heading.py` state file for this document, scoped per document (e.g., `{TMP_DIR}/heading-state-devops-OPERATIONS.json`). Do not read this file directly — `next-heading.py` creates and manages it on first call.
 - **scripts_dir**: Absolute path to `auto-doc/scripts/` for calling `next-heading.py` and `write-section.py`.
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **glossary_path**: Path to the current GLOSSARY.md (for terminology consistency).
@@ -28,7 +29,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 
 ## Process
 
-1. **Read context** (once per invocation) -- Load the scan data JSON from `scan_data_path`. Read the project model from `project_model_path`. Read the style guide from `style_guide_path`. Read the current glossary from `glossary_path` (may not exist on initial runs).
+1. **Read context** (once per invocation) -- Load the scan data JSON from `scan_data_path`. Read the project model from `project_model_path`. If `database_model_path` is not null, read the database model. This is the authoritative source for all database schema names, table names, and column details. Read the style guide from `style_guide_path`. Read the current glossary from `glossary_path` (may not exist on initial runs).
 
 2. **For each assigned document:**
 
@@ -93,7 +94,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
         Call `write-section.py`:
         ```bash
         python3 {SCRIPTS_DIR}/write-section.py \
-          --state-file {TMP_DIR}/write-state-devops.json \
+          --state-file {TMP_DIR}/write-state-devops-{DOCUMENT}.json \
           --document {DOCUMENT} \
           --section {section_slug} \
           [--parent {parent_path}] \
@@ -134,41 +135,7 @@ its refs file with ONLY the typed_refs for entities you just referenced in that
 body. A ref that only appears in a child's content MUST go in the child's refs,
 not the parent intro's refs.
 
-**Typed refs format:**
-```json
-{"typed_refs": [
-  {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
-  {"type": "code", "kind": "function", "name": "compute_finance_metrics",
-   "module": "src/road_runner/flows/compute.py", "param": "recompute_stale"},
-  {"type": "code", "kind": "class", "name": "EtlRun",
-   "module": "src/road_runner/models.py"},
-  {"type": "flow", "name": "ingest-quarterly-finance-data"},
-  {"type": "env", "name": "WORKER_CONCURRENCY"},
-  {"type": "config", "path": "config/field-mapping.yaml"},
-  {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"},
-  {"type": "dep", "name": "tenacity"},
-  {"type": "literal", "name": "fmp-api"},
-  {"type": "ext", "name": "pg_dump"}
-]}
-```
-**Ref type table** (required fields per type):
-| type | required fields |
-|------|----------------|
-| `db` | `schema`, `table`, optionally `column` |
-| `code` | `kind` (function/class), `name`, optionally `module`, `param` |
-| `flow` | `name` |
-| `env` | `name` |
-| `config` | `path` |
-| `enum` | `class`, `field`, `value` |
-| `dep` | `name` -- PyPI package name from pyproject.toml |
-| `literal` | `name` -- named string literal found anywhere in project files (concurrency tags, worker pools, artifact keys) |
-| `ext` | `name` -- external tool/command with no codebase footprint (pg_dump, VACUUM, systemctl) |
-
-write-section.py derives `symbols` and `file_paths` automatically from typed_refs.
-For sections with no code references, use `{"typed_refs": []}`.
-
-If the script prints a WARNING about unresolved symbols, check which file you
-read that symbol from, add the correct `module` to the code ref, and re-run.
+Read and follow the typed refs format in: references/typed-refs-format.md
 
 Do NOT call Write() to create the final document file -- the finalize step
 handles document assembly.
@@ -209,4 +176,5 @@ These conventions override or extend the style guide for devops documentation.
 - **Skip optional sections rather than generating boilerplate.** An absent section is better than a vague one.
 - **One Diataxis type per document.** Check the `<!-- DIATAXIS: type -->` comment in the template.
 - **Be concrete.** Use specific service names, ports, and paths from the source material.
+- **Database schema authority.** When `database_model_path` is provided, all database schema names, table names, and column references MUST come from the database model file -- never inferred from `__tablename__`, class names, or other heuristics. Schema-qualified references in SQL examples (e.g., `road_runner.etl_runs`) must match the database model exactly.
 - **Every procedure is written for 3am with no prior context.**

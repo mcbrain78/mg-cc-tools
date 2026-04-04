@@ -921,3 +921,72 @@ class TestRoundTrip:
             assert child["refs"][0] == {"type": "env", "name": "LOG_LEVEL"}
         finally:
             os.unlink(path)
+
+
+# ===================================================================
+# Malformed ref XML round-trip
+# ===================================================================
+
+class TestMalformedRefXml:
+    """Malformed refs survive XML build -> serialize -> parse round-trip."""
+
+    def test_malformed_ref_round_trip(self):
+        """A malformed ref is serialized and parsed back correctly."""
+        tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
+        update_section_refs(tree, "monitoring-alerting", [
+            {"type": "malformed", "original_type": "dep", "name": ""},
+        ])
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 1
+            assert refs[0]["type"] == "malformed"
+            assert refs[0]["original_type"] == "dep"
+            assert refs[0]["name"] == ""
+        finally:
+            os.unlink(path)
+
+    def test_malformed_ref_preserves_extra_fields(self):
+        """Extra fields on malformed ref survive round-trip."""
+        tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
+        update_section_refs(tree, "monitoring-alerting", [
+            {"type": "malformed", "original_type": "db", "schema": "", "table": "runs", "column": "id"},
+        ])
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 1
+            r = refs[0]
+            assert r["type"] == "malformed"
+            assert r["original_type"] == "db"
+            assert r["schema"] == ""
+            assert r["table"] == "runs"
+            assert r["column"] == "id"
+        finally:
+            os.unlink(path)
+
+    def test_malformed_mixed_with_normal_refs(self):
+        """Malformed refs coexist with normal refs."""
+        tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
+        update_section_refs(tree, "monitoring-alerting", [
+            {"type": "dep", "name": "tenacity"},
+            {"type": "malformed", "original_type": "dep", "name": ""},
+            {"type": "ext", "name": "pg_dump"},
+        ])
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 3
+            types = [r["type"] for r in refs]
+            assert types == ["dep", "ext", "malformed"]
+        finally:
+            os.unlink(path)

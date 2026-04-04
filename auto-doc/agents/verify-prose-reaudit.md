@@ -20,7 +20,7 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
 2. **Get first section.** Call next-section to get the first auditable section:
    ```bash
    python3 {scripts_dir}/next-section.py \
-       --state-file {findings_file}.sectionctl.json \
+       --state-file {findings_file}.sectionctl \
        --prose-verify-dir {prose_verify_dir}
    ```
    If `done` is `true`, there are no sections with refs — report this and stop.
@@ -34,6 +34,7 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
       - `audience`: Target audience
       - `body`: The section's markdown prose
       - `refs_as_text`: Human-readable bullet list of declared code references
+      - `malformed_refs`: List of malformed ref dicts (empty if none)
 
    b. **Review prior findings for this section.** From the findings you read in step 1, identify which issues were already flagged for this section's `slug`. These are off-limits — do not re-report them.
 
@@ -84,7 +85,9 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
 
       **Check D (specificity mismatches):** Does prose mention a table without specifying which schema, when the refs declare a specific schema? Or does prose claim a function is in one module when refs say another? File each finding immediately (if not already flagged).
 
-   f. **Get next section.** Call next-section again (same command as step 2).
+   f. **Check E (malformed ref investigation):** If `malformed_refs` is non-empty, for each malformed ref, search the section body for any mention of its non-empty fields. If the malformed ref has candidates that are not mentioned anywhere in the body and this was not already flagged by a prior wave, file a `malformed-ref-unresolved` finding with the suggested correct identifier.
+
+   g. **Get next section.** Call next-section again (same command as step 2).
       If `done` is `true`, proceed to step 5 (report).
       Otherwise, go to step 3a.
 
@@ -106,6 +109,7 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
    - `data-model-fact-check` — prose makes a claim that contradicts declared refs (wrong schema, table, column)
    - `code-example-fact-check` — code example references entities not in declared refs
    - `internal-contradiction` — prose contradicts itself or contradicts declared refs on specifics
+   - `malformed-ref-unresolved` — malformed ref with candidates not found in section body
 
 5. **Report.** In your final response, report the number of NEW findings added per section in this re-audit pass.
 

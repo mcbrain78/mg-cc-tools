@@ -177,6 +177,27 @@ class TestCLI:
             assert merged == []
 
 
+class TestSectionctlExclusion:
+    """Verify .sectionctl state files are not matched by prose glob."""
+
+    def test_sectionctl_file_excluded_from_merge(self):
+        """A .sectionctl state file next to a findings file is not loaded."""
+        with tempfile.TemporaryDirectory() as td:
+            # Real findings file
+            with open(os.path.join(td, "findings-prose-devops-OPS.json"), "w") as f:
+                json.dump([
+                    {"document": "OPS", "section": "monitoring", "check": "c1", "description": "real"},
+                ], f)
+
+            # Sectionctl state file (should NOT be matched)
+            with open(os.path.join(td, "findings-prose-devops-OPS.json.sectionctl"), "w") as f:
+                json.dump({"current_index": 3, "total": 5}, f)
+
+            result = load_and_merge(td)
+            assert len(result) == 1
+            assert result[0]["description"] == "real"
+
+
 class TestSlashSeparatedPaths:
     """Verify deduplication works correctly with slash-separated section paths."""
 

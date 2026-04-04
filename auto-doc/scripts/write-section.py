@@ -40,6 +40,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.heading_map import read_heading_map, slugify_heading  # noqa: F811
 from lib.json_io import load_json, save_json, save_text
+from lib.ref_validation import discharge_malformed_refs
 from lib.symbols import extract_python_symbols
 from lib.xml_doc import (
     add_section,
@@ -245,6 +246,7 @@ def section_write(args):
 
     # Derive symbols and file_paths from typed_refs
     typed_refs = refs["typed_refs"]
+    typed_refs = discharge_malformed_refs(typed_refs)
     derived_symbols, derived_file_paths = _derive_symbols_and_file_paths(typed_refs)
 
     # Build the new section entry (always includes subsections keys)
@@ -524,7 +526,7 @@ def finalize(args):
         docs_written.append(doc_name)
 
     # Build manifest in merge-manifests.py input format
-    manifest = {"documents": {}}
+    manifest = load_json(args.manifest_file, default={"documents": {}})
 
     for doc_name, doc_data in state.get("documents", {}).items():
         sections_order = doc_data.get("sections_order", [])

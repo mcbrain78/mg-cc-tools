@@ -541,6 +541,72 @@ class TestFinalize:
             _run_finalize(state_file, docs_dir, "developers", manifest_file)
             assert os.path.exists(state_file)
 
+    def test_finalize_accumulates_manifest_across_calls(self):
+        """Two finalize calls to same manifest file accumulate documents."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # First state file: OPERATIONS document
+            state1 = os.path.join(tmp, "state-ops.json")
+            with open(state1, "w", encoding="utf-8") as f:
+                json.dump({
+                    "documents": {
+                        "OPERATIONS": {
+                            "header": "# Operations\n",
+                            "sections_order": ["deployment"],
+                            "sections": {
+                                "deployment": {
+                                    "content": "## Deployment\n\nDeploy text",
+                                    "symbols": ["deploy"],
+                                    "file_paths": ["ops.py"],
+                                    "typed_refs": _make_typed_refs(
+                                        ["deploy"], ["ops.py"]
+                                    ),
+                                }
+                            },
+                        }
+                    }
+                }, f)
+
+            # Second state file: TROUBLESHOOTING document
+            state2 = os.path.join(tmp, "state-triage.json")
+            with open(state2, "w", encoding="utf-8") as f:
+                json.dump({
+                    "documents": {
+                        "TROUBLESHOOTING": {
+                            "header": "# Troubleshooting\n",
+                            "sections_order": ["triage"],
+                            "sections": {
+                                "triage": {
+                                    "content": "## Triage\n\nTriage text",
+                                    "symbols": ["triage"],
+                                    "file_paths": ["triage.py"],
+                                    "typed_refs": _make_typed_refs(
+                                        ["triage"], ["triage.py"]
+                                    ),
+                                }
+                            },
+                        }
+                    }
+                }, f)
+
+            docs_dir = os.path.join(tmp, "docs")
+            manifest_file = os.path.join(tmp, "manifest-devops.json")
+
+            # Finalize first state -> creates manifest with OPERATIONS
+            r1 = _run_finalize(state1, docs_dir, "devops", manifest_file)
+            assert r1.returncode == 0
+
+            # Finalize second state -> accumulates TROUBLESHOOTING
+            r2 = _run_finalize(state2, docs_dir, "devops", manifest_file)
+            assert r2.returncode == 0
+
+            with open(manifest_file) as f:
+                manifest = json.load(f)
+
+            assert "OPERATIONS" in manifest["documents"]
+            assert "TROUBLESHOOTING" in manifest["documents"]
+            assert "deployment" in manifest["documents"]["OPERATIONS"]
+            assert "triage" in manifest["documents"]["TROUBLESHOOTING"]
+
     def test_finalize_missing_state_exits_1(self):
         """No state file exits 1."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -2219,3 +2285,73 @@ class TestHeadingInjection:
             content = state["documents"]["DOC"]["sections"]["overview"]["content"]
             assert "## Overview" in content
             assert "Body text." in content
+
+
+class TestMalformedRefDischarge:
+    """write-section.py discharges malformed refs via ref_validation."""
+
+    def test_empty_dep_stored_as_malformed(self):
+        """A dep ref with empty name is stored with type='malformed'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            result = _run_section(
+                tmp, state_file, "DOC", "glossary",
+                "## Glossary\n\nTerms.\n",
+                typed_refs=[
+                    {"type": "dep", "name": ""},
+                    {"type": "dep", "name": "tenacity"},
+                ],
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            refs = state["documents"]["DOC"]["sections"]["glossary"]["typed_refs"]
+            assert len(refs) == 2
+            assert refs[0]["type"] == "malformed"
+            assert refs[0]["original_type"] == "dep"
+            assert refs[1]["type"] == "dep"
+            assert refs[1]["name"] == "tenacity"
+
+    def test_valid_refs_unchanged(self):
+        """Valid refs pass through discharge unchanged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            result = _run_section(
+                tmp, state_file, "DOC", "section",
+                "## Section\n\nContent.\n",
+                typed_refs=[
+                    {"type": "dep", "name": "tenacity"},
+                    {"type": "db", "schema": "rr", "table": "runs"},
+                ],
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            refs = state["documents"]["DOC"]["sections"]["section"]["typed_refs"]
+            assert all(r["type"] != "malformed" for r in refs)
+
+    def test_malformed_ref_not_in_symbols(self):
+        """Malformed refs are not counted as symbols or file_paths."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = os.path.join(tmp, "state.json")
+            result = _run_section(
+                tmp, state_file, "DOC", "section",
+                "## Section\n\nContent.\n",
+                typed_refs=[
+                    {"type": "code", "kind": "", "name": ""},
+                    {"type": "code", "kind": "function", "name": "real_func",
+                     "module": "src/mod.py"},
+                ],
+            )
+            assert result.returncode == 0
+
+            with open(state_file) as f:
+                state = json.load(f)
+
+            section = state["documents"]["DOC"]["sections"]["section"]
+            assert section["symbols"] == ["real_func"]
+            assert section["file_paths"] == ["src/mod.py"]

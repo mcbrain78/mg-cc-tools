@@ -685,6 +685,189 @@ class TestEdgeCases:
             assert findings[0] == {"existing": True}
 
 
+class TestMalformedRefResolution:
+    """Malformed ref resolution — 3 outcomes: empty, resolved, unresolved."""
+
+    def test_malformed_ref_empty(self):
+        """Malformed ref with no non-empty fields → malformed-ref-empty."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "glossary",
+                "<!-- section: glossary -->\n## Glossary\n\nContent about stuff.",
+                [{"type": "malformed", "original_type": "dep", "name": ""}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert findings[0]["check"] == "malformed-ref-empty"
+
+    def test_malformed_ref_resolved(self):
+        """Malformed ref with candidate found in body → malformed-ref-resolved."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "glossary",
+                "<!-- section: glossary -->\n## Glossary\n\nWe use tenacity for retries.",
+                [{"type": "malformed", "original_type": "dep", "name": "tenacity"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert findings[0]["check"] == "malformed-ref-resolved"
+            assert "tenacity" in findings[0]["description"]
+
+    def test_malformed_ref_unresolved(self):
+        """Malformed ref with candidates not found in body → malformed-ref-unresolved."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "glossary",
+                "<!-- section: glossary -->\n## Glossary\n\nThis section is about something else.",
+                [{"type": "malformed", "original_type": "dep", "name": "tenacity"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert findings[0]["check"] == "malformed-ref-unresolved"
+            assert "tenacity" in findings[0]["description"]
+
+
+class TestDatabaseModel:
+    """Database model-based db ref validation."""
+
+    def _make_db_model(self, project_root):
+        """Create a database-model.json file and return its path."""
+        model = {
+            "schemas": {
+                "road_runner": {
+                    "tables": {
+                        "etl_runs": {
+                            "columns": {
+                                "id": {"type": "integer"},
+                                "flow_name": {"type": "varchar"},
+                                "status": {"type": "varchar"},
+                            },
+                        },
+                        "audit_log": {
+                            "columns": {
+                                "id": {"type": "integer"},
+                                "action": {"type": "varchar"},
+                            },
+                        },
+                    },
+                },
+                "public": {
+                    "tables": {
+                        "users": {
+                            "columns": {
+                                "id": {"type": "integer"},
+                                "email": {"type": "varchar"},
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        model_path = os.path.join(project_root, ".mg", "docs", "tmp", "database-model.json")
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        with open(model_path, "w") as f:
+            json.dump(model, f)
+        return model_path
+
+    def _run_with_db_model(self, xml_dir, project_root, findings_file, db_model_path):
+        cmd = [
+            sys.executable, SCRIPT,
+            "--xml-dir", xml_dir,
+            "--project-root", project_root,
+            "--findings-file", findings_file,
+            "--database-model", db_model_path,
+        ]
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    def test_valid_schema_table_column(self):
+        """Valid schema.table.column passes with database model."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            db_model = self._make_db_model(project_root)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
+                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
+            )])
+
+            result = self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
+            assert result.returncode == 0
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_wrong_column_with_model(self):
+        """Wrong column name detected via database model."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            db_model = self._make_db_model(project_root)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
+                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "bogus_col"}],
+            )])
+
+            self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "bogus_col" in findings[0]["description"]
+
+    def test_wrong_schema_with_model(self):
+        """Wrong schema name detected via database model."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            db_model = self._make_db_model(project_root)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
+                [{"type": "db", "schema": "nonexistent_schema", "table": "etl_runs"}],
+            )])
+
+            self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "nonexistent_schema" in findings[0]["description"]
+
+    def test_wrong_table_with_model(self):
+        """Wrong table name within valid schema detected via database model."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            db_model = self._make_db_model(project_root)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
+                [{"type": "db", "schema": "road_runner", "table": "nonexistent_table"}],
+            )])
+
+            self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "nonexistent_table" in findings[0]["description"]
+
+    def test_fallback_to_ast_without_model(self):
+        """Without --database-model flag, falls back to AST check."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
+                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
+            )])
+
+            # Use standard _run_verify (no --database-model)
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+
 def _build_xml_nested(xml_dir, audience, doc_name, sections_tree):
     """Build XML with nested sections (children key supported).
 

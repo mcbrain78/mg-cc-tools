@@ -66,6 +66,8 @@ VALID_CHECKS = [
     "code-example-fact-check",
     "data-model-fact-check",
     "cross-doc-inconsistency",
+    # Malformed ref checks (audit pipeline)
+    "malformed-ref-unresolved",
 ]
 
 

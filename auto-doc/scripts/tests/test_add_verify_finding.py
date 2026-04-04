@@ -213,6 +213,10 @@ FACT_CHECKER_CHECKS = [
     "cross-doc-inconsistency",
 ]
 
+MALFORMED_REF_CHECKS = [
+    "malformed-ref-unresolved",
+]
+
 
 class TestAddVerifyFindingEditorialChecks:
     """Editorial check types accepted by add-verify-finding.py."""
@@ -268,6 +272,37 @@ class TestAddVerifyFindingFactCheckerChecks:
                 )
                 assert result.returncode == 0, (
                     f"Fact-checker check '{check}' rejected: {result.stderr}"
+                )
+
+                with open(findings_file) as f:
+                    data = json.load(f)
+                assert len(data) == 1
+                assert data[0]["check"] == check
+
+
+class TestAddVerifyFindingMalformedRefChecks:
+    """Malformed ref check types accepted by add-verify-finding.py."""
+
+    def test_malformed_ref_unresolved_accepted(self):
+        """The malformed-ref-unresolved check type is accepted (exit code 0)."""
+        for check in MALFORMED_REF_CHECKS:
+            with tempfile.TemporaryDirectory() as tmp:
+                findings_file = os.path.join(tmp, "findings.json")
+                input_file = os.path.join(tmp, "input.json")
+
+                finding = _valid_finding()
+                finding["check"] = check
+                with open(input_file, "w") as f:
+                    json.dump(finding, f)
+
+                result = subprocess.run(
+                    [sys.executable, SCRIPT_PATH,
+                     "--input", input_file,
+                     "--findings-file", findings_file],
+                    capture_output=True, text=True,
+                )
+                assert result.returncode == 0, (
+                    f"Malformed ref check '{check}' rejected: {result.stderr}"
                 )
 
                 with open(findings_file) as f:
