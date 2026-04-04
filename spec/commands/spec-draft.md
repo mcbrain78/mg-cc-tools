@@ -45,7 +45,39 @@ Read the concept spec template to understand the target structure:
 - Work from the current conversation context
 - Summarize what you understand from the conversation so far and confirm with the user before proceeding
 
-## 2. Context Extraction
+## 2. Scope Selection
+
+> Only applies when working from conversation context (no source file). If a source file was provided, skip to Step 3.
+
+Conversations often cover multiple threads — fixes already shipped, ideas deferred, and the topic the user actually wants to formalize. Before extracting, identify what's in scope so excluded content never enters the pipeline.
+
+Scan the conversation and identify distinct discussion threads. For each thread, determine:
+- **Topic name** — short label
+- **Status** — `implemented`, `open discussion`, `deferred`, or `resolved separately`
+- **Summary** — one line describing the thread
+
+Present the threads:
+
+```
+## Discussion Threads
+
+I see {N} distinct threads in this conversation:
+
+1. **{topic}** — {summary} [{status}]
+2. **{topic}** — {summary} [{status}]
+...
+```
+
+Use AskUserQuestion:
+- header: "Scope selection"
+- question: "Which threads should I extract into a concept spec? (numbers, names, or 'all')"
+- options: list each thread by number, plus "All — use everything"
+
+Extraction (Step 3) and all subsequent steps are scoped to the selected threads only. Content from excluded threads must not appear in any later step — not in extraction, not in research, not in the draft.
+
+**Single-topic shortcut:** If only one thread is identified, confirm the topic and proceed directly to Step 3 without the selection menu.
+
+## 3. Context Extraction
 
 Read the source material (file or conversation) carefully. For every claim, decision, intention, and open question, categorize it as one of:
 
@@ -90,7 +122,7 @@ Use AskUserQuestion:
 
 If corrections needed, adjust and re-confirm.
 
-## 3. Targeted Research
+## 4. Targeted Research
 
 For items categorized as Leaning, Contradicted, Dangling, or Assumed — launch a research subagent to gather codebase context that would help the user make decisions.
 
@@ -116,7 +148,7 @@ and concrete patterns. Do not suggest decisions — only provide context.
 
 Review the research results. For each item, note what context was found that could help the user decide.
 
-## 4. Interactive Clarification
+## 5. Interactive Clarification
 
 Present findings to the user organized by **template section**, not by extraction category. For each section of the concept spec template:
 
@@ -148,14 +180,14 @@ Ask how the user would know the implementation is correct. If the source materia
 
 **Cadence:** Work through sections sequentially. After each section, check if the user wants to continue or has feedback on what was covered. Don't rush through all sections in one wall of questions.
 
-## 5. Draft Generation
+## 6. Draft Generation
 
 Write the concept spec using the template structure from `{CONCEPT_TEMPLATE}`.
 
 - Fill every section based on the discussion outcomes
 - **Decided** items and resolved **Leaning/Contradicted/Dangling** items become firm content in their respective sections
 - Resolved choices with non-obvious rationale become Design Decision D-blocks
-- Items that remain unresolved after Phase 4 go into **Open Items** with the options and dependencies clearly stated
+- Items that remain unresolved after Phase 5 go into **Open Items** with the options and dependencies clearly stated
 - Include concrete examples (JSON, CLI, file structures) where they emerged during discussion
 
 Determine the output name. Use AskUserQuestion:
@@ -163,7 +195,7 @@ Determine the output name. Use AskUserQuestion:
 - question: "What should I name this concept? This determines the directory: `docs/work-queue/todo/{name}/concept.md`"
 - options: Suggest 2-3 slug-style names derived from the concept's title, plus "Other" for custom input
 
-## 6. Consistency Check
+## 7. Consistency Check
 
 Before presenting the draft, scan the written document for:
 
@@ -177,7 +209,7 @@ If any findings: report them to the user alongside the draft and fix before fina
 
 If no findings: write the file.
 
-## 7. Open Item Resolution
+## 8. Open Item Resolution
 
 If the draft contains **any Open Items**, automatically offer to resolve them — do not wait for the user to ask.
 
@@ -210,9 +242,9 @@ When the user picks an option (by number or description):
 - Update any Solution/Scope sections affected by the resolution
 - Move to the next open item
 
-After all items are resolved or deferred, re-run the consistency check (Step 6) on any newly added D-blocks before proceeding to output.
+After all items are resolved or deferred, re-run the consistency check (Step 7) on any newly added D-blocks before proceeding to output.
 
-## 8. Output
+## 9. Output
 
 Write the concept spec to `docs/work-queue/todo/{name}/concept.md`.
 
@@ -241,9 +273,9 @@ Design Decisions: {count} D-blocks captured
 </process>
 
 <important_notes>
-- This command formalizes — it does NOT invent. Every decision in the output must trace back to user input during Phase 4. Research context informs questions but never writes decisions.
+- This command formalizes — it does NOT invent. Every decision in the output must trace back to user input during Phase 5. Research context informs questions but never writes decisions.
 - The five extraction categories (Decided, Leaning, Contradicted, Dangling, Assumed) are a tool for the command to prioritize what to ask. They don't need to be visible in the final spec — they organize the discussion, not the document.
-- When working from conversation context (no source file), extraction quality depends on conversation length and topic coverage. If the conversation is thin, Phase 4 will need to do more heavy lifting.
+- When working from conversation context (no source file), extraction quality depends on conversation length and topic coverage. If the conversation is thin, Phase 5 will need to do more heavy lifting.
 - The concept spec template is at `{CONCEPT_TEMPLATE}`. All sections must be present in the output. The LLM judges appropriate depth per section.
 - Open Items are genuinely unresolved — they represent decisions the user could not or chose not to make during this session. They are NOT a parking lot for things the command didn't get to.
 </important_notes>
