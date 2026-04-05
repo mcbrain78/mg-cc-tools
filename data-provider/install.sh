@@ -16,7 +16,7 @@ set -euo pipefail
 #   2. Copies Python scripts to <target>/data-provider/scripts/
 #   3. Copies reference files to <target>/data-provider/references/
 #   4. Copies DESIGN.md to <target>/data-provider/
-#   5. Resolves {SCRIPTS_DIR} in the command file to absolute paths
+#   5. Resolves {MG_INSTALL_SCRIPTS_DIR} in the command file to absolute paths
 #   6. (--project only) Scaffolds .mg/data-provider/ work directory with
 #      default field reference (fields.yaml) and provider list
 # ──────────────────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${PROJECT_ROOT}/.claude"
+    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""
@@ -152,7 +152,7 @@ cp "${SCRIPT_DIR}/DESIGN.md" "${SUPPORT_DIR}/DESIGN.md"
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 #
-# Replace {SCRIPTS_DIR} placeholder with absolute path so the LLM can find
+# Replace {MG_INSTALL_SCRIPTS_DIR} placeholder with absolute path so the LLM can find
 # the Python scripts at runtime.
 
 SCRIPTS_ABSOLUTE="${SUPPORT_DIR}/scripts"
@@ -161,13 +161,13 @@ REFERENCES_ABSOLUTE="${SUPPORT_DIR}/references"
 echo "  Resolving placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file" 2>/dev/null || true
-  sed -i "s|{REFERENCES_DIR}|${REFERENCES_ABSOLUTE}|g" "$cmd_file" 2>/dev/null || true
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file" 2>/dev/null || true
+  sed -i "s|{MG_INSTALL_REFERENCES_DIR}|${REFERENCES_ABSOLUTE}|g" "$cmd_file" 2>/dev/null || true
 done
 
 echo "  Resolving placeholders in reference files ..."
 for ref_file in "${REFERENCES_ABSOLUTE}"/*.md; do
-  sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$ref_file" 2>/dev/null || true
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$ref_file" 2>/dev/null || true
 done
 
 # ── Scaffold project work directory ──────────────────────────────────────────
@@ -176,7 +176,7 @@ done
 # directory structure and seed the input files.
 
 if [[ -n "$PROJECT_ROOT" ]]; then
-  WORK_DIR="${PROJECT_ROOT}/.mg/data-provider"
+  WORK_DIR="${MG_INSTALL_PROJECT_ROOT}/.mg/data-provider"
   echo "  Work dir   → ${WORK_DIR}/"
 
   mkdir -p "${WORK_DIR}/input" "${WORK_DIR}/tasks" "${WORK_DIR}/output"

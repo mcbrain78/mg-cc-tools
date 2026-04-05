@@ -11,13 +11,13 @@ Usage:
     python3 list-verify-findings.py \
         --findings-file .mg/docs/docs-verify-findings.json \
         --summary \
-        --output {TMP_DIR}/findings-summary.json
+        --output {MG_INSTALL_TMP_DIR}/findings-summary.json
 
     # Filter by document and audience (for writer agents):
     python3 list-verify-findings.py \
         --findings-file .mg/docs/docs-verify-findings.json \
         --document OPERATIONS --audience devops \
-        --output {TMP_DIR}/findings-ops.json
+        --output {MG_INSTALL_TMP_DIR}/findings-ops.json
 
     # Clean all verify artifacts:
     python3 list-verify-findings.py \

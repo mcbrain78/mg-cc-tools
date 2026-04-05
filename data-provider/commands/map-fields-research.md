@@ -4,8 +4,8 @@ You orchestrate a pipeline that maps UCR scoring fields to data provider APIs.
 
 ## Work Directory
 
-All files live under `.mg/data-provider/`. Scripts are at `{SCRIPTS_DIR}/`.
-Agent instructions are at `{REFERENCES_DIR}/`.
+All files live under `.mg/data-provider/`. Scripts are at `{MG_INSTALL_SCRIPTS_DIR}/`.
+Agent instructions are at `{MG_INSTALL_REFERENCES_DIR}/`.
 
 ## Step Selection
 
@@ -21,7 +21,7 @@ Ask the user which step to run using AskUserQuestion:
 ## Step: Generate tasks
 
 ```bash
-python {SCRIPTS_DIR}/generate.py
+python {MG_INSTALL_SCRIPTS_DIR}/generate.py
 ```
 
 Report the output.
@@ -31,7 +31,7 @@ Report the output.
 ## Step: Status
 
 ```bash
-python {SCRIPTS_DIR}/status.py list --format summary
+python {MG_INSTALL_SCRIPTS_DIR}/status.py list --format summary
 ```
 
 Report the output. Suggest Research if pending tasks exist, Summarize if all done.
@@ -41,7 +41,7 @@ Report the output. Suggest Research if pending tasks exist, Summarize if all don
 ## Step: Summarize
 
 ```bash
-python {SCRIPTS_DIR}/summarize.py
+python {MG_INSTALL_SCRIPTS_DIR}/summarize.py
 ```
 
 Then display the report:
@@ -62,7 +62,7 @@ Ask the user:
 ### Discover pending tasks
 
 ```bash
-python {SCRIPTS_DIR}/status.py list --status pending --format summary
+python {MG_INSTALL_SCRIPTS_DIR}/status.py list --status pending --format summary
 ```
 
 If no pending tasks, report "All tasks processed" and exit.
@@ -73,7 +73,7 @@ Group pending tasks by field number. Process one field at a time.
 
 For each field, get its pending task filenames:
 ```bash
-python {SCRIPTS_DIR}/status.py list --status pending --field-number {N} --format files
+python {MG_INSTALL_SCRIPTS_DIR}/status.py list --status pending --field-number {N} --format files
 ```
 
 #### Spawn researchers
@@ -85,7 +85,7 @@ For each filename, spawn a background researcher agent:
 
 **Researcher Task prompt** (replace TASK_FILE with the actual filename):
 ```
-Read your instructions from {REFERENCES_DIR}/researcher-prompt.md
+Read your instructions from {MG_INSTALL_REFERENCES_DIR}/researcher-prompt.md
 Your task file is: TASK_FILE
 Replace every occurrence of TASK_FILE in the instructions with your actual filename.
 ```
@@ -95,14 +95,14 @@ Wait for all researchers to complete (you are notified automatically).
 #### Check researcher results
 
 ```bash
-python {SCRIPTS_DIR}/status.py list --field-number {N} --format files --status researched
+python {MG_INSTALL_SCRIPTS_DIR}/status.py list --field-number {N} --format files --status researched
 ```
 
 - `researched` files → spawn verifiers
 - `verified` files → done (NONE result, self-verified)
 - `pending` files → researcher failed to write, mark inconclusive:
   ```bash
-  python {SCRIPTS_DIR}/status.py update --file '<filename>' --status inconclusive
+  python {MG_INSTALL_SCRIPTS_DIR}/status.py update --file '<filename>' --status inconclusive
   ```
 
 #### Spawn verifiers
@@ -111,7 +111,7 @@ For each `researched` file, spawn a background verifier agent (same settings as 
 
 **Verifier Task prompt** (replace TASK_FILE with the actual filename):
 ```
-Read your instructions from {REFERENCES_DIR}/verifier-prompt.md
+Read your instructions from {MG_INSTALL_REFERENCES_DIR}/verifier-prompt.md
 Your task file is: TASK_FILE
 Replace every occurrence of TASK_FILE in the instructions with your actual filename.
 ```
@@ -121,16 +121,16 @@ Wait for all verifiers to complete.
 #### Check verifier results
 
 ```bash
-python {SCRIPTS_DIR}/status.py list --field-number {N} --format files --status pending
+python {MG_INSTALL_SCRIPTS_DIR}/status.py list --field-number {N} --format files --status pending
 ```
 
 Any files still `pending` were rejected on first attempt. For each:
 ```bash
-python {SCRIPTS_DIR}/status.py increment-iterations --file '<filename>'
+python {MG_INSTALL_SCRIPTS_DIR}/status.py increment-iterations --file '<filename>'
 ```
 Then spawn a NEW researcher (background) with prompt:
 ```
-Read your instructions from {REFERENCES_DIR}/researcher-prompt.md
+Read your instructions from {MG_INSTALL_REFERENCES_DIR}/researcher-prompt.md
 Your task file is: TASK_FILE
 Replace every occurrence of TASK_FILE in the instructions with your actual filename.
 PREVIOUS ATTEMPT REJECTED. Read the rejection_reason from the Verification section of your task file. Try a different approach.
@@ -141,13 +141,13 @@ Wait, then spawn a new verifier (background). This is the second and final round
 
 After each field completes:
 ```bash
-python {SCRIPTS_DIR}/status.py list --field-number {N} --format summary
+python {MG_INSTALL_SCRIPTS_DIR}/status.py list --field-number {N} --format summary
 ```
 
 After all fields are processed:
 ```bash
-python {SCRIPTS_DIR}/summarize.py
-python {SCRIPTS_DIR}/status.py list --format summary
+python {MG_INSTALL_SCRIPTS_DIR}/summarize.py
+python {MG_INSTALL_SCRIPTS_DIR}/status.py list --format summary
 ```
 
 ## Rules

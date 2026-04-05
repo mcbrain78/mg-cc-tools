@@ -1374,7 +1374,7 @@ class TestValidate:
 
             # File with unresolved placeholder
             with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
-                f.write("Use {SCRIPTS_DIR}/foo.py for analysis\n")
+                f.write("Use {MG_INSTALL_SCRIPTS_DIR}/foo.py for analysis\n")
 
             result = _run([
                 "validate", "--target", target,
@@ -1385,7 +1385,7 @@ class TestValidate:
             assert len(data["issues"]) > 0
             issue = data["issues"][0]
             assert issue["type"] == "placeholder"
-            assert "{SCRIPTS_DIR}" in issue["pattern"]
+            assert "{MG_INSTALL_SCRIPTS_DIR}" in issue["pattern"]
 
     def test_detects_missing_resolved_paths(self):
         """Finds resolved absolute paths that don't exist on disk."""
@@ -1518,7 +1518,7 @@ class TestValidate:
             os.makedirs(cmd_dir, exist_ok=True)
 
             with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
-                f.write("line 1\n{SCRIPTS_DIR}\nline 3\n")
+                f.write("line 1\n{MG_INSTALL_SCRIPTS_DIR}\nline 3\n")
 
             result = _run([
                 "validate", "--target", target,
@@ -1556,7 +1556,7 @@ class TestValidate:
             os.makedirs(cmd_dir, exist_ok=True)
 
             with open(os.path.join(cmd_dir, "bad.md"), "w") as f:
-                f.write("Use {SCRIPTS_DIR}/foo.py\n")
+                f.write("Use {MG_INSTALL_SCRIPTS_DIR}/foo.py\n")
 
             result = _run(["validate", "--target", target])
             assert result.returncode == 0, result.stderr
@@ -1599,7 +1599,7 @@ class TestValidate:
             with open(os.path.join(cmd_dir, "clean-tool.md"), "w") as f:
                 f.write("No issues.\n")
             with open(os.path.join(cmd_dir, "bad-tool.md"), "w") as f:
-                f.write("Use {SCRIPTS_DIR}/foo.py\n")
+                f.write("Use {MG_INSTALL_SCRIPTS_DIR}/foo.py\n")
 
             # Validate only clean-tool — should find no issues
             result = _run([
@@ -1628,7 +1628,7 @@ class TestValidate:
             output_file = os.path.join(tmp, "validate.json")
 
             with open(os.path.join(cmd_dir, "bad.md"), "w") as f:
-                f.write("Use {SCRIPTS_DIR}/foo.py\n")
+                f.write("Use {MG_INSTALL_SCRIPTS_DIR}/foo.py\n")
 
             result = _run([
                 "validate", "--target", target,
@@ -1648,6 +1648,215 @@ class TestValidate:
                 file_data = json.load(f)
             assert "issues" in file_data
             assert len(file_data["issues"]) > 0
+
+
+    def test_non_install_placeholders_ignored(self):
+        """Runtime placeholders like {DOCUMENT}, {DISK_PCT} are NOT flagged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            with open(os.path.join(cmd_dir, "template.md"), "w") as f:
+                f.write("Document: {DOCUMENT}\n")
+                f.write("Name: {DOCUMENT_NAME}\n")
+                f.write("Stage: {STAGE_LABEL}\n")
+                f.write("Disk: {DISK_PCT}\n")
+                f.write("Mem: ${MEM_AVAIL}\n")
+                f.write("Audience: {AUDIENCE}\n")
+
+            result = _run(["validate", "--target", target])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+            assert data["valid"] is True, f"Should have no issues: {data['issues']}"
+
+    def test_detects_unresolved_relative_references(self):
+        """Relative references/foo.md paths are flagged as unresolved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
+                f.write("Read references/schema.md for details\n")
+
+            result = _run(["validate", "--target", target])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            ref_issues = [i for i in data["issues"]
+                          if i["type"] == "unresolved_reference"]
+            assert len(ref_issues) > 0
+            assert "references/schema.md" in ref_issues[0]["pattern"]
+
+    def test_resolved_references_not_flagged(self):
+        """Absolute reference paths are not flagged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            ref_file = os.path.join(tmp, "references", "schema.md")
+            os.makedirs(cmd_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(ref_file), exist_ok=True)
+            with open(ref_file, "w") as f:
+                f.write("schema\n")
+
+            # Absolute path to references/ -- should NOT be flagged
+            with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
+                f.write(f"Read {ref_file} for details\n")
+
+            result = _run(["validate", "--target", target])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            ref_issues = [i for i in data["issues"]
+                          if i["type"] == "unresolved_reference"]
+            assert len(ref_issues) == 0, f"Unexpected ref issues: {ref_issues}"
+
+    def test_detects_missing_source_files(self):
+        """Source files not present in target are flagged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(os.path.join(target, ".claude", "commands", "mg"),
+                        exist_ok=True)
+
+            # Create tool with command + agent
+            tool_dir = _make_tool(source, "my-tool")
+            agents_dir = os.path.join(tool_dir, "agents")
+            os.makedirs(agents_dir, exist_ok=True)
+            with open(os.path.join(agents_dir, "scanner.md"), "w") as f:
+                f.write("agent\n")
+            _make_pyproject(source)
+
+            # Install only the command, not the agent
+            with open(os.path.join(target, ".claude", "commands", "mg",
+                                   "my-tool.md"), "w") as f:
+                f.write("installed\n")
+
+            result = _run([
+                "validate", "--target", target,
+                "--tools", "my-tool", "--source", source,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            missing = [i for i in data["issues"]
+                       if i["type"] == "missing_source_file"]
+            assert len(missing) > 0
+            patterns = {i["pattern"] for i in missing}
+            assert "agents/scanner.md" in patterns
+
+    def test_all_source_files_present_no_issue(self):
+        """Complete install with all source files has no missing_source_file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            # Create tool with command
+            _make_tool(source, "my-tool")
+            _make_pyproject(source)
+
+            # Install the command to target
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
+            # install.sh exists in source but is skipped by comparison
+            # No agents/scripts, so only command needs to be present
+
+            result = _run([
+                "validate", "--target", target,
+                "--tools", "my-tool", "--source", source,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            missing = [i for i in data["issues"]
+                       if i["type"] == "missing_source_file"]
+            assert len(missing) == 0, f"Unexpected missing: {missing}"
+
+    def test_scans_tool_specific_agent_dirs(self):
+        """Placeholders in .claude/{tool}/agents/ are detected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            agent_dir = os.path.join(target, ".claude", "my-tool", "agents")
+            os.makedirs(cmd_dir, exist_ok=True)
+            os.makedirs(agent_dir, exist_ok=True)
+
+            # Clean command
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("No issues.\n")
+            # Agent with unresolved placeholder
+            with open(os.path.join(agent_dir, "scanner.md"), "w") as f:
+                f.write("Run {MG_INSTALL_SCRIPTS_DIR}/scan.py\n")
+
+            result = _run(["validate", "--target", target])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            ph_issues = [i for i in data["issues"]
+                         if i["type"] == "placeholder"]
+            assert len(ph_issues) > 0
+            assert any("scanner.md" in i["file"] for i in ph_issues)
+
+    def test_invalid_sed_target_detected(self):
+        """install.sh with bare {SCRIPTS_DIR} sed target is flagged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(os.path.join(target, ".claude", "commands", "mg"),
+                        exist_ok=True)
+
+            # Create tool with install.sh that has bare placeholder target
+            tool_dir = _make_tool(source, "bad-sed")
+            with open(os.path.join(tool_dir, "install.sh"), "w") as f:
+                f.write('#!/bin/bash\n')
+                f.write('sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABS}|g" "$file"\n')
+            _make_pyproject(source)
+
+            result = _run([
+                "validate", "--target", target,
+                "--tools", "bad-sed", "--source", source,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            sed_issues = [i for i in data["issues"]
+                          if i["type"] == "invalid_sed_target"]
+            assert len(sed_issues) > 0
+            assert "{SCRIPTS_DIR}" in sed_issues[0]["pattern"]
+
+    def test_valid_sed_targets_pass(self):
+        """install.sh with MG_INSTALL_ prefixed targets is clean."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            # Create tool with properly prefixed install.sh
+            tool_dir = _make_tool(source, "good-sed")
+            with open(os.path.join(tool_dir, "install.sh"), "w") as f:
+                f.write('#!/bin/bash\n')
+                f.write('sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABS}|g" "$f"\n')
+                f.write('sed -i "s|references/schema.md|${ABS}|g" "$f"\n')
+            _make_pyproject(source)
+
+            # Install command so no missing_source_file
+            with open(os.path.join(cmd_dir, "good-sed.md"), "w") as f:
+                f.write("clean\n")
+
+            result = _run([
+                "validate", "--target", target,
+                "--tools", "good-sed", "--source", source,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            sed_issues = [i for i in data["issues"]
+                          if i["type"] == "invalid_sed_target"]
+            assert len(sed_issues) == 0, f"Unexpected: {sed_issues}"
 
 
 class TestScanStatusOutput:
@@ -3970,8 +4179,8 @@ class TestRenderValidation:
                         "file": "/path/to/file.md",
                         "line": 10,
                         "type": "placeholder",
-                        "pattern": "{SCRIPTS_DIR}",
-                        "message": "Unresolved placeholder: {SCRIPTS_DIR}",
+                        "pattern": "{MG_INSTALL_SCRIPTS_DIR}",
+                        "message": "Unresolved placeholder: {MG_INSTALL_SCRIPTS_DIR}",
                     },
                     {
                         "file": "/path/to/other.md",

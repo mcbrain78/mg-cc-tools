@@ -25,7 +25,7 @@ Read the orientation file to understand the project's languages, package manager
 Execute the helper script via Bash:
 
 ```bash
-python3 {SCRIPTS_DIR}/unused-deps.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-unused-deps-raw.json"
+python3 {MG_INSTALL_SCRIPTS_DIR}/unused-deps.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-unused-deps-raw.json"
 ```
 
 If a `.mg/health-scan/.health-ignore` file exists, the script will auto-detect and use it.
@@ -66,7 +66,7 @@ For each confirmed unused dependency:
 For each confirmed finding, use the add-finding script:
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <output_json_path> \
     --category unused-dependency \
     --severity <critical|high|medium|low> \

@@ -80,7 +80,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${PROJECT_ROOT}/.claude"
+    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""
@@ -183,8 +183,8 @@ for cmd in "${COMMANDS[@]}"; do
     sed -i "s|references/schema.md|${SCHEMA_ABSOLUTE}|g" "$cmd_file"
   fi
   # Resolve global config reference (scan, verify, implement)
-  if grep -q '{GLOBAL_CONFIG}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{GLOBAL_CONFIG}|${CONFIG_ABSOLUTE}|g" "$cmd_file"
+  if grep -q '{MG_INSTALL_GLOBAL_CONFIG}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_GLOBAL_CONFIG}|${CONFIG_ABSOLUTE}|g" "$cmd_file"
   fi
 done
 
@@ -200,20 +200,20 @@ if grep -q 'agents/implementor.md' "$IMPL_FILE" 2>/dev/null; then
   sed -i "s|agents/implementor.md|${AGENTS_ABSOLUTE}/implementor.md|g" "$IMPL_FILE"
 fi
 
-# Resolve {SCRIPTS_DIR} placeholder in agent files
-echo "  Resolving {SCRIPTS_DIR} in agent files ..."
+# Resolve {MG_INSTALL_SCRIPTS_DIR} placeholder in agent files
+echo "  Resolving {MG_INSTALL_SCRIPTS_DIR} in agent files ..."
 for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
-  if grep -q '{SCRIPTS_DIR}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$agent_file"
+  if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$agent_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$agent_file"
   fi
 done
 
-# Resolve {SCRIPTS_DIR} placeholder in command files (for script calls)
-echo "  Resolving {SCRIPTS_DIR} in command files ..."
+# Resolve {MG_INSTALL_SCRIPTS_DIR} placeholder in command files (for script calls)
+echo "  Resolving {MG_INSTALL_SCRIPTS_DIR} in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  if grep -q '{SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
+  if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
   fi
 done
 
@@ -224,7 +224,7 @@ done
 # exist to preserve user edits.
 
 if [[ -n "$PROJECT_ROOT" ]]; then
-  HEALTH_DIR="${PROJECT_ROOT}/.mg/health-scan"
+  HEALTH_DIR="${MG_INSTALL_PROJECT_ROOT}/.mg/health-scan"
   mkdir -p "$HEALTH_DIR"
   echo "  Config    → ${HEALTH_DIR}/"
 

@@ -35,7 +35,7 @@ This installs into `~/.claude/`.
 1. Copies command files to `<target>/commands/mg/`.
 2. Copies supporting files (scanner agents, schema, Python scripts) to `<target>/codebase-health/`.
 3. Creates global default config at `<target>/codebase-health/references/.health-scan.config.json`.
-4. Resolves all relative paths (`references/schema.md`, `{GLOBAL_CONFIG}`, `agents/*.md`, `{SCRIPTS_DIR}`) to absolute paths, so the LLM can find them at runtime.
+4. Resolves all relative paths (`references/schema.md`, `{MG_INSTALL_GLOBAL_CONFIG}`, `agents/*.md`, `{MG_INSTALL_SCRIPTS_DIR}`) to absolute paths, so the LLM can find them at runtime.
 5. Checks for `python3` availability and warns if not found.
 6. (`--project` mode only) Creates `.mg/health-scan/` in the project root with project-level `.health-scan.config.json` and an empty `.health-ignore`. Existing config files are preserved.
 

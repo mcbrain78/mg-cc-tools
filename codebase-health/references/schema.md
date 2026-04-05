@@ -187,7 +187,7 @@ Records a single finding to a per-category JSON array file. Called by scanner
 subagents instead of hand-writing JSON.
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <scan-logs/scan-orphaned-code.json> \
     --category orphaned-code \
     --severity high \
@@ -207,7 +207,7 @@ Merges per-category scan JSON files into the final `health-scan-findings.json`.
 Called by the scanner orchestrator after all subagents complete.
 
 ```bash
-python3 {SCRIPTS_DIR}/merge-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/merge-findings.py \
     --scan-dir <project-root>/.mg/health-scan/scan-logs \
     --output <project-root>/.mg/health-scan/health-scan-findings.json \
     --project "project-name" \
@@ -220,7 +220,7 @@ Records verification results. Three modes:
 
 **Append mode** (verifier subagent building per-category results):
 ```bash
-python3 {SCRIPTS_DIR}/verify-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/verify-finding.py \
     --output <scan-logs/verify-orphaned-code.json> \
     --id F001 --safety safe-to-fix \
     --reasoning "..." --impact-analysis "..." \
@@ -230,7 +230,7 @@ python3 {SCRIPTS_DIR}/verify-finding.py \
 
 **Single mode** (update one finding inline):
 ```bash
-python3 {SCRIPTS_DIR}/verify-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/verify-finding.py \
     --findings <health-scan-findings.json> \
     --id F001 --safety safe-to-fix \
     --reasoning "..." --impact-analysis "..." \
@@ -240,7 +240,7 @@ python3 {SCRIPTS_DIR}/verify-finding.py \
 
 **Batch mode** (merge subagent results):
 ```bash
-python3 {SCRIPTS_DIR}/verify-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/verify-finding.py \
     --findings <health-scan-findings.json> \
     --batch <scan-logs/verify-orphaned-code.json>
 ```
@@ -252,14 +252,14 @@ Replaces manual LLM editing, which becomes unreliable at scale (50+ findings).
 
 **Batch mode** (after subagent completes):
 ```bash
-python3 {SCRIPTS_DIR}/update-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/update-findings.py \
     --findings .mg/health-scan/health-scan-findings.json \
     --batch .mg/health-scan/scan-logs/implement-<category>.json
 ```
 
 **Single mode** (inline per-finding):
 ```bash
-python3 {SCRIPTS_DIR}/update-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/update-findings.py \
     --findings .mg/health-scan/health-scan-findings.json \
     --id F001 --status applied \
     --change-description "Removed function X" \
@@ -273,7 +273,7 @@ Splits verified findings into downstream documents. Called by the verifier
 after writing the verification report.
 
 ```bash
-python3 {SCRIPTS_DIR}/split-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/split-findings.py \
     --findings .mg/health-scan/health-scan-findings.json \
     --bootstrap-out .mg/health-scan/health-verify-gsd-bootstrap.md \
     --implementor-out .mg/health-scan/health-implement-queue.json \

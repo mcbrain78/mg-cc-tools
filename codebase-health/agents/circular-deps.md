@@ -25,7 +25,7 @@ Read the orientation file to understand the project's languages, frameworks, mod
 Execute the helper script via Bash:
 
 ```bash
-python3 {SCRIPTS_DIR}/circular-deps.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-circular-deps-raw.json"
+python3 {MG_INSTALL_SCRIPTS_DIR}/circular-deps.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-circular-deps-raw.json"
 ```
 
 If a `.mg/health-scan/.health-ignore` file exists, the script will auto-detect and use it. You can also pass `--ignore-file <path>` explicitly.
@@ -62,7 +62,7 @@ Read the JSON output. For each finding category, apply LLM judgment:
 For each finding, use the add-finding script:
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <output_json_path> \
     --category circular-dependency \
     --severity <critical|high|medium|low> \

@@ -12,7 +12,7 @@ You are the **Auditor** -- a lightweight post-generate quality check. Runs deter
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
@@ -33,7 +33,7 @@ Parse the user's input text for optional parameters:
 
 Store the wave count as `num_waves` (integer, minimum 1, default 3).
 
-1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
+1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{MG_INSTALL_GLOBAL_CONFIG}`. Extract:
    - `docs_dir` (default: `docs/auto-doc`)
    - `audiences` (which are enabled and their document lists)
 
@@ -60,17 +60,17 @@ Run verify-xml-refs.py once across all XML sources. It walks the entire xml-sour
 
 Run the verification (this may take 1-2 minutes for large projects):
 ```bash
-python3 {SCRIPTS_DIR}/verify-xml-refs.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {project_root}/.mg/docs/xml-sources \
     --project-root {project_root} \
-    --findings-file {TMP_DIR}/audit/findings-refs.json \
+    --findings-file {MG_INSTALL_TMP_DIR}/audit/findings-refs.json \
     --database-model {project_root}/.mg/docs/tmp/database-model.json \
     [--audience AUDIENCE]
 ```
 
 Add `--audience` only if the user specified audience names (e.g., `--audience devops`).
 
-Read `{TMP_DIR}/audit/findings-refs.json` to get the deterministic findings list.
+Read `{MG_INSTALL_TMP_DIR}/audit/findings-refs.json` to get the deterministic findings list.
 
 ### Step 3: Prose-vs-Refs Consistency (multi-wave audit)
 
@@ -82,9 +82,9 @@ Read `{TMP_DIR}/audit/findings-refs.json` to get the deterministic findings list
 
 2. **For each XML file, prepare input:**
    ```bash
-   python3 {SCRIPTS_DIR}/prepare-prose-verify.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-prose-verify.py \
        --xml-file {xml_file_path} \
-       --output-dir {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+       --output-dir {MG_INSTALL_TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
    ```
    This creates per-section JSON files and a manifest.json.
 
@@ -97,12 +97,12 @@ Agent(
   description="Prose audit W1 {audience} {DOCUMENT}",
   prompt="You are a prose-vs-refs auditor.
 
-Read and follow the instructions in: {AGENTS_DIR}/verify-prose.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/verify-prose.md
 
 Project root: {project_root}
-Prose verify dir: {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
-Findings file: {TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
-Scripts dir: {SCRIPTS_DIR}"
+Prose verify dir: {MG_INSTALL_TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+Findings file: {MG_INSTALL_TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
+Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
 )
 ```
 
@@ -112,7 +112,7 @@ Scripts dir: {SCRIPTS_DIR}"
 
 a. **Clean up state files** so the next wave's agents start fresh:
 ```bash
-rm -f {TMP_DIR}/audit/*.sectionctl
+rm -f {MG_INSTALL_TMP_DIR}/audit/*.sectionctl
 ```
 
 b. **Spawn verify-prose-reaudit agents** (one per document, parallel foreground, **model: sonnet**). They read all prior findings and look for what was missed. Use the **same findings files**:
@@ -122,12 +122,12 @@ Agent(
   description="Prose audit W{N} {audience} {DOCUMENT}",
   prompt="You are a prose-vs-refs re-auditor.
 
-Read and follow the instructions in: {AGENTS_DIR}/verify-prose-reaudit.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/verify-prose-reaudit.md
 
 Project root: {project_root}
-Prose verify dir: {TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
-Findings file: {TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
-Scripts dir: {SCRIPTS_DIR}"
+Prose verify dir: {MG_INSTALL_TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+Findings file: {MG_INSTALL_TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
+Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
 )
 ```
 
@@ -135,7 +135,7 @@ Where `{N}` is the current wave number (2, 3, 4, ...).
 
 #### 3.4. Collect findings
 
-**Collect prose findings** from each document's findings file (`{TMP_DIR}/audit/findings-prose-*.json`). Read each file and accumulate all findings.
+**Collect prose findings** from each document's findings file (`{MG_INSTALL_TMP_DIR}/audit/findings-prose-*.json`). Read each file and accumulate all findings.
 
 ### Step 4: Report
 
@@ -173,7 +173,7 @@ When clean, run /mg:auto-doc-verify for full editorial review.
 
 ### Step 5: Persist Summary
 
-Write the full summary text from Step 4 to `{TMP_DIR}/audit/summary.md` so it survives beyond the conversation. Then tell the user:
+Write the full summary text from Step 4 to `{MG_INSTALL_TMP_DIR}/audit/summary.md` so it survives beyond the conversation. Then tell the user:
 ```
 Summary written to .mg/docs/tmp/audit/summary.md
 ```

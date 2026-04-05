@@ -12,7 +12,7 @@ You are the **Updater** -- a post-verify step that surgically fixes documentatio
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
@@ -27,7 +27,7 @@ Read references/schema.yaml
 
 ### Step 1: Load Context
 
-1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
+1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{MG_INSTALL_GLOBAL_CONFIG}`. Extract:
    - `docs_dir` (default: `docs/auto-doc`)
    - `audiences` (which are enabled and their document lists)
 
@@ -53,24 +53,24 @@ Read references/schema.yaml
 
 1. **Load verify findings.** Run:
    ```bash
-   uv run {SCRIPTS_DIR}/list-verify-findings.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
      --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
      --summary \
-     --output {TMP_DIR}/findings-summary.json
+     --output {MG_INSTALL_TMP_DIR}/findings-summary.json
    ```
    Read the output file. If the file does not exist or total is 0, treat as zero findings.
 
 2. **Load notes.** Run:
    ```bash
-   uv run {SCRIPTS_DIR}/list-notes.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/list-notes.py \
      --inbox {project_root}/.mg/docs/notes-inbox.json \
-     --output {TMP_DIR}/all-notes.json
+     --output {MG_INSTALL_TMP_DIR}/all-notes.json
    ```
    Read the output file. This returns all classified notes (ignores status).
 
 3. **Check for unclassified notes.** Read `{project_root}/.mg/docs/notes-inbox.json` directly. For any note where `classification` is null or missing, run:
    ```bash
-   uv run {SCRIPTS_DIR}/classify-note.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/classify-note.py \
      --text "<note_text>" \
      --note-id <note_id> \
      --inbox {project_root}/.mg/docs/notes-inbox.json
@@ -131,7 +131,7 @@ Handle user response:
 
 Group FIX items by document. Write each document's items to a temp JSON file, then spawn one doc-fixer agent per document. Run fix agents as **parallel foreground** (do NOT set `run_in_background`) so their output is visible inline and errors are immediately apparent:
 
-1. **Write fix items per document.** For each document, write its fix items array to `{TMP_DIR}/fix-items-{DOCUMENT}.json`. Each item follows one of these formats:
+1. **Write fix items per document.** For each document, write its fix items array to `{MG_INSTALL_TMP_DIR}/fix-items-{DOCUMENT}.json`. Each item follows one of these formats:
 
    Finding:
    ```json
@@ -150,14 +150,14 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
      description="Fix {audience} {DOCUMENT}",
      prompt="You are a documentation fix agent.
 
-   Read and follow the instructions in: {AGENTS_DIR}/doc-fixer.md
+   Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/doc-fixer.md
 
    doc_path: {docs_dir_abs}/{audience}/{DOCUMENT}.md
    audience: {audience}
-   project_model_path: {TMP_DIR}/project-model.json
+   project_model_path: {MG_INSTALL_TMP_DIR}/project-model.json
    glossary_path: {docs_dir_abs}/GLOSSARY.md
    style_guide_path: references/style-guide.md
-   items_path: {TMP_DIR}/fix-items-{DOCUMENT}.json
+   items_path: {MG_INSTALL_TMP_DIR}/fix-items-{DOCUMENT}.json
 
    Read the items_path file to get the JSON array of fix items for this document. Apply all fixes."
    )
@@ -168,7 +168,7 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 4. **Sync fix edits to XML** (if XML sources exist). Check if `.mg/docs/xml-sources/` directory exists. If so, for each document that was fixed:
 
    ```bash
-   python3 {SCRIPTS_DIR}/sync-edits-to-xml.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/sync-edits-to-xml.py \
        --md-file {docs_dir_abs}/{audience}/{DOCUMENT}.md \
        --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
        --changed-only
@@ -177,7 +177,7 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
    Parse the JSON output (list of changed slugs). Then reassemble markdown from the updated XML:
 
    ```bash
-   python3 {SCRIPTS_DIR}/assemble-markdown.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
        --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
        --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
    ```
@@ -195,19 +195,19 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
    Clean temp files from prior runs:
    ```bash
-   rm -f {TMP_DIR}/write-state-*.json {TMP_DIR}/section-*.md {TMP_DIR}/refs-*.json {TMP_DIR}/header-*.md
-   rm -f {TMP_DIR}/manifest-*.json
+   rm -f {MG_INSTALL_TMP_DIR}/write-state-*.json {MG_INSTALL_TMP_DIR}/section-*.md {MG_INSTALL_TMP_DIR}/refs-*.json {MG_INSTALL_TMP_DIR}/header-*.md
+   rm -f {MG_INSTALL_TMP_DIR}/manifest-*.json
    ```
 
 2. **Split scan data** per audience (same as generate step). For each audience with approved GENERATE items:
    ```bash
-   uv run {SCRIPTS_DIR}/split-scan-by-audience.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/split-scan-by-audience.py \
        --input {project_root}/.mg/docs/docs-scan.json \
-       --output {TMP_DIR}/scan-view-{audience}.json \
+       --output {MG_INSTALL_TMP_DIR}/scan-view-{audience}.json \
        --mode audience \
        --audience {audience} \
        --documents {comma_separated_documents} \
-       --project-model-output {TMP_DIR}/project-model.json
+       --project-model-output {MG_INSTALL_TMP_DIR}/project-model.json
    ```
 
 3. **Spawn writer agents** for audiences with new sections. Each writer runs with `mode: update` and `update_sections` limited to the new section slugs:
@@ -219,13 +219,13 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
      description="Generate new {audience} sections",
      prompt="You are a {audience} writer agent.
 
-   Read and follow the instructions in: {AGENTS_DIR}/{audience}-writer.md
+   Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/{audience}-writer.md
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {TMP_DIR}/scan-view-{audience}.json
-   Project model path: {TMP_DIR}/project-model.json
-   Templates dir: {TEMPLATES_DIR}/{audience}/
+   Scan data path: {MG_INSTALL_TMP_DIR}/scan-view-{audience}.json
+   Project model path: {MG_INSTALL_TMP_DIR}/project-model.json
+   Templates dir: {MG_INSTALL_TEMPLATES_DIR}/{audience}/
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
    Documents: {document_list}
@@ -239,20 +239,20 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
 4. **Finalize with --merge** to preserve existing doc content:
    ```bash
-   uv run {SCRIPTS_DIR}/write-section.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
        --finalize \
-       --state-file {TMP_DIR}/write-state-{audience}.json \
+       --state-file {MG_INSTALL_TMP_DIR}/write-state-{audience}.json \
        --docs-dir {docs_dir_abs} \
        --audience {audience} \
-       --manifest-file {TMP_DIR}/manifest-{audience}.json \
+       --manifest-file {MG_INSTALL_TMP_DIR}/manifest-{audience}.json \
        --mode update \
        --merge
    ```
 
 5. **Merge manifests** for new sections:
    ```bash
-   uv run {SCRIPTS_DIR}/merge-manifests.py \
-       --tmp-dir {TMP_DIR} \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/merge-manifests.py \
+       --tmp-dir {MG_INSTALL_TMP_DIR} \
        --output-dir {project_root}/.mg/docs/reference-manifests \
        --audiences {audiences_with_new_sections}
    ```
@@ -287,5 +287,5 @@ Next step: Run /mg:auto-doc-verify to check the updated documentation.
 - **Staleness is deferred.** Stale sections need source re-analysis (scan), which update cannot do. Tell the user to run scan → generate instead.
 - **Use `--merge` for scoped generate.** When adding new sections, the `--merge` flag on write-section.py finalize preserves all existing content in the document.
 - **Agents receive file paths only; they read files themselves.** Do not paste document content, source material, or scan data into subagent prompts. Pass paths as strings.
-- **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: {AGENTS_DIR}/doc-fixer.md`) rather than inlining the full agent definition.
+- **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/doc-fixer.md`) rather than inlining the full agent definition.
 - **Generate reads verify findings but NEVER clears docs-verify-findings.json.** Only the verify command clears findings.

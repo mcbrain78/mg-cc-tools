@@ -16,14 +16,14 @@ allowed-tools:
 <objective>
 Apply reusable patches to GSD workflow files in a target project. Patches survive GSD updates — after each `/gsd:update`, rerun this command to reapply customizations.
 
-Each patch is a `.md` file in `{PATCHES_DIR}` containing structured anchor/replace pairs. The command discovers all patches automatically, checks for idempotency, and handles conflicts gracefully.
+Each patch is a `.md` file in `{MG_INSTALL_PATCHES_DIR}` containing structured anchor/replace pairs. The command discovers all patches automatically, checks for idempotency, and handles conflicts gracefully.
 </objective>
 
 <context>
 Target project argument: $ARGUMENTS
 
-Patches directory: {PATCHES_DIR}
-Source patches directory: {SOURCE_PATCHES_DIR}
+Patches directory: {MG_INSTALL_PATCHES_DIR}
+Source patches directory: {MG_INSTALL_SOURCE_PATCHES_DIR}
 </context>
 
 <process>
@@ -34,23 +34,23 @@ Before doing anything, verify that installed patches are in sync with the source
 
 ```bash
 # Compare installed vs source patches
-INSTALLED_FILES=$(cd "{PATCHES_DIR}" && md5sum *.md 2>/dev/null | sort)
-SOURCE_FILES=$(cd "{SOURCE_PATCHES_DIR}" && md5sum *.md 2>/dev/null | sort)
+INSTALLED_FILES=$(cd "{MG_INSTALL_PATCHES_DIR}" && md5sum *.md 2>/dev/null | sort)
+SOURCE_FILES=$(cd "{MG_INSTALL_SOURCE_PATCHES_DIR}" && md5sum *.md 2>/dev/null | sort)
 ```
 
 **If identical:** Log `Patches in sync.` and proceed to Step 1.
 
 **If different:** Determine what changed:
-- **New in source:** Files in `{SOURCE_PATCHES_DIR}` not present in `{PATCHES_DIR}`
+- **New in source:** Files in `{MG_INSTALL_SOURCE_PATCHES_DIR}` not present in `{MG_INSTALL_PATCHES_DIR}`
 - **Modified:** Files present in both but with different checksums
-- **Orphaned:** Files in `{PATCHES_DIR}` not present in `{SOURCE_PATCHES_DIR}` (deleted from source)
+- **Orphaned:** Files in `{MG_INSTALL_PATCHES_DIR}` not present in `{MG_INSTALL_SOURCE_PATCHES_DIR}` (deleted from source)
 
 Report:
 ```
 --- Patch Sync Check ---
 
-Source: {SOURCE_PATCHES_DIR}
-Installed: {PATCHES_DIR}
+Source: {MG_INSTALL_SOURCE_PATCHES_DIR}
+Installed: {MG_INSTALL_PATCHES_DIR}
 
   New:      [list of new patch names, or "none"]
   Modified: [list of modified patch names, or "none"]
@@ -67,10 +67,10 @@ Ask via AskUserQuestion:
 **If "Sync now":**
 ```bash
 # Remove orphaned patches
-rm -f "{PATCHES_DIR}/<orphaned-file>.md"  # for each orphaned file
+rm -f "{MG_INSTALL_PATCHES_DIR}/<orphaned-file>.md"  # for each orphaned file
 
 # Copy all source patches to installed directory
-cp "{SOURCE_PATCHES_DIR}"/*.md "{PATCHES_DIR}/"
+cp "{MG_INSTALL_SOURCE_PATCHES_DIR}"/*.md "{MG_INSTALL_PATCHES_DIR}/"
 ```
 
 ```
@@ -106,10 +106,10 @@ If `$ARGUMENTS` is empty, ask the user:
 
 ## Step 2: Discover Patches
 
-Read all `.md` files from the patches directory using Glob on `{PATCHES_DIR}/*.md`.
+Read all `.md` files from the patches directory using Glob on `{MG_INSTALL_PATCHES_DIR}/*.md`.
 
 If no patches found, report and stop:
-> "No patch definitions found in `{PATCHES_DIR}/`."
+> "No patch definitions found in `{MG_INSTALL_PATCHES_DIR}/`."
 
 List discovered patches:
 ```
@@ -180,7 +180,7 @@ The patch [is still useful / may need adjustment / is no longer needed] because:
 Sync modified patches back to the source directory so the repo stays in sync:
 
 ```bash
-cp "{PATCHES_DIR}/<modified-patch>.md" "{SOURCE_PATCHES_DIR}/<modified-patch>.md"
+cp "{MG_INSTALL_PATCHES_DIR}/<modified-patch>.md" "{MG_INSTALL_SOURCE_PATCHES_DIR}/<modified-patch>.md"
 ```
 
 Repeat for each modified patch file.
@@ -191,7 +191,7 @@ Repeat for each modified patch file.
 Modified patches:
   - [patch-name].md — Modification N anchor updated
 
-Synced to source: {SOURCE_PATCHES_DIR}/
+Synced to source: {MG_INSTALL_SOURCE_PATCHES_DIR}/
 
 The updated patch definitions need to be reloaded.
 Please exit Claude (/exit) and restart, then re-run:
@@ -288,7 +288,7 @@ If all modifications were "already applied", add:
 
 <important_notes>
 - **Only modify mg-cc-tools patch files during Step 3 (Pre-flight Patch Review)** when the user explicitly chooses "Update patch". All other modifications go to the target project only.
-- **Always sync modified patches back to source** — after editing any patch file in `{PATCHES_DIR}`, copy it to `{SOURCE_PATCHES_DIR}` so the repo stays in sync.
+- **Always sync modified patches back to source** — after editing any patch file in `{MG_INSTALL_PATCHES_DIR}`, copy it to `{MG_INSTALL_SOURCE_PATCHES_DIR}` so the repo stays in sync.
 - **Preserve exact whitespace** in anchors and replacements — the Edit tool requires exact matches.
 - **Read before editing** — always Read the target file before attempting Edit operations.
 - When parsing patch files, the anchor and replacement text are inside fenced code blocks (triple backticks). Extract the content between the fences, not including the fence markers themselves.

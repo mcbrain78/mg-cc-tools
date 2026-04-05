@@ -8,8 +8,8 @@ can be passed to batch entries in a single call.
 
 Usage:
     python3 add-manifest-entry.py \
-        --input {TMP_DIR}/entry-001.json \
-        --input {TMP_DIR}/entry-002.json \
+        --input {MG_INSTALL_TMP_DIR}/entry-001.json \
+        --input {MG_INSTALL_TMP_DIR}/entry-002.json \
         --manifest .mg/docs/reference-manifests/developers.json
 
 Input JSON must contain:

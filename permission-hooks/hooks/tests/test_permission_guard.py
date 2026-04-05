@@ -1424,8 +1424,8 @@ class TestTranscriptContext:
 class TestResolveProjectRoot:
 
     def test_uses_cwd_when_placeholder_unresolved(self):
-        """Source file has literal '{PROJECT_ROOT}' — should fall back to event cwd."""
-        with patch.object(guard, "PROJECT_ROOT", "{PROJECT_ROOT}"):
+        """Source file has literal '{MG_INSTALL_PROJECT_ROOT}' — should fall back to event cwd."""
+        with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
             assert _resolve_project_root({"cwd": "/home/user/myproject"}) == "/home/user/myproject"
 
     def test_uses_cwd_when_empty(self):
@@ -1437,7 +1437,7 @@ class TestResolveProjectRoot:
             assert _resolve_project_root({}) == "/home/user/myproject"
 
     def test_empty_when_nothing_available(self):
-        with patch.object(guard, "PROJECT_ROOT", "{PROJECT_ROOT}"):
+        with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
             assert _resolve_project_root({}) == ""
 
 

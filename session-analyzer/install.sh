@@ -14,7 +14,7 @@ set -euo pipefail
 # What it does:
 #   1. Copies command file to <target>/commands/mg/
 #   2. Copies Python scripts to <target>/session-analyzer/
-#   3. Resolves {SCRIPTS_DIR} in the command file to absolute paths
+#   3. Resolves {MG_INSTALL_SCRIPTS_DIR} in the command file to absolute paths
 # ──────────────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,7 +76,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${PROJECT_ROOT}/.claude"
+    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""
@@ -140,16 +140,16 @@ chmod +x "${SUPPORT_DIR}/"*.py
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 #
-# Replace {SCRIPTS_DIR} placeholder with absolute path so the LLM can find
+# Replace {MG_INSTALL_SCRIPTS_DIR} placeholder with absolute path so the LLM can find
 # the Python scripts at runtime.
 
 SCRIPTS_ABSOLUTE="${SUPPORT_DIR}"
 
-echo "  Resolving {SCRIPTS_DIR} in command files ..."
+echo "  Resolving {MG_INSTALL_SCRIPTS_DIR} in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  if grep -q '{SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
+  if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
   fi
 done
 

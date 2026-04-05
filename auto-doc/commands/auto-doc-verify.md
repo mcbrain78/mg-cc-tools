@@ -12,7 +12,7 @@ You are the **Verifier** -- step 3 of a 3-step documentation pipeline (scan, gen
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
@@ -51,7 +51,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 ### Step 1: Load Context
 
-1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
+1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{MG_INSTALL_GLOBAL_CONFIG}`. Extract:
    - `docs_dir` (default: `docs/auto-doc`)
    - `audiences` (which are enabled and their document lists)
 
@@ -70,7 +70,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 5. **Clear prior verify artifacts.** Remove all verify artifacts from prior runs to start fresh:
    ```bash
-   python3 {SCRIPTS_DIR}/list-verify-findings.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
      --clean \
      --findings-file {project_root}/.mg/docs/docs-verify-findings.json
    ```
@@ -78,17 +78,17 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 6. **Extract verify context.** Extract the fields the verifier needs from the full scan data:
    ```bash
-   python3 {SCRIPTS_DIR}/extract-verify-context.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/extract-verify-context.py \
      --scan-file {project_root}/.mg/docs/docs-scan.json \
      --output {project_root}/.mg/docs/tmp/verify-scan-context.json \
-     --templates-dir {TEMPLATES_DIR} \
-     [--audience AUDIENCES --config .mg/docs/.docs.config.json --global-config {GLOBAL_CONFIG}]
+     --templates-dir {MG_INSTALL_TEMPLATES_DIR} \
+     [--audience AUDIENCES --config .mg/docs/.docs.config.json --global-config {MG_INSTALL_GLOBAL_CONFIG}]
    ```
    Add `--audience`, `--config`, and `--global-config` only if the user specified audience names in Step 0.
 
 7. **Prepare doc review manifest.** Split large docs into chunks and produce a manifest for all docs:
    ```bash
-   python3 {SCRIPTS_DIR}/prepare-doc-review.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-doc-review.py \
      --docs-dir {docs_dir_abs} \
      --output-dir {project_root}/.mg/docs/tmp/review-chunks \
      --token-limit 5000 \
@@ -100,7 +100,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 Run the deterministic reference integrity checker directly (not in an agent):
 ```bash
-python3 {SCRIPTS_DIR}/verify-references.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/verify-references.py \
     --manifests-dir {project_root}/.mg/docs/reference-manifests \
     --project-root {project_root} \
     --scan-file {project_root}/.mg/docs/docs-scan.json \
@@ -111,7 +111,7 @@ This checks file paths, symbols, and function call signatures in reference manif
 
 **If XML sources exist** (check if `.mg/docs/xml-sources/` directory exists and contains `.xml` files), also run the deterministic XML ref verifier:
 ```bash
-python3 {SCRIPTS_DIR}/verify-xml-refs.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {project_root}/.mg/docs/xml-sources \
     --project-root {project_root} \
     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
@@ -126,19 +126,19 @@ Each agent gets its own isolated findings file. Read the review manifest to dete
 
 ```bash
 # 4 fact-checker files
-python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/docs-verify-findings-code-example.json
-python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/docs-verify-findings-data-model.json
-python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/docs-verify-findings-cross-doc.json
-python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/docs-verify-findings-completeness.json
 ```
 
 Read the manifest JSON at `{project_root}/.mg/docs/tmp/review-chunks/manifest.json`. For each entry, compute `doc_name` = basename of `source` without `.md` extension. Init one editorial findings file per document:
 ```bash
-python3 {SCRIPTS_DIR}/list-verify-findings.py --init \
+python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name}.json
 ```
 
@@ -154,7 +154,7 @@ Agent(
   model="sonnet",
   prompt="You are the code example verifier agent.
 
-Read and follow the instructions in: {AGENTS_DIR}/code-example-verifier.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/code-example-verifier.md
 
 Parameters:
 - project_root: {project_root}
@@ -167,7 +167,7 @@ Agent(
   model="sonnet",
   prompt="You are the data model verifier agent.
 
-Read and follow the instructions in: {AGENTS_DIR}/data-model-verifier.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/data-model-verifier.md
 
 Parameters:
 - project_root: {project_root}
@@ -182,7 +182,7 @@ Agent(
   model="sonnet",
   prompt="You are the cross-document checker agent.
 
-Read and follow the instructions in: {AGENTS_DIR}/cross-doc-checker.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/cross-doc-checker.md
 
 Parameters:
 - project_root: {project_root}
@@ -196,7 +196,7 @@ Agent(
   model="sonnet",
   prompt="You are the completeness checker agent.
 
-Read and follow the instructions in: {AGENTS_DIR}/completeness-checker.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/completeness-checker.md
 
 Parameters:
 - project_root: {project_root}
@@ -215,7 +215,7 @@ Agent(
   model="sonnet",
   prompt="You are the editorial review agent for {doc_name}.
 
-Read and follow the instructions in: {AGENTS_DIR}/per-doc-editorial.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/per-doc-editorial.md
 
 Parameters:
 - project_root: {project_root}
@@ -234,7 +234,7 @@ All agents (4 fact-checkers + N editorial) must be spawned in a **single Agent m
 Build the `--merge-from` list dynamically from the 4 fact-checker files plus N per-document editorial files:
 
 ```bash
-python3 {SCRIPTS_DIR}/list-verify-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {project_root}/.mg/docs/docs-verify-findings-code-example.json \
   --merge-from {project_root}/.mg/docs/docs-verify-findings-data-model.json \
   --merge-from {project_root}/.mg/docs/docs-verify-findings-cross-doc.json \
@@ -243,12 +243,12 @@ python3 {SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name_2}.json \
   ... (one --merge-from per document) \
   --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
-  --output {TMP_DIR}/all-findings.json
+  --output {MG_INSTALL_TMP_DIR}/all-findings.json
 ```
 
 ### Step 6: Generate Report
 
-1. **Read** `{TMP_DIR}/all-findings.json` to get all recorded findings.
+1. **Read** `{MG_INSTALL_TMP_DIR}/all-findings.json` to get all recorded findings.
 
 2. **Identify systemic issues.** Look for patterns across findings:
    - Same broken reference appearing in multiple documents
@@ -331,5 +331,5 @@ List systemic issues first (patterns that span multiple documents). Then group r
 - **Reference integrity is manifest-based.** The script reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
 - **Prefer false negatives over false positives.** Same principle across all agents -- only flag issues with high confidence. A noisy report trains users to ignore it.
 - **Verify clears all verify artifacts before each run** via `list-verify-findings.py --clean`. Generate reads findings but never clears them. This ensures each verify run reflects the current documentation state.
-- **Use `{SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
-- **Use `{GLOBAL_CONFIG}` placeholder for default config path** -- resolved by install.sh at install time.
+- **Use `{MG_INSTALL_SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
+- **Use `{MG_INSTALL_GLOBAL_CONFIG}` placeholder for default config path** -- resolved by install.sh at install time.

@@ -17,9 +17,9 @@ Tests hook interception (PreToolUse hooks fire and prompt the user) and AskUserQ
 </objective>
 
 <context>
-Scripts directory: {SCRIPTS_DIR}
-Hooks directory: {HOOKS_DIR}
-Source directory: {SOURCE_DIR}
+Scripts directory: {MG_INSTALL_SCRIPTS_DIR}
+Hooks directory: {MG_INSTALL_HOOKS_DIR}
+Source directory: {MG_INSTALL_SOURCE_DIR}
 </context>
 
 <process>
@@ -30,10 +30,10 @@ Before running tests, verify that installed files are in sync with the source re
 
 ```bash
 # Compare installed vs source for hooks and scripts
-INSTALLED_HOOKS_MD5=$(cd "{HOOKS_DIR}" && md5sum *.py 2>/dev/null | sort)
-SOURCE_HOOKS_MD5=$(cd "{SOURCE_DIR}/hooks" && md5sum *.py 2>/dev/null | sort)
-INSTALLED_SCRIPTS_MD5=$(cd "{SCRIPTS_DIR}" && md5sum *.py 2>/dev/null | sort)
-SOURCE_SCRIPTS_MD5=$(cd "{SOURCE_DIR}/scripts" && md5sum *.py 2>/dev/null | sort)
+INSTALLED_HOOKS_MD5=$(cd "{MG_INSTALL_HOOKS_DIR}" && md5sum *.py 2>/dev/null | sort)
+SOURCE_HOOKS_MD5=$(cd "{MG_INSTALL_SOURCE_DIR}/hooks" && md5sum *.py 2>/dev/null | sort)
+INSTALLED_SCRIPTS_MD5=$(cd "{MG_INSTALL_SCRIPTS_DIR}" && md5sum *.py 2>/dev/null | sort)
+SOURCE_SCRIPTS_MD5=$(cd "{MG_INSTALL_SOURCE_DIR}/scripts" && md5sum *.py 2>/dev/null | sort)
 ```
 
 **If all identical:** Log `Files in sync.` and proceed to Step 1.
@@ -46,7 +46,7 @@ Report:
 ```
 --- CC Regression Test Sync Check ---
 
-Source: {SOURCE_DIR}
+Source: {MG_INSTALL_SOURCE_DIR}
 
 Hooks:
   New:      [list or "none"]
@@ -70,19 +70,19 @@ Ask via AskUserQuestion:
 
 1. Copy all source files:
 ```bash
-cp "{SOURCE_DIR}/hooks/"*.py "{HOOKS_DIR}/"
-cp "{SOURCE_DIR}/scripts/"*.py "{SCRIPTS_DIR}/"
-chmod +x "{HOOKS_DIR}/"*.py "{SCRIPTS_DIR}/"*.py
+cp "{MG_INSTALL_SOURCE_DIR}/hooks/"*.py "{MG_INSTALL_HOOKS_DIR}/"
+cp "{MG_INSTALL_SOURCE_DIR}/scripts/"*.py "{MG_INSTALL_SCRIPTS_DIR}/"
+chmod +x "{MG_INSTALL_HOOKS_DIR}/"*.py "{MG_INSTALL_SCRIPTS_DIR}/"*.py
 ```
 
-2. Re-merge hook config into settings.json. Determine the settings.json path: look at where {HOOKS_DIR} is installed — if it's under `~/.claude/`, use `~/.claude/settings.json`. If it's under a project `.claude/`, use that project's `.claude/settings.json`.
+2. Re-merge hook config into settings.json. Determine the settings.json path: look at where {MG_INSTALL_HOOKS_DIR} is installed — if it's under `~/.claude/`, use `~/.claude/settings.json`. If it's under a project `.claude/`, use that project's `.claude/settings.json`.
 
 Run:
 ```bash
 python3 -c "
 import json, os, sys
 
-hooks_dir = '{HOOKS_DIR}'
+hooks_dir = '{MG_INSTALL_HOOKS_DIR}'
 # Derive settings.json location from hooks dir
 # hooks_dir is like /path/to/.claude/cc-regression-test/hooks
 claude_dir = os.path.dirname(os.path.dirname(hooks_dir))
@@ -151,7 +151,7 @@ This test validates that PreToolUse hooks fire correctly and the user sees an ap
 
 2. Run this command:
 ```bash
-python3 {SCRIPTS_DIR}/trigger.py
+python3 {MG_INSTALL_SCRIPTS_DIR}/trigger.py
 ```
 
 3. **What should happen:** The installed PreToolUse hook (`intercept-trigger.py`) detects this command, sleeps 10 seconds, then returns `permissionDecision: "ask"`. This means:

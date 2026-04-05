@@ -21,7 +21,7 @@ import sys
 import time
 from collections import namedtuple
 
-PROJECT_ROOT = "{PROJECT_ROOT}"
+PROJECT_ROOT = "{MG_INSTALL_PROJECT_ROOT}"
 
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.

@@ -100,7 +100,7 @@ For each tool, find the code that processes its output:
 For each finding, use the add-finding script:
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <output_json_path> \
     --category contract-drift \
     --severity <critical|high|medium|low> \

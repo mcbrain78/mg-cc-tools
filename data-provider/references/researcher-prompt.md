@@ -8,7 +8,7 @@ to the task file using the provided script.
 
 Read your task file to get your assignment:
 ```bash
-python {SCRIPTS_DIR}/status.py read --file 'TASK_FILE'
+python {MG_INSTALL_SCRIPTS_DIR}/status.py read --file 'TASK_FILE'
 ```
 
 The Config section contains: field_number, field_name, field_category,
@@ -55,13 +55,13 @@ You MUST run EXACTLY ONE of the two options below — not both.
 When match_type is NONE, run set-research AND set-verification (NONE is self-evident, no verifier needed):
 
 ```bash
-python {SCRIPTS_DIR}/status.py set-research \
+python {MG_INSTALL_SCRIPTS_DIR}/status.py set-research \
   --file 'TASK_FILE' \
   --match-type NONE \
   --evidence-url '<the docs page you checked>' \
   --notes '<why it is not available>'
 
-python {SCRIPTS_DIR}/status.py set-verification \
+python {MG_INSTALL_SCRIPTS_DIR}/status.py set-verification \
   --file 'TASK_FILE' \
   --verified true \
   --rejection-reason ''
@@ -75,7 +75,7 @@ verify your claim. Calling set-verification yourself bypasses the adversarial
 check and corrupts the pipeline.
 
 ```bash
-python {SCRIPTS_DIR}/status.py set-research \
+python {MG_INSTALL_SCRIPTS_DIR}/status.py set-research \
   --file 'TASK_FILE' \
   --match-type <DIRECT or DERIVABLE> \
   --endpoint '<full API endpoint path>' \

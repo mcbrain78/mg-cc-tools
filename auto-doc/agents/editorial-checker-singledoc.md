@@ -96,7 +96,7 @@ For each issue found, use an incrementing counter (starting at 001, continuing a
 
 2. Call the script to validate and append:
    ```bash
-   python3 {SCRIPTS_DIR}/add-verify-finding.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
      --input {tmp_dir}/singledoc-editorial-{DOC_NAME}-{SET_ID}-NNN.json \
      --findings-file {findings_file}
    ```
@@ -108,7 +108,7 @@ For each issue found, use an incrementing counter (starting at 001, continuing a
 After evaluating the question set, call `editorial-questions.py --advance` to get the next set:
 
 ```bash
-python3 {SCRIPTS_DIR}/editorial-questions.py --advance \
+python3 {MG_INSTALL_SCRIPTS_DIR}/editorial-questions.py --advance \
   --state {state_file} \
   --question-file {question_file} \
   --findings-file {findings_file}
@@ -117,7 +117,7 @@ python3 {SCRIPTS_DIR}/editorial-questions.py --advance \
 If no findings were recorded this round, use `--no-findings` instead of `--findings-file`:
 
 ```bash
-python3 {SCRIPTS_DIR}/editorial-questions.py --advance \
+python3 {MG_INSTALL_SCRIPTS_DIR}/editorial-questions.py --advance \
   --state {state_file} \
   --question-file {question_file} \
   --no-findings

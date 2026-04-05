@@ -143,9 +143,9 @@ SOURCE_ABSOLUTE="${SCRIPT_DIR}"
 echo "  Resolving placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  sed -i "s|{HOOKS_DIR}|${HOOKS_ABSOLUTE}|g" "$cmd_file"
-  sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
-  sed -i "s|{SOURCE_DIR}|${SOURCE_ABSOLUTE}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_HOOKS_DIR}|${HOOKS_ABSOLUTE}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_SOURCE_DIR}|${SOURCE_ABSOLUTE}|g" "$cmd_file"
 done
 
 # ── Update manifest ──────────────────────────────────────────────────────────

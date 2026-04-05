@@ -12,7 +12,7 @@ You capture documentation notes to the inbox for later processing by the generat
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
@@ -64,7 +64,7 @@ Gather contextual information to improve note classification and traceability.
 Run `add-note.py` to append the note to the inbox:
 
 ```bash
-python3 {SCRIPTS_DIR}/add-note.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-note.py \
   --inbox <project_root>/.mg/docs/notes-inbox.json \
   --text "<user_note_text>" \
   --phase "<phase_arg>" \
@@ -80,7 +80,7 @@ Extract the `note_id` from the JSON output (e.g., `NOTE-001`).
 Run `classify-note.py` to auto-classify the note by audience, document, and section:
 
 ```bash
-python3 {SCRIPTS_DIR}/classify-note.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/classify-note.py \
   --text "<user_note_text>" \
   --note-id <note_id_from_step_3> \
   --inbox <project_root>/.mg/docs/notes-inbox.json
@@ -139,6 +139,6 @@ Classification updated. Note saved. It will be used by /mg:auto-doc-update and /
 - **GSD phase context detection is best-effort.** If `.planning/` does not exist, skip phase detection. Do not error on missing GSD state.
 - **Active file context is best-effort.** Pass an empty string if the active file cannot be determined.
 - **The note stays in inbox until `/mg:auto-doc-generate` processes it.** This command does not integrate notes into documentation.
-- **Use `{SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
+- **Use `{MG_INSTALL_SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.
 - **Do not modify `add-note.py` or `classify-note.py`.** Use them as-is through their CLI interface.
 - **Do not modify `install.sh`.** The auto-doc-add command is already in the COMMANDS array.

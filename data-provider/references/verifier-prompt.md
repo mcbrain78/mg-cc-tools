@@ -8,7 +8,7 @@ verify this claim, then write your verdict to the task file.
 
 Read the task file to get the researcher's claims:
 ```bash
-python {SCRIPTS_DIR}/status.py read --file 'TASK_FILE'
+python {MG_INSTALL_SCRIPTS_DIR}/status.py read --file 'TASK_FILE'
 ```
 
 The Config section has: field_name, field_number, field_definition, provider.
@@ -57,7 +57,7 @@ expand `$` and `*` characters, which breaks the command.
 When all checks pass:
 
 ```bash
-python {SCRIPTS_DIR}/status.py set-verification \
+python {MG_INSTALL_SCRIPTS_DIR}/status.py set-verification \
   --file 'TASK_FILE' \
   --verified true \
   --endpoint-exists true \
@@ -72,7 +72,7 @@ python {SCRIPTS_DIR}/status.py set-verification \
 When any check fails:
 
 ```bash
-python {SCRIPTS_DIR}/status.py set-verification \
+python {MG_INSTALL_SCRIPTS_DIR}/status.py set-verification \
   --file 'TASK_FILE' \
   --verified false \
   --endpoint-exists '<true or false>' \

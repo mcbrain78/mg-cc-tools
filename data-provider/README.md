@@ -42,7 +42,7 @@ manually in each project.
 2. Copies Python scripts to `<target>/data-provider/scripts/`
 3. Copies reference files to `<target>/data-provider/references/`
 4. Copies DESIGN.md to `<target>/data-provider/`
-5. Resolves `{SCRIPTS_DIR}` placeholder to absolute path in the command file
+5. Resolves `{MG_INSTALL_SCRIPTS_DIR}` placeholder to absolute path in the command file
 6. (`--project` only) Creates `.mg/data-provider/` with input/tasks/output dirs
    and seeds default field reference + provider list
 

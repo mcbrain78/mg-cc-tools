@@ -12,7 +12,7 @@ You generate a `README.AUTO-DOC.md` for a standalone script or small tool direct
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
@@ -101,7 +101,7 @@ Read the script file. Extract:
 
 ### Step 5: Read Template
 
-Read `{TEMPLATES_DIR}/SCRIPT_README.template.md` for section structure and annotation guidance.
+Read `{MG_INSTALL_TEMPLATES_DIR}/SCRIPT_README.template.md` for section structure and annotation guidance.
 
 - Use the template's `<!-- PURPOSE -->` annotations to understand what each section should contain.
 - Use the template's `<!-- EXAMPLE -->` annotations as quality reference for content density and format.
@@ -133,5 +133,5 @@ Generated: {output_path}
 - **One generic prompt handles all languages.** Do not add language-specific extraction instructions. The LLM reads any language's CLI patterns (argparse, click, getopts, commander, etc.) without specialized rules.
 - **Omit empty sections.** If a section would contain only "None" or "N/A", delete it entirely from the output.
 - **Quality bar:** "A year from now, someone should be able to open the README and use the script without reading the source."
-- **Use `{TEMPLATES_DIR}` placeholder for the template path** -- resolved by install.sh at install time.
+- **Use `{MG_INSTALL_TEMPLATES_DIR}` placeholder for the template path** -- resolved by install.sh at install time.
 - **Do not modify install.sh, templates, or any other auto-doc file** from within this command.

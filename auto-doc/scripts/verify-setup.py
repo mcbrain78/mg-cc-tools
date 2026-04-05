@@ -9,10 +9,10 @@ Usage:
     python3 verify-setup.py \
         --scan-file .mg/docs/docs-scan.json \
         --config .mg/docs/.docs.config.json \
-        --global-config {GLOBAL_CONFIG} \
-        --checks-file {CHECKS_FILE} \
-        --scripts-dir {SCRIPTS_DIR} \
-        --templates-dir {TEMPLATES_DIR} \
+        --global-config {MG_INSTALL_GLOBAL_CONFIG} \
+        --checks-file {MG_INSTALL_CHECKS_FILE} \
+        --scripts-dir {MG_INSTALL_SCRIPTS_DIR} \
+        --templates-dir {MG_INSTALL_TEMPLATES_DIR} \
         --findings-prefix editorial-singledoc
 
 Stdout (JSON): all runtime paths needed by the orchestrator.

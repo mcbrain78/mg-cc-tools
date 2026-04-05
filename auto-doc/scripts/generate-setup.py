@@ -9,8 +9,8 @@ Usage:
     python3 generate-setup.py \
         --scan-file .mg/docs/docs-scan.json \
         --config .mg/docs/.docs.config.json \
-        --global-config {GLOBAL_CONFIG} \
-        --scripts-dir {SCRIPTS_DIR} \
+        --global-config {MG_INSTALL_GLOBAL_CONFIG} \
+        --scripts-dir {MG_INSTALL_SCRIPTS_DIR} \
         [--audience end-users,devops]
 
 Stdout (JSON): all runtime paths, mode, audience config, and grouped

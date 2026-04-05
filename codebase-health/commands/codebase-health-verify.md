@@ -13,11 +13,11 @@ Read references/schema.md
 
 This tells you the exact format of `health-scan-findings.json` and what fields you're responsible for filling in (the `verification` object on each finding).
 
-**Script reference:** Verification recording uses `{SCRIPTS_DIR}/verify-finding.py` for all JSON updates. This path is resolved at install time.
+**Script reference:** Verification recording uses `{MG_INSTALL_SCRIPTS_DIR}/verify-finding.py` for all JSON updates. This path is resolved at install time.
 
 **Read config.** Load pipeline configuration using layered lookup:
 - **First**, check `<project-root>/.mg/health-scan/.health-scan.config.json` (project-level overrides).
-- **If not found**, read global defaults from `{GLOBAL_CONFIG}`.
+- **If not found**, read global defaults from `{MG_INSTALL_GLOBAL_CONFIG}`.
 - If a project config exists, its fields override the global defaults (merge, don't replace — missing fields fall back to global values).
 
 Use the `verifier_model` field (default: `"sonnet"`) as the `model` parameter when spawning verification subagents via the Task tool.
@@ -38,7 +38,7 @@ For scans with many findings (15+), verifying every finding sequentially may exh
 - The category to verify (e.g., "orphaned-code") and the IDs of findings in that category
 - Instructions to record each verification result using the verify-finding script in append mode:
   ```bash
-  python3 {SCRIPTS_DIR}/verify-finding.py \
+  python3 {MG_INSTALL_SCRIPTS_DIR}/verify-finding.py \
       --output <project-root>/.mg/health-scan/scan-logs/verify-<category>.json \
       --id <FINDING_ID> \
       --safety <safe-to-fix|needs-review|do-not-touch> \
@@ -53,7 +53,7 @@ For scans with many findings (15+), verifying every finding sequentially may exh
 
 After all subagents complete, merge their verification results into `health-scan-findings.json` using batch mode:
 ```bash
-python3 {SCRIPTS_DIR}/verify-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/verify-finding.py \
     --findings <project-root>/.mg/health-scan/health-scan-findings.json \
     --batch <project-root>/.mg/health-scan/scan-logs/verify-<category>.json
 ```
@@ -167,7 +167,7 @@ If the project has a test suite:
 For each finding, record the verification result using the verify-finding script:
 
 ```bash
-python3 {SCRIPTS_DIR}/verify-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/verify-finding.py \
     --findings <project-root>/.mg/health-scan/health-scan-findings.json \
     --id <FINDING_ID> \
     --safety <safe-to-fix|needs-review|do-not-touch> \
@@ -260,7 +260,7 @@ to apply the safe-to-fix changes (and any approved needs-review changes).
 After writing the verification report, use the split script to generate downstream documents:
 
 ```bash
-python3 {SCRIPTS_DIR}/split-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/split-findings.py \
     --findings <project-root>/.mg/health-scan/health-scan-findings.json \
     --bootstrap-out <project-root>/.mg/health-scan/health-verify-gsd-bootstrap.md \
     --implementor-out <project-root>/.mg/health-scan/health-implement-queue.json \

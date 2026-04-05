@@ -85,7 +85,7 @@ esac
 SOURCE_DIR="${EXTERNAL_DIR}/${SKILL_PATH}"
 
 if [[ ! -d "$SOURCE_DIR" ]]; then
-  echo "Error: external archive not found at: ${SOURCE_DIR}"
+  echo "Error: external archive not found at: ${MG_INSTALL_SOURCE_DIR}"
   echo ""
   echo "Clone it with:"
   echo "  cd ${REPO_DIR}/../external-tools"
@@ -93,8 +93,8 @@ if [[ ! -d "$SOURCE_DIR" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${SOURCE_DIR}/SKILL.md" ]]; then
-  echo "Error: SKILL.md not found in ${SOURCE_DIR}"
+if [[ ! -f "${MG_INSTALL_SOURCE_DIR}/SKILL.md" ]]; then
+  echo "Error: SKILL.md not found in ${MG_INSTALL_SOURCE_DIR}"
   exit 1
 fi
 
@@ -105,7 +105,7 @@ DEST_DIR="${TARGET_DIR}/skills/devils-advocate"
 echo "Installing devils-advocate to: ${DEST_DIR}"
 
 mkdir -p "$DEST_DIR"
-cp -r "${SOURCE_DIR}/"* "$DEST_DIR/"
+cp -r "${MG_INSTALL_SOURCE_DIR}/"* "$DEST_DIR/"
 
 echo "  Skill files → ${DEST_DIR}/"
 

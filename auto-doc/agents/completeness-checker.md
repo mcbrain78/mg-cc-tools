@@ -57,17 +57,17 @@ For each issue discovered:
      "suggestion": "How to add it"
    }
    ```
-   Write this to `{TMP_DIR}/complete-NNN.json` via Bash (starting at 001):
+   Write this to `{MG_INSTALL_TMP_DIR}/complete-NNN.json` via Bash (starting at 001):
    ```bash
-   cat > {TMP_DIR}/complete-001.json << 'ENDJSON'
+   cat > {MG_INSTALL_TMP_DIR}/complete-001.json << 'ENDJSON'
    { ... }
    ENDJSON
    ```
 
 2. Call the script to validate and append:
    ```bash
-   python3 {SCRIPTS_DIR}/add-verify-finding.py \
-     --input {TMP_DIR}/complete-NNN.json \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
+     --input {MG_INSTALL_TMP_DIR}/complete-NNN.json \
      --findings-file {findings_file}
    ```
 

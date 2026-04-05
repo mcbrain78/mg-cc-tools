@@ -80,7 +80,7 @@ For each issue found, use an incrementing counter (starting at 001):
 
 2. Call the script to validate and append:
    ```bash
-   python3 {SCRIPTS_DIR}/add-verify-finding.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
      --input {tmp_dir}/mini-editorial-{DOC_NAME}-{SET_ID}-NNN.json \
      --findings-file {findings_file}
    ```

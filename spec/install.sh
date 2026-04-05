@@ -157,7 +157,7 @@ SCRIPTS_DIR="${TARGET_DIR}/spec/scripts"
 mkdir -p "$SCRIPTS_DIR"
 cp "${SCRIPT_DIR}/scripts/"*.py "$SCRIPTS_DIR/"
 chmod +x "$SCRIPTS_DIR/"*.py
-echo "  Scripts → ${SCRIPTS_DIR}/"
+echo "  Scripts → ${MG_INSTALL_SCRIPTS_DIR}/"
 
 # References
 REFS_DIR="${TARGET_DIR}/spec/references"
@@ -172,20 +172,20 @@ echo "  References → ${REFS_DIR}/"
 SNAPSHOT_ABSOLUTE="${REFS_DIR}/context-template.snapshot"
 TEMPLATE_ABSOLUTE="${REFS_DIR}/concept-spec-template.md"
 
-SCRIPTS_ABSOLUTE="${SCRIPTS_DIR}"
+SCRIPTS_ABSOLUTE="${MG_INSTALL_SCRIPTS_DIR}"
 
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
   [[ -f "$cmd_file" ]] || continue
 
-  if grep -q '{TEMPLATE_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{TEMPLATE_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
+  if grep -q '{MG_INSTALL_TEMPLATE_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_TEMPLATE_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
   fi
-  if grep -q '{CONCEPT_TEMPLATE}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{CONCEPT_TEMPLATE}|${TEMPLATE_ABSOLUTE}|g" "$cmd_file"
+  if grep -q '{MG_INSTALL_CONCEPT_TEMPLATE}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_CONCEPT_TEMPLATE}|${TEMPLATE_ABSOLUTE}|g" "$cmd_file"
   fi
-  if grep -q '{SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
+  if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
   fi
 done
 echo "  Placeholders resolved"

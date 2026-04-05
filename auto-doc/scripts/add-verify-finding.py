@@ -15,7 +15,7 @@ Inline mode (preferred — single Bash call, no temp file):
 
 File mode (legacy — requires writing a temp file first):
     python3 add-verify-finding.py \
-        --input {TMP_DIR}/finding-001.json \
+        --input {MG_INSTALL_TMP_DIR}/finding-001.json \
         --findings-file .mg/docs/docs-verify-findings.json
 
 Required fields: document, section, audience, check, description, suggestion

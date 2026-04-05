@@ -51,7 +51,7 @@ Check if the circular-deps scan already ran by looking for:
 If it exists, read it. If not, generate cycle data:
 
 ```bash
-python3 {SCRIPTS_DIR}/circular-deps.py --root "<project_root>" \
+python3 {MG_INSTALL_SCRIPTS_DIR}/circular-deps.py --root "<project_root>" \
     --output "<project_root>/.mg/health-scan/scan-logs/scan-deferred-imports-cycles.json"
 ```
 
@@ -94,7 +94,7 @@ For each ruff finding from step 3:
 For each finding that passes classification (not excluded, not skipped):
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <output_json_path> \
     --category deferred-import \
     --severity <medium|low> \

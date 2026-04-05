@@ -12,7 +12,7 @@ You are a specialized scan subagent for a **specific audience**. You analyze a p
 - **orientation_path**: Path to `scan-orientation.md` in scan-logs (human-readable project context).
 - **audience**: The audience you are scanning for (e.g., `"developers"`, `"end-users"`, `"agents"`, `"devops"`).
 - **documents**: List of document names for this audience (e.g., `["ARCHITECTURE", "DEVELOPER_GUIDE", "QUICK_REFERENCE"]`).
-- **templates_dir**: Path to `{TEMPLATES_DIR}` -- the base templates directory containing audience subdirectories and shared templates.
+- **templates_dir**: Path to `{MG_INSTALL_TEMPLATES_DIR}` -- the base templates directory containing audience subdirectories and shared templates.
 - **parsed_templates**: Mapping of document names to parsed template JSON paths (e.g., `ARCHITECTURE: /path/to/template-ARCHITECTURE.json`). These contain deterministic section slugs and directives -- use them instead of parsing templates yourself.
 - **output_path**: Where to write your partial scan JSON result.
 
@@ -110,12 +110,12 @@ When the orchestrator passes `Mode: incremental` in your prompt, you operate dif
 
 5. **Write output.** Write the complete scan output JSON to a temp file, then call the validation script to write it atomically to `output_path`:
 
-   a. Write the JSON to a temp file via the Write tool (e.g., `{TMP_DIR}/scan-{audience}.json`). The JSON structure is the same as the Output Format below.
+   a. Write the JSON to a temp file via the Write tool (e.g., `{MG_INSTALL_TMP_DIR}/scan-{audience}.json`). The JSON structure is the same as the Output Format below.
 
    b. Call the validation script with `--sections-file` for each parsed template:
       ```bash
-      python3 {SCRIPTS_DIR}/write-scan-output.py \
-        --input {TMP_DIR}/scan-{audience}.json \
+      python3 {MG_INSTALL_SCRIPTS_DIR}/write-scan-output.py \
+        --input {MG_INSTALL_TMP_DIR}/scan-{audience}.json \
         --output {output_path} \
         --audience {audience} \
         --sections-file {parsed_template_path_for_DOC1} \

@@ -49,7 +49,7 @@ You are a specialized scanner subagent for the **[CATEGORY_NAME]** scan category
 For each finding, use the add-finding script:
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <output_json_path> \
     --category <category-slug> \
     --severity <critical|high|medium|low> \

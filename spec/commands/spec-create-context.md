@@ -27,7 +27,7 @@ Examples:
 - `86 docs/work_queue/kpi-ingestion-v2/gap-assessment/phase-86-gaps.md`
 - `3 docs/design/auth-requirements.md`
 
-Template snapshot: `{TEMPLATE_SNAPSHOT}`
+Template snapshot: `{MG_INSTALL_TEMPLATE_SNAPSHOT}`
 </context>
 
 <required_reading>
@@ -41,7 +41,7 @@ Read the GSD context template to understand the target format:
 
 Before generating anything, verify that the GSD context template hasn't changed since this command was last updated.
 
-1. Read the stored template snapshot at `{TEMPLATE_SNAPSHOT}`
+1. Read the stored template snapshot at `{MG_INSTALL_TEMPLATE_SNAPSHOT}`
 2. Read the live GSD template at `.claude/get-shit-done/templates/context.md` (already loaded via required_reading)
 3. Compare the **File Template** section and **guidelines** section between the two. Ignore the `<good_examples>` section — examples don't affect the structural format.
 
@@ -341,5 +341,5 @@ Discretion areas: {count} areas left to planner
 - This command does NOT require GSD's gsd-tools.cjs. Phase resolution uses Glob, roadmap parsing uses Read.
 - discuss-phase handles pre-existing CONTEXT.md gracefully (offers Update/View/Skip), so running this command before discuss-phase is safe.
 - The PRD express path in plan-phase (step 3.5) follows a similar pattern — both convert external documents into CONTEXT.md.
-- The template snapshot at `{TEMPLATE_SNAPSHOT}` is the baseline this command was designed for. If drift is detected, the snapshot is NOT updated at runtime — it persists until the command is updated in mg-cc-tools and reinstalled.
+- The template snapshot at `{MG_INSTALL_TEMPLATE_SNAPSHOT}` is the baseline this command was designed for. If drift is detected, the snapshot is NOT updated at runtime — it persists until the command is updated in mg-cc-tools and reinstalled.
 </important_notes>

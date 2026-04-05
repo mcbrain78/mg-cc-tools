@@ -57,23 +57,23 @@ WORKSPACE_DIRS = {
     "data-provider": ".mg/data-provider",
 }
 
-# Placeholder detection regex: {UPPER_CASE_NAME} with 3+ chars to avoid
-# false positives on template variables like {N}, {M}, {X}, {XX} used in
-# GSD agent files and LLM prompts.
-PLACEHOLDER_RE = re.compile(r"\{[A-Z][A-Z_]{2,}\}")
+# Install-time placeholder detection: only {MG_INSTALL_*} placeholders are
+# install-time artifacts. All other {UPPERCASE} patterns (e.g. {DOCUMENT},
+# {STAGE_LABEL}, {DISK_PCT}) are runtime/template variables and are ignored.
+INSTALL_PLACEHOLDER_RE = re.compile(r"\{MG_INSTALL_[A-Z_]+\}")
 
-# Runtime placeholders that appear in LLM prompt templates and are resolved
-# at LLM runtime, not at install time. These are NOT unresolved install
-# placeholders and should be skipped by the validator.
-RUNTIME_PLACEHOLDERS = {
-    "{DOCUMENT}",
-    "{DOCUMENT_NAME}",
-    "{STAGE_LABEL}",
-}
+# Unresolved relative references: install.sh should resolve references/foo.md
+# to absolute paths. Any remaining relative reference is a missed resolution.
+RELATIVE_REF_RE = re.compile(r"(?<!/)\breferences/[a-zA-Z0-9._-]+\.\w+")
 
 # Absolute path detection: lines containing paths like /home/... or /usr/...
 # We look for paths that were meant to be sed-resolved
 ABS_PATH_RE = re.compile(r"(?:^|[\s\"'`])(/(?:home|usr|opt|tmp|var|etc|nix)[^\s\"'`()\[\]]+)")
+
+# install.sh sed target validation: extract sed replacement targets and check
+# that placeholder targets use the MG_INSTALL_ prefix.
+SED_TARGET_RE = re.compile(r'sed\s+-i\s+"s\|([^|]+)\|')
+BARE_INSTALL_PLACEHOLDER_RE = re.compile(r"^\{[A-Z][A-Z_]+\}$")
 
 # ============================================================
 # Preflight checks registry
@@ -841,13 +841,13 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
                     if f.endswith(".md"):
                         scoped_filenames.add(f)
 
-    # Scan command and agent files for placeholders and bad paths
-    scan_dirs = [
+    # --- Shared scan dirs (filename-scoped filtering) ---
+    shared_scan_dirs = [
         os.path.join(target_dir, ".claude", "commands", "mg"),
         os.path.join(target_dir, ".claude", "agents"),
     ]
 
-    for scan_dir in scan_dirs:
+    for scan_dir in shared_scan_dirs:
         if not os.path.isdir(scan_dir):
             continue
         for root, _dirs, files in os.walk(scan_dir):
@@ -856,6 +856,66 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
                     continue
                 fpath = os.path.join(root, fname)
                 _check_file_for_issues(fpath, issues, target_dir)
+
+    # --- Tool-specific agent dirs (scan all .md files, no filename scoping) ---
+    agent_scan_dirs = []
+    if tool_names:
+        for tool_name in tool_names:
+            agents_path = os.path.join(target_dir, ".claude", tool_name, "agents")
+            if os.path.isdir(agents_path):
+                agent_scan_dirs.append(agents_path)
+    else:
+        claude_dir = os.path.join(target_dir, ".claude")
+        if os.path.isdir(claude_dir):
+            for entry in sorted(os.listdir(claude_dir)):
+                agents_path = os.path.join(claude_dir, entry, "agents")
+                if os.path.isdir(agents_path):
+                    agent_scan_dirs.append(agents_path)
+
+    for scan_dir in agent_scan_dirs:
+        for root, _dirs, files in os.walk(scan_dir):
+            for fname in sorted(files):
+                if fname.endswith(".md"):
+                    fpath = os.path.join(root, fname)
+                    _check_file_for_issues(fpath, issues, target_dir)
+
+    # --- install.sh self-validation (sed target prefix check) ---
+    if source_dir:
+        check_tool_names = tool_names or _discover_tool_names(source_dir)
+        for tool_name in check_tool_names:
+            install_sh = os.path.join(source_dir, tool_name, "install.sh")
+            if not os.path.isfile(install_sh):
+                continue
+            _check_install_sh_sed_targets(install_sh, tool_name, issues)
+
+    # --- Source-vs-target file comparison ---
+    if source_dir:
+        check_tool_names = tool_names or _discover_tool_names(source_dir)
+        for tool_name in check_tool_names:
+            tool_dir = os.path.join(source_dir, tool_name)
+            if not os.path.isfile(os.path.join(tool_dir, "install.sh")):
+                continue
+            checksums = compute_tool_checksums(tool_dir)
+            for rel_path in checksums:
+                if rel_path in ("install.sh", "post-install.md"):
+                    continue
+                if rel_path.startswith("commands/"):
+                    target_path = os.path.join(
+                        target_dir, ".claude", "commands", "mg",
+                        os.path.basename(rel_path),
+                    )
+                else:
+                    target_path = os.path.join(
+                        target_dir, ".claude", tool_name, rel_path,
+                    )
+                if not os.path.exists(target_path):
+                    issues.append({
+                        "file": target_path,
+                        "line": 0,
+                        "type": "missing_source_file",
+                        "pattern": rel_path,
+                        "message": f"Source file not installed: {tool_name}/{rel_path}",
+                    })
 
     # Check workspace directories for tools that scaffold them
     check_tools = tool_names or list(WORKSPACE_DIRS.keys())
@@ -892,18 +952,26 @@ def _check_file_for_issues(fpath, issues, target_dir=None):
         tmp_prefix = os.path.join(os.path.abspath(target_dir), ".mg") + os.sep
 
     for line_num, line in enumerate(lines, start=1):
-        # Check for unresolved placeholders
-        for match in PLACEHOLDER_RE.finditer(line):
+        # Check for unresolved install-time placeholders ({MG_INSTALL_*})
+        for match in INSTALL_PLACEHOLDER_RE.finditer(line):
             placeholder = match.group(0)
-            # Skip known runtime placeholders (resolved by LLM, not install.sh)
-            if placeholder in RUNTIME_PLACEHOLDERS:
-                continue
             issues.append({
                 "file": fpath,
                 "line": line_num,
                 "type": "placeholder",
                 "pattern": placeholder,
                 "message": f"Unresolved placeholder: {placeholder}",
+            })
+
+        # Check for unresolved relative references (references/foo.md)
+        for match in RELATIVE_REF_RE.finditer(line):
+            ref_path = match.group(0)
+            issues.append({
+                "file": fpath,
+                "line": line_num,
+                "type": "unresolved_reference",
+                "pattern": ref_path,
+                "message": f"Unresolved relative reference: {ref_path}",
             })
 
         # Check for absolute paths that don't exist
@@ -935,6 +1003,43 @@ def _check_file_for_issues(fpath, issues, target_dir=None):
                     "type": "missing_path",
                     "pattern": abs_path,
                     "message": f"Resolved path not found: {abs_path}",
+                })
+
+
+def _discover_tool_names(source_dir):
+    """Return sorted list of tool directory names in source_dir."""
+    names = []
+    for entry in sorted(os.listdir(source_dir)):
+        tool_path = os.path.join(source_dir, entry)
+        if os.path.isdir(tool_path) and os.path.isfile(
+            os.path.join(tool_path, "tool.toml")
+        ):
+            names.append(entry)
+    return names
+
+
+def _check_install_sh_sed_targets(install_sh_path, tool_name, issues):
+    """Check that sed targets in install.sh use MG_INSTALL_ prefix."""
+    try:
+        with open(install_sh_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except (OSError, IOError):
+        return
+
+    for line_num, line in enumerate(content.splitlines(), start=1):
+        for target in SED_TARGET_RE.findall(line):
+            if BARE_INSTALL_PLACEHOLDER_RE.match(target) and not target.startswith(
+                "{MG_INSTALL_"
+            ):
+                issues.append({
+                    "file": install_sh_path,
+                    "line": line_num,
+                    "type": "invalid_sed_target",
+                    "pattern": target,
+                    "message": (
+                        f"sed target missing MG_INSTALL_ prefix in {tool_name}: "
+                        f"{target}"
+                    ),
                 })
 
 

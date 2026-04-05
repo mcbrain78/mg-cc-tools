@@ -12,7 +12,7 @@ You are the **entry point** for a 3-step documentation pipeline. Your job is to 
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
@@ -38,7 +38,7 @@ Check the project state and determine pipeline position. Load config first.
 
 ### Step 0: Load Configuration
 
-Read `.mg/docs/.docs.config.json` from the project root. If not found, read defaults from `{GLOBAL_CONFIG}`. Extract `docs_dir` (default: `docs/auto-doc`).
+Read `.mg/docs/.docs.config.json` from the project root. If not found, read defaults from `{MG_INSTALL_GLOBAL_CONFIG}`. Extract `docs_dir` (default: `docs/auto-doc`).
 
 ### State Detection
 

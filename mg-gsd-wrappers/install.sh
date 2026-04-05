@@ -149,16 +149,16 @@ fi
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 
-echo "  Resolving {METHODOLOGY_SNAPSHOT} in discuss-milestone.md ..."
+echo "  Resolving {MG_INSTALL_METHODOLOGY_SNAPSHOT} in discuss-milestone.md ..."
 cmd_file="${COMMANDS_DIR}/discuss-milestone.md"
-if grep -q '{METHODOLOGY_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
-  sed -i "s|{METHODOLOGY_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
+if grep -q '{MG_INSTALL_METHODOLOGY_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
+  sed -i "s|{MG_INSTALL_METHODOLOGY_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
 fi
 
-echo "  Resolving {GENERATOR_PROMPT} in plan-phase.md ..."
+echo "  Resolving {MG_INSTALL_GENERATOR_PROMPT} in plan-phase.md ..."
 cmd_file="${COMMANDS_DIR}/plan-phase.md"
-if grep -q '{GENERATOR_PROMPT}' "$cmd_file" 2>/dev/null; then
-  sed -i "s|{GENERATOR_PROMPT}|${GENERATOR_ABSOLUTE}|g" "$cmd_file"
+if grep -q '{MG_INSTALL_GENERATOR_PROMPT}' "$cmd_file" 2>/dev/null; then
+  sed -i "s|{MG_INSTALL_GENERATOR_PROMPT}|${GENERATOR_ABSOLUTE}|g" "$cmd_file"
 fi
 
 # ── Copy patch to gsd-patches source ────────────────────────────────────────

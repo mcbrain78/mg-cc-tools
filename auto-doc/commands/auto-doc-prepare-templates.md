@@ -12,7 +12,7 @@ You are the **Template Refiner** -- an optional step between scan and generate. 
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue -- permissions will require manual approval.
 
@@ -39,7 +39,7 @@ Parse `$ARGUMENTS` for optional audience names. Example: user types `/mg:auto-do
    ```
    If the project-local config does not exist, fall back to the global config:
    ```
-   Read {GLOBAL_CONFIG}
+   Read {MG_INSTALL_GLOBAL_CONFIG}
    ```
    Parse the JSON to get the `audiences` object and `shared_documents` array.
 
@@ -101,13 +101,13 @@ TMP_DIR=$(mktemp -d)
 
 For each audience to process, run:
 ```bash
-python3 {SCRIPTS_DIR}/split-scan-by-audience.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/split-scan-by-audience.py \
   --input .mg/docs/docs-scan.json \
-  --output ${TMP_DIR}/scan-view-${audience}.json \
+  --output ${MG_INSTALL_TMP_DIR}/scan-view-${audience}.json \
   --mode audience \
   --audience ${audience} \
   --documents ${comma_separated_documents} \
-  --project-model-output ${TMP_DIR}/project-model.json
+  --project-model-output ${MG_INSTALL_TMP_DIR}/project-model.json
 ```
 
 Where `${comma_separated_documents}` is the comma-joined list of document names for that audience (e.g., `OPERATIONS,TROUBLESHOOTING`).
@@ -127,26 +127,26 @@ Agent(
   description="Refine template for {audience}/{document}",
   prompt="You are the template refiner agent.
 
-Read and follow the instructions in: {AGENTS_DIR}/template-refiner.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/template-refiner.md
 
 Project root: {project_root}
-Generic template: {TEMPLATES_DIR}/{audience}/{document}.template.md
-Scan view path: ${TMP_DIR}/scan-view-${audience}.json
-Project model path: ${TMP_DIR}/project-model.json
+Generic template: {MG_INSTALL_TEMPLATES_DIR}/{audience}/{document}.template.md
+Scan view path: ${MG_INSTALL_TMP_DIR}/scan-view-${audience}.json
+Project model path: ${MG_INSTALL_TMP_DIR}/project-model.json
 Full scan path: {project_root}/.mg/docs/docs-scan.json
 Output path: {project_root}/.mg/docs/templates/{audience}/{document}.template.md
 Audience: {audience}
 Document: {document}
 Scan date: {scan_date}
-Scripts dir: {SCRIPTS_DIR}
-Validate script: {SCRIPTS_DIR}/validate-refined-template.py"
+Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
+Validate script: {MG_INSTALL_SCRIPTS_DIR}/validate-refined-template.py"
 )
 ```
 
 **Key details:**
-- `{TEMPLATES_DIR}` resolves to the installed generic templates directory (e.g., `.claude/auto-doc/references/templates/`)
+- `{MG_INSTALL_TEMPLATES_DIR}` resolves to the installed generic templates directory (e.g., `.claude/auto-doc/references/templates/`)
 - Output goes to `.mg/docs/templates/` (project-local, not inside `.claude/`)
-- Each Agent call passes `{SCRIPTS_DIR}` so the refiner can invoke `get-section-sources.py` and `list-optional-sections.py`
+- Each Agent call passes `{MG_INSTALL_SCRIPTS_DIR}` so the refiner can invoke `get-section-sources.py` and `list-optional-sections.py`
 - Agents read the lightweight `scan-view-{audience}.json` instead of the full `docs-scan.json` -- avoids context limit failures
 - `full_scan_path` is passed only for `get-section-sources.py` which needs `source_files` arrays
 - Parallel execution is safe: all shared resources (view files, project model, generic templates, scripts) are read-only; each agent writes to a unique output path

@@ -26,7 +26,7 @@ Read the orientation file to understand the project's languages, frameworks, and
 Run jscpd for token-level copy-paste detection:
 
 ```bash
-python3 {SCRIPTS_DIR}/jscpd-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-redundant-logic-jscpd-raw.json"
+python3 {MG_INSTALL_SCRIPTS_DIR}/jscpd-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-redundant-logic-jscpd-raw.json"
 ```
 
 For each clone pair in the results:
@@ -94,7 +94,7 @@ Not all duplication is bad. Downgrade or skip:
 For each finding, use the add-finding script:
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <output_json_path> \
     --category redundant-logic \
     --severity <critical|high|medium|low> \

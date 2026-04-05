@@ -27,7 +27,7 @@ Read the orientation file to understand the project's languages, frameworks, and
 Run lizard for per-function complexity and size analysis:
 
 ```bash
-python3 {SCRIPTS_DIR}/lizard-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-sprawling-code-lizard-raw.json"
+python3 {MG_INSTALL_SCRIPTS_DIR}/lizard-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-sprawling-code-lizard-raw.json"
 ```
 
 Read the output JSON. It contains two sections:
@@ -120,7 +120,7 @@ These patterns go beyond what lizard measures. Skip functions already flagged by
 For each finding, use the add-finding script:
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <output_json_path> \
     --category sprawling-code \
     --severity <critical|high|medium|low> \

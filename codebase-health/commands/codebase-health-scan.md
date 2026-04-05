@@ -26,7 +26,7 @@ Before scanning, understand the project:
 7. **Read `.health-ignore`** — If `<project-root>/.mg/health-scan/.health-ignore` exists, read it to get exclusion patterns. These are gitignore-style patterns (one per line, `#` comments). Merge with the default ignore list (`.git`, `node_modules`, `__pycache__`, `.mg`, `dist`, `build`, `.venv`, `venv`, `.mypy_cache`, `*.pyc`, `target`). Include the full merged list in the orientation summary so subagents know what to skip.
 8. **Read config.** Load pipeline configuration using layered lookup:
    - **First**, check `<project-root>/.mg/health-scan/.health-scan.config.json` (project-level overrides).
-   - **If not found**, read global defaults from `{GLOBAL_CONFIG}`.
+   - **If not found**, read global defaults from `{MG_INSTALL_GLOBAL_CONFIG}`.
    - If a project config exists, its fields override the global defaults (merge, don't replace — missing fields fall back to global values).
    ```json
    {
@@ -58,7 +58,7 @@ Before scanning, understand the project:
     ```
 13. **Run pyright scan** — Invoke the pyright wrapper script once to pre-compute type diagnostics for shared use by dead-code-paths and contract-drift agents:
     ```bash
-    python3 {SCRIPTS_DIR}/pyright-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-pyright-raw.json"
+    python3 {MG_INSTALL_SCRIPTS_DIR}/pyright-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-pyright-raw.json"
     ```
     Record the output path in orientation so subagents can reference it.
 
@@ -433,7 +433,7 @@ After all categories are scanned:
 1. **Merge findings** — Use the merge script:
 
 ```bash
-python3 {SCRIPTS_DIR}/merge-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/merge-findings.py \
     --scan-dir <project-root>/.mg/health-scan/scan-logs \
     --output <project-root>/.mg/health-scan/health-scan-findings.json \
     --project "<project-name>" \

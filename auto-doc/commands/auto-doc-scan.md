@@ -12,7 +12,7 @@ You are the **Scanner** -- step 1 of a 3-step documentation pipeline (scan, gene
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
@@ -39,7 +39,7 @@ Only gather the small decisions needed to drive the pipeline. Heavy project anal
    Install Python 3.8+ and try again.
    ```
 
-3. **Load configuration.** Read `.mg/docs/.docs.config.json` from the project root. If not found, read defaults from `{GLOBAL_CONFIG}`. Extract:
+3. **Load configuration.** Read `.mg/docs/.docs.config.json` from the project root. If not found, read defaults from `{MG_INSTALL_GLOBAL_CONFIG}`. Extract:
     - `docs_dir` (default: `docs/auto-doc`)
     - `audiences` (which are enabled and their document lists)
     - `shared_documents`
@@ -174,7 +174,7 @@ GSD integration: {true|false}
 
 4. **Persist to config and update scan-project.json** via script (keeps JSON out of orchestrator context):
    ```bash
-   python3 {SCRIPTS_DIR}/persist-interfaces.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/persist-interfaces.py \
        --config <project_root>/.mg/docs/.docs.config.json \
        --scan-project <project_root>/.mg/docs/scan-logs/scan-project.json \
        --interfaces '$INTERFACES_JSON'
@@ -195,7 +195,7 @@ GSD integration: {true|false}
 
 2. **Run diff-scan.py** to produce the scoped work order:
    ```bash
-   python3 {SCRIPTS_DIR}/diff-scan.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/diff-scan.py \
        --project-root <project_root> \
        --manifests-dir <project_root>/.mg/docs/reference-manifests \
        --docs-dir <docs_dir_abs> \
@@ -233,7 +233,7 @@ If mode is `"initial"`, skip this step entirely.
 
 1. **Run staleness-check.py** to detect sections whose source files have changed since last generation:
    ```bash
-   python3 {SCRIPTS_DIR}/staleness-check.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/staleness-check.py \
        --docs-dir <docs_dir> \
        --project-root <project_root> \
        --output <project_root>/.mg/docs/scan-logs/staleness-results.json
@@ -251,12 +251,12 @@ Pre-parse all templates into structured JSON so scan agents use deterministic sl
 
 2. **For each document**, run the template parser:
    ```bash
-   python3 {SCRIPTS_DIR}/parse-template.py \
-       --template {TEMPLATES_DIR}/{audience}/{DOCUMENT}.template.md \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/parse-template.py \
+       --template {MG_INSTALL_TEMPLATES_DIR}/{audience}/{DOCUMENT}.template.md \
        --document {DOCUMENT} \
        --output <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json
    ```
-   For shared documents (OVERVIEW, GLOSSARY), use `{TEMPLATES_DIR}/{DOCUMENT}.template.md` (no audience subdirectory).
+   For shared documents (OVERVIEW, GLOSSARY), use `{MG_INSTALL_TEMPLATES_DIR}/{DOCUMENT}.template.md` (no audience subdirectory).
 
 3. **Check stderr** for warnings about invalid `synthesized_from` paths. These indicate template issues but do not block the scan.
 
@@ -279,15 +279,15 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
      description="Scan source material for {audience} audience",
      prompt="You are a scan subagent for the {audience} audience.
 
-   Read and follow the instructions in: {AGENTS_DIR}/scan-audience.md
+   Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/scan-audience.md
 
    Project root: {project_root}
    Read orientation: {project_root}/.mg/docs/scan-logs/scan-orientation.md
    Your audience: {audience}
    Your documents: {document_list}
-   Templates directory: {TEMPLATES_DIR}
+   Templates directory: {MG_INSTALL_TEMPLATES_DIR}
    Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json
-   Scripts directory: {SCRIPTS_DIR}
+   Scripts directory: {MG_INSTALL_SCRIPTS_DIR}
 
    Parsed template sections:
    {For each DOCUMENT in document_list, list: DOCUMENT: <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json}"
@@ -301,15 +301,15 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
      description="Incremental scan for {audience} audience",
      prompt="You are a scan subagent for the {audience} audience.
 
-   Read and follow the instructions in: {AGENTS_DIR}/scan-audience.md
+   Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/scan-audience.md
 
    Project root: {project_root}
    Read orientation: {project_root}/.mg/docs/scan-logs/scan-orientation.md
    Your audience: {audience}
    Your documents: {document_list}
-   Templates directory: {TEMPLATES_DIR}
+   Templates directory: {MG_INSTALL_TEMPLATES_DIR}
    Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json
-   Scripts directory: {SCRIPTS_DIR}
+   Scripts directory: {MG_INSTALL_SCRIPTS_DIR}
 
    Parsed template sections:
    {For each DOCUMENT in document_list, list: DOCUMENT: <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json}
@@ -341,7 +341,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
 
 1. **Run merge-scan.py** to combine all partial results into the final scan output:
    ```bash
-   python3 {SCRIPTS_DIR}/merge-scan.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/merge-scan.py \
        --scan-dir <project_root>/.mg/docs/scan-logs \
        --output <project_root>/.mg/docs/docs-scan.json \
        --project-name "<project_name>" \
@@ -357,7 +357,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
 
 2. **Read the summary counts** from docs-scan.json via script (keeps full JSON out of orchestrator context):
    ```bash
-   python3 {SCRIPTS_DIR}/scan-summary.py \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/scan-summary.py \
        --scan-file <project_root>/.mg/docs/docs-scan.json
    ```
 
@@ -413,7 +413,7 @@ Examples:
 
 The project config lives at: `<project_root>/.mg/docs/.docs.config.json`
 
-Default config structure (from `{GLOBAL_CONFIG}`):
+Default config structure (from `{MG_INSTALL_GLOBAL_CONFIG}`):
 ```json
 {
   "docs_dir": "docs/auto-doc",
@@ -434,7 +434,7 @@ Default config structure (from `{GLOBAL_CONFIG}`):
 - **Read-only on project source code.** Never modify, delete, move, or create files in the project's source directories. The only directory you write to is `.mg/docs/`.
 - **Orchestrator stays lean.** Delegate heavy analysis to subagents. The orchestrator only handles lightweight checks, user interaction (AskUserQuestion), mode-dependent routing, and summary presentation. Large file writes (orientation, project model) happen in subagents.
 - **Scan agents receive file paths only; they read files themselves.** Do not pass file contents in subagent prompts -- pass paths and let the subagent use the Read tool.
-- **The `{AGENTS_DIR}` placeholder in file references gets resolved to absolute paths by install.sh.** At runtime, `{AGENTS_DIR}/scan-audience.md` points to the installed absolute path.
+- **The `{MG_INSTALL_AGENTS_DIR}` placeholder in file references gets resolved to absolute paths by install.sh.** At runtime, `{MG_INSTALL_AGENTS_DIR}/scan-audience.md` points to the installed absolute path.
 - **If a subagent fails** (no output JSON), log a warning and continue with other audiences. The merge script handles partial results. Missing data is better than a crashed pipeline.
 - **If python3 is not available,** abort immediately with install instructions. All scripts require Python 3.8+.
 - **Clear scan-logs/ at the start of every run** to prevent stale data from prior scans contaminating the merge (Pitfall 6).

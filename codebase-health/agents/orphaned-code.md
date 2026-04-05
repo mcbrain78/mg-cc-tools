@@ -26,7 +26,7 @@ Read the orientation file to understand the project's languages, frameworks, ent
 Run vulture for cross-file dead code detection:
 
 ```bash
-python3 {SCRIPTS_DIR}/vulture-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-orphaned-code-vulture-raw.json"
+python3 {MG_INSTALL_SCRIPTS_DIR}/vulture-scan.py --root "<project_root>" --output "<project_root>/.mg/health-scan/scan-logs/scan-orphaned-code-vulture-raw.json"
 ```
 
 Run ruff for unused imports:
@@ -106,7 +106,7 @@ Pay special attention to:
 For each finding, use the add-finding script:
 
 ```bash
-python3 {SCRIPTS_DIR}/add-finding.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/add-finding.py \
     --output <output_json_path> \
     --category orphaned-code \
     --severity <critical|high|medium|low> \

@@ -84,9 +84,9 @@ For each issue discovered:
      "suggestion": "How to fix it"
    }
    ```
-   Write this to `{TMP_DIR}/code-ex-NNN.json` via Bash (starting at 001):
+   Write this to `{MG_INSTALL_TMP_DIR}/code-ex-NNN.json` via Bash (starting at 001):
    ```bash
-   cat > {TMP_DIR}/code-ex-001.json << 'ENDJSON'
+   cat > {MG_INSTALL_TMP_DIR}/code-ex-001.json << 'ENDJSON'
    { ... }
    ENDJSON
    ```
@@ -94,8 +94,8 @@ For each issue discovered:
 
 2. Call the script to validate and append:
    ```bash
-   python3 {SCRIPTS_DIR}/add-verify-finding.py \
-     --input {TMP_DIR}/code-ex-NNN.json \
+   python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
+     --input {MG_INSTALL_TMP_DIR}/code-ex-NNN.json \
      --findings-file {findings_file}
    ```
 

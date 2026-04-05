@@ -17,7 +17,7 @@ You are a specialized writer agent for the **[AUDIENCE_NAME]** audience. You gen
 - **project_root**: Absolute path to the project.
 - **docs_dir**: Absolute path to the output docs directory (from config `docs_dir`).
 - **scan_data_path**: Path to `.mg/docs/docs-scan.json` (read for source material index, project model, and gap analysis).
-- **templates_dir**: Path to `{TEMPLATES_DIR}` -- the audience-specific subdirectory for this agent (e.g., `{TEMPLATES_DIR}/end-users/`).
+- **templates_dir**: Path to `{MG_INSTALL_TEMPLATES_DIR}` -- the audience-specific subdirectory for this agent (e.g., `{MG_INSTALL_TEMPLATES_DIR}/end-users/`).
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **glossary_path**: Path to the current GLOSSARY.md (for terminology consistency).
 - **documents**: List of document names this agent is responsible for (from config `audiences.{audience}.documents`).

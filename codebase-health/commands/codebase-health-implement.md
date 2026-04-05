@@ -11,7 +11,7 @@ Read references/schema.md
 
 The verifier should have populated the `verification` object on each finding. You will populate the `implementation` object.
 
-**Script reference:** Implementation recording uses `{SCRIPTS_DIR}/update-findings.py`
+**Script reference:** Implementation recording uses `{MG_INSTALL_SCRIPTS_DIR}/update-findings.py`
 for all JSON updates. This path is resolved at install time.
 
 ## Prerequisites
@@ -35,7 +35,7 @@ If any are missing or if `verification` is `null` on any finding, **stop** and t
 
 4. **Read config.** Load pipeline configuration using layered lookup:
    - **First**, check `<project-root>/.mg/health-scan/.health-scan.config.json` (project-level overrides).
-   - **If not found**, read global defaults from `{GLOBAL_CONFIG}`.
+   - **If not found**, read global defaults from `{MG_INSTALL_GLOBAL_CONFIG}`.
    - If a project config exists, its fields override the global defaults (merge, don't replace — missing fields fall back to global values).
 
    Use the `implementer_model` field (default: `"sonnet"`) as the `model` parameter when spawning implementation subagents via the Task tool.
@@ -119,7 +119,7 @@ Use the update script to record each finding's result:
 
 ```bash
 # For applied findings:
-python3 {SCRIPTS_DIR}/update-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/update-findings.py \
     --findings <project-root>/.mg/health-scan/health-scan-findings.json \
     --id <FINDING_ID> --status applied \
     --change-description "<what was done>" \
@@ -128,7 +128,7 @@ python3 {SCRIPTS_DIR}/update-findings.py \
     --rollback-commit <SHA>
 
 # For skipped/failed/rolled-back:
-python3 {SCRIPTS_DIR}/update-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/update-findings.py \
     --findings <project-root>/.mg/health-scan/health-scan-findings.json \
     --id <FINDING_ID> --status <skipped|failed|rolled-back> \
     --failure-reason "<reason>"
@@ -210,7 +210,7 @@ Compose the subagent prompt with:
 **e. Merge results.** Use the update script to merge the subagent's batch results:
 
 ```bash
-python3 {SCRIPTS_DIR}/update-findings.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/update-findings.py \
     --findings <project-root>/.mg/health-scan/health-scan-findings.json \
     --batch <project-root>/.mg/health-scan/scan-logs/implement-<category>.json
 ```

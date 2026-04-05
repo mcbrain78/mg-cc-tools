@@ -51,9 +51,9 @@ cp "<source directory>/permission-hooks/hooks/permission-guard.py" "<TARGET_HOOK
 chmod +x "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
-2. Resolve the `{PROJECT_ROOT}` placeholder -- replace with the absolute path to the target project:
+2. Resolve the `{MG_INSTALL_PROJECT_ROOT}` placeholder -- replace with the absolute path to the target project:
 ```bash
-sed -i "s|{PROJECT_ROOT}|<target project>|g" "<TARGET_HOOKS_DIR>/permission-guard.py"
+sed -i "s|{MG_INSTALL_PROJECT_ROOT}|<target project>|g" "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
 Log: `Installed permission-guard.py to <TARGET_HOOKS_DIR>/`
@@ -78,7 +78,7 @@ echo "source:    $SOURCE_MD5"
 grep '^PROJECT_ROOT = ' "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
-If the value is empty (`PROJECT_ROOT = ""` or `PROJECT_ROOT = ''`) or still a placeholder (`{PROJECT_ROOT}`), resolve it:
+If the value is empty (`PROJECT_ROOT = ""` or `PROJECT_ROOT = ''`) or still a placeholder (`{MG_INSTALL_PROJECT_ROOT}`), resolve it:
 
 ```bash
 sed -i "s|^PROJECT_ROOT = .*|PROJECT_ROOT = \"<target project>\"|" "<TARGET_HOOKS_DIR>/permission-guard.py"
@@ -105,7 +105,7 @@ chmod +x "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 3. Re-resolve PROJECT_ROOT with the previously extracted value:
 ```bash
-sed -i "s|{PROJECT_ROOT}|<extracted-project-root>|g" "<TARGET_HOOKS_DIR>/permission-guard.py"
+sed -i "s|{MG_INSTALL_PROJECT_ROOT}|<extracted-project-root>|g" "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
 Log: `Hook synced from source.`

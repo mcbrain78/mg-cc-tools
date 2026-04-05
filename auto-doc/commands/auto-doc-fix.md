@@ -12,7 +12,7 @@ You are the **Fixer** -- reads audit findings, groups by root cause, spawns a si
 
 Run the session context emitter for permission auto-approval:
 ```
-python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
+python3 {MG_INSTALL_EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
@@ -27,7 +27,7 @@ Read references/schema.yaml
 
 ### Step 1: Setup
 
-1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{GLOBAL_CONFIG}`. Extract:
+1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{MG_INSTALL_GLOBAL_CONFIG}`. Extract:
    - `docs_dir` (default: `docs/auto-doc`)
    - `audiences` (which are enabled and their document lists)
 
@@ -42,7 +42,7 @@ Read references/schema.yaml
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
-4. **Check audit findings exist.** Verify that the audit directory `{TMP_DIR}/audit/` exists and contains at least one of:
+4. **Check audit findings exist.** Verify that the audit directory `{MG_INSTALL_TMP_DIR}/audit/` exists and contains at least one of:
    - `findings-refs.json`
    - Any `findings-prose-*.json` file
 
@@ -54,9 +54,9 @@ Read references/schema.yaml
 ### Step 2: Load and Merge Findings
 
 ```bash
-uv run {SCRIPTS_DIR}/load-audit-findings.py \
-    --audit-dir {TMP_DIR}/audit \
-    --output {TMP_DIR}/audit/merged-findings.json
+uv run {MG_INSTALL_SCRIPTS_DIR}/load-audit-findings.py \
+    --audit-dir {MG_INSTALL_TMP_DIR}/audit \
+    --output {MG_INSTALL_TMP_DIR}/audit/merged-findings.json
 ```
 
 Read the output file. If the merged array is empty, print:
@@ -75,18 +75,18 @@ Agent(
   description="Group audit findings by root cause",
   prompt="You are a finding grouper agent.
 
-Read and follow the instructions in: {AGENTS_DIR}/group-findings.md
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/group-findings.md
 
-findings_file: {TMP_DIR}/audit/merged-findings.json
-output_file: {TMP_DIR}/audit/grouping.json"
+findings_file: {MG_INSTALL_TMP_DIR}/audit/merged-findings.json
+output_file: {MG_INSTALL_TMP_DIR}/audit/grouping.json"
 )
 ```
 
-After the agent completes, read `{TMP_DIR}/audit/grouping.json` to verify it was written.
+After the agent completes, read `{MG_INSTALL_TMP_DIR}/audit/grouping.json` to verify it was written.
 
 ### Step 4: Present Summary and Get Approval
 
-Read `{TMP_DIR}/audit/grouping.json` and `{TMP_DIR}/audit/merged-findings.json`. Present a table:
+Read `{MG_INSTALL_TMP_DIR}/audit/grouping.json` and `{MG_INSTALL_TMP_DIR}/audit/merged-findings.json`. Present a table:
 
 ```
 Audit Fix Plan:
@@ -111,28 +111,28 @@ Handle user response:
 
 1. Create the fix directory (separate from audit so diffs survive audit re-runs):
    ```bash
-   mkdir -p {TMP_DIR}/fix
+   mkdir -p {MG_INSTALL_TMP_DIR}/fix
    ```
 
 2. Build the approved indices string (comma-separated, e.g., `"0,1,2"` or `"0,2"`).
 
 3. Initialize the fix queue:
    ```bash
-   uv run {SCRIPTS_DIR}/fix-queue.py init \
-       --grouping-file {TMP_DIR}/audit/grouping.json \
-       --findings-file {TMP_DIR}/audit/merged-findings.json \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/fix-queue.py init \
+       --grouping-file {MG_INSTALL_TMP_DIR}/audit/grouping.json \
+       --findings-file {MG_INSTALL_TMP_DIR}/audit/merged-findings.json \
        --xml-dir {project_root}/.mg/docs/xml-sources \
-       --edit-dir {TMP_DIR}/fix \
+       --edit-dir {MG_INSTALL_TMP_DIR}/fix \
        --approved {comma_separated_indices} \
-       --state-file {TMP_DIR}/fix/fix-state.json
+       --state-file {MG_INSTALL_TMP_DIR}/fix/fix-state.json
    ```
 
 4. **Loop** — call `next` repeatedly until done:
 
    a. Get the next group:
       ```bash
-      uv run {SCRIPTS_DIR}/fix-queue.py next \
-          --state-file {TMP_DIR}/fix/fix-state.json
+      uv run {MG_INSTALL_SCRIPTS_DIR}/fix-queue.py next \
+          --state-file {MG_INSTALL_TMP_DIR}/fix/fix-state.json
       ```
 
    b. Parse the JSON output from stdout.
@@ -146,7 +146,7 @@ Handle user response:
         description="Fix group: {group_id}",
         prompt="You are an audit fix agent.
 
-      Read and follow the instructions in: {AGENTS_DIR}/audit-fixer.md
+      Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/audit-fixer.md
 
       edit_file: {edit_file from next output}"
       )
@@ -167,7 +167,7 @@ Handle user response:
 For each modified XML file, reassemble the corresponding markdown:
 
 ```bash
-uv run {SCRIPTS_DIR}/assemble-markdown.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
     --xml-file {xml_file} \
     --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
 ```

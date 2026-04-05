@@ -25,9 +25,9 @@ Arguments: $ARGUMENTS
 
 Expected: a path to the file to improve (typically a concept spec at `docs/work-queue/todo/{name}/concept.md`).
 
-Concept spec template: `{CONCEPT_TEMPLATE}`
+Concept spec template: `{MG_INSTALL_CONCEPT_TEMPLATE}`
 
-File operations script: `{SCRIPTS_DIR}/improve_files.py`
+File operations script: `{MG_INSTALL_SCRIPTS_DIR}/improve_files.py`
 </context>
 
 <process>
@@ -49,7 +49,7 @@ File operations script: `{SCRIPTS_DIR}/improve_files.py`
 
 3. Initialize the working session by running:
    ```
-   uv run {SCRIPTS_DIR}/improve_files.py init <target-file-path>
+   uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py init <target-file-path>
    ```
    This backs up the original (once), creates the working copy, and outputs JSON with all resolved paths:
    ```json
@@ -85,7 +85,7 @@ These are explicit scoping decisions — do not flag issues that fall
 under a listed non-goal. You may still flag severe bugs in non-goal
 areas if they would break something.
 
-Also read the concept spec template at: {CONCEPT_TEMPLATE}
+Also read the concept spec template at: {MG_INSTALL_CONCEPT_TEMPLATE}
 Use this to assess whether expected sections are present and
 adequately filled. A thin section is worth flagging if it should
 have more depth given the concept's nature.
@@ -225,13 +225,13 @@ Then ask the user to approve or reject **fixes** and **proposed non-goals** inde
 After delivering the report, **stop and wait for the user**. Do not proceed until the user responds. The user approves **fixes** and **non-goals** independently.
 
 - **Fixes**:
-  - `approve` → run: `uv run {SCRIPTS_DIR}/improve_files.py approve <target-file-path>`
-  - `reject` → run: `uv run {SCRIPTS_DIR}/improve_files.py reject <target-file-path>`
+  - `approve` → run: `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py approve <target-file-path>`
+  - `reject` → run: `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py reject <target-file-path>`
   - The user may also request further changes (repeat from Step 5) or another round (repeat from Step 1).
 
 - **Non-goals**: For each proposed non-goal the user approves, run:
   ```
-  uv run {SCRIPTS_DIR}/improve_files.py append-non-goal <target-file-path> "<non-goal text>"
+  uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py append-non-goal <target-file-path> "<non-goal text>"
   ```
   Drop any the user rejects — they remain fair game for future reviewers.
 
@@ -239,10 +239,10 @@ After delivering the report, **stop and wait for the user**. Do not proceed unti
 
 <important_notes>
 - Only a subagent can review with truly fresh eyes. The main agent carries conversation context that biases the review. Always use the Agent tool for the reviewer.
-- The concept spec template at `{CONCEPT_TEMPLATE}` is included in the reviewer prompt so it can assess structural completeness — whether expected sections are present and adequately filled.
+- The concept spec template at `{MG_INSTALL_CONCEPT_TEMPLATE}` is included in the reviewer prompt so it can assess structural completeness — whether expected sections are present and adequately filled.
 - The 5-issue cap per round prevents scope creep and keeps each round focused. If the reviewer finds 15 issues, the 5 most severe get fixed first. The rest surface in subsequent rounds.
 - AUTO_IMPROVE_FILE is the safety net. The original is never touched until explicit approval. This allows the user to reject changes cleanly.
 - NON_GOALS_FILE accumulates across rounds. Once a non-goal is approved, future reviewers skip it, preventing the same intentional exclusion from being flagged repeatedly.
 - When running multiple rounds, each round starts fresh — the reviewer re-reads the file and produces a new list. Do not carry state from previous rounds except for the NON_GOALS_FILE.
-- All file operations (backup, copy, delete, approve, reject, non-goal append) are handled by `{SCRIPTS_DIR}/improve_files.py`. Do not perform these operations manually.
+- All file operations (backup, copy, delete, approve, reject, non-goal append) are handled by `{MG_INSTALL_SCRIPTS_DIR}/improve_files.py`. Do not perform these operations manually.
 </important_notes>

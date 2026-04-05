@@ -69,7 +69,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${PROJECT_ROOT}/.claude"
+    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""
@@ -140,15 +140,15 @@ echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md)"
 
 echo "  Resolving placeholders ..."
 
-# Hook file: {PROJECT_ROOT}
+# Hook file: {MG_INSTALL_PROJECT_ROOT}
 hook_file="${SUPPORT_DIR}/hooks/permission-guard.py"
-sed -i "s|{PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
+sed -i "s|{MG_INSTALL_PROJECT_ROOT}|${MG_INSTALL_PROJECT_ROOT}|g" "$hook_file"
 
-# Command files: {EMIT_EDIT_GUARD_SCRIPT}
+# Command files: {MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}
 EMIT_EDIT_GUARD_ABS="${SUPPORT_DIR}/scripts/emit-edit-guard.py"
 for cmd_file in "${COMMANDS_DIR}/edit-on.md" "${COMMANDS_DIR}/edit-off.md"; do
   if [[ -f "$cmd_file" ]]; then
-    sed -i "s|{EMIT_EDIT_GUARD_SCRIPT}|${EMIT_EDIT_GUARD_ABS}|g" "$cmd_file"
+    sed -i "s|{MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}|${EMIT_EDIT_GUARD_ABS}|g" "$cmd_file"
   fi
 done
 
@@ -185,7 +185,7 @@ echo ""
 echo "  Hook:"
 echo "    ${SUPPORT_DIR}/hooks/permission-guard.py"
 if [[ -n "$PROJECT_ROOT" ]]; then
-  echo "    PROJECT_ROOT: ${PROJECT_ROOT}"
+  echo "    PROJECT_ROOT: ${MG_INSTALL_PROJECT_ROOT}"
 else
   echo "    PROJECT_ROOT: (empty — falls back to cwd from hook event)"
 fi

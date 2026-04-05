@@ -37,7 +37,7 @@ Stop.
 Run the post-install configuration script. It handles both permissions and .gitignore in a single call:
 
 ```bash
-python3 {SCRIPTS_DIR}/post-install-configure.py \
+python3 {MG_INSTALL_SCRIPTS_DIR}/post-install-configure.py \
     --project-root "<target project>" \
     --settings-path "<TARGET_SETTINGS_LOCAL>"
 ```
