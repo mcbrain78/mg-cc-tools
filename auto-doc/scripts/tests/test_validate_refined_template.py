@@ -180,6 +180,25 @@ class TestMissingEvidence:
         assert "## Overview" in result["warnings"][0]
 
 
+class TestDocsMetaPlaceholder:
+    """Generation-time docs-meta comments must not survive into refined templates."""
+
+    def test_docs_meta_placeholder(self):
+        tmpl = textwrap.dedent("""\
+            <!-- DIATAXIS: reference -->
+            <!-- AUDIENCE: agents -->
+            <!-- REFINED: 2026-04-01, scan: 2026-03-30 -->
+            <!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
+
+            ## Overview
+            <purpose>High-level overview</purpose>
+            <evidence>3 components</evidence>
+        """)
+        result = validate(tmpl)
+        assert result["valid"] is False
+        assert any("docs-meta placeholder" in e for e in result["errors"])
+
+
 class TestOptionalMarker:
     """Unresolved OPTIONAL markers are errors."""
 
