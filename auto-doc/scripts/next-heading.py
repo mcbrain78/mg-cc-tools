@@ -208,13 +208,14 @@ def _walk_headings_depth_first(section):
             }
 
 
-def build_emission_queue(sections, document, source_material_index):
+def build_emission_queue(sections, document, source_material_index, db_table_map=None):
     """Build the complete sequence of responses to emit.
 
     Args:
         sections: Parsed section list from parse_template().
         document: Document identifier (e.g., "OPERATIONS").
         source_material_index: Dict from scan file.
+        db_table_map: Optional dict of section_key -> [table_names].
 
     Returns:
         List of response dicts (orient, write, done).
@@ -229,12 +230,20 @@ def build_emission_queue(sections, document, source_material_index):
 
         outline = _collect_heading_paths(section)
 
-        queue.append({
+        orient = {
             "type": "orient",
             "section": slug,
             "heading_outline": outline,
             "source_files": source_files,
-        })
+        }
+
+        # Inject relevant tables from db-table-map
+        if db_table_map:
+            tables = db_table_map.get(key, [])
+            if tables:
+                orient["relevant_tables"] = tables
+
+        queue.append(orient)
 
         for heading in _walk_headings_depth_first(section):
             total_headings += 1
@@ -275,6 +284,10 @@ def main():
         "--document", required=True,
         help="Document identifier (e.g., OPERATIONS)",
     )
+    parser.add_argument(
+        "--db-table-map",
+        help="Path to db-table-map.json (optional, adds relevant_tables to orient responses)",
+    )
 
     args = parser.parse_args()
 
@@ -301,8 +314,12 @@ def main():
         scan_data = load_json(args.scan_file, default={})
         source_material_index = scan_data.get("source_material_index", {})
 
+        db_table_map = None
+        if args.db_table_map and os.path.isfile(args.db_table_map):
+            db_table_map = load_json(args.db_table_map, default={})
+
         sections = parse_template(template_text)
-        queue = build_emission_queue(sections, args.document, source_material_index)
+        queue = build_emission_queue(sections, args.document, source_material_index, db_table_map)
         state = {"queue": queue, "index": 0}
 
     queue = state["queue"]

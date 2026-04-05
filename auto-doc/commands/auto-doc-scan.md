@@ -20,7 +20,7 @@ If the script is not found, continue — permissions will require manual approva
 
 Read the shared schema that defines the output contract:
 ```
-Read references/schema.md
+Read references/schema.yaml
 ```
 
 This tells you the exact JSON format your output must follow. The generator (step 2) and verifier (step 3) depend on this format being correct.
@@ -102,7 +102,7 @@ GSD integration: {true|false}
    c. Find migration configurations (alembic.ini, alembic/env.py, django settings) to identify the migration tool
    d. Build a lightweight database field: {orm_framework, migration_tool, engine}
    e. Do NOT extract per-model table/schema configuration via find_symbol — that data is stripped by slim_project_model() and re-extracted deterministically by extract-database-model.py at generate time
-   f. For components[].database_tables, list the model class names found in that component's directory (from step b). These are stripped before writers see them but help the scan summary.
+   f. For components[].database_tables, list the model class names found in that component's directory (from step b). These are preserved in the project model for section-to-table mapping in db-table-map.json; full schema detail is still extracted deterministically by extract-database-model.py at generate time.
    g. If no ORM detected, set database to null
 
 3. **Detect user interfaces.** Apply heuristics:
@@ -387,7 +387,12 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
 
 4. **Tell the user:**
    ```
-   Scan complete. Run `/mg:auto-doc-generate` to generate documentation.
+   Scan complete.
+
+   Next steps:
+   - If this is the first scan for this project, run `/mg:auto-doc-prepare-templates` to produce
+     project-specific refined templates before generating. This only needs to be done once.
+   - Run `/mg:auto-doc-generate` to generate documentation.
    ```
 
 ## Key Formats Reference

@@ -719,8 +719,8 @@ class TestProjectModelExtraction:
             assert "components" in pm
             assert "infrastructure" in pm
 
-    def test_strips_public_api_and_database_tables(self):
-        """Strips public_api and database_tables from components."""
+    def test_strips_public_api_preserves_database_tables(self):
+        """Strips public_api but preserves database_tables for db-table-map."""
         data = _make_scan_data()
         with tempfile.TemporaryDirectory() as tmp:
             input_path = os.path.join(tmp, "docs-scan.json")
@@ -747,7 +747,7 @@ class TestProjectModelExtraction:
 
             for comp in pm["components"]:
                 assert "public_api" not in comp, f"{comp['name']} should not have public_api"
-                assert "database_tables" not in comp, f"{comp['name']} should not have database_tables"
+                assert "database_tables" in comp, f"{comp['name']} should preserve database_tables"
 
     def test_preserves_component_core_fields(self):
         """Preserves name, path, purpose, dependencies in components."""

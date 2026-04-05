@@ -38,19 +38,18 @@ def _write_file(path, content):
         f.write(textwrap.dedent(content))
 
 
-def _run(project_root, search_paths, pm_path, output_path):
+def _run(project_root, search_paths, pm_path, output_path, summary_output=None):
     """Run extract-database-model.py and return (result_dict, returncode, stderr)."""
-    result = subprocess.run(
-        [
-            sys.executable, SCRIPT_PATH,
-            "--project-root", project_root,
-            "--search-paths", search_paths,
-            "--project-model", pm_path,
-            "--output", output_path,
-        ],
-        capture_output=True,
-        text=True,
-    )
+    cmd = [
+        sys.executable, SCRIPT_PATH,
+        "--project-root", project_root,
+        "--search-paths", search_paths,
+        "--project-model", pm_path,
+        "--output", output_path,
+    ]
+    if summary_output:
+        cmd.extend(["--summary-output", summary_output])
+    result = subprocess.run(cmd, capture_output=True, text=True)
     data = None
     if os.path.isfile(output_path):
         data = _read_json(output_path)
@@ -385,3 +384,123 @@ class TestExtraction:
             tables = data["schemas"]["public"]["tables"]
             assert "table_a" in tables
             assert "table_b" in tables
+
+
+class TestSummaryOutput:
+    """--summary-output flag produces compact summary alongside full model."""
+
+    def test_summary_file_created(self):
+        """Summary file is created when --summary-output is provided."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path = os.path.join(tmp, "project-model.json")
+            _write_json(pm_path, _make_project_model())
+            _write_file(os.path.join(tmp, "src", "models.py"), """\
+                from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+                from sqlalchemy import Integer, String
+                class Base(DeclarativeBase):
+                    pass
+                class Item(Base):
+                    __tablename__ = "items"
+                    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+                    name: Mapped[str] = mapped_column(String(50), nullable=False)
+            """)
+            output = os.path.join(tmp, "database-model.json")
+            summary = os.path.join(tmp, "database-model-summary.json")
+            data, rc, _ = _run(tmp, "src", pm_path, output, summary_output=summary)
+            assert rc == 0
+            assert os.path.isfile(summary)
+
+    def test_summary_has_column_counts(self):
+        """Summary tables have column count instead of full column list."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path = os.path.join(tmp, "project-model.json")
+            _write_json(pm_path, _make_project_model())
+            _write_file(os.path.join(tmp, "src", "models.py"), """\
+                from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+                from sqlalchemy import Integer, String
+                class Base(DeclarativeBase):
+                    pass
+                class Item(Base):
+                    __tablename__ = "items"
+                    __table_args__ = {"schema": "road_runner"}
+                    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+                    name: Mapped[str] = mapped_column(String(50), nullable=False)
+                    desc: Mapped[str] = mapped_column(String(200), nullable=True)
+            """)
+            output = os.path.join(tmp, "database-model.json")
+            summary_path = os.path.join(tmp, "database-model-summary.json")
+            _run(tmp, "src", pm_path, output, summary_output=summary_path)
+            summary = _read_json(summary_path)
+            table = summary["schemas"]["road_runner"]["tables"]["items"]
+            assert table["columns"] == 3
+            assert isinstance(table["fks"], list)
+
+    def test_summary_has_fk_targets(self):
+        """Summary FK list contains target fullnames."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path = os.path.join(tmp, "project-model.json")
+            _write_json(pm_path, _make_project_model())
+            _write_file(os.path.join(tmp, "src", "models.py"), """\
+                from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+                from sqlalchemy import Integer, ForeignKey
+                class Base(DeclarativeBase):
+                    pass
+                class Parent(Base):
+                    __tablename__ = "parents"
+                    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+                class Child(Base):
+                    __tablename__ = "children"
+                    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+                    parent_id: Mapped[int] = mapped_column(
+                        Integer, ForeignKey("parents.id"), nullable=False
+                    )
+            """)
+            output = os.path.join(tmp, "database-model.json")
+            summary_path = os.path.join(tmp, "database-model-summary.json")
+            _run(tmp, "src", pm_path, output, summary_output=summary_path)
+            summary = _read_json(summary_path)
+            child_table = summary["schemas"]["public"]["tables"]["children"]
+            assert "parents.id" in child_table["fks"]
+
+    def test_summary_has_same_metadata(self):
+        """Summary has same top-level metadata as full model."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path = os.path.join(tmp, "project-model.json")
+            _write_json(pm_path, _make_project_model())
+            _write_file(os.path.join(tmp, "src", "models.py"), """\
+                from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+                from sqlalchemy import Integer
+                class Base(DeclarativeBase):
+                    pass
+                class Item(Base):
+                    __tablename__ = "items"
+                    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+            """)
+            output = os.path.join(tmp, "database-model.json")
+            summary_path = os.path.join(tmp, "database-model-summary.json")
+            _run(tmp, "src", pm_path, output, summary_output=summary_path)
+            full = _read_json(output)
+            summary = _read_json(summary_path)
+            assert summary["engine"] == full["engine"]
+            assert summary["orm_framework"] == full["orm_framework"]
+            assert summary["migration_tool"] == full["migration_tool"]
+            assert summary["extracted_at"] == full["extracted_at"]
+
+    def test_no_summary_without_flag(self):
+        """Summary file NOT created when --summary-output is omitted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path = os.path.join(tmp, "project-model.json")
+            _write_json(pm_path, _make_project_model())
+            _write_file(os.path.join(tmp, "src", "models.py"), """\
+                from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+                from sqlalchemy import Integer
+                class Base(DeclarativeBase):
+                    pass
+                class Item(Base):
+                    __tablename__ = "items"
+                    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+            """)
+            output = os.path.join(tmp, "database-model.json")
+            summary_path = os.path.join(tmp, "database-model-summary.json")
+            _run(tmp, "src", pm_path, output)  # no summary_output
+            assert not os.path.isfile(summary_path)

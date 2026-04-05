@@ -4,7 +4,7 @@
 Called by the scan orchestrator after all audience scanner subagents
 complete. Reads per-audience JSON files from scan-dir, merges their
 contents with deduplication, and writes a single docs-scan.json
-conforming to the schema in references/schema.md.
+conforming to the schema in references/schema.yaml.
 
 Usage:
     python3 merge-scan.py \

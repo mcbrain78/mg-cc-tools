@@ -148,6 +148,7 @@ class TestOutput:
             expected = {
                 "project_root", "docs_dir_abs", "scan_data_path",
                 "tmp_dir", "project_model_path", "database_model_path",
+                "database_model_summary_path", "db_table_map_path",
                 "notes_file", "notes_inbox", "manifests_dir", "scan_logs_dir",
                 "mode", "audiences", "audience_filter_active",
                 "scan_views", "notes_by_audience",

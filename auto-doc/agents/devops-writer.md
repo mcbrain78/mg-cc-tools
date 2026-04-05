@@ -12,7 +12,9 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 - **docs_dir**: Absolute path to the output docs directory (from config `docs_dir`).
 - **scan_data_path**: Path to per-audience view file (read for source material index and gap analysis).
 - **project_model_path**: Path to `project-model.json` (read for project model: tech stack, components, entry points, infrastructure).
-- **database_model_path**: Path to `database-model.json` (authoritative schema->table->column mappings extracted deterministically from ORM models). May be `null` if project has no SQLAlchemy database.
+- **database_model_summary_path**: Path to `database-model-summary.json` (compact summary with column counts and FK targets). May be `null` if project has no SQLAlchemy database. Read this once at orient time for high-level schema awareness.
+- **database_model_path**: Path to `database-model.json` (full authoritative schema->table->column mappings). Used with `read-database-model.py` for per-section column detail slicing. May be `null` if project has no SQLAlchemy database.
+- **db_table_map_path**: Path to `db-table-map.json` (section-to-tables mapping). Passed to `next-heading.py --db-table-map` so orient responses include `relevant_tables`. May be `null`.
 - **refined_template_path**: Path to the project-specific refined template for this document (e.g., `.mg/docs/templates/devops/OPERATIONS.template.md`).
 - **state_file_path**: Path to the `next-heading.py` state file for this document, scoped per document (e.g., `{TMP_DIR}/heading-state-devops-OPERATIONS.json`). Do not read this file directly — `next-heading.py` creates and manages it on first call.
 - **scripts_dir**: Absolute path to `auto-doc/scripts/` for calling `next-heading.py` and `write-section.py`.
@@ -29,7 +31,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 
 ## Process
 
-1. **Read context** (once per invocation) -- Load the scan data JSON from `scan_data_path`. Read the project model from `project_model_path`. If `database_model_path` is not null, read the database model. This is the authoritative source for all database schema names, table names, and column details. Read the style guide from `style_guide_path`. Read the current glossary from `glossary_path` (may not exist on initial runs).
+1. **Read context** (once per invocation) -- Load the scan data JSON from `scan_data_path`. Read the project model from `project_model_path`. If `database_model_summary_path` is not null, read the database model summary (compact overview with column counts and FK targets). Read the style guide from `style_guide_path`. Read the current glossary from `glossary_path` (may not exist on initial runs).
 
 2. **For each assigned document:**
 
@@ -48,9 +50,10 @@ You are a specialized writer agent for the **devops** audience. You generate doc
         --state-file {STATE_FILE_PATH} \
         --template {REFINED_TEMPLATE_PATH} \
         --scan-file {project_root}/.mg/docs/docs-scan.json \
-        --document {DOCUMENT}
+        --document {DOCUMENT} \
+        [--db-table-map {db_table_map_path}]
       ```
-      Parse the JSON output.
+      Include `--db-table-map` only if `db_table_map_path` is not null. Parse the JSON output.
 
    c. **LOOP** until done:
 
@@ -61,6 +64,14 @@ You are a specialized writer agent for the **devops** audience. You generate doc
         Read each file from `source_files`:
         - For Python files: call `get_symbols_overview` (depth: 1) to understand the file structure. Then use `find_symbol` with `include_info: true` for signatures and docstrings of deployment and configuration symbols. Use `find_symbol` with `include_body: true` for configuration parsing and environment variable handling functions.
         - For non-code files (yaml, toml, Dockerfile, .env.example, shell scripts, SQL, config files): use `Read` to load the full file.
+
+        If `relevant_tables` is present and non-empty in the orient response, load column detail for this section's tables:
+        ```bash
+        python3 {SCRIPTS_DIR}/read-database-model.py \
+          --db-model {database_model_path} \
+          --tables {comma-separated relevant_tables}
+        ```
+        This returns compact column detail (types, PKs, FKs) for only the tables this section needs.
 
         Call `next-heading.py` again with the same arguments for the next response.
 

@@ -116,9 +116,10 @@ def strip_source_files(index):
 def slim_project_model(pm):
     """Deep-copy project_model and strip bulky fields from components.
 
-    Removes ``public_api`` and ``database_tables`` from each component
-    entry -- writers get this data from source files via Serena, so
-    duplicating it in the extracted model wastes tokens.
+    Removes ``public_api`` from each component entry -- writers get
+    this data from source files via Serena, so duplicating it in the
+    extracted model wastes tokens. Preserves ``database_tables`` for
+    section-to-table mapping in db-table-map.json.
 
     Args:
         pm: The project_model dict from docs-scan.json.
@@ -129,7 +130,6 @@ def slim_project_model(pm):
     slimmed = copy.deepcopy(pm)
     for comp in slimmed.get("components", []):
         comp.pop("public_api", None)
-        comp.pop("database_tables", None)
     # Strip LLM-generated schema detail (now extracted deterministically
     # into database-model.json). Keep lightweight metadata like engine,
     # orm_framework, and migration_tool.

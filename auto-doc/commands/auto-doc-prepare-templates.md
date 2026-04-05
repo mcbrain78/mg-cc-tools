@@ -20,7 +20,7 @@ If the script is not found, continue -- permissions will require manual approval
 
 Read the shared schema that defines the scan data contract:
 ```
-Read references/schema.md
+Read references/schema.yaml
 ```
 
 This tells you the JSON format of `docs-scan.json` -- the input produced by the scanner. The refiner reads it; it does not modify it.

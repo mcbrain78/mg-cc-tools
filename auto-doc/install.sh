@@ -150,26 +150,6 @@ if [[ ! -d "${SCRIPT_DIR}/references" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${SCRIPT_DIR}/references/schema.md" ]]; then
-  echo "Error: missing references/schema.md"
-  exit 1
-fi
-
-if [[ ! -f "${SCRIPT_DIR}/references/style-guide.md" ]]; then
-  echo "Error: missing references/style-guide.md"
-  exit 1
-fi
-
-if [[ ! -f "${SCRIPT_DIR}/references/.docs.config.json" ]]; then
-  echo "Error: missing references/.docs.config.json"
-  exit 1
-fi
-
-if [[ ! -f "${SCRIPT_DIR}/references/verify-checks.json" ]]; then
-  echo "Error: missing references/verify-checks.json"
-  exit 1
-fi
-
 if [[ ! -d "${SCRIPT_DIR}/references/templates" ]]; then
   echo "Error: missing references/templates/ directory in ${SCRIPT_DIR}"
   exit 1
@@ -246,11 +226,10 @@ for py_file in "${SCRIPT_DIR}"/scripts/lib/*.py; do
   fi
 done
 
-# Copy references
-cp "${SCRIPT_DIR}/references/schema.md" "${SUPPORT_DIR}/references/"
-cp "${SCRIPT_DIR}/references/style-guide.md" "${SUPPORT_DIR}/references/"
-cp "${SCRIPT_DIR}/references/.docs.config.json" "${SUPPORT_DIR}/references/"
-cp "${SCRIPT_DIR}/references/verify-checks.json" "${SUPPORT_DIR}/references/"
+# Copy references (all .md, .yaml, and .json files, including dotfiles)
+for ref_file in "${SCRIPT_DIR}"/references/*.md "${SCRIPT_DIR}"/references/*.yaml "${SCRIPT_DIR}"/references/*.json "${SCRIPT_DIR}"/references/.*.json; do
+  [[ -f "$ref_file" ]] && cp "$ref_file" "${SUPPORT_DIR}/references/"
+done
 
 # Copy templates (recursive -- preserves audience subdirectory structure)
 echo "  Templates  -> ${SUPPORT_DIR}/references/templates/"
@@ -272,8 +251,6 @@ chmod +x "${SUPPORT_DIR}/scripts/"*.py
 # Replace relative placeholders with absolute paths so the LLM can find them
 # at runtime without knowing the command file's directory.
 
-SCHEMA_ABS="${SUPPORT_DIR}/references/schema.md"
-STYLE_GUIDE_ABS="${SUPPORT_DIR}/references/style-guide.md"
 CONFIG_ABS="${SUPPORT_DIR}/references/.docs.config.json"
 AGENTS_ABS="${SUPPORT_DIR}/agents"
 SCRIPTS_ABS="${SUPPORT_DIR}/scripts"
@@ -288,14 +265,12 @@ for cmd in "${COMMANDS[@]}"; do
   if [[ ! -f "$cmd_file" ]]; then
     continue
   fi
-  # Resolve schema reference
-  if grep -q 'references/schema.md' "$cmd_file" 2>/dev/null; then
-    sed -i "s|references/schema.md|${SCHEMA_ABS}|g" "$cmd_file"
-  fi
-  # Resolve style guide reference
-  if grep -q 'references/style-guide.md' "$cmd_file" 2>/dev/null; then
-    sed -i "s|references/style-guide.md|${STYLE_GUIDE_ABS}|g" "$cmd_file"
-  fi
+  # Auto-resolve all references/<file> paths to absolute
+  for ref_match in $(grep -oP 'references/[a-zA-Z0-9._-]*\.(md|yaml|json)' "$cmd_file" 2>/dev/null | sort -u); do
+    if [[ -f "${SUPPORT_DIR}/${ref_match}" ]]; then
+      sed -i "s|${ref_match}|${SUPPORT_DIR}/${ref_match}|g" "$cmd_file"
+    fi
+  done
   # Resolve global config placeholder
   if grep -q '{GLOBAL_CONFIG}' "$cmd_file" 2>/dev/null; then
     sed -i "s|{GLOBAL_CONFIG}|${CONFIG_ABS}|g" "$cmd_file"
@@ -332,12 +307,12 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   if [[ ! -f "$agent_file" ]]; then
     continue
   fi
-  if grep -q 'references/schema.md' "$agent_file" 2>/dev/null; then
-    sed -i "s|references/schema.md|${SCHEMA_ABS}|g" "$agent_file"
-  fi
-  if grep -q 'references/style-guide.md' "$agent_file" 2>/dev/null; then
-    sed -i "s|references/style-guide.md|${STYLE_GUIDE_ABS}|g" "$agent_file"
-  fi
+  # Auto-resolve all references/<file> paths to absolute
+  for ref_match in $(grep -oP 'references/[a-zA-Z0-9._-]*\.(md|yaml|json)' "$agent_file" 2>/dev/null | sort -u); do
+    if [[ -f "${SUPPORT_DIR}/${ref_match}" ]]; then
+      sed -i "s|${ref_match}|${SUPPORT_DIR}/${ref_match}|g" "$agent_file"
+    fi
+  done
   if grep -q '{GLOBAL_CONFIG}' "$agent_file" 2>/dev/null; then
     sed -i "s|{GLOBAL_CONFIG}|${CONFIG_ABS}|g" "$agent_file"
   fi
@@ -352,6 +327,9 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   fi
   if grep -q '{CHECKS_FILE}' "$agent_file" 2>/dev/null; then
     sed -i "s|{CHECKS_FILE}|${CHECKS_ABS}|g" "$agent_file"
+  fi
+  if grep -q '{AGENTS_DIR}' "$agent_file" 2>/dev/null; then
+    sed -i "s|{AGENTS_DIR}|${AGENTS_ABS}|g" "$agent_file"
   fi
 done
 
@@ -391,6 +369,68 @@ python3 "${TOOL_SOURCE_DIR}/../install/scripts/mg-install-lib.py" \
   --tool "$(basename "$TOOL_SOURCE_DIR")" \
   --source "$TOOL_SOURCE_DIR"
 
+# -- Post-install audit --------------------------------------------------------
+#
+# Verify that all source files were installed and all relative paths resolved.
+# Warnings only -- does not block installation.
+
+echo ""
+echo "Running post-install audit ..."
+AUDIT_WARNINGS=0
+
+# 1. Source files not copied to target (skip tests/, __pycache__)
+_check_copied() {
+  local src_dir="$1" tgt_dir="$2" pattern="$3"
+  for src_file in "${src_dir}"/${pattern}; do
+    [[ -f "$src_file" ]] || continue
+    local base
+    base="$(basename "$src_file")"
+    if [[ ! -f "${tgt_dir}/${base}" ]]; then
+      echo "  WARNING: $(basename "$src_dir")/${base} exists in source but was not installed"
+      AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+    fi
+  done
+}
+
+_check_copied "${SCRIPT_DIR}/commands" "$COMMANDS_DIR" "*.md"
+_check_copied "${SCRIPT_DIR}/scripts" "${SUPPORT_DIR}/scripts" "*.py"
+_check_copied "${SCRIPT_DIR}/scripts/lib" "${SUPPORT_DIR}/scripts/lib" "*.py"
+_check_copied "${SCRIPT_DIR}/references" "${SUPPORT_DIR}/references" "*.md"
+_check_copied "${SCRIPT_DIR}/references" "${SUPPORT_DIR}/references" "*.yaml"
+_check_copied "${SCRIPT_DIR}/references" "${SUPPORT_DIR}/references" "*.json"
+_check_copied "${SCRIPT_DIR}/references" "${SUPPORT_DIR}/references" ".*.json"
+_check_copied "${SCRIPT_DIR}/agents" "${SUPPORT_DIR}/agents" "*.md"
+
+# 2. Unresolved references/ paths in installed .md files
+#    Uses negative lookbehind to skip resolved absolute paths (which contain /references/)
+for md_file in "${COMMANDS_DIR}"/auto-doc*.md "${SUPPORT_DIR}/agents/"*.md; do
+  [[ -f "$md_file" ]] || continue
+  for match in $(grep -oP '(?<!/)references/[a-zA-Z0-9._-]+\.[a-z]+' "$md_file" 2>/dev/null | sort -u); do
+    echo "  WARNING: unresolved reference path '${match}' in $(basename "$md_file")"
+    AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+  done
+done
+
+# 3. Unresolved install-time placeholders in installed .md files
+#    Only checks placeholders that install.sh is responsible for resolving.
+#    Runtime placeholders ({DOCUMENT}, {DOC_NAME}, etc.) are filled by the orchestrator.
+INSTALL_PLACEHOLDERS='{GLOBAL_CONFIG} {SCRIPTS_DIR} {TEMPLATES_DIR} {TMP_DIR} {AGENTS_DIR} {CHECKS_FILE} {EMIT_CONTEXT_SCRIPT}'
+for md_file in "${COMMANDS_DIR}"/auto-doc*.md "${SUPPORT_DIR}/agents/"*.md; do
+  [[ -f "$md_file" ]] || continue
+  for placeholder in $INSTALL_PLACEHOLDERS; do
+    if grep -qF "$placeholder" "$md_file" 2>/dev/null; then
+      echo "  WARNING: unresolved install placeholder '${placeholder}' in $(basename "$md_file")"
+      AUDIT_WARNINGS=$((AUDIT_WARNINGS + 1))
+    fi
+  done
+done
+
+if [[ "$AUDIT_WARNINGS" -gt 0 ]]; then
+  echo "  ${AUDIT_WARNINGS} warning(s) -- new files may need install.sh updates"
+else
+  echo "  All checks passed."
+fi
+
 # -- Summary -------------------------------------------------------------------
 
 CMD_COUNT="${#COMMANDS[@]}"
@@ -403,7 +443,8 @@ echo "Done. Installed auto-doc to ${TARGET_DIR}/"
 echo ""
 echo "  Commands:    ${CMD_COUNT} command files -> .claude/commands/mg/"
 echo "  Scripts:     ${SCRIPT_COUNT} scripts -> .claude/auto-doc/scripts/"
-echo "  References:  schema.md, style-guide.md, .docs.config.json -> .claude/auto-doc/references/"
+REF_COUNT=$(find "${SUPPORT_DIR}/references" -maxdepth 1 -type f | wc -l)
+echo "  References:  ${REF_COUNT} reference files -> .claude/auto-doc/references/"
 echo "  Templates:   ${TEMPLATE_COUNT} templates -> .claude/auto-doc/references/templates/"
 echo "  Agents:      ${AGENT_COUNT} agent definitions -> .claude/auto-doc/agents/"
 if [[ -n "$PROJECT_ROOT" ]]; then

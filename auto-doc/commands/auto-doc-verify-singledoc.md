@@ -16,7 +16,7 @@ python3 {EMIT_CONTEXT_SCRIPT} AUTO-DOC
 ```
 If the script is not found, continue — permissions will require manual approval.
 
-Read the shared schema before starting: `Read references/schema.md`
+Read the shared schema before starting: `Read references/schema.yaml`
 
 ## Process
 

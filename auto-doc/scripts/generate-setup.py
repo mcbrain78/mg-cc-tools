@@ -29,7 +29,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib.json_io import load_json
+from lib.json_io import load_json, save_json
 
 
 def load_config(config_path, global_config_path):
@@ -281,8 +281,8 @@ def _load_notes(paths, scripts_dir, audiences):
 def _extract_database_model(paths, scripts_dir):
     """Run deterministic DB extraction if project uses SQLAlchemy.
 
-    Returns the database_model_path if extraction succeeded and produced
-    schemas, or None otherwise.
+    Returns dict with ``full`` and ``summary`` paths if extraction
+    succeeded and produced schemas, or None otherwise.
     """
     pm_path = paths["project_model_path"]
     if not os.path.isfile(pm_path):
@@ -308,6 +308,7 @@ def _extract_database_model(paths, scripts_dir):
         return None
 
     output = paths["database_model_path"]
+    summary_output = os.path.join(paths["tmp_dir"], "database-model-summary.json")
     cmd = [
         "uv", "run", "--directory", paths["project_root"],
         sys.executable, os.path.join(scripts_dir, "extract-database-model.py"),
@@ -315,13 +316,14 @@ def _extract_database_model(paths, scripts_dir):
         "--search-paths", ",".join(sorted(search_dirs)),
         "--project-model", pm_path,
         "--output", output,
+        "--summary-output", summary_output,
     ]
     _run_script(cmd, "extract-database-model", critical=False)
 
     if os.path.isfile(output):
         result = load_json(output, default={})
         if result.get("schemas"):
-            return output
+            return {"full": output, "summary": summary_output}
     return None
 
 
@@ -398,6 +400,57 @@ def detect_refined_templates(project_root, audiences, scan_date):
                 refined[aud_name][doc] = None
 
     return refined, stale
+
+
+def _build_db_table_map(project_model_path, scan_path, tmp_dir):
+    """Build section-to-tables mapping from project model and scan data.
+
+    Reads ``database_tables`` from each component in the slimmed project
+    model and cross-references with ``source_material_index`` sections
+    to produce a map of section_key -> [table_names].
+
+    Returns path to db-table-map.json, or None if no database tables found.
+    """
+    pm = load_json(project_model_path)
+    if not pm:
+        return None
+
+    # Build reverse index: component directory -> [table_names]
+    dir_to_tables = {}
+    for comp in pm.get("components", []):
+        tables = comp.get("database_tables", [])
+        if not tables:
+            continue
+        comp_path = comp.get("path", "")
+        if comp_path:
+            dir_to_tables[comp_path] = tables
+
+    if not dir_to_tables:
+        return None
+
+    # Load scan data for source_material_index
+    scan_data = load_json(scan_path, default={})
+    smi = scan_data.get("source_material_index", {})
+
+    # For each section, collect tables from its source files
+    table_map = {}
+    for section_key, section_data in smi.items():
+        source_files = section_data.get("source_files", [])
+        section_tables = set()
+        for sf in source_files:
+            for comp_path, tables in dir_to_tables.items():
+                # Check if source file is within the component's path
+                if sf.startswith(comp_path) or sf == comp_path:
+                    section_tables.update(tables)
+        if section_tables:
+            table_map[section_key] = sorted(section_tables)
+
+    if not table_map:
+        return None
+
+    output_path = os.path.join(tmp_dir, "db-table-map.json")
+    save_json(output_path, table_map)
+    return output_path
 
 
 def _run_script(cmd, label, critical=True):
@@ -481,12 +534,21 @@ def main():
     )
 
     # Run deterministic database model extraction
-    db_model_path = _extract_database_model(paths, scripts_dir)
+    db_result = _extract_database_model(paths, scripts_dir)
+
+    # Build section-to-tables mapping (only if DB extraction succeeded)
+    db_table_map_path = None
+    if db_result:
+        db_table_map_path = _build_db_table_map(
+            paths["project_model_path"], scan_file, paths["tmp_dir"],
+        )
 
     # Output everything the orchestrator needs
     result = {
         **paths,
-        "database_model_path": db_model_path,
+        "database_model_path": db_result["full"] if db_result else None,
+        "database_model_summary_path": db_result["summary"] if db_result else None,
+        "db_table_map_path": db_table_map_path,
         "mode": mode,
         "audiences": audiences,
         "audience_filter_active": audience_filter is not None,

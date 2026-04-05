@@ -860,3 +860,104 @@ alembic_archive.ini). 3 systemd services with Requires ordering.</evidence>
             # Only 1 real heading (## Overview), the ### inside <example> is excluded
             assert len(writes) == 1
             assert writes[0]["heading_path"] == "overview"
+
+
+# ---------------------------------------------------------------------------
+# DB table map injection
+# ---------------------------------------------------------------------------
+
+class TestDbTableMap:
+    """--db-table-map injects relevant_tables into orient responses."""
+
+    def test_orient_includes_relevant_tables_when_map_provided(self):
+        """Orient response includes relevant_tables when section is in map."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": ["etl_runs", "stocks"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            # Write db-table-map file
+            map_path = os.path.join(td, "db-table-map.json")
+            with open(map_path, "w") as f:
+                json.dump(db_table_map, f)
+            # Run with --db-table-map
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", paths["state"],
+                 "--template", paths["template"],
+                 "--scan-file", paths["scan"],
+                 "--document", paths["document"],
+                 "--db-table-map", map_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            out = json.loads(result.stdout)
+            assert out["type"] == "orient"
+            assert out["relevant_tables"] == ["etl_runs", "stocks"]
+
+    def test_orient_omits_relevant_tables_when_no_map(self):
+        """Orient response has no relevant_tables when --db-table-map not provided."""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            out = _run(paths)  # no --db-table-map
+            assert out["type"] == "orient"
+            assert "relevant_tables" not in out
+
+    def test_orient_omits_relevant_tables_when_section_not_in_map(self):
+        """Orient response has no relevant_tables when section is not in map."""
+        db_table_map = {
+            "OPERATIONS/other-section": ["some_table"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            map_path = os.path.join(td, "db-table-map.json")
+            with open(map_path, "w") as f:
+                json.dump(db_table_map, f)
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", paths["state"],
+                 "--template", paths["template"],
+                 "--scan-file", paths["scan"],
+                 "--document", paths["document"],
+                 "--db-table-map", map_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            out = json.loads(result.stdout)
+            assert out["type"] == "orient"
+            assert "relevant_tables" not in out
+
+    def test_second_orient_gets_its_own_tables(self):
+        """Each orient response gets its own relevant_tables from the map."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": ["etl_runs"],
+            "OPERATIONS/deployment": ["stocks"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            map_path = os.path.join(td, "db-table-map.json")
+            with open(map_path, "w") as f:
+                json.dump(db_table_map, f)
+
+            # Drain all responses
+            responses = []
+            for _ in range(20):
+                result = subprocess.run(
+                    [sys.executable, SCRIPT,
+                     "--state-file", paths["state"],
+                     "--template", paths["template"],
+                     "--scan-file", paths["scan"],
+                     "--document", paths["document"],
+                     "--db-table-map", map_path],
+                    capture_output=True, text=True,
+                )
+                assert result.returncode == 0
+                out = json.loads(result.stdout)
+                responses.append(out)
+                if out.get("done"):
+                    break
+
+            orients = [r for r in responses if r.get("type") == "orient"]
+            assert len(orients) == 2
+            assert orients[0].get("relevant_tables") == ["etl_runs"]
+            assert orients[1].get("relevant_tables") == ["stocks"]

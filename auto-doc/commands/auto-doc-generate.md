@@ -20,7 +20,7 @@ If the script is not found, continue — permissions will require manual approva
 
 Read the shared schema that defines the data contract:
 ```
-Read references/schema.md
+Read references/schema.yaml
 ```
 
 This tells you the JSON format of `docs-scan.json` -- the input produced by the scanner (step 1). You read it; you do not modify it.
@@ -43,7 +43,7 @@ python3 {SCRIPTS_DIR}/generate-setup.py \
 Add `--audience` only if the user specified audience names.
 
 Parse the JSON output to get all runtime values:
-- **Paths:** `project_root`, `docs_dir_abs`, `scan_data_path`, `tmp_dir`, `project_model_path`, `database_model_path`, `notes_file`, `manifests_dir`, `scan_logs_dir`
+- **Paths:** `project_root`, `docs_dir_abs`, `scan_data_path`, `tmp_dir`, `project_model_path`, `database_model_path`, `database_model_summary_path`, `db_table_map_path`, `notes_file`, `manifests_dir`, `scan_logs_dir`
 - **Mode:** `mode` ("initial" or "update")
 - **Audiences:** `audiences` (dict of audience name → {documents: [...]})
 - **Audience filter:** `audience_filter_active` (boolean)
@@ -154,7 +154,9 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    Docs dir: {docs_dir_abs}
    Scan data path: {scan_views["devops"]}
    Project model path: {project_model_path}
+   Database model summary path: {database_model_summary_path}
    Database model path: {database_model_path}
+   DB table map path: {db_table_map_path}
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
    Documents: {DOCUMENT}
@@ -506,4 +508,4 @@ The staleness-check.py script in the scan step parses these comments to detect w
 - **Normalize section identifiers to slug format.** Template headings use Title Case ("System Overview"), but source_material_index uses lowercased-hyphenated slugs ("system-overview"). Always convert to slug format when matching.
 - **Notes are standing instructions.** Generate passes notes to writer agents per audience. Notes persist until the user explicitly deletes them.
 - **Generate supports audience filtering** (e.g., `/mg:auto-doc-generate end-users devops`) to speed up iteration. OVERVIEW.md is skipped when filtering. For surgical fixes, use `/mg:auto-doc-update` instead.
-- **Directory layout, source material key format, and data contracts** are documented in `references/schema.md`. Workspace setup (directories, artifact cleanup, scan splitting) is handled by `generate-setup.py`.
+- **Directory layout, source material key format, and data contracts** are documented in `references/schema.yaml`. Workspace setup (directories, artifact cleanup, scan splitting) is handled by `generate-setup.py`.

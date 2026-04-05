@@ -20,7 +20,7 @@ If the script is not found, continue — permissions will require manual approva
 
 Read the shared schema that defines the data contract:
 ```
-Read references/schema.md
+Read references/schema.yaml
 ```
 
 This tells you the JSON format of `docs-scan.json` -- the input produced by the scanner (step 1) and consumed by the generator (step 2). You use it for completeness checks.

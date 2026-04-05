@@ -129,6 +129,24 @@ def _discover_bases(project_root, python_files):
     return list(metadata_map.values())
 
 
+def _build_summary(schemas):
+    """Build compact summary with column counts and FK targets per table."""
+    summary = {}
+    for schema_name, schema_data in schemas.items():
+        summary[schema_name] = {"tables": {}}
+        for table_name, table_data in schema_data["tables"].items():
+            columns = table_data["columns"]
+            fks = []
+            for col in columns:
+                if col["foreign_key"]:
+                    fks.append(col["foreign_key"])
+            summary[schema_name]["tables"][table_name] = {
+                "columns": len(columns),
+                "fks": fks,
+            }
+    return summary
+
+
 def _extract_schemas(metadata_list):
     """Walk sorted_tables from all metadata objects, build schema dict.
 
@@ -191,6 +209,10 @@ def main():
         "--output", required=True,
         help="Path to write database-model.json",
     )
+    parser.add_argument(
+        "--summary-output",
+        help="Optional path to write compact summary JSON",
+    )
 
     args = parser.parse_args()
 
@@ -233,6 +255,18 @@ def main():
         "extracted_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "schemas": schemas,
     }
+
+    # Write compact summary if requested
+    if args.summary_output:
+        summary_schemas = _build_summary(schemas)
+        summary_result = {
+            "engine": result["engine"],
+            "orm_framework": result["orm_framework"],
+            "migration_tool": result["migration_tool"],
+            "extracted_at": result["extracted_at"],
+            "schemas": summary_schemas,
+        }
+        save_json(os.path.abspath(args.summary_output), summary_result)
 
     save_json(output_path, result)
 
