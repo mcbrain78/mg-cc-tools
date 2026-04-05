@@ -31,6 +31,9 @@ class TestSlugifyHeading:
     def test_slash_becomes_hyphen(self):
         assert slugify_heading("Async/Concurrency Patterns") == "async-concurrency-patterns"
 
+    def test_collapses_consecutive_hyphens(self):
+        assert slugify_heading("Do / Don't Rules") == "do-dont-rules"
+
     def test_empty_string(self):
         assert slugify_heading("") == ""
 

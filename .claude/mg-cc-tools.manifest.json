@@ -76,10 +76,18 @@
         "patches/statusline-edit-guard.md": "sha256:1ed96bdc60a128b4bb242c28e9766657d3a1e9b719ed20e7b39bbc76878098ff",
         "post-install.md": "sha256:d30a468da045fad3f0b242b120c8c85f5ecaab3a020b053e19c8a64cbcab9f61"
       }
+    },
+    "devils-advocate": {
+      "version": "0.1.0",
+      "installed_at": "2026-04-05T10:26:20.260370+00:00",
+      "commands": [],
+      "source_checksums": {
+        "install.sh": "sha256:cec1aefbf8270eda94d01fe736454ed0d44168044003786dde3edcde72b678d0"
+      }
     }
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools",
-  "last_updated": "2026-04-04T17:41:48.313479+00:00"
+  "last_updated": "2026-04-05T10:26:20.259987+00:00"
 }

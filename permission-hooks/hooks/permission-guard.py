@@ -185,6 +185,8 @@ def check_edit_guard(transcript_path):
 
     The timestamp suffix distinguishes real emitter output from phantom
     matches (source code / grep output appearing in the transcript).
+    Unlike session context markers, the edit guard never expires — it is
+    a manual toggle that persists until explicitly flipped.
     """
     if not transcript_path:
         return False
@@ -198,15 +200,14 @@ def check_edit_guard(transcript_path):
     if not matches:
         return False  # No marker → default ON (edits allowed)
 
-    # Walk backwards to find the most recent marker with a fresh timestamp
-    for match in reversed(matches):
-        timestamp_ms = int(match.group(2))
-        age_s = time.time() - timestamp_ms / 1000
-        if age_s > CONTEXT_TTL_S or age_s < 0:
-            continue  # stale or future — skip
-        return match.group(1) == "OFF"
+    # Take the last marker; reject only future timestamps (clock skew)
+    last = matches[-1]
+    timestamp_ms = int(last.group(2))
+    age_s = time.time() - timestamp_ms / 1000
+    if age_s < 0:
+        return False  # clock skew / forged future timestamp
 
-    return False  # all markers stale → default ON
+    return last.group(1) == "OFF"
 
 
 # ── Edit guard bridge writer (best-effort status for statusline) ──────────

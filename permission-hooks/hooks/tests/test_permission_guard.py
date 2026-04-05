@@ -2164,13 +2164,13 @@ class TestEditGuard:
         finally:
             os.unlink(path)
 
-    def test_stale_marker_ignored(self):
-        """Markers older than CONTEXT_TTL_S are ignored."""
+    def test_old_marker_still_honored(self):
+        """Edit guard is a manual toggle — it never expires."""
         path = self._write_transcript([
             self._tool_result_line(self._guard_marker("OFF", age_s=7200)),
         ])
         try:
-            assert check_edit_guard(path) is False
+            assert check_edit_guard(path) is True
         finally:
             os.unlink(path)
 
