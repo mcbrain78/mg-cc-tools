@@ -311,6 +311,31 @@ class TestWorkspace:
             ])
             assert not os.path.exists(stale)
 
+    def test_cleans_per_run_artifacts(self):
+        """project-model.json and db artifacts from prior runs are removed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+            tmp_dir = os.path.join(project_root, ".mg", "docs", "tmp")
+            os.makedirs(tmp_dir, exist_ok=True)
+            for name in [
+                "project-model.json",
+                "database-model.json",
+                "database-model-summary.json",
+                "db-table-map.json",
+            ]:
+                _write_json(os.path.join(tmp_dir, name), {"stale": True})
+
+            _run([
+                "--scan-file", scan_path, "--config", config_path,
+                "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
+            ])
+            # project-model.json should be recreated fresh (not stale)
+            pm = _read_json(os.path.join(tmp_dir, "project-model.json"))
+            assert "stale" not in pm
+            # DB artifacts should be gone (no SQLAlchemy in test fixture)
+            assert not os.path.exists(os.path.join(tmp_dir, "database-model-summary.json"))
+            assert not os.path.exists(os.path.join(tmp_dir, "db-table-map.json"))
+
     def test_initial_mode_clears_manifests(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_root, scan_path, config_path = _make_project(tmp)

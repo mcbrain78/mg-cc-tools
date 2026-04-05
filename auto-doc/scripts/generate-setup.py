@@ -201,6 +201,17 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         for f in glob_mod.glob(os.path.join(tmp_dir, pattern)):
             os.remove(f)
 
+    # Clean per-run artifacts so they are regenerated fresh
+    for stale in [
+        "project-model.json",
+        "database-model.json",
+        "database-model-summary.json",
+        "db-table-map.json",
+    ]:
+        p = os.path.join(tmp_dir, stale)
+        if os.path.exists(p):
+            os.remove(p)
+
     # Write last_generated timestamp
     _run_script(
         [sys.executable, os.path.join(scripts_dir, "set-last-generated.py"),
