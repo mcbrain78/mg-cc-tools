@@ -66,10 +66,6 @@ INSTALL_PLACEHOLDER_RE = re.compile(r"\{MG_INSTALL_[A-Z_]+\}")
 # to absolute paths. Any remaining relative reference is a missed resolution.
 RELATIVE_REF_RE = re.compile(r"(?<!/)\breferences/[a-zA-Z0-9._-]+\.\w+")
 
-# Absolute path detection: lines containing paths like /home/... or /usr/...
-# We look for paths that were meant to be sed-resolved
-ABS_PATH_RE = re.compile(r"(?:^|[\s\"'`])(/(?:home|usr|opt|tmp|var|etc|nix)[^\s\"'`()\[\]]+)")
-
 # install.sh sed target validation: extract sed replacement targets and check
 # that placeholder targets use the MG_INSTALL_ prefix.
 SED_TARGET_RE = re.compile(r'sed\s+-i\s+"s\|([^|]+)\|')
@@ -855,7 +851,7 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
                 if scoped_filenames is not None and fname not in scoped_filenames:
                     continue
                 fpath = os.path.join(root, fname)
-                _check_file_for_issues(fpath, issues, target_dir)
+                _check_file_for_issues(fpath, issues)
 
     # --- Tool-specific agent dirs (scan all .md files, no filename scoping) ---
     agent_scan_dirs = []
@@ -877,7 +873,7 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
             for fname in sorted(files):
                 if fname.endswith(".md"):
                     fpath = os.path.join(root, fname)
-                    _check_file_for_issues(fpath, issues, target_dir)
+                    _check_file_for_issues(fpath, issues)
 
     # --- install.sh self-validation (sed target prefix check) ---
     if source_dir:
@@ -937,19 +933,13 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
     return {"valid": len(issues) == 0, "issue_count": len(issues), "issues": issues}
 
 
-def _check_file_for_issues(fpath, issues, target_dir=None):
-    """Check a single installed file for placeholder and path issues."""
+def _check_file_for_issues(fpath, issues):
+    """Check a single installed file for placeholder and reference issues."""
     try:
         with open(fpath, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
     except (OSError, IOError):
         return
-
-    # Build runtime tmp prefix: paths under {target}/.mg/*/tmp/ are created
-    # at pipeline runtime, not at install time, so skip them.
-    tmp_prefix = None
-    if target_dir:
-        tmp_prefix = os.path.join(os.path.abspath(target_dir), ".mg") + os.sep
 
     for line_num, line in enumerate(lines, start=1):
         # Check for unresolved install-time placeholders ({MG_INSTALL_*})
@@ -973,37 +963,6 @@ def _check_file_for_issues(fpath, issues, target_dir=None):
                 "pattern": ref_path,
                 "message": f"Unresolved relative reference: {ref_path}",
             })
-
-        # Check for absolute paths that don't exist
-        for match in ABS_PATH_RE.finditer(line):
-            abs_path = match.group(1)
-            # Skip /tmp/ paths -- these are runtime temp files, not install artifacts
-            if abs_path.startswith("/tmp/"):
-                continue
-            # Skip paths containing runtime template variables like {audience}
-            if "{" in abs_path and "}" in abs_path:
-                continue
-            # Skip paths under .mg/*/tmp/ -- these are runtime temp files
-            # created during pipeline execution (e.g. {TMP_DIR} paths)
-            if tmp_prefix and abs_path.startswith(tmp_prefix):
-                # Match .mg/<tool>/tmp/ pattern
-                suffix = abs_path[len(tmp_prefix):]
-                parts = suffix.split(os.sep)
-                if len(parts) >= 2 and parts[1] == "tmp":
-                    continue
-            # Only check paths that look like real file references
-            # (have file extensions or end with specific patterns)
-            if not os.path.exists(abs_path) and (
-                "." in os.path.basename(abs_path)
-                or abs_path.endswith("/")
-            ):
-                issues.append({
-                    "file": fpath,
-                    "line": line_num,
-                    "type": "missing_path",
-                    "pattern": abs_path,
-                    "message": f"Resolved path not found: {abs_path}",
-                })
 
 
 def _discover_tool_names(source_dir):
@@ -1791,7 +1750,7 @@ def render_validation(validate_data):
     print("Post-install validation:")
 
     if validate_data.get("issue_count", 0) == 0:
-        print("  All checks passed -- no unresolved placeholders, all paths valid")
+        print("  All checks passed -- no unresolved placeholders or references")
         print("</verbatim>")
         return
 

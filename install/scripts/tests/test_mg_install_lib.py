@@ -1387,85 +1387,6 @@ class TestValidate:
             assert issue["type"] == "placeholder"
             assert "{MG_INSTALL_SCRIPTS_DIR}" in issue["pattern"]
 
-    def test_detects_missing_resolved_paths(self):
-        """Finds resolved absolute paths that don't exist on disk."""
-        with tempfile.TemporaryDirectory() as tmp:
-            target = os.path.join(tmp, "target")
-            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
-            os.makedirs(cmd_dir, exist_ok=True)
-
-            # File with a resolved absolute path that doesn't exist
-            # Use /home/ prefix (not /tmp/) since /tmp/ paths are skipped as
-            # runtime temp files
-            with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
-                f.write("Use /home/nonexistent/path/script.py for analysis\n")
-
-            result = _run([
-                "validate", "--target", target,
-            ])
-            assert result.returncode == 0, result.stderr
-            data = json.loads(result.stdout)
-
-            path_issues = [i for i in data["issues"] if i["type"] == "missing_path"]
-            assert len(path_issues) > 0
-
-    def test_strips_markdown_delimiters_from_paths(self):
-        """Paths wrapped in backticks/parens are extracted cleanly."""
-        with tempfile.TemporaryDirectory() as tmp:
-            target = os.path.join(tmp, "target")
-            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
-            real_file = os.path.join(tmp, "real-file.md")
-            os.makedirs(cmd_dir, exist_ok=True)
-
-            # Create the file so the path is valid
-            with open(real_file, "w") as f:
-                f.write("content\n")
-
-            # Paths wrapped in markdown formatting that actually exist on disk
-            # should NOT be flagged -- the regex must strip delimiters
-            with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
-                f.write(
-                    f"Read instructions in: `{real_file}`)\n"
-                    f"See [{real_file}] for details\n"
-                    f"Located at ({real_file})\n"
-                )
-
-            result = _run([
-                "validate", "--target", target,
-            ])
-            assert result.returncode == 0, result.stderr
-            data = json.loads(result.stdout)
-
-            path_issues = [i for i in data["issues"] if i["type"] == "missing_path"]
-            assert len(path_issues) == 0, (
-                f"Markdown-wrapped paths should not be flagged: {path_issues}"
-            )
-
-    def test_skips_runtime_tmp_paths(self):
-        """Paths under .mg/*/tmp/ are runtime files -- not flagged as missing."""
-        with tempfile.TemporaryDirectory() as tmp:
-            target = os.path.join(tmp, "target")
-            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
-            os.makedirs(cmd_dir, exist_ok=True)
-
-            # File with resolved {TMP_DIR} paths that don't exist on disk
-            abs_target = os.path.abspath(target)
-            with open(os.path.join(cmd_dir, "test-cmd.md"), "w") as f:
-                f.write(
-                    f"Read {abs_target}/.mg/docs/tmp/project-model.json\n"
-                    f"Read {abs_target}/.mg/docs/tmp/manifest-developers.json\n"
-                    f"Read {abs_target}/.mg/health-scan/tmp/results.json\n"
-                )
-
-            result = _run([
-                "validate", "--target", target,
-            ])
-            assert result.returncode == 0, result.stderr
-            data = json.loads(result.stdout)
-
-            path_issues = [i for i in data["issues"] if i["type"] == "missing_path"]
-            assert len(path_issues) == 0, f"Expected no path issues, got: {path_issues}"
-
     def test_clean_install_has_no_issues(self):
         """A clean install with no placeholders or bad paths has zero issues."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -4173,7 +4094,7 @@ class TestRenderValidation:
         with tempfile.TemporaryDirectory() as tmp:
             validate_data = {
                 "valid": False,
-                "issue_count": 2,
+                "issue_count": 1,
                 "issues": [
                     {
                         "file": "/path/to/file.md",
@@ -4181,13 +4102,6 @@ class TestRenderValidation:
                         "type": "placeholder",
                         "pattern": "{MG_INSTALL_SCRIPTS_DIR}",
                         "message": "Unresolved placeholder: {MG_INSTALL_SCRIPTS_DIR}",
-                    },
-                    {
-                        "file": "/path/to/other.md",
-                        "line": 5,
-                        "type": "missing_path",
-                        "pattern": "/home/old/path.py",
-                        "message": "Resolved path not found: /home/old/path.py",
                     },
                 ],
             }
@@ -4198,7 +4112,6 @@ class TestRenderValidation:
             assert "Post-install validation:" in result.stdout
             assert "WARNING" in result.stdout
             assert "Unresolved placeholder" in result.stdout
-            assert "Resolved path not found" in result.stdout
 
 
 # ============================================================
