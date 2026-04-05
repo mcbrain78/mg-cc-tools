@@ -358,13 +358,6 @@ if [[ -n "$PROJECT_ROOT" ]]; then
 
     echo "    Created scan/ directory"
   fi
-
-  # Detect old workspace layout and advise migration
-  if [[ -d "${DOCS_WORKSPACE}/scan-logs" ]] || [[ -d "${DOCS_WORKSPACE}/tmp" ]]; then
-    echo ""
-    echo "  Old workspace layout detected. Run migration:"
-    echo "    python3 ${SUPPORT_DIR}/scripts/migrate-workspace.py ${DOCS_WORKSPACE}"
-  fi
 fi
 
 # -- Update manifest -----------------------------------------------------------
