@@ -42,17 +42,44 @@ def severity_rank(severity):
 def merge_source_material(existing, new_entries):
     """Merge source_material_index entries.
 
-    For duplicate keys, keep the entry with more source_files.
+    For duplicate keys, fuse entries: union source_files, preserve
+    synthesized_from from either/both, keep staleness from entry with
+    more source_files.
     """
     for key, entry in new_entries.items():
         if key not in existing:
             existing[key] = entry
         else:
-            # Keep the one with more source files
-            existing_count = len(existing[key].get("source_files", []))
+            ex = existing[key]
+            # Union source_files (deduplicate, preserve order)
+            seen = set()
+            merged_files = []
+            for f in ex.get("source_files", []) + entry.get("source_files", []):
+                if f not in seen:
+                    seen.add(f)
+                    merged_files.append(f)
+
+            # Union synthesized_from from both entries
+            ex_synth = ex.get("synthesized_from")
+            new_synth = entry.get("synthesized_from")
+            merged_synth = None
+            if ex_synth or new_synth:
+                synth_set = set(ex_synth or []) | set(new_synth or [])
+                merged_synth = sorted(synth_set)
+
+            # Staleness from entry with more source_files
+            existing_count = len(ex.get("source_files", []))
             new_count = len(entry.get("source_files", []))
-            if new_count > existing_count:
-                existing[key] = entry
+            base = entry if new_count > existing_count else ex
+
+            fused = dict(base)
+            fused["source_files"] = merged_files
+            if merged_synth is not None:
+                fused["synthesized_from"] = merged_synth
+            elif "synthesized_from" in fused:
+                del fused["synthesized_from"]
+
+            existing[key] = fused
     return existing
 
 

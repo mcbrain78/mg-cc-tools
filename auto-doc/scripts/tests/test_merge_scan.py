@@ -188,6 +188,115 @@ class TestMergeScanDeduplication:
             entry = data["source_material_index"]["OVERVIEW/intro"]
             assert len(entry["source_files"]) == 3
 
+    def test_source_material_fusion_preserves_synthesized_from(self):
+        """Duplicate keys fuse source_files and preserve synthesized_from from both."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_dir = os.path.join(tmp, "scan-logs")
+            os.makedirs(scan_dir)
+            output = os.path.join(tmp, "docs-scan.json")
+
+            # File 1: entry with synthesized_from but no source files
+            scan1 = {
+                "source_material_index": {
+                    "OVERVIEW/key-concepts": {
+                        "source_files": [],
+                        "synthesized_from": ["project_model.components"],
+                        "staleness": "unknown",
+                    }
+                },
+                "staleness_report": [],
+                "note_classifications": [],
+                "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
+            }
+            with open(os.path.join(scan_dir, "scan-agents.json"), "w") as f:
+                json.dump(scan1, f)
+
+            # File 2: same key with source files but no synthesized_from
+            scan2 = {
+                "source_material_index": {
+                    "OVERVIEW/key-concepts": {
+                        "source_files": ["README.md", "docs/intro.md"],
+                        "staleness": "unknown",
+                    }
+                },
+                "staleness_report": [],
+                "note_classifications": [],
+                "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
+            }
+            with open(os.path.join(scan_dir, "scan-devops.json"), "w") as f:
+                json.dump(scan2, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-dir", scan_dir,
+                 "--output", output,
+                 "--project-name", "test",
+                 "--root-path", "/tmp/test"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output) as f:
+                data = json.load(f)
+
+            entry = data["source_material_index"]["OVERVIEW/key-concepts"]
+            # Fused: source_files from file2, synthesized_from from file1
+            assert set(entry["source_files"]) == {"README.md", "docs/intro.md"}
+            assert entry["synthesized_from"] == ["project_model.components"]
+
+    def test_source_material_fusion_unions_source_files(self):
+        """Duplicate keys union source_files from both entries."""
+        with tempfile.TemporaryDirectory() as tmp:
+            scan_dir = os.path.join(tmp, "scan-logs")
+            os.makedirs(scan_dir)
+            output = os.path.join(tmp, "docs-scan.json")
+
+            scan1 = {
+                "source_material_index": {
+                    "OVERVIEW/intro": {
+                        "source_files": ["README.md"],
+                        "staleness": "unknown",
+                    }
+                },
+                "staleness_report": [],
+                "note_classifications": [],
+                "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
+            }
+            with open(os.path.join(scan_dir, "scan-a.json"), "w") as f:
+                json.dump(scan1, f)
+
+            scan2 = {
+                "source_material_index": {
+                    "OVERVIEW/intro": {
+                        "source_files": ["README.md", "CONTRIBUTING.md", "docs/intro.md"],
+                        "staleness": "unknown",
+                    }
+                },
+                "staleness_report": [],
+                "note_classifications": [],
+                "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
+            }
+            with open(os.path.join(scan_dir, "scan-b.json"), "w") as f:
+                json.dump(scan2, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--scan-dir", scan_dir,
+                 "--output", output,
+                 "--project-name", "test",
+                 "--root-path", "/tmp/test"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(output) as f:
+                data = json.load(f)
+
+            entry = data["source_material_index"]["OVERVIEW/intro"]
+            # Union of source files (3 unique files)
+            assert len(entry["source_files"]) == 3
+            assert set(entry["source_files"]) == {"README.md", "CONTRIBUTING.md", "docs/intro.md"}
+
     def test_staleness_deduplication_by_severity(self):
         """Duplicate staleness entries keep highest severity."""
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,6 +14,7 @@ from lib.json_io import load_json
 def slugify_heading(heading):
     """Convert a heading to a slug: lowercase, spaces to hyphens, strip non-alnum."""
     slug = heading.strip().lower()
+    slug = slug.replace("/", "-")
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
     slug = re.sub(r"[\s]+", "-", slug)
     return slug.strip("-")

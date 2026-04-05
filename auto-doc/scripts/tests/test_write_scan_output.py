@@ -246,6 +246,267 @@ class TestWriteScanOutputRejection:
             assert os.path.exists(rejected_path)
 
 
+def _make_sections_file(tmp_dir, document, sections):
+    """Create a parsed template JSON file for content validation tests."""
+    path = os.path.join(tmp_dir, f"template-{document}.json")
+    data = {
+        "document": document,
+        "sections": sections,
+        "valid_slugs": [s["slug"] for s in sections],
+    }
+    with open(path, "w") as f:
+        json.dump(data, f)
+    return path
+
+
+class TestWriteScanOutputContentValidation:
+    """Content validation against parsed template sections."""
+
+    def test_valid_slugs_pass(self):
+        """Entries with slugs matching template sections pass validation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = os.path.join(tmp, "input.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            sections_file = _make_sections_file(tmp, "ARCHITECTURE", [
+                {"heading": "Overview", "slug": "overview", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": False, "purpose": None},
+                {"heading": "Data Model", "slug": "data-model", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": False, "purpose": None},
+            ])
+
+            with open(input_file, "w") as f:
+                json.dump(_valid_scan_output(), f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--output", output_file,
+                 "--audience", "developers",
+                 "--sections-file", sections_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+    def test_invalid_slug_rejects(self):
+        """Entry with slug not in template sections is rejected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = os.path.join(tmp, "input.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            sections_file = _make_sections_file(tmp, "ARCHITECTURE", [
+                {"heading": "Overview", "slug": "overview", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": False, "purpose": None},
+            ])
+
+            scan_output = {
+                "source_material_index": {
+                    "ARCHITECTURE/overview": {"source_files": ["a.py"]},
+                    "ARCHITECTURE/nonexistent-section": {"source_files": ["b.py"]},
+                },
+                "gap_analysis": {"covered": [], "gaps": []},
+            }
+            with open(input_file, "w") as f:
+                json.dump(scan_output, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--output", output_file,
+                 "--audience", "developers",
+                 "--sections-file", sections_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode != 0
+            assert "nonexistent-section" in result.stderr
+
+    def test_invented_synthesized_from_rejects(self):
+        """Entry with synthesized_from when template has none is rejected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = os.path.join(tmp, "input.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            sections_file = _make_sections_file(tmp, "ARCHITECTURE", [
+                {"heading": "Overview", "slug": "overview", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": False, "purpose": None},
+            ])
+
+            scan_output = {
+                "source_material_index": {
+                    "ARCHITECTURE/overview": {
+                        "source_files": [],
+                        "synthesized_from": ["project_model.components"],
+                    },
+                },
+                "gap_analysis": {"covered": [], "gaps": []},
+            }
+            with open(input_file, "w") as f:
+                json.dump(scan_output, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--output", output_file,
+                 "--audience", "developers",
+                 "--sections-file", sections_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode != 0
+            assert "synthesized_from" in result.stderr
+
+    def test_invalid_synthesized_path_rejects(self):
+        """Entry with invalid synthesized_from path is rejected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = os.path.join(tmp, "input.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            sections_file = _make_sections_file(tmp, "ARCHITECTURE", [
+                {"heading": "Overview", "slug": "overview", "level": 2,
+                 "synthesized_from": ["project_model.components"],
+                 "boundary": None, "optional": False, "purpose": None},
+            ])
+
+            scan_output = {
+                "source_material_index": {
+                    "ARCHITECTURE/overview": {
+                        "source_files": [],
+                        "synthesized_from": ["project_model.nonexistent"],
+                    },
+                },
+                "gap_analysis": {"covered": [], "gaps": []},
+            }
+            with open(input_file, "w") as f:
+                json.dump(scan_output, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--output", output_file,
+                 "--audience", "developers",
+                 "--sections-file", sections_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode != 0
+            assert "invalid synthesized_from path" in result.stderr
+
+    def test_missing_non_optional_section_warns(self):
+        """Non-optional section missing from SMI produces warning but passes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = os.path.join(tmp, "input.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            sections_file = _make_sections_file(tmp, "ARCHITECTURE", [
+                {"heading": "Overview", "slug": "overview", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": False, "purpose": None},
+                {"heading": "Components", "slug": "components", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": False, "purpose": None},
+            ])
+
+            scan_output = {
+                "source_material_index": {
+                    "ARCHITECTURE/overview": {"source_files": ["a.py"]},
+                },
+                "gap_analysis": {"covered": [], "gaps": []},
+            }
+            with open(input_file, "w") as f:
+                json.dump(scan_output, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--output", output_file,
+                 "--audience", "developers",
+                 "--sections-file", sections_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0  # Warning, not rejection
+            assert "components" in result.stderr
+            assert "missing" in result.stderr
+
+    def test_missing_optional_section_no_warning(self):
+        """Optional section missing from SMI does not produce warning."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = os.path.join(tmp, "input.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            sections_file = _make_sections_file(tmp, "ARCHITECTURE", [
+                {"heading": "Overview", "slug": "overview", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": False, "purpose": None},
+                {"heading": "Advanced", "slug": "advanced", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": True, "purpose": None},
+            ])
+
+            scan_output = {
+                "source_material_index": {
+                    "ARCHITECTURE/overview": {"source_files": ["a.py"]},
+                },
+                "gap_analysis": {"covered": [], "gaps": []},
+            }
+            with open(input_file, "w") as f:
+                json.dump(scan_output, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--output", output_file,
+                 "--audience", "developers",
+                 "--sections-file", sections_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "advanced" not in result.stderr.lower()
+
+    def test_no_sections_file_backward_compat(self):
+        """Without --sections-file, only structural validation runs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = os.path.join(tmp, "input.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            with open(input_file, "w") as f:
+                json.dump(_valid_scan_output(), f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--output", output_file,
+                 "--audience", "developers"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+    def test_unknown_document_entries_pass(self):
+        """Entries for documents without a sections file are not validated."""
+        with tempfile.TemporaryDirectory() as tmp:
+            input_file = os.path.join(tmp, "input.json")
+            output_file = os.path.join(tmp, "output.json")
+
+            # Only provide sections for ARCHITECTURE, not OTHER_DOC
+            sections_file = _make_sections_file(tmp, "ARCHITECTURE", [
+                {"heading": "Overview", "slug": "overview", "level": 2,
+                 "synthesized_from": None, "boundary": None, "optional": False, "purpose": None},
+            ])
+
+            scan_output = {
+                "source_material_index": {
+                    "ARCHITECTURE/overview": {"source_files": ["a.py"]},
+                    "OTHER_DOC/anything": {"source_files": ["b.py"]},
+                },
+                "gap_analysis": {"covered": [], "gaps": []},
+            }
+            with open(input_file, "w") as f:
+                json.dump(scan_output, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--output", output_file,
+                 "--audience", "developers",
+                 "--sections-file", sections_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+
 class TestWriteScanOutputCLI:
     """CLI argument validation."""
 

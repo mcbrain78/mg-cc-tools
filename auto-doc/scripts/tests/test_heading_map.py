@@ -28,6 +28,9 @@ class TestSlugifyHeading:
     def test_preserves_existing_hyphens(self):
         assert slugify_heading("pre-existing") == "pre-existing"
 
+    def test_slash_becomes_hyphen(self):
+        assert slugify_heading("Async/Concurrency Patterns") == "async-concurrency-patterns"
+
     def test_empty_string(self):
         assert slugify_heading("") == ""
 

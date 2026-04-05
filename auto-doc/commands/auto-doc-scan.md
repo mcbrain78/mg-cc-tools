@@ -67,7 +67,7 @@ Only gather the small decisions needed to drive the pipeline. Heavy project anal
 
 7. **Create workspace** if it does not exist:
     ```bash
-    mkdir -p <project_root>/.mg/docs/scan-logs <project_root>/.mg/docs/tmp
+    mkdir -p <project_root>/.mg/docs/scan-logs <project_root>/.mg/docs/scan-logs/templates <project_root>/.mg/docs/tmp
     ```
 
 ### Step 2: Orient (subagent)
@@ -243,6 +243,25 @@ If mode is `"initial"`, skip this step entirely.
 
 4. Review script output for errors. If a script fails, log the error and continue -- partial staleness data is better than none.
 
+### Step 4b: Parse Templates (deterministic)
+
+Pre-parse all templates into structured JSON so scan agents use deterministic slugs and directives instead of LLM-derived parsing.
+
+1. **Collect unique documents.** From all enabled audiences, build a set of document names (audience-specific + shared documents).
+
+2. **For each document**, run the template parser:
+   ```bash
+   python3 {SCRIPTS_DIR}/parse-template.py \
+       --template {TEMPLATES_DIR}/{audience}/{DOCUMENT}.template.md \
+       --document {DOCUMENT} \
+       --output <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json
+   ```
+   For shared documents (OVERVIEW, GLOSSARY), use `{TEMPLATES_DIR}/{DOCUMENT}.template.md` (no audience subdirectory).
+
+3. **Check stderr** for warnings about invalid `synthesized_from` paths. These indicate template issues but do not block the scan.
+
+**Note:** Template JSON files go to `scan-logs/templates/` subdirectory. `merge-scan.py` globs `scan-logs/*.json` (not recursive), so template files are not picked up by the merge.
+
 ### Step 5: Per-Audience Scan (parallel foreground)
 
 For each enabled audience in the config, spawn a scan subagent via the Agent tool. All agents run as parallel foreground (do NOT set `run_in_background`) so progress is visible inline.
@@ -268,7 +287,10 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
    Your documents: {document_list}
    Templates directory: {TEMPLATES_DIR}
    Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json
-   Scripts directory: {SCRIPTS_DIR}"
+   Scripts directory: {SCRIPTS_DIR}
+
+   Parsed template sections:
+   {For each DOCUMENT in document_list, list: DOCUMENT: <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json}"
    )
    ```
 
@@ -288,6 +310,9 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
    Templates directory: {TEMPLATES_DIR}
    Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json
    Scripts directory: {SCRIPTS_DIR}
+
+   Parsed template sections:
+   {For each DOCUMENT in document_list, list: DOCUMENT: <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json}
 
    Mode: incremental
    Changed files for your audience: {JSON array of changed_files from audience_affected entries}
