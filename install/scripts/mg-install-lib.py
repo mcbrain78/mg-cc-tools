@@ -68,21 +68,12 @@ PLACEHOLDER_RE = re.compile(r"\{[A-Z][A-Z_]{2,}\}")
 RUNTIME_PLACEHOLDERS = {
     "{DOCUMENT}",
     "{DOCUMENT_NAME}",
-    "{DOC_NAME}",
     "{STAGE_LABEL}",
-    "{SET_ID}",
-    "{REFINED_TEMPLATE_PATH}",
-    "{STATE_FILE_PATH}",
 }
 
 # Absolute path detection: lines containing paths like /home/... or /usr/...
 # We look for paths that were meant to be sed-resolved
 ABS_PATH_RE = re.compile(r"(?:^|[\s\"'`])(/(?:home|usr|opt|tmp|var|etc|nix)[^\s\"'`()\[\]]+)")
-
-# Unresolved relative reference: references/foo.md or references/bar.json that
-# should have been sed-replaced with an absolute path during install.
-# Negative lookbehind for / excludes already-resolved absolute paths.
-RELATIVE_REF_RE = re.compile(r"(?<!/)references/[a-zA-Z0-9._-]+\.(?:md|json)")
 
 # ============================================================
 # Preflight checks registry
@@ -850,30 +841,13 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
                     if f.endswith(".md"):
                         scoped_filenames.add(f)
 
-    # Scan command and agent files for placeholders and bad paths.
-    # Shared dirs use filename-scoped filtering; tool-specific dirs scan all files.
-    shared_scan_dirs = [
+    # Scan command and agent files for placeholders and bad paths
+    scan_dirs = [
         os.path.join(target_dir, ".claude", "commands", "mg"),
         os.path.join(target_dir, ".claude", "agents"),
     ]
-    tool_scan_dirs = []
 
-    # Add tool-specific support directories (e.g. .claude/auto-doc/agents/)
-    claude_dir = os.path.join(target_dir, ".claude")
-    if tool_names:
-        for tool_name in tool_names:
-            tool_support = os.path.join(claude_dir, tool_name)
-            if os.path.isdir(tool_support):
-                tool_scan_dirs.append(tool_support)
-    else:
-        # Full validation: scan all subdirs of .claude/ except commands/
-        if os.path.isdir(claude_dir):
-            for entry in sorted(os.listdir(claude_dir)):
-                entry_path = os.path.join(claude_dir, entry)
-                if os.path.isdir(entry_path) and entry != "commands":
-                    tool_scan_dirs.append(entry_path)
-
-    for scan_dir in shared_scan_dirs:
+    for scan_dir in scan_dirs:
         if not os.path.isdir(scan_dir):
             continue
         for root, _dirs, files in os.walk(scan_dir):
@@ -882,45 +856,6 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
                     continue
                 fpath = os.path.join(root, fname)
                 _check_file_for_issues(fpath, issues, target_dir)
-
-    # Tool-specific dirs: scan all .md files (entire dir belongs to one tool)
-    for scan_dir in tool_scan_dirs:
-        if not os.path.isdir(scan_dir):
-            continue
-        for root, _dirs, files in os.walk(scan_dir):
-            for fname in sorted(files):
-                if fname.endswith(".md"):
-                    fpath = os.path.join(root, fname)
-                    _check_file_for_issues(fpath, issues, target_dir)
-
-    # Source-vs-target file comparison: check all source files were copied.
-    # Skip install-time-only files that are never deployed to target.
-    source_only_files = {"install.sh", "post-install.md"}
-    if tool_names and source_dir:
-        for tool_name in tool_names:
-            tool_dir = os.path.join(source_dir, tool_name)
-            if not os.path.isdir(tool_dir):
-                continue
-            source_checksums = compute_tool_checksums(tool_dir)
-            for rel_path in source_checksums:
-                if rel_path in source_only_files:
-                    continue
-                # Derive expected target path
-                if rel_path.startswith("commands/") or rel_path.startswith("commands" + os.sep):
-                    # commands/*.md → .claude/commands/mg/*.md
-                    fname = os.path.basename(rel_path)
-                    expected = os.path.join(target_dir, ".claude", "commands", "mg", fname)
-                else:
-                    # Everything else → .claude/{tool_name}/<rel_path>
-                    expected = os.path.join(target_dir, ".claude", tool_name, rel_path)
-                if not os.path.exists(expected):
-                    issues.append({
-                        "file": expected,
-                        "line": 0,
-                        "type": "missing_source_file",
-                        "pattern": rel_path,
-                        "message": f"Source file not copied to target: {tool_name}/{rel_path}",
-                    })
 
     # Check workspace directories for tools that scaffold them
     check_tools = tool_names or list(WORKSPACE_DIRS.keys())
@@ -1001,17 +936,6 @@ def _check_file_for_issues(fpath, issues, target_dir=None):
                     "pattern": abs_path,
                     "message": f"Resolved path not found: {abs_path}",
                 })
-
-        # Check for unresolved relative references (references/foo.md)
-        # These should have been sed-replaced with absolute paths by install.sh
-        for match in RELATIVE_REF_RE.finditer(line):
-            issues.append({
-                "file": fpath,
-                "line": line_num,
-                "type": "unresolved_reference",
-                "pattern": match.group(0),
-                "message": f"Unresolved relative reference: {match.group(0)}",
-            })
 
 
 # ============================================================
