@@ -1,0 +1,8 @@
+[tool]
+description = "Devil's advocate review — challenges plans, code, and decisions before you commit"
+standard = false
+
+[external]
+repo = "https://github.com/notmanas/claude-code-skills.git"
+path = "skills/devils-advocate"
+archive = "notmanas-claude-code-skills-devils-advocate"

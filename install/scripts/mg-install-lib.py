@@ -203,6 +203,7 @@ def read_tool_toml(tool_dir):
         "preflight": {"required", "optional"},
         "post_install": {"script"},
         "detect": {"paths"},
+        "external": {"repo", "path", "archive"},
     }
     for section_name, expected in _EXPECTED_KEYS.items():
         actual = set(data.get(section_name, {}).keys())
@@ -216,6 +217,7 @@ def read_tool_toml(tool_dir):
     preflight_section = data.get("preflight", {})
     post_install_section = data.get("post_install", {})
     detect_section = data.get("detect", {})
+    external_section = data.get("external", {})
 
     return {
         "description": tool_section.get("description", ""),
@@ -225,6 +227,7 @@ def read_tool_toml(tool_dir):
         "optional": preflight_section.get("optional", []),
         "post_install_script": post_install_section.get("script"),
         "detect_paths": detect_section.get("paths", []),
+        "external": bool(external_section),
     }
 
 
@@ -432,6 +435,7 @@ def scan_status(source_dir, target_dir):
                 os.path.join(tool_dir, "install.sh")
             ),
             "post_install": toml_data.get("post_install_script"),
+            "external": toml_data.get("external", False),
         }
         tools_result.append(tool_info)
 
@@ -1081,12 +1085,14 @@ def render_status_table(scan_data):
     excluded = [t for t in tools if t["excluded"]]
 
     # Build display rows: (name_col, description, status_str)
-    # name_col includes the optional * marker
+    # name_col includes the optional * and external [ext] markers
     rows = []
     for t in standard:
-        rows.append((t["name"], t["description"], _format_status(t)))
+        suffix = "  [ext]" if t.get("external") else ""
+        rows.append((t["name"] + suffix, t["description"], _format_status(t)))
     for t in optional:
-        rows.append((t["name"] + "  *", t["description"], _format_status(t)))
+        suffix = "  * [ext]" if t.get("external") else "  *"
+        rows.append((t["name"] + suffix, t["description"], _format_status(t)))
     for t in excluded:
         status_str = "Excluded"
         rows.append((t["name"], t["description"], status_str))
@@ -1113,7 +1119,8 @@ def render_status_table(scan_data):
 
     # Standard tools
     for t in standard:
-        name_col = t["name"]
+        suffix = "  [ext]" if t.get("external") else ""
+        name_col = t["name"] + suffix
         print(f"  {name_col:<{name_width}}{t['description']:<{desc_width}}{_format_status(t)}")
 
     # Dot separator between standard and optional
@@ -1122,7 +1129,8 @@ def render_status_table(scan_data):
 
     # Optional tools
     for t in optional:
-        name_col = t["name"] + "  *"
+        suffix = "  * [ext]" if t.get("external") else "  *"
+        name_col = t["name"] + suffix
         print(f"  {name_col:<{name_width}}{t['description']:<{desc_width}}{_format_status(t)}")
 
     # Dashed separator before excluded
@@ -1153,8 +1161,9 @@ def render_status_table(scan_data):
     print("    Available       Not yet installed")
     print("    Excluded        Internal tool, install by name only")
     print()
-    print('  *  = optional tool (not included in "Install all standard")')
-    print("     Edit the standard list with option [N] below")
+    print('  *     = optional tool (not included in "Install all standard")')
+    print("        Edit the standard list with option [N] below")
+    print("  [ext] = external tool (sourced from external-tools archive)")
     print("</verbatim>")
 
 
@@ -1695,6 +1704,63 @@ def render_validation(validate_data):
 
 
 
+def render_target_menu(source_dir):
+    """Render numbered target selection menu from sibling directories.
+
+    Scans ../*/ for directories, prints a numbered list, and adds a
+    manual entry option. Wrapped in <verbatim> tags.
+    """
+    parent = os.path.abspath(os.path.join(source_dir, ".."))
+    siblings = []
+    if os.path.isdir(parent):
+        for entry in sorted(os.listdir(parent)):
+            full = os.path.join(parent, entry)
+            if os.path.isdir(full):
+                siblings.append(entry)
+
+    print("<verbatim>")
+    print("Target project:")
+    print()
+    for i, name in enumerate(siblings, 1):
+        print(f"  [{i}] {name}")
+    manual_num = len(siblings) + 1
+    print(f"  [{manual_num}] Enter path manually")
+    print()
+    print("Type a number or project name:")
+    print("</verbatim>")
+
+
+def resolve_target_selection(source_dir, selection_text):
+    """Resolve user's target menu selection to a directory path.
+
+    Returns {"target": "<absolute_path>"} or
+            {"action": "manual"} or
+            {"error": "..."}.
+    """
+    parent = os.path.abspath(os.path.join(source_dir, ".."))
+    siblings = []
+    if os.path.isdir(parent):
+        for entry in sorted(os.listdir(parent)):
+            full = os.path.join(parent, entry)
+            if os.path.isdir(full):
+                siblings.append(entry)
+
+    stripped = selection_text.strip()
+    manual_num = len(siblings) + 1
+
+    # Try as a menu number
+    if stripped.isdigit():
+        num = int(stripped)
+        if num == manual_num:
+            return {"action": "manual"}
+        if 1 <= num <= len(siblings):
+            return resolve_target(siblings[num - 1])
+        return {"error": f"Invalid selection: {num}. Choose 1-{manual_num}."}
+
+    # Try as a bare name or path
+    return resolve_target(stripped)
+
+
 def resolve_target(target: str) -> dict:
     """Resolve a target argument to an absolute directory path.
 
@@ -1714,6 +1780,18 @@ def resolve_target(target: str) -> dict:
         return {"error": f"Directory does not exist: {resolved}"}
 
     return {"target": resolved}
+
+
+def cmd_render_target_menu(args):
+    """CLI handler for render-target-menu."""
+    render_target_menu(args.source)
+
+
+def cmd_resolve_target_selection(args):
+    """CLI handler for resolve-target-selection."""
+    result = resolve_target_selection(args.source, args.selection)
+    json.dump(result, sys.stdout, indent=2)
+    sys.stdout.write("\n")
 
 
 def cmd_resolve_target(args):
@@ -1758,6 +1836,7 @@ def cmd_scan_status(args):
                 "standard": t["standard"],
                 "has_install_sh": t["has_install_sh"],
                 "post_install": t["post_install"],
+                "external": t.get("external", False),
             })
         summary = {
             "mg_cc_tools_version": result["mg_cc_tools_version"],
@@ -1938,6 +2017,26 @@ def main():
         description="mg-cc-tools installer library",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    # render-target-menu
+    p_render_target = sub.add_parser(
+        "render-target-menu",
+        help="Render numbered target selection menu from sibling directories",
+    )
+    p_render_target.add_argument("--source", required=True,
+                                 help="Path to mg-cc-tools source directory")
+    p_render_target.set_defaults(func=cmd_render_target_menu)
+
+    # resolve-target-selection
+    p_resolve_target_sel = sub.add_parser(
+        "resolve-target-selection",
+        help="Resolve user's target menu selection to a directory path",
+    )
+    p_resolve_target_sel.add_argument("--source", required=True,
+                                      help="Path to mg-cc-tools source directory")
+    p_resolve_target_sel.add_argument("--selection", required=True,
+                                      help="User's menu selection text")
+    p_resolve_target_sel.set_defaults(func=cmd_resolve_target_selection)
 
     # resolve-target
     p_resolve_target = sub.add_parser(

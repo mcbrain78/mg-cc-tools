@@ -2,7 +2,7 @@
 name: mg:install
 description: Install, update, and manage mg-cc-tools in target projects
 argument-hint: "[target] [tool1,tool2,...]"
-allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, Agent
+allowed-tools: Bash, Read, Write, Glob, Grep, Agent
 ---
 
 # mg:install -- Unified Tool Installer & Manager
@@ -74,7 +74,22 @@ python3 "$MG_INSTALL_LIB" resolve-target --target "<argument>"
 If `"error"` is returned: STOP. Show the error message.
 Otherwise, use the returned `"target"` value (an absolute path) as `TARGET_PATH` for ALL subsequent commands.
 
-**If no arguments**, scan sibling directories (`../*/`) and present them via AskUserQuestion (header: "Target Project", multiSelect: false) with sibling paths (alphabetical) plus "Enter path manually". If no siblings found, offer only "Enter path manually". If user selects manual entry, ask for the path via a follow-up AskUserQuestion. Then resolve the selected path with `resolve-target` as above.
+**If no arguments**, render the target selection menu and resolve the user's choice:
+
+```bash
+python3 "$MG_INSTALL_LIB" render-target-menu --source ./
+```
+
+Echo the menu output per display rule. Get the user's response, then resolve it:
+
+```bash
+python3 "$MG_INSTALL_LIB" resolve-target-selection --source ./ --selection "<user_response>"
+```
+
+Handle the returned JSON:
+- `"target"` -- use as `TARGET_PATH`
+- `"action": "manual"` -- ask the user to type a path, then resolve with `resolve-target --target "<path>"`
+- `"error"` -- show the error and re-prompt
 
 If `TARGET_PATH` does not have a `.claude/` directory:
    ```bash
@@ -277,7 +292,7 @@ Echo per display rule.
 
 1. **Always runs from mg-cc-tools directory** -- source is always `./`
 2. **`MG_INSTALL_LIB`** is `./install/scripts/mg-install-lib.py` -- no sed resolution needed
-3. **AskUserQuestion is ONLY for target selection** (Step 1) -- action selection uses numbered text prompts
+3. **All user interaction uses numbered text menus** -- rendered by Python, resolved by Python. No AskUserQuestion
 4. **Excluded tools** (install, cc-regression-test) are excluded from bulk operations; can be installed explicitly by name
 5. **Standard vs optional** -- bulk operations only include `standard: true` tools. Optional tools can be installed by name or promoted via Edit Standard Install List
 6. **install.sh handles its own manifest update** -- except execute-only tools where this command calls update-manifest
