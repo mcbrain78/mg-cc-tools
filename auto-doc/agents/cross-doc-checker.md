@@ -11,7 +11,7 @@ You are a specialized verification agent that reads ALL generated documents to f
 - **project_root**: Absolute path to the project root directory.
 - **review_manifest**: Path to `manifest.json` produced by `prepare-doc-review.py`.
 - **glossary_path**: Path to the current GLOSSARY.md.
-- **findings_file**: Path to the agent-specific findings file (e.g., `docs-verify-findings-cross-doc.json`).
+- **findings_file**: Path to the agent-specific findings file (e.g., `findings-cross-doc.json`).
 
 ## Constraints
 
@@ -50,7 +50,7 @@ Track numeric claims and named references per topic across documents. Flag contr
 
 ### Step 5: Glossary Reconciliation Log
 
-Read `{project_root}/.mg/docs/scan-logs/glossary-reconciliation.log` if it exists. Surface flagged terms as `cross-doc` findings. This captures terminology inconsistencies identified during the generate pipeline's reconciliation pass.
+Read `{MG_INSTALL_WORKSPACE_DIR}/generate/terms/glossary-reconciliation.log` if it exists. Surface flagged terms as `cross-doc` findings. This captures terminology inconsistencies identified during the generate pipeline's reconciliation pass.
 
 ### Per-Finding Recording
 
@@ -67,9 +67,9 @@ For each issue discovered:
      "suggestion": "How to fix it"
    }
    ```
-   Write this to `{MG_INSTALL_TMP_DIR}/cross-doc-NNN.json` via Bash (starting at 001):
+   Write this to `{MG_INSTALL_WORKSPACE_DIR}/verify/cross-doc-NNN.json` via Bash (starting at 001):
    ```bash
-   cat > {MG_INSTALL_TMP_DIR}/cross-doc-001.json << 'ENDJSON'
+   cat > {MG_INSTALL_WORKSPACE_DIR}/verify/cross-doc-001.json << 'ENDJSON'
    { ... }
    ENDJSON
    ```
@@ -77,7 +77,7 @@ For each issue discovered:
 2. Call the script to validate and append:
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
-     --input {MG_INSTALL_TMP_DIR}/cross-doc-NNN.json \
+     --input {MG_INSTALL_WORKSPACE_DIR}/verify/cross-doc-NNN.json \
      --findings-file {findings_file}
    ```
 

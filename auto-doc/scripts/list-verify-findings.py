@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Filter and query verify findings from docs-verify-findings.json.
+"""Filter and query verify findings from verify/findings.json.
 
 Provides filtered views of accumulated verify findings for the generate
 command and writer agents. Supports summary mode (counts by document),
@@ -9,20 +9,20 @@ verify artifacts.
 Usage:
     # Summary mode (for generate's approval UI):
     python3 list-verify-findings.py \
-        --findings-file .mg/docs/docs-verify-findings.json \
+        --findings-file .mg/docs/verify/findings.json \
         --summary \
-        --output {MG_INSTALL_TMP_DIR}/findings-summary.json
+        --output {MG_INSTALL_WORKSPACE_DIR}/update/findings-summary.json
 
     # Filter by document and audience (for writer agents):
     python3 list-verify-findings.py \
-        --findings-file .mg/docs/docs-verify-findings.json \
+        --findings-file .mg/docs/verify/findings.json \
         --document OPERATIONS --audience devops \
-        --output {MG_INSTALL_TMP_DIR}/findings-ops.json
+        --output {MG_INSTALL_WORKSPACE_DIR}/update/findings-ops.json
 
     # Clean all verify artifacts:
     python3 list-verify-findings.py \
         --clean \
-        --findings-file .mg/docs/docs-verify-findings.json
+        --findings-file .mg/docs/verify/findings.json
 
 Atomic writes via lib/json_io.py. Zero external dependencies.
 """
@@ -35,20 +35,20 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
 
-# Verify artifacts relative to the docs directory (parent of findings file).
+# Verify artifacts relative to the verify directory (parent of findings file).
 _VERIFY_ARTIFACTS = [
-    "docs-verify-findings.json",
-    "docs-verify-report.md",
-    "scan-logs/verify-refs-broken.json",
-    "scan-logs/verify-refs-symbols.json",
-    "scan-logs/verify-refs.json",  # old format, may linger
-    "docs-verify-findings-mechanical.json",
-    "docs-verify-findings-editorial.json",
-    # Fact-checker findings files (verify pipeline restructure)
-    "docs-verify-findings-code-example.json",
-    "docs-verify-findings-data-model.json",
-    "docs-verify-findings-cross-doc.json",
-    "docs-verify-findings-completeness.json",
+    "findings.json",
+    "report.md",
+    "refs-broken.json",
+    "refs-symbols.json",
+    "refs.json",  # old format, may linger
+    "findings-mechanical.json",
+    "findings-editorial.json",
+    # Fact-checker findings files
+    "findings-code-example.json",
+    "findings-data-model.json",
+    "findings-cross-doc.json",
+    "findings-completeness.json",
 ]
 
 
@@ -59,7 +59,7 @@ def clean_verify_artifacts(docs_dir):
         docs_dir: The docs directory (parent of findings file).
 
     Removes static artifacts and dynamic per-document editorial files
-    (docs-verify-findings-editorial-*.json).
+    (findings-editorial-*.json).
     """
     for rel_path in _VERIFY_ARTIFACTS:
         full_path = os.path.join(docs_dir, rel_path)
@@ -69,7 +69,7 @@ def clean_verify_artifacts(docs_dir):
 
     # Dynamic cleanup: per-document editorial findings files
     for fname in os.listdir(docs_dir):
-        if fname.startswith("docs-verify-findings-editorial-") and fname.endswith(".json"):
+        if fname.startswith("findings-editorial-") and fname.endswith(".json"):
             full_path = os.path.join(docs_dir, fname)
             os.remove(full_path)
             print(f"Removed: {full_path}", file=sys.stderr)
@@ -161,7 +161,7 @@ def main():
     )
     parser.add_argument(
         "--findings-file", required=True,
-        help="Path to docs-verify-findings.json",
+        help="Path to verify/findings.json",
     )
     parser.add_argument(
         "--output", default=None,

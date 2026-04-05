@@ -43,15 +43,15 @@ Store the wave count as `num_waves` (integer, minimum 1, default 3).
    ```
    Find the `root_path` field value and store as `project_root`.
 
-3. **Check xml-sources exist.** Use Glob to verify `{project_root}/.mg/docs/xml-sources/` contains `.xml` files. If not, abort with:
+3. **Check xml-sources exist.** Use Glob to verify `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` contains `.xml` files. If not, abort with:
    ```
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
 4. **Create audit directory:**
    ```bash
-   rm -rf {project_root}/.mg/docs/tmp/audit
-   mkdir -p {project_root}/.mg/docs/tmp/audit
+   rm -rf {MG_INSTALL_WORKSPACE_DIR}/audit
+   mkdir -p {MG_INSTALL_WORKSPACE_DIR}/audit
    ```
 
 ### Step 2: Deterministic Reference Checks
@@ -61,16 +61,16 @@ Run verify-xml-refs.py once across all XML sources. It walks the entire xml-sour
 Run the verification (this may take 1-2 minutes for large projects):
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
-    --xml-dir {project_root}/.mg/docs/xml-sources \
+    --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
     --project-root {project_root} \
-    --findings-file {MG_INSTALL_TMP_DIR}/audit/findings-refs.json \
-    --database-model {project_root}/.mg/docs/tmp/database-model.json \
+    --findings-file {MG_INSTALL_WORKSPACE_DIR}/audit/findings-refs.json \
+    --database-model {MG_INSTALL_WORKSPACE_DIR}/generate/database-model.json \
     [--audience AUDIENCE]
 ```
 
 Add `--audience` only if the user specified audience names (e.g., `--audience devops`).
 
-Read `{MG_INSTALL_TMP_DIR}/audit/findings-refs.json` to get the deterministic findings list.
+Read `{MG_INSTALL_WORKSPACE_DIR}/audit/findings-refs.json` to get the deterministic findings list.
 
 ### Step 3: Prose-vs-Refs Consistency (multi-wave audit)
 
@@ -78,13 +78,13 @@ Read `{MG_INSTALL_TMP_DIR}/audit/findings-refs.json` to get the deterministic fi
 
 #### 3.1. Collect and prepare
 
-1. **Collect XML files.** Use Glob to find all `.xml` files under `{project_root}/.mg/docs/xml-sources/`. If an audience filter is active, only include files under `xml-sources/{audience}/` and root-level XML files (GLOSSARY.xml, OVERVIEW.xml).
+1. **Collect XML files.** Use Glob to find all `.xml` files under `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/`. If an audience filter is active, only include files under `xml-sources/{audience}/` and root-level XML files (GLOSSARY.xml, OVERVIEW.xml).
 
 2. **For each XML file, prepare input:**
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-prose-verify.py \
        --xml-file {xml_file_path} \
-       --output-dir {MG_INSTALL_TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+       --output-dir {MG_INSTALL_WORKSPACE_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
    ```
    This creates per-section JSON files and a manifest.json.
 
@@ -100,8 +100,8 @@ Agent(
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/verify-prose.md
 
 Project root: {project_root}
-Prose verify dir: {MG_INSTALL_TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
-Findings file: {MG_INSTALL_TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
+Prose verify dir: {MG_INSTALL_WORKSPACE_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+Findings file: {MG_INSTALL_WORKSPACE_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
 Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
 )
 ```
@@ -112,7 +112,7 @@ Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
 
 a. **Clean up state files** so the next wave's agents start fresh:
 ```bash
-rm -f {MG_INSTALL_TMP_DIR}/audit/*.sectionctl
+rm -f {MG_INSTALL_WORKSPACE_DIR}/audit/*.sectionctl
 ```
 
 b. **Spawn verify-prose-reaudit agents** (one per document, parallel foreground, **model: sonnet**). They read all prior findings and look for what was missed. Use the **same findings files**:
@@ -125,8 +125,8 @@ Agent(
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/verify-prose-reaudit.md
 
 Project root: {project_root}
-Prose verify dir: {MG_INSTALL_TMP_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
-Findings file: {MG_INSTALL_TMP_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
+Prose verify dir: {MG_INSTALL_WORKSPACE_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
+Findings file: {MG_INSTALL_WORKSPACE_DIR}/audit/findings-prose-{audience}-{DOCUMENT}.json
 Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
 )
 ```
@@ -135,7 +135,7 @@ Where `{N}` is the current wave number (2, 3, 4, ...).
 
 #### 3.4. Collect findings
 
-**Collect prose findings** from each document's findings file (`{MG_INSTALL_TMP_DIR}/audit/findings-prose-*.json`). Read each file and accumulate all findings.
+**Collect prose findings** from each document's findings file (`{MG_INSTALL_WORKSPACE_DIR}/audit/findings-prose-*.json`). Read each file and accumulate all findings.
 
 ### Step 4: Report
 
@@ -173,9 +173,9 @@ When clean, run /mg:auto-doc-verify for full editorial review.
 
 ### Step 5: Persist Summary
 
-Write the full summary text from Step 4 to `{MG_INSTALL_TMP_DIR}/audit/summary.md` so it survives beyond the conversation. Then tell the user:
+Write the full summary text from Step 4 to `{MG_INSTALL_WORKSPACE_DIR}/audit/summary.md` so it survives beyond the conversation. Then tell the user:
 ```
-Summary written to .mg/docs/tmp/audit/summary.md
+Summary written to .mg/docs/audit/summary.md
 ```
 
 ## Important Principles

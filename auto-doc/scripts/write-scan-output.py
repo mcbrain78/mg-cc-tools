@@ -9,8 +9,8 @@ a .rejected file, and writes the validated output atomically.
 
 Usage:
     python3 write-scan-output.py \
-        --input .mg/docs/tmp/scan-developers.json \
-        --output .mg/docs/scan-logs/scan-developers.json \
+        --input .mg/docs/scan/scan-developers.json \
+        --output .mg/docs/scan/scan-developers.json \
         --audience developers
 
 Required fields in input JSON:

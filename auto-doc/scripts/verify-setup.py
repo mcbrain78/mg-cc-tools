@@ -126,10 +126,10 @@ def build_paths(project_root, docs_dir, checks_file, findings_prefix):
     """
     docs_dir_abs = os.path.join(project_root, docs_dir)
     mg_docs = os.path.join(project_root, ".mg", "docs")
-    tmp_dir = os.path.join(mg_docs, "tmp")
+    verify_dir = os.path.join(mg_docs, "verify")
 
-    # Detect XML sources directory
-    xml_dir = os.path.join(mg_docs, "xml-sources")
+    # Detect XML sources directory (under generate/)
+    xml_dir = os.path.join(mg_docs, "generate", "xml-sources")
     has_xml_sources = os.path.isdir(xml_dir) and any(
         f.endswith(".xml")
         for dirpath, _, files in os.walk(xml_dir)
@@ -140,18 +140,18 @@ def build_paths(project_root, docs_dir, checks_file, findings_prefix):
         "project_root": project_root,
         "docs_dir_abs": docs_dir_abs,
         "glossary_path": os.path.join(docs_dir_abs, "GLOSSARY.md"),
-        "findings_file": os.path.join(mg_docs, "docs-verify-findings.json"),
-        "findings_prefix": os.path.join(mg_docs, f"docs-verify-findings-{findings_prefix}"),
+        "findings_file": os.path.join(verify_dir, "findings.json"),
+        "findings_prefix": os.path.join(verify_dir, f"findings-{findings_prefix}"),
         "checks_file": checks_file,
-        "manifest": os.path.join(tmp_dir, "review-chunks", "manifest.json"),
-        "scan_context_path": os.path.join(tmp_dir, "verify-scan-context.json"),
-        "tmp_dir": tmp_dir,
+        "manifest": os.path.join(verify_dir, "review-chunks", "manifest.json"),
+        "scan_context_path": os.path.join(verify_dir, "scan-context.json"),
+        "verify_dir": verify_dir,
         "xml_dir": xml_dir if has_xml_sources else None,
         "fact_checker_findings": {
-            "code_example": os.path.join(mg_docs, "docs-verify-findings-code-example.json"),
-            "data_model": os.path.join(mg_docs, "docs-verify-findings-data-model.json"),
-            "cross_doc": os.path.join(mg_docs, "docs-verify-findings-cross-doc.json"),
-            "completeness": os.path.join(mg_docs, "docs-verify-findings-completeness.json"),
+            "code_example": os.path.join(verify_dir, "findings-code-example.json"),
+            "data_model": os.path.join(verify_dir, "findings-data-model.json"),
+            "cross_doc": os.path.join(verify_dir, "findings-cross-doc.json"),
+            "completeness": os.path.join(verify_dir, "findings-completeness.json"),
         },
     }
 
@@ -205,8 +205,7 @@ def run_prep_scripts(
     mg_docs = os.path.join(project_root, ".mg", "docs")
 
     # Ensure workspace dirs exist
-    os.makedirs(os.path.join(mg_docs, "scan-logs"), exist_ok=True)
-    os.makedirs(paths["tmp_dir"], exist_ok=True)
+    os.makedirs(paths["verify_dir"], exist_ok=True)
 
     # 1. Clean prior verify artifacts
     _run_script(
@@ -236,7 +235,7 @@ def run_prep_scripts(
     prep_cmd = [
         sys.executable, os.path.join(scripts_dir, "prepare-doc-review.py"),
         "--docs-dir", paths["docs_dir_abs"],
-        "--output-dir", os.path.join(paths["tmp_dir"], "review-chunks"),
+        "--output-dir", os.path.join(paths["verify_dir"], "review-chunks"),
         "--token-limit", "5000",
     ]
     if audience:
@@ -246,7 +245,7 @@ def run_prep_scripts(
     # 4. Verify references (non-critical — log and continue)
     _run_script(
         [sys.executable, os.path.join(scripts_dir, "verify-references.py"),
-         "--manifests-dir", os.path.join(mg_docs, "reference-manifests"),
+         "--manifests-dir", os.path.join(mg_docs, "generate", "reference-manifests"),
          "--project-root", project_root,
          "--scan-file", scan_file,
          "--findings-file", paths["findings_file"]],

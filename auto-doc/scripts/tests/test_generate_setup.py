@@ -147,9 +147,10 @@ class TestOutput:
             _, result = _run_setup(tmp)
             expected = {
                 "project_root", "docs_dir_abs", "scan_data_path",
-                "tmp_dir", "project_model_path", "database_model_path",
+                "generate_dir", "project_model_path", "database_model_path",
                 "database_model_summary_path", "db_table_map_path",
-                "notes_file", "notes_inbox", "manifests_dir", "scan_logs_dir",
+                "notes_file", "notes_inbox", "manifests_dir",
+                "scan_dir", "terms_dir", "xml_sources_dir",
                 "mode", "audiences", "audience_filter_active",
                 "scan_views", "notes_by_audience",
                 "refined_templates", "stale_templates",
@@ -279,16 +280,15 @@ class TestWorkspace:
     def test_creates_workspace_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_root, result = _run_setup(tmp)
-            assert os.path.isdir(result["tmp_dir"])
+            assert os.path.isdir(result["generate_dir"])
             assert os.path.isdir(result["manifests_dir"])
-            assert os.path.isdir(result["scan_logs_dir"])
 
     def test_cleans_stale_terms(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_root, scan_path, config_path = _make_project(tmp)
-            scan_logs = os.path.join(project_root, ".mg", "docs", "scan-logs")
-            os.makedirs(scan_logs, exist_ok=True)
-            stale = os.path.join(scan_logs, "terms-old.json")
+            terms_dir = os.path.join(project_root, ".mg", "docs", "generate", "terms")
+            os.makedirs(terms_dir, exist_ok=True)
+            stale = os.path.join(terms_dir, "terms-old.json")
             _write_json(stale, [])
 
             _run([
@@ -300,9 +300,9 @@ class TestWorkspace:
     def test_cleans_stale_temp_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_root, scan_path, config_path = _make_project(tmp)
-            tmp_dir = os.path.join(project_root, ".mg", "docs", "tmp")
-            os.makedirs(tmp_dir, exist_ok=True)
-            stale = os.path.join(tmp_dir, "write-state-old.json")
+            generate_dir = os.path.join(project_root, ".mg", "docs", "generate")
+            os.makedirs(generate_dir, exist_ok=True)
+            stale = os.path.join(generate_dir, "write-state-old.json")
             _write_json(stale, {})
 
             _run([
@@ -315,31 +315,31 @@ class TestWorkspace:
         """project-model.json and db artifacts from prior runs are removed."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root, scan_path, config_path = _make_project(tmp)
-            tmp_dir = os.path.join(project_root, ".mg", "docs", "tmp")
-            os.makedirs(tmp_dir, exist_ok=True)
+            generate_dir = os.path.join(project_root, ".mg", "docs", "generate")
+            os.makedirs(generate_dir, exist_ok=True)
             for name in [
                 "project-model.json",
                 "database-model.json",
                 "database-model-summary.json",
                 "db-table-map.json",
             ]:
-                _write_json(os.path.join(tmp_dir, name), {"stale": True})
+                _write_json(os.path.join(generate_dir, name), {"stale": True})
 
             _run([
                 "--scan-file", scan_path, "--config", config_path,
                 "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
             ])
             # project-model.json should be recreated fresh (not stale)
-            pm = _read_json(os.path.join(tmp_dir, "project-model.json"))
+            pm = _read_json(os.path.join(generate_dir, "project-model.json"))
             assert "stale" not in pm
             # DB artifacts should be gone (no SQLAlchemy in test fixture)
-            assert not os.path.exists(os.path.join(tmp_dir, "database-model-summary.json"))
-            assert not os.path.exists(os.path.join(tmp_dir, "db-table-map.json"))
+            assert not os.path.exists(os.path.join(generate_dir, "database-model-summary.json"))
+            assert not os.path.exists(os.path.join(generate_dir, "db-table-map.json"))
 
     def test_initial_mode_clears_manifests(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_root, scan_path, config_path = _make_project(tmp)
-            manifests = os.path.join(project_root, ".mg", "docs", "reference-manifests")
+            manifests = os.path.join(project_root, ".mg", "docs", "generate", "reference-manifests")
             os.makedirs(manifests, exist_ok=True)
             stale = os.path.join(manifests, "old.json")
             _write_json(stale, {})
@@ -353,7 +353,7 @@ class TestWorkspace:
     def test_update_mode_preserves_manifests(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_root, scan_path, config_path = _make_project(tmp, with_docs=True)
-            manifests = os.path.join(project_root, ".mg", "docs", "reference-manifests")
+            manifests = os.path.join(project_root, ".mg", "docs", "generate", "reference-manifests")
             os.makedirs(manifests, exist_ok=True)
             existing = os.path.join(manifests, "existing.json")
             _write_json(existing, {})

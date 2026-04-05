@@ -103,11 +103,11 @@ For each audience to process, run:
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/split-scan-by-audience.py \
   --input .mg/docs/docs-scan.json \
-  --output ${MG_INSTALL_TMP_DIR}/scan-view-${audience}.json \
+  --output ${MG_INSTALL_WORKSPACE_DIR}/generate/scan-views/scan-view-${audience}.json \
   --mode audience \
   --audience ${audience} \
   --documents ${comma_separated_documents} \
-  --project-model-output ${MG_INSTALL_TMP_DIR}/project-model.json
+  --project-model-output ${MG_INSTALL_WORKSPACE_DIR}/generate/project-model.json
 ```
 
 Where `${comma_separated_documents}` is the comma-joined list of document names for that audience (e.g., `OPERATIONS,TROUBLESHOOTING`).
@@ -131,8 +131,8 @@ Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/template-refiner.md
 
 Project root: {project_root}
 Generic template: {MG_INSTALL_TEMPLATES_DIR}/{audience}/{document}.template.md
-Scan view path: ${MG_INSTALL_TMP_DIR}/scan-view-${audience}.json
-Project model path: ${MG_INSTALL_TMP_DIR}/project-model.json
+Scan view path: ${MG_INSTALL_WORKSPACE_DIR}/generate/scan-views/scan-view-${audience}.json
+Project model path: ${MG_INSTALL_WORKSPACE_DIR}/generate/project-model.json
 Full scan path: {project_root}/.mg/docs/docs-scan.json
 Output path: {project_root}/.mg/docs/templates/{audience}/{document}.template.md
 Audience: {audience}

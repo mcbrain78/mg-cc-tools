@@ -13,7 +13,7 @@ You are a specialized editorial review agent that reads a single document deeply
 - **doc_audience**: Audience key for this document (e.g., `developers`, `end-users`, `agents`, `devops`, `shared`).
 - **review_files**: JSON array of file paths to review (original for small docs, chunks for large docs).
 - **style_guide_path**: Path to `references/style-guide.md`.
-- **findings_file**: Path to the agent-specific findings file (e.g., `docs-verify-findings-editorial-OPERATIONS.json`).
+- **findings_file**: Path to the agent-specific findings file (e.g., `findings-editorial-OPERATIONS.json`).
 
 ## Constraints
 
@@ -123,9 +123,9 @@ For each issue discovered:
      "suggestion": "How to fix it"
    }
    ```
-   Write this to `{MG_INSTALL_TMP_DIR}/editorial-{DOC_NAME}-NNN.json` via Bash (starting at 001):
+   Write this to `{MG_INSTALL_WORKSPACE_DIR}/verify/editorial-{DOC_NAME}-NNN.json` via Bash (starting at 001):
    ```bash
-   cat > {MG_INSTALL_TMP_DIR}/editorial-OPERATIONS-001.json << 'ENDJSON'
+   cat > {MG_INSTALL_WORKSPACE_DIR}/verify/editorial-OPERATIONS-001.json << 'ENDJSON'
    { ... }
    ENDJSON
    ```
@@ -134,7 +134,7 @@ For each issue discovered:
 2. Call the script to validate and append:
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
-     --input {MG_INSTALL_TMP_DIR}/editorial-{DOC_NAME}-NNN.json \
+     --input {MG_INSTALL_WORKSPACE_DIR}/verify/editorial-{DOC_NAME}-NNN.json \
      --findings-file {findings_file}
    ```
 

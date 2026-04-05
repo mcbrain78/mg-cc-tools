@@ -533,28 +533,24 @@ class TestListVerifyFindingsClean:
     def test_clean_removes_all_verify_artifacts(self):
         """--clean removes all static verify artifacts that exist."""
         with tempfile.TemporaryDirectory() as tmp:
-            # Create the docs dir structure with all verify artifacts
-            scan_logs = os.path.join(tmp, "scan-logs")
-            os.makedirs(scan_logs)
-
             artifacts = [
-                os.path.join(tmp, "docs-verify-findings.json"),
-                os.path.join(tmp, "docs-verify-report.md"),
-                os.path.join(scan_logs, "verify-refs-broken.json"),
-                os.path.join(scan_logs, "verify-refs-symbols.json"),
-                os.path.join(scan_logs, "verify-refs.json"),
-                os.path.join(tmp, "docs-verify-findings-mechanical.json"),
-                os.path.join(tmp, "docs-verify-findings-editorial.json"),
-                os.path.join(tmp, "docs-verify-findings-code-example.json"),
-                os.path.join(tmp, "docs-verify-findings-data-model.json"),
-                os.path.join(tmp, "docs-verify-findings-cross-doc.json"),
-                os.path.join(tmp, "docs-verify-findings-completeness.json"),
+                os.path.join(tmp, "findings.json"),
+                os.path.join(tmp, "report.md"),
+                os.path.join(tmp, "refs-broken.json"),
+                os.path.join(tmp, "refs-symbols.json"),
+                os.path.join(tmp, "refs.json"),
+                os.path.join(tmp, "findings-mechanical.json"),
+                os.path.join(tmp, "findings-editorial.json"),
+                os.path.join(tmp, "findings-code-example.json"),
+                os.path.join(tmp, "findings-data-model.json"),
+                os.path.join(tmp, "findings-cross-doc.json"),
+                os.path.join(tmp, "findings-completeness.json"),
             ]
             for path in artifacts:
                 with open(path, "w") as f:
                     f.write("{}")
 
-            findings_file = os.path.join(tmp, "docs-verify-findings.json")
+            findings_file = os.path.join(tmp, "findings.json")
 
             result = subprocess.run(
                 [sys.executable, SCRIPT_PATH,
@@ -575,14 +571,11 @@ class TestListVerifyFindingsClean:
     def test_clean_removes_dynamic_editorial_files(self):
         """--clean removes per-document editorial findings files (editorial-*.json)."""
         with tempfile.TemporaryDirectory() as tmp:
-            scan_logs = os.path.join(tmp, "scan-logs")
-            os.makedirs(scan_logs)
-
             # Create per-document editorial files
             editorial_files = [
-                os.path.join(tmp, "docs-verify-findings-editorial-OPERATIONS.json"),
-                os.path.join(tmp, "docs-verify-findings-editorial-ARCHITECTURE.json"),
-                os.path.join(tmp, "docs-verify-findings-editorial-GETTING-STARTED.json"),
+                os.path.join(tmp, "findings-editorial-OPERATIONS.json"),
+                os.path.join(tmp, "findings-editorial-ARCHITECTURE.json"),
+                os.path.join(tmp, "findings-editorial-GETTING-STARTED.json"),
             ]
             for path in editorial_files:
                 with open(path, "w") as f:
@@ -593,7 +586,7 @@ class TestListVerifyFindingsClean:
             with open(other_file, "w") as f:
                 f.write("{}")
 
-            findings_file = os.path.join(tmp, "docs-verify-findings.json")
+            findings_file = os.path.join(tmp, "findings.json")
 
             result = subprocess.run(
                 [sys.executable, SCRIPT_PATH,
@@ -613,7 +606,7 @@ class TestListVerifyFindingsClean:
     def test_clean_succeeds_when_no_artifacts_exist(self):
         """--clean exits 0 when no verify artifacts exist (no error)."""
         with tempfile.TemporaryDirectory() as tmp:
-            findings_file = os.path.join(tmp, "docs-verify-findings.json")
+            findings_file = os.path.join(tmp, "findings.json")
 
             result = subprocess.run(
                 [sys.executable, SCRIPT_PATH,
@@ -626,11 +619,8 @@ class TestListVerifyFindingsClean:
     def test_clean_only_removes_verify_artifacts(self):
         """--clean does not remove other files in the directory."""
         with tempfile.TemporaryDirectory() as tmp:
-            scan_logs = os.path.join(tmp, "scan-logs")
-            os.makedirs(scan_logs)
-
             # Create a verify artifact
-            verify_file = os.path.join(tmp, "docs-verify-findings.json")
+            verify_file = os.path.join(tmp, "findings.json")
             with open(verify_file, "w") as f:
                 f.write("[]")
 
@@ -638,13 +628,12 @@ class TestListVerifyFindingsClean:
             other_files = [
                 os.path.join(tmp, "docs-scan.json"),
                 os.path.join(tmp, ".docs.config.json"),
-                os.path.join(scan_logs, "other-scan-log.json"),
             ]
             for path in other_files:
                 with open(path, "w") as f:
                     f.write("{}")
 
-            findings_file = os.path.join(tmp, "docs-verify-findings.json")
+            findings_file = os.path.join(tmp, "findings.json")
 
             result = subprocess.run(
                 [sys.executable, SCRIPT_PATH,

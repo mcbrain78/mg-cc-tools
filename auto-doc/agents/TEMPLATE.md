@@ -50,7 +50,7 @@ You are a specialized writer agent for the **[AUDIENCE_NAME]** audience. You gen
    ```json
    [{"term": "scoring engine", "context": "Component that evaluates portfolio positions"}]
    ```
-   Write proposals to `.mg/docs/scan-logs/terms-{audience}.json`.
+   Write proposals to `{MG_INSTALL_WORKSPACE_DIR}/generate/terms/terms-{audience}.json`.
 
 ## Output Conventions
 
@@ -67,7 +67,7 @@ The documentation generation pipeline follows a locked execution order:
 
 1. **Glossary agent runs first (initial pass)** -- The glossary writer reads scan data and generates initial GLOSSARY.md with categorized term definitions. This establishes the terminology source of truth before any audience docs are written.
 
-2. **Four writer agents run in parallel** -- One agent per audience (end-user, developer, agent, devops). Each reads its templates and generates all assigned documents. Agents reference the glossary for consistent terminology. Each agent writes term proposals to `.mg/docs/scan-logs/terms-{audience}.json`.
+2. **Four writer agents run in parallel** -- One agent per audience (end-user, developer, agent, devops). Each reads its templates and generates all assigned documents. Agents reference the glossary for consistent terminology. Each agent writes term proposals to `{MG_INSTALL_WORKSPACE_DIR}/generate/terms/terms-{audience}.json`.
 
 3. **Glossary reconciliation pass** -- The glossary writer runs again, reading all `terms-{audience}.json` files. It merges proposed terms into GLOSSARY.md: adds new terms, resolves synonym conflicts, and ensures one canonical definition per concept.
 

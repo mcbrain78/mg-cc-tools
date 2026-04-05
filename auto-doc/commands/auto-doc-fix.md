@@ -37,12 +37,12 @@ Read references/schema.yaml
    ```
    Find the `root_path` field value and store as `project_root`.
 
-3. **Check xml-sources exist.** Use Glob to verify `{project_root}/.mg/docs/xml-sources/` contains `.xml` files. If not, abort with:
+3. **Check xml-sources exist.** Use Glob to verify `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` contains `.xml` files. If not, abort with:
    ```
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
-4. **Check audit findings exist.** Verify that the audit directory `{MG_INSTALL_TMP_DIR}/audit/` exists and contains at least one of:
+4. **Check audit findings exist.** Verify that the audit directory `{MG_INSTALL_WORKSPACE_DIR}/audit/` exists and contains at least one of:
    - `findings-refs.json`
    - Any `findings-prose-*.json` file
 
@@ -55,8 +55,8 @@ Read references/schema.yaml
 
 ```bash
 uv run {MG_INSTALL_SCRIPTS_DIR}/load-audit-findings.py \
-    --audit-dir {MG_INSTALL_TMP_DIR}/audit \
-    --output {MG_INSTALL_TMP_DIR}/audit/merged-findings.json
+    --audit-dir {MG_INSTALL_WORKSPACE_DIR}/audit \
+    --output {MG_INSTALL_WORKSPACE_DIR}/audit/merged-findings.json
 ```
 
 Read the output file. If the merged array is empty, print:
@@ -77,16 +77,16 @@ Agent(
 
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/group-findings.md
 
-findings_file: {MG_INSTALL_TMP_DIR}/audit/merged-findings.json
-output_file: {MG_INSTALL_TMP_DIR}/audit/grouping.json"
+findings_file: {MG_INSTALL_WORKSPACE_DIR}/audit/merged-findings.json
+output_file: {MG_INSTALL_WORKSPACE_DIR}/audit/grouping.json"
 )
 ```
 
-After the agent completes, read `{MG_INSTALL_TMP_DIR}/audit/grouping.json` to verify it was written.
+After the agent completes, read `{MG_INSTALL_WORKSPACE_DIR}/audit/grouping.json` to verify it was written.
 
 ### Step 4: Present Summary and Get Approval
 
-Read `{MG_INSTALL_TMP_DIR}/audit/grouping.json` and `{MG_INSTALL_TMP_DIR}/audit/merged-findings.json`. Present a table:
+Read `{MG_INSTALL_WORKSPACE_DIR}/audit/grouping.json` and `{MG_INSTALL_WORKSPACE_DIR}/audit/merged-findings.json`. Present a table:
 
 ```
 Audit Fix Plan:
@@ -111,7 +111,7 @@ Handle user response:
 
 1. Create the fix directory (separate from audit so diffs survive audit re-runs):
    ```bash
-   mkdir -p {MG_INSTALL_TMP_DIR}/fix
+   mkdir -p {MG_INSTALL_WORKSPACE_DIR}/fix
    ```
 
 2. Build the approved indices string (comma-separated, e.g., `"0,1,2"` or `"0,2"`).
@@ -119,12 +119,12 @@ Handle user response:
 3. Initialize the fix queue:
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/fix-queue.py init \
-       --grouping-file {MG_INSTALL_TMP_DIR}/audit/grouping.json \
-       --findings-file {MG_INSTALL_TMP_DIR}/audit/merged-findings.json \
-       --xml-dir {project_root}/.mg/docs/xml-sources \
-       --edit-dir {MG_INSTALL_TMP_DIR}/fix \
+       --grouping-file {MG_INSTALL_WORKSPACE_DIR}/audit/grouping.json \
+       --findings-file {MG_INSTALL_WORKSPACE_DIR}/audit/merged-findings.json \
+       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
+       --edit-dir {MG_INSTALL_WORKSPACE_DIR}/fix \
        --approved {comma_separated_indices} \
-       --state-file {MG_INSTALL_TMP_DIR}/fix/fix-state.json
+       --state-file {MG_INSTALL_WORKSPACE_DIR}/fix/fix-state.json
    ```
 
 4. **Loop** — call `next` repeatedly until done:
@@ -132,7 +132,7 @@ Handle user response:
    a. Get the next group:
       ```bash
       uv run {MG_INSTALL_SCRIPTS_DIR}/fix-queue.py next \
-          --state-file {MG_INSTALL_TMP_DIR}/fix/fix-state.json
+          --state-file {MG_INSTALL_WORKSPACE_DIR}/fix/fix-state.json
       ```
 
    b. Parse the JSON output from stdout.

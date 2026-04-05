@@ -43,7 +43,7 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/generate-setup.py \
 Add `--audience` only if the user specified audience names.
 
 Parse the JSON output to get all runtime values:
-- **Paths:** `project_root`, `docs_dir_abs`, `scan_data_path`, `tmp_dir`, `project_model_path`, `database_model_path`, `database_model_summary_path`, `db_table_map_path`, `notes_file`, `manifests_dir`, `scan_logs_dir`
+- **Paths:** `project_root`, `docs_dir_abs`, `scan_data_path`, `generate_dir`, `project_model_path`, `database_model_path`, `database_model_summary_path`, `db_table_map_path`, `notes_file`, `manifests_dir`, `scan_dir`
 - **Mode:** `mode` ("initial" or "update")
 - **Audiences:** `audiences` (dict of audience name → {documents: [...]})
 - **Audience filter:** `audience_filter_active` (boolean)
@@ -90,8 +90,8 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
    Style guide path: references/style-guide.md
    Mode: {mode}
    Pass: initial
-   Term proposals dir: {project_root}/.mg/docs/scan-logs/
-   Tmp dir: {tmp_dir}
+   Term proposals dir: {project_root}/.mg/docs/generate/terms/
+   Tmp dir: {generate_dir}
    Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
    )
    ```
@@ -101,21 +101,21 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
        --finalize \
-       --state-file {MG_INSTALL_TMP_DIR}/write-state-glossary.json \
+       --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-glossary.json \
        --docs-dir {docs_dir_abs} \
        --audience "" \
-       --manifest-file {MG_INSTALL_TMP_DIR}/manifest-glossary.json \
+       --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-glossary.json \
        --mode {mode} \
-       --xml-dir {project_root}/.mg/docs/xml-sources
+       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
    ```
 
    If the state file does not exist, log a warning and continue. Writers will proceed without a glossary baseline.
 
-3. **Assemble markdown.** If `{project_root}/.mg/docs/xml-sources/GLOSSARY.xml` exists:
+3. **Assemble markdown.** If `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/GLOSSARY.xml` exists:
 
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
-       --xml-file {project_root}/.mg/docs/xml-sources/GLOSSARY.xml \
+       --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/GLOSSARY.xml \
        --output {docs_dir_abs}/GLOSSARY.md
    ```
 
@@ -162,9 +162,9 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    Documents: {DOCUMENT}
    Mode: {mode}
    Refined template path: {refined_templates["devops"][DOCUMENT]["path"]}
-   State file path: {tmp_dir}/heading-state-devops-{DOCUMENT}.json
+   State file path: {generate_dir}/heading-state-devops-{DOCUMENT}.json
    Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
-   Tmp dir: {tmp_dir}
+   Tmp dir: {generate_dir}
 
    Standing notes (incorporate into relevant sections):
    {notes for this document, or 'None'}"
@@ -220,17 +220,17 @@ After all writer agents complete, assemble documents from accumulated sections a
 
 **For orient-write audiences** (devops documents that used refined templates): finalize each per-document state file, all accumulating into the same audience manifest:
 
-For each `write-state-{audience}-{DOCUMENT}.json` file in `{MG_INSTALL_TMP_DIR}`:
+For each `write-state-{audience}-{DOCUMENT}.json` file in `{MG_INSTALL_WORKSPACE_DIR}/generate`:
 
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
     --finalize \
-    --state-file {MG_INSTALL_TMP_DIR}/write-state-{audience}-{DOCUMENT}.json \
+    --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-{audience}-{DOCUMENT}.json \
     --docs-dir {docs_dir_abs} \
     --audience {audience} \
-    --manifest-file {MG_INSTALL_TMP_DIR}/manifest-{audience}.json \
+    --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-{audience}.json \
     --mode {mode} \
-    --xml-dir {project_root}/.mg/docs/xml-sources
+    --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
 ```
 
 **For standard audiences** (end-users, developers, agents, and devops documents without refined templates): finalize the single per-audience state file:
@@ -238,17 +238,17 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
     --finalize \
-    --state-file {MG_INSTALL_TMP_DIR}/write-state-{audience}.json \
+    --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-{audience}.json \
     --docs-dir {docs_dir_abs} \
     --audience {audience} \
-    --manifest-file {MG_INSTALL_TMP_DIR}/manifest-{audience}.json \
+    --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-{audience}.json \
     --mode {mode} \
-    --xml-dir {project_root}/.mg/docs/xml-sources
+    --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
 ```
 
 Skip any audience whose state file(s) do not exist.
 
-This assembles documents from accumulated sections, generates temp manifests, and builds XML source files in `.mg/docs/xml-sources/{audience}/`.
+This assembles documents from accumulated sections, generates temp manifests, and builds XML source files in `generate/xml-sources/{audience}/`.
 
 ### Assemble & Polish
 
@@ -256,7 +256,7 @@ After finalize, reassemble markdown from XML (which now has refs populated from 
 
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
-    --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
+    --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/{audience}/{DOCUMENT}.xml \
     --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
 ```
 
@@ -286,14 +286,14 @@ After polish agents complete, sync their edits back to XML and reassemble. For e
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/sync-edits-to-xml.py \
     --md-file {docs_dir_abs}/{audience}/{DOCUMENT}.md \
-    --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml
+    --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/{audience}/{DOCUMENT}.xml
 ```
 
 Then reassemble the final markdown from synced XML:
 
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
-    --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
+    --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/{audience}/{DOCUMENT}.xml \
     --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
 ```
 
@@ -303,8 +303,8 @@ After polish completes, merge temp manifests into persisted location:
 
 ```bash
 uv run {MG_INSTALL_SCRIPTS_DIR}/merge-manifests.py \
-    --tmp-dir {MG_INSTALL_TMP_DIR} \
-    --output-dir {project_root}/.mg/docs/reference-manifests \
+    --tmp-dir {MG_INSTALL_WORKSPACE_DIR}/generate \
+    --output-dir {MG_INSTALL_WORKSPACE_DIR}/generate/reference-manifests \
     --audiences end-users,developers,agents,devops
 ```
 
@@ -331,8 +331,8 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
    Style guide path: references/style-guide.md
    Mode: {mode}
    Pass: reconciliation
-   Term proposals dir: {project_root}/.mg/docs/scan-logs/
-   Tmp dir: {tmp_dir}
+   Term proposals dir: {project_root}/.mg/docs/generate/terms/
+   Tmp dir: {generate_dir}
    Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
    )
    ```
@@ -342,26 +342,26 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
        --finalize \
-       --state-file {MG_INSTALL_TMP_DIR}/write-state-glossary.json \
+       --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-glossary.json \
        --docs-dir {docs_dir_abs} \
        --audience "" \
-       --manifest-file {MG_INSTALL_TMP_DIR}/manifest-glossary.json \
+       --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-glossary.json \
        --mode {mode} \
        --merge \
-       --xml-dir {project_root}/.mg/docs/xml-sources
+       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
    ```
 
    If the state file does not exist, the reconciliation produced no changes — continue.
 
-3. **Reassemble.** If `{project_root}/.mg/docs/xml-sources/GLOSSARY.xml` exists:
+3. **Reassemble.** If `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/GLOSSARY.xml` exists:
 
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
-       --xml-file {project_root}/.mg/docs/xml-sources/GLOSSARY.xml \
+       --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/GLOSSARY.xml \
        --output {docs_dir_abs}/GLOSSARY.md
    ```
 
-   The reconciliation log is at `.mg/docs/scan-logs/glossary-reconciliation.log`.
+   The reconciliation log is at `.mg/docs/generate/terms/glossary-reconciliation.log`.
 
 ### Stage 4: Generate OVERVIEW.md
 
@@ -377,7 +377,7 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-doc-review.py \
        --docs-dir {docs_dir_abs} \
-       --output-dir {MG_INSTALL_TMP_DIR}/overview-chunks \
+       --output-dir {MG_INSTALL_WORKSPACE_DIR}/generate/overview-chunks \
        --token-limit 5000
    ```
 
@@ -389,12 +389,12 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
 
      Project root: {project_root}
      Docs dir: {docs_dir_abs}
-     Review manifest: {MG_INSTALL_TMP_DIR}/overview-chunks/manifest.json
-     Project model path: {MG_INSTALL_TMP_DIR}/project-model.json
+     Review manifest: {MG_INSTALL_WORKSPACE_DIR}/generate/overview-chunks/manifest.json
+     Project model path: {MG_INSTALL_WORKSPACE_DIR}/generate/project-model.json
      Glossary path: {docs_dir_abs}/GLOSSARY.md
      OVERVIEW template: {MG_INSTALL_TEMPLATES_DIR}/OVERVIEW.template.md
      Style guide path: references/style-guide.md
-     Tmp dir: {tmp_dir}
+     Tmp dir: {generate_dir}
      Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
    )
    ```
@@ -404,21 +404,21 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
        --finalize \
-       --state-file {MG_INSTALL_TMP_DIR}/write-state-overview.json \
+       --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-overview.json \
        --docs-dir {docs_dir_abs} \
        --audience "" \
-       --manifest-file {MG_INSTALL_TMP_DIR}/manifest-overview.json \
+       --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-overview.json \
        --mode {mode} \
-       --xml-dir {project_root}/.mg/docs/xml-sources
+       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
    ```
 
    If the state file does not exist, log a warning — the overview agent may have failed.
 
-4. **Reassemble.** If `{project_root}/.mg/docs/xml-sources/OVERVIEW.xml` exists:
+4. **Reassemble.** If `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/OVERVIEW.xml` exists:
 
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
-       --xml-file {project_root}/.mg/docs/xml-sources/OVERVIEW.xml \
+       --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/OVERVIEW.xml \
        --output {docs_dir_abs}/OVERVIEW.md
    ```
 
@@ -460,7 +460,7 @@ After all generation is complete, present a generation report.
    ```
 
 3. **Show additional stats** (if applicable):
-   - If glossary reconciliation added terms: `"New glossary terms: {count} added during reconciliation"` (read from `.mg/docs/scan-logs/glossary-reconciliation.log` if it exists)
+   - If glossary reconciliation added terms: `"New glossary terms: {count} added during reconciliation"` (read from `.mg/docs/generate/terms/glossary-reconciliation.log` if it exists)
 
 4. **Suggest next step:**
    ```

@@ -11,8 +11,8 @@ Usage:
         [--project-root /path/to/project]
 
 The script copies:
-    - .mg/docs/docs-verify-findings.json
-    - .mg/docs/docs-verify-report.md
+    - .mg/docs/verify/findings.json
+    - .mg/docs/verify/report.md
     - The context file itself
 
 Into: .mg/docs/verify-runs/{context-basename}/
@@ -79,8 +79,8 @@ def main():
     mg_docs = os.path.join(project_root, ".mg", "docs")
 
     # Check source files exist
-    findings_src = os.path.join(mg_docs, "docs-verify-findings.json")
-    report_src = os.path.join(mg_docs, "docs-verify-report.md")
+    findings_src = os.path.join(mg_docs, "verify", "findings.json")
+    report_src = os.path.join(mg_docs, "verify", "report.md")
 
     missing = []
     if not os.path.isfile(findings_src):
@@ -106,13 +106,13 @@ def main():
     os.makedirs(run_dir)
 
     # Copy files
-    shutil.copy2(findings_src, os.path.join(run_dir, "docs-verify-findings.json"))
-    shutil.copy2(report_src, os.path.join(run_dir, "docs-verify-report.md"))
+    shutil.copy2(findings_src, os.path.join(run_dir, "findings.json"))
+    shutil.copy2(report_src, os.path.join(run_dir, "report.md"))
     shutil.copy2(context_file, os.path.join(run_dir, os.path.basename(context_file)))
 
     print(f"Archived to {run_dir}:")
-    print(f"  docs-verify-findings.json")
-    print(f"  docs-verify-report.md")
+    print("  findings.json")
+    print("  report.md")
     print(f"  {os.path.basename(context_file)}")
 
 

@@ -11,7 +11,7 @@ You are a specialized verification agent that compares expected documentation se
 - **project_root**: Absolute path to the project root directory.
 - **review_manifest**: Path to `manifest.json` produced by `prepare-doc-review.py`.
 - **scan_context_path**: Path to extracted scan context (has `documented_sections`, `gap_analysis`, `optional_sections`).
-- **findings_file**: Path to the agent-specific findings file (e.g., `docs-verify-findings-completeness.json`).
+- **findings_file**: Path to the agent-specific findings file (e.g., `findings-completeness.json`).
 
 ## Constraints
 
@@ -57,9 +57,9 @@ For each issue discovered:
      "suggestion": "How to add it"
    }
    ```
-   Write this to `{MG_INSTALL_TMP_DIR}/complete-NNN.json` via Bash (starting at 001):
+   Write this to `{MG_INSTALL_WORKSPACE_DIR}/verify/complete-NNN.json` via Bash (starting at 001):
    ```bash
-   cat > {MG_INSTALL_TMP_DIR}/complete-001.json << 'ENDJSON'
+   cat > {MG_INSTALL_WORKSPACE_DIR}/verify/complete-001.json << 'ENDJSON'
    { ... }
    ENDJSON
    ```
@@ -67,7 +67,7 @@ For each issue discovered:
 2. Call the script to validate and append:
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
-     --input {MG_INSTALL_TMP_DIR}/complete-NNN.json \
+     --input {MG_INSTALL_WORKSPACE_DIR}/verify/complete-NNN.json \
      --findings-file {findings_file}
    ```
 

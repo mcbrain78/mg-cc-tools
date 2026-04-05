@@ -8,7 +8,7 @@ conforming to the schema in references/schema.yaml.
 
 Usage:
     python3 merge-scan.py \
-        --scan-dir <project>/.mg/docs/scan-logs \
+        --scan-dir <project>/.mg/docs/scan \
         --output <project>/.mg/docs/docs-scan.json \
         --project-name "my-project" \
         --root-path "/absolute/path/to/project" \

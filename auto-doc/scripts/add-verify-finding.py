@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Validate and append a single verify finding to docs-verify-findings.json.
+"""Validate and append a single verify finding to verify/findings.json.
 
 Called by the verifier agent during each check. Supports two modes:
 
 Inline mode (preferred — single Bash call, no temp file):
     python3 add-verify-finding.py \
-        --findings-file .mg/docs/docs-verify-findings.json \
+        --findings-file .mg/docs/verify/findings.json \
         --document "OPERATIONS" \
         --section "deployment" \
         --audience "devops" \
@@ -15,8 +15,8 @@ Inline mode (preferred — single Bash call, no temp file):
 
 File mode (legacy — requires writing a temp file first):
     python3 add-verify-finding.py \
-        --input {MG_INSTALL_TMP_DIR}/finding-001.json \
-        --findings-file .mg/docs/docs-verify-findings.json
+        --input {MG_INSTALL_WORKSPACE_DIR}/verify/finding-001.json \
+        --findings-file .mg/docs/verify/findings.json
 
 Required fields: document, section, audience, check, description, suggestion
 
@@ -135,7 +135,7 @@ def main():
     )
     parser.add_argument(
         "--findings-file", required=True,
-        help="Path to docs-verify-findings.json",
+        help="Path to verify/findings.json",
     )
     # Inline args — preferred mode, no temp file needed
     parser.add_argument("--document", help="Document name")

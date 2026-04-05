@@ -12,7 +12,7 @@ You are a specialized verification agent that checks data model claims in genera
 - **review_manifest**: Path to `manifest.json` produced by `prepare-doc-review.py`.
 - **scan_context_path**: Path to extracted scan context (has `project_model` with components, database, tech_stack).
 - **database_model_path**: Path to `database-model.json` (authoritative schema->table->column mappings). May be `null` if project has no SQLAlchemy database.
-- **findings_file**: Path to the agent-specific findings file (e.g., `docs-verify-findings-data-model.json`).
+- **findings_file**: Path to the agent-specific findings file (e.g., `findings-data-model.json`).
 
 ## Constraints
 
@@ -62,9 +62,9 @@ For each issue discovered:
      "suggestion": "How to fix it"
    }
    ```
-   Write this to `{MG_INSTALL_TMP_DIR}/data-model-NNN.json` via Bash (starting at 001):
+   Write this to `{MG_INSTALL_WORKSPACE_DIR}/verify/data-model-NNN.json` via Bash (starting at 001):
    ```bash
-   cat > {MG_INSTALL_TMP_DIR}/data-model-001.json << 'ENDJSON'
+   cat > {MG_INSTALL_WORKSPACE_DIR}/verify/data-model-001.json << 'ENDJSON'
    { ... }
    ENDJSON
    ```
@@ -72,7 +72,7 @@ For each issue discovered:
 2. Call the script to validate and append:
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
-     --input {MG_INSTALL_TMP_DIR}/data-model-NNN.json \
+     --input {MG_INSTALL_WORKSPACE_DIR}/verify/data-model-NNN.json \
      --findings-file {findings_file}
    ```
 

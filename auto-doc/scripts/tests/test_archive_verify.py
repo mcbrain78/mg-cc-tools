@@ -40,12 +40,13 @@ def _make_project(tmp):
     """
     project_root = os.path.join(tmp, "project")
     mg_docs = os.path.join(project_root, ".mg", "docs")
-    os.makedirs(mg_docs)
+    verify_dir = os.path.join(mg_docs, "verify")
+    os.makedirs(verify_dir)
 
-    with open(os.path.join(mg_docs, "docs-verify-findings.json"), "w") as f:
+    with open(os.path.join(verify_dir, "findings.json"), "w") as f:
         json.dump([{"check": "test", "description": "test finding"}], f)
 
-    with open(os.path.join(mg_docs, "docs-verify-report.md"), "w") as f:
+    with open(os.path.join(verify_dir, "report.md"), "w") as f:
         f.write("# Verify Report\n\n1 issue found.\n")
 
     return project_root
@@ -94,7 +95,7 @@ class TestArchiveVerify:
             run_dir = os.path.join(
                 project_root, ".mg", "docs", "verify-runs", "rr1-602-verify3",
             )
-            findings = os.path.join(run_dir, "docs-verify-findings.json")
+            findings = os.path.join(run_dir, "findings.json")
             assert os.path.isfile(findings)
             with open(findings) as f:
                 data = json.load(f)
@@ -114,7 +115,7 @@ class TestArchiveVerify:
             run_dir = os.path.join(
                 project_root, ".mg", "docs", "verify-runs", "rr1-602-verify3",
             )
-            report = os.path.join(run_dir, "docs-verify-report.md")
+            report = os.path.join(run_dir, "report.md")
             assert os.path.isfile(report)
             with open(report) as f:
                 content = f.read()
@@ -188,9 +189,10 @@ class TestArchiveVerifyErrors:
         with tempfile.TemporaryDirectory() as tmp:
             project_root = os.path.join(tmp, "project")
             mg_docs = os.path.join(project_root, ".mg", "docs")
-            os.makedirs(mg_docs)
+            verify_dir = os.path.join(mg_docs, "verify")
+            os.makedirs(verify_dir)
             # Only create report, no findings
-            with open(os.path.join(mg_docs, "docs-verify-report.md"), "w") as f:
+            with open(os.path.join(verify_dir, "report.md"), "w") as f:
                 f.write("# Report\n")
             context = _make_context_file(tmp)
 
@@ -205,9 +207,10 @@ class TestArchiveVerifyErrors:
         with tempfile.TemporaryDirectory() as tmp:
             project_root = os.path.join(tmp, "project")
             mg_docs = os.path.join(project_root, ".mg", "docs")
-            os.makedirs(mg_docs)
+            verify_dir = os.path.join(mg_docs, "verify")
+            os.makedirs(verify_dir)
             # Only create findings, no report
-            with open(os.path.join(mg_docs, "docs-verify-findings.json"), "w") as f:
+            with open(os.path.join(verify_dir, "findings.json"), "w") as f:
                 json.dump([], f)
             context = _make_context_file(tmp)
 

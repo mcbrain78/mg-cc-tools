@@ -54,9 +54,9 @@ Read references/schema.yaml
 1. **Load verify findings.** Run:
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
-     --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
+     --findings-file {project_root}/.mg/docs/verify/findings.json \
      --summary \
-     --output {MG_INSTALL_TMP_DIR}/findings-summary.json
+     --output {MG_INSTALL_WORKSPACE_DIR}/update/findings-summary.json
    ```
    Read the output file. If the file does not exist or total is 0, treat as zero findings.
 
@@ -64,7 +64,7 @@ Read references/schema.yaml
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/list-notes.py \
      --inbox {project_root}/.mg/docs/notes-inbox.json \
-     --output {MG_INSTALL_TMP_DIR}/all-notes.json
+     --output {MG_INSTALL_WORKSPACE_DIR}/update/all-notes.json
    ```
    Read the output file. This returns all classified notes (ignores status).
 
@@ -131,7 +131,7 @@ Handle user response:
 
 Group FIX items by document. Write each document's items to a temp JSON file, then spawn one doc-fixer agent per document. Run fix agents as **parallel foreground** (do NOT set `run_in_background`) so their output is visible inline and errors are immediately apparent:
 
-1. **Write fix items per document.** For each document, write its fix items array to `{MG_INSTALL_TMP_DIR}/fix-items-{DOCUMENT}.json`. Each item follows one of these formats:
+1. **Write fix items per document.** For each document, write its fix items array to `{MG_INSTALL_WORKSPACE_DIR}/update/fix-items-{DOCUMENT}.json`. Each item follows one of these formats:
 
    Finding:
    ```json
@@ -154,10 +154,10 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
    doc_path: {docs_dir_abs}/{audience}/{DOCUMENT}.md
    audience: {audience}
-   project_model_path: {MG_INSTALL_TMP_DIR}/project-model.json
+   project_model_path: {MG_INSTALL_WORKSPACE_DIR}/update/project-model.json
    glossary_path: {docs_dir_abs}/GLOSSARY.md
    style_guide_path: references/style-guide.md
-   items_path: {MG_INSTALL_TMP_DIR}/fix-items-{DOCUMENT}.json
+   items_path: {MG_INSTALL_WORKSPACE_DIR}/update/fix-items-{DOCUMENT}.json
 
    Read the items_path file to get the JSON array of fix items for this document. Apply all fixes."
    )
@@ -165,12 +165,12 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
 3. **After all fix agents complete,** log their results.
 
-4. **Sync fix edits to XML** (if XML sources exist). Check if `.mg/docs/xml-sources/` directory exists. If so, for each document that was fixed:
+4. **Sync fix edits to XML** (if XML sources exist). Check if `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` directory exists. If so, for each document that was fixed:
 
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/sync-edits-to-xml.py \
        --md-file {docs_dir_abs}/{audience}/{DOCUMENT}.md \
-       --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
+       --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/{audience}/{DOCUMENT}.xml \
        --changed-only
    ```
 
@@ -178,7 +178,7 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
-       --xml-file {project_root}/.mg/docs/xml-sources/{audience}/{DOCUMENT}.xml \
+       --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/{audience}/{DOCUMENT}.xml \
        --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
    ```
 
@@ -195,19 +195,19 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
    Clean temp files from prior runs:
    ```bash
-   rm -f {MG_INSTALL_TMP_DIR}/write-state-*.json {MG_INSTALL_TMP_DIR}/section-*.md {MG_INSTALL_TMP_DIR}/refs-*.json {MG_INSTALL_TMP_DIR}/header-*.md
-   rm -f {MG_INSTALL_TMP_DIR}/manifest-*.json
+   rm -f {MG_INSTALL_WORKSPACE_DIR}/update/write-state-*.json {MG_INSTALL_WORKSPACE_DIR}/update/section-*.md {MG_INSTALL_WORKSPACE_DIR}/update/refs-*.json {MG_INSTALL_WORKSPACE_DIR}/update/header-*.md
+   rm -f {MG_INSTALL_WORKSPACE_DIR}/update/manifest-*.json
    ```
 
 2. **Split scan data** per audience (same as generate step). For each audience with approved GENERATE items:
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/split-scan-by-audience.py \
        --input {project_root}/.mg/docs/docs-scan.json \
-       --output {MG_INSTALL_TMP_DIR}/scan-view-{audience}.json \
+       --output {MG_INSTALL_WORKSPACE_DIR}/update/scan-view-{audience}.json \
        --mode audience \
        --audience {audience} \
        --documents {comma_separated_documents} \
-       --project-model-output {MG_INSTALL_TMP_DIR}/project-model.json
+       --project-model-output {MG_INSTALL_WORKSPACE_DIR}/update/project-model.json
    ```
 
 3. **Spawn writer agents** for audiences with new sections. Each writer runs with `mode: update` and `update_sections` limited to the new section slugs:
@@ -223,8 +223,8 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {MG_INSTALL_TMP_DIR}/scan-view-{audience}.json
-   Project model path: {MG_INSTALL_TMP_DIR}/project-model.json
+   Scan data path: {MG_INSTALL_WORKSPACE_DIR}/update/scan-view-{audience}.json
+   Project model path: {MG_INSTALL_WORKSPACE_DIR}/update/project-model.json
    Templates dir: {MG_INSTALL_TEMPLATES_DIR}/{audience}/
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
@@ -241,10 +241,10 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
        --finalize \
-       --state-file {MG_INSTALL_TMP_DIR}/write-state-{audience}.json \
+       --state-file {MG_INSTALL_WORKSPACE_DIR}/update/write-state-{audience}.json \
        --docs-dir {docs_dir_abs} \
        --audience {audience} \
-       --manifest-file {MG_INSTALL_TMP_DIR}/manifest-{audience}.json \
+       --manifest-file {MG_INSTALL_WORKSPACE_DIR}/update/manifest-{audience}.json \
        --mode update \
        --merge
    ```
@@ -252,8 +252,8 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 5. **Merge manifests** for new sections:
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/merge-manifests.py \
-       --tmp-dir {MG_INSTALL_TMP_DIR} \
-       --output-dir {project_root}/.mg/docs/reference-manifests \
+       --tmp-dir {MG_INSTALL_WORKSPACE_DIR}/update \
+       --output-dir {MG_INSTALL_WORKSPACE_DIR}/generate/reference-manifests \
        --audiences {audiences_with_new_sections}
    ```
 
@@ -288,4 +288,4 @@ Next step: Run /mg:auto-doc-verify to check the updated documentation.
 - **Use `--merge` for scoped generate.** When adding new sections, the `--merge` flag on write-section.py finalize preserves all existing content in the document.
 - **Agents receive file paths only; they read files themselves.** Do not paste document content, source material, or scan data into subagent prompts. Pass paths as strings.
 - **Subagents read their own instructions via file path.** Agent prompts pass a reference (`Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/doc-fixer.md`) rather than inlining the full agent definition.
-- **Generate reads verify findings but NEVER clears docs-verify-findings.json.** Only the verify command clears findings.
+- **Generate reads verify findings but NEVER clears verify/findings.json.** Only the verify command clears findings.

@@ -40,7 +40,7 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/verify-setup.py \
 ```
 Add `--audience` only if the user specified audience names in Step 0.
 
-Parse the JSON output to get all runtime paths (`project_root`, `docs_dir_abs`, `glossary_path`, `findings_file`, `findings_prefix`, `manifest`, `scan_context_path`, `tmp_dir`, `xml_dir`, `fact_checker_findings`). If non-zero exit, print the error and abort.
+Parse the JSON output to get all runtime paths (`project_root`, `docs_dir_abs`, `glossary_path`, `findings_file`, `findings_prefix`, `manifest`, `scan_context_path`, `verify_dir`, `xml_dir`, `fact_checker_findings`). If non-zero exit, print the error and abort.
 
 Note: `xml_dir` is non-null when XML sources exist (produced by generate). This enables deterministic ref verification and narrows the LLM fact-checker scope.
 
@@ -68,7 +68,7 @@ This checks every typed ref (db schemas/tables/columns, code classes/functions, 
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-prose-verify.py \
        --xml-file {xml_file} \
-       --output-dir {tmp_dir}/prose-verify/{audience}/{doc_name}
+       --output-dir {verify_dir}/prose-verify/{audience}/{doc_name}
    ```
    Run this for every XML file in `{xml_dir}` (recursively). Each produces per-section JSON files with body + readable refs summary.
 
@@ -76,14 +76,14 @@ This checks every typed ref (db schemas/tables/columns, code classes/functions, 
 
 | Agent | Agent file | Extra params |
 |---|---|---|
-| Prose-vs-refs verifier (one per XML doc) | `{MG_INSTALL_AGENTS_DIR}/verify-prose.md` | `prose_verify_dir`, `findings_file` (use a per-doc file at `{tmp_dir}/prose-verify-findings-{doc_name}.json`), `scripts_dir` |
+| Prose-vs-refs verifier (one per XML doc) | `{MG_INSTALL_AGENTS_DIR}/verify-prose.md` | `prose_verify_dir`, `findings_file` (use a per-doc file at `{verify_dir}/prose-verify-findings-{doc_name}.json`), `scripts_dir` |
 | Cross-doc checker | `{MG_INSTALL_AGENTS_DIR}/cross-doc-checker.md` | `review_manifest`, `glossary_path`, `findings_file` (cross_doc) |
 | Completeness checker | `{MG_INSTALL_AGENTS_DIR}/completeness-checker.md` | `review_manifest`, `scan_context_path`, `findings_file` (completeness) |
 
    Initialize each prose-verify findings file before spawning:
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
-       --findings-file {tmp_dir}/prose-verify-findings-{doc_name}.json
+       --findings-file {verify_dir}/prose-verify-findings-{doc_name}.json
    ```
 
 **If `xml_dir` is null (no XML sources):** fall back to all 4 agents as before:
@@ -103,8 +103,8 @@ All agents receive `project_root`. The `review_manifest` is the `manifest` path 
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/editorial-orchestrate.py --init \
   --manifest {manifest} --checks {MG_INSTALL_CHECKS_FILE} \
-  --findings-prefix {findings_prefix} --tmp-dir {tmp_dir} \
-  --state {tmp_dir}/ed-orchestrate-state.json
+  --findings-prefix {findings_prefix} --tmp-dir {verify_dir} \
+  --state {verify_dir}/ed-orchestrate-state.json
 ```
 Parse the JSON. If action is "done", skip to Step 4.
 
@@ -113,7 +113,7 @@ Parse the JSON. If action is "done", skip to Step 4.
 Agent(model="sonnet", description="Editorial: {name}",
   prompt="Read and follow: {MG_INSTALL_AGENTS_DIR}/editorial-checker-singledoc.md
   Parameters: doc_file={source}, doc_source={source}, audience={audience},
-  findings_file={findings_file}, tmp_dir={tmp_dir}, question_file={question_file},
+  findings_file={findings_file}, verify_dir={verify_dir}, question_file={question_file},
   state_file={state_file}")
 ```
 
@@ -129,9 +129,9 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {fact_checker_findings.cross_doc} \
   --merge-from {fact_checker_findings.completeness} \
   --merge-glob "{findings_prefix}-*.json" \
-  --merge-glob "{tmp_dir}/prose-verify-findings-*.json" \
+  --merge-glob "{verify_dir}/prose-verify-findings-*.json" \
   --findings-file {findings_file} \
-  --output {tmp_dir}/all-findings.json
+  --output {verify_dir}/all-findings.json
 ```
 
 **If `xml_dir` is null:**
@@ -143,7 +143,7 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {fact_checker_findings.completeness} \
   --merge-glob "{findings_prefix}-*.json" \
   --findings-file {findings_file} \
-  --output {tmp_dir}/all-findings.json
+  --output {verify_dir}/all-findings.json
 ```
 
 ### Step 5: Triage + Report
@@ -153,20 +153,20 @@ Spawn 1 Sonnet agent:
 Agent(model="sonnet", description="Triage and report",
   prompt="Read and follow: {MG_INSTALL_AGENTS_DIR}/triage-reporter.md
   Parameters:
-  - all_findings_file: {tmp_dir}/all-findings.json
+  - all_findings_file: {verify_dir}/all-findings.json
   - findings_file: {findings_file}
-  - dismissed_file: {project_root}/.mg/docs/docs-verify-findings-dismissed.json
-  - report_file: {project_root}/.mg/docs/docs-verify-report.md")
+  - dismissed_file: {project_root}/.mg/docs/verify/findings-dismissed.json
+  - report_file: {project_root}/.mg/docs/verify/report.md")
 ```
 Wait for completion.
 
 ### Step 6: Present
 
-Read the report at `{project_root}/.mg/docs/docs-verify-report.md`. Print:
+Read the report at `{project_root}/.mg/docs/verify/report.md`. Print:
 ```
 Verification complete (singledoc) -- {N} issues found.
 
-Full report: .mg/docs/docs-verify-report.md
+Full report: .mg/docs/verify/report.md
 ```
 If findings exist: `Run /mg:auto-doc-update to fix verify findings.`
 If completeness findings exist: `Found {N} documentation gaps. Consider adding to .planning/BACKLOG.md as documentation debt.`

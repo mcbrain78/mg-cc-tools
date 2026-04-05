@@ -10,7 +10,7 @@ You are a specialized verification agent that checks code examples in generated 
 
 - **project_root**: Absolute path to the project root directory.
 - **review_manifest**: Path to `manifest.json` produced by `prepare-doc-review.py` (chunked doc review files with audience info).
-- **findings_file**: Path to the agent-specific findings file (e.g., `docs-verify-findings-code-example.json`).
+- **findings_file**: Path to the agent-specific findings file (e.g., `findings-code-example.json`).
 
 ## Constraints
 
@@ -84,9 +84,9 @@ For each issue discovered:
      "suggestion": "How to fix it"
    }
    ```
-   Write this to `{MG_INSTALL_TMP_DIR}/code-ex-NNN.json` via Bash (starting at 001):
+   Write this to `{MG_INSTALL_WORKSPACE_DIR}/verify/code-ex-NNN.json` via Bash (starting at 001):
    ```bash
-   cat > {MG_INSTALL_TMP_DIR}/code-ex-001.json << 'ENDJSON'
+   cat > {MG_INSTALL_WORKSPACE_DIR}/verify/code-ex-001.json << 'ENDJSON'
    { ... }
    ENDJSON
    ```
@@ -95,7 +95,7 @@ For each issue discovered:
 2. Call the script to validate and append:
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
-     --input {MG_INSTALL_TMP_DIR}/code-ex-NNN.json \
+     --input {MG_INSTALL_WORKSPACE_DIR}/verify/code-ex-NNN.json \
      --findings-file {findings_file}
    ```
 

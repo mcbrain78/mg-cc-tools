@@ -214,7 +214,7 @@ class TestBuildPaths:
             expected_keys = {
                 "project_root", "docs_dir_abs", "glossary_path",
                 "findings_file", "findings_prefix", "checks_file",
-                "manifest", "scan_context_path", "tmp_dir",
+                "manifest", "scan_context_path", "verify_dir",
                 "xml_dir", "fact_checker_findings",
             }
             assert expected_keys == set(result.keys())
@@ -251,7 +251,7 @@ class TestBuildPaths:
             ])
 
             result = json.loads(stdout)
-            assert "docs-verify-findings-my-custom" in result["findings_prefix"]
+            assert "findings-my-custom" in result["findings_prefix"]
 
     def test_xml_dir_null_when_no_xml_sources(self):
         """xml_dir is None when no xml-sources directory exists."""
@@ -276,7 +276,7 @@ class TestBuildPaths:
             project_root, scan_path, config_path = _make_project(tmp)
 
             # Create xml-sources with an XML file
-            xml_dir = os.path.join(project_root, ".mg", "docs", "xml-sources", "devops")
+            xml_dir = os.path.join(project_root, ".mg", "docs", "generate", "xml-sources", "devops")
             os.makedirs(xml_dir)
             with open(os.path.join(xml_dir, "OPS.xml"), "w") as f:
                 f.write("<document></document>")
@@ -380,8 +380,7 @@ class TestFullRun:
                 "--templates-dir", os.path.join(tmp, "templates"),
             ])
 
-            assert os.path.isdir(os.path.join(project_root, ".mg", "docs", "scan-logs"))
-            assert os.path.isdir(os.path.join(project_root, ".mg", "docs", "tmp"))
+            assert os.path.isdir(os.path.join(project_root, ".mg", "docs", "verify"))
 
     def test_full_run_inits_fact_checker_findings(self):
         with tempfile.TemporaryDirectory() as tmp:

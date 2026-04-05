@@ -51,7 +51,7 @@ You generate the project OVERVIEW.md by reading the documents that writer agents
 
    First, write the header file:
    ```bash
-   Write({MG_INSTALL_TMP_DIR}/header-overview-OVERVIEW.md)
+   Write({MG_INSTALL_WORKSPACE_DIR}/generate/header-overview-OVERVIEW.md)
    ```
    The header contains the ownership comment, DIATAXIS/AUDIENCE comments, the `# {Project Name} Documentation` heading, and the top-level `<!-- docs-meta: ... -->` comment (everything before the first `## `).
 
@@ -59,33 +59,33 @@ You generate the project OVERVIEW.md by reading the documents that writer agents
 
    **Step 1: Emit the `##` intro.** Write the `## ` heading line + `<!-- docs-meta: ... -->` comment + body content up to the first `###` heading (or end of section if no `###` exists).
 
-   a. Write intro content to `{MG_INSTALL_TMP_DIR}/section-overview-OVERVIEW-{slug}.md`.
-   b. Write refs to `{MG_INSTALL_TMP_DIR}/refs-overview-OVERVIEW-{slug}.json` (OVERVIEW is pure prose, typically `{"typed_refs": []}`).
+   a. Write intro content to `{MG_INSTALL_WORKSPACE_DIR}/generate/section-overview-OVERVIEW-{slug}.md`.
+   b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-overview-OVERVIEW-{slug}.json` (OVERVIEW is pure prose, typically `{"typed_refs": []}`).
    c. Call:
       ```bash
       python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
-          --state-file {MG_INSTALL_TMP_DIR}/write-state-overview.json \
+          --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-overview.json \
           --document OVERVIEW \
           --section {slug} \
-          --content-file {MG_INSTALL_TMP_DIR}/section-overview-OVERVIEW-{slug}.md \
-          --refs-file {MG_INSTALL_TMP_DIR}/refs-overview-OVERVIEW-{slug}.json \
-          --header-file {MG_INSTALL_TMP_DIR}/header-overview-OVERVIEW.md
+          --content-file {MG_INSTALL_WORKSPACE_DIR}/generate/section-overview-OVERVIEW-{slug}.md \
+          --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-overview-OVERVIEW-{slug}.json \
+          --header-file {MG_INSTALL_WORKSPACE_DIR}/generate/header-overview-OVERVIEW.md
       ```
       Only pass `--header-file` on the **first** `##` section call. Omit it for subsequent sections.
 
    **Step 2: Emit each `###` child** (if any). Current OVERVIEW templates use `##` sections only. `###` headings are uncommon but supported. For each `###` heading within this `##` section:
 
-   a. Write content to `{MG_INSTALL_TMP_DIR}/section-overview-OVERVIEW-{slug}-{child-slug}.md`.
-   b. Write refs to `{MG_INSTALL_TMP_DIR}/refs-overview-OVERVIEW-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
+   a. Write content to `{MG_INSTALL_WORKSPACE_DIR}/generate/section-overview-OVERVIEW-{slug}-{child-slug}.md`.
+   b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-overview-OVERVIEW-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
    c. Call:
       ```bash
       python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
-          --state-file {MG_INSTALL_TMP_DIR}/write-state-overview.json \
+          --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-overview.json \
           --document OVERVIEW \
           --section {child-slug} \
           --parent {slug} \
-          --content-file {MG_INSTALL_TMP_DIR}/section-overview-OVERVIEW-{slug}-{child-slug}.md \
-          --refs-file {MG_INSTALL_TMP_DIR}/refs-overview-OVERVIEW-{slug}-{child-slug}.json
+          --content-file {MG_INSTALL_WORKSPACE_DIR}/generate/section-overview-OVERVIEW-{slug}-{child-slug}.md \
+          --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-overview-OVERVIEW-{slug}-{child-slug}.json
       ```
 
    **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote. A ref that only appears in a child's content MUST go in the child's refs, not the parent intro's refs.

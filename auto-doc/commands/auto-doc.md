@@ -56,11 +56,11 @@ Run these checks IN ORDER:
    (Use Glob to check for `.md` files in the docs directory)
    - NO -> Route B (scan done, generation needed)
 
-5. **Does `.mg/docs/docs-verify-report.md` exist?**
+5. **Does `.mg/docs/verify/report.md` exist?**
    - NO -> Route C (generation done, verification needed)
 
 6. **Are there unresolved verify findings?**
-   Check if `.mg/docs/docs-verify-findings.json` exists. If it does, read it and check if the array is non-empty.
+   Check if `.mg/docs/verify/findings.json` exists. If it does, read it and check if the array is non-empty.
    - YES (findings exist and array is non-empty) -> Route E (findings need update)
    - NO -> continue to check 7
 
@@ -121,12 +121,12 @@ When ready, verify documentation quality:
 
 ### Route D: Pipeline complete (no outstanding findings)
 
-Read `docs-verify-report.md` and show a brief summary:
+Read `verify/report.md` and show a brief summary:
 
 ```
 Pipeline complete -- no outstanding verify findings.
 
-Review the verification report: .mg/docs/docs-verify-report.md
+Review the verification report: .mg/docs/verify/report.md
 
 Options:
   - Re-scan:   /mg:auto-doc-scan      (incremental -- scoped to changes since last generation)
@@ -137,7 +137,7 @@ Options:
 
 ### Route E: Verify found issues -- needs update
 
-Read `docs-verify-findings.json` and count total findings:
+Read `verify/findings.json` and count total findings:
 
 ```
 Verify found {N} quality issues in the documentation.

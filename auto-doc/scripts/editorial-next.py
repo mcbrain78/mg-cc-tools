@@ -29,8 +29,8 @@ Usage:
         --checks /path/to/verify-checks.json \
         --state /path/to/editorial-state.json \
         --next-batch --batch-size 5 \
-        --findings-prefix /path/.mg/docs/docs-verify-findings-editorial-mini \
-        --tmp-dir /path/.mg/docs/tmp
+        --findings-prefix /path/.mg/docs/verify/findings-editorial-mini \
+        --tmp-dir /path/.mg/docs/verify
 
     # Batch mode (subsequent):
     python3 editorial-next.py \

@@ -137,19 +137,21 @@ def build_paths(project_root, docs_dir):
     """Build all runtime paths from inputs."""
     docs_dir_abs = os.path.join(project_root, docs_dir)
     mg_docs = os.path.join(project_root, ".mg", "docs")
-    tmp_dir = os.path.join(mg_docs, "tmp")
+    generate_dir = os.path.join(mg_docs, "generate")
 
     return {
         "project_root": project_root,
         "docs_dir_abs": docs_dir_abs,
         "scan_data_path": os.path.join(mg_docs, "docs-scan.json"),
-        "tmp_dir": tmp_dir,
-        "project_model_path": os.path.join(tmp_dir, "project-model.json"),
-        "database_model_path": os.path.join(tmp_dir, "database-model.json"),
-        "notes_file": os.path.join(tmp_dir, "all-notes.json"),
+        "generate_dir": generate_dir,
+        "project_model_path": os.path.join(generate_dir, "project-model.json"),
+        "database_model_path": os.path.join(generate_dir, "database-model.json"),
+        "notes_file": os.path.join(generate_dir, "all-notes.json"),
         "notes_inbox": os.path.join(mg_docs, "notes-inbox.json"),
-        "manifests_dir": os.path.join(mg_docs, "reference-manifests"),
-        "scan_logs_dir": os.path.join(mg_docs, "scan-logs"),
+        "manifests_dir": os.path.join(generate_dir, "reference-manifests"),
+        "scan_dir": os.path.join(mg_docs, "scan"),
+        "terms_dir": os.path.join(generate_dir, "terms"),
+        "xml_sources_dir": os.path.join(generate_dir, "xml-sources"),
     }
 
 
@@ -166,23 +168,23 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         Dict with scan_views and notes_by_audience.
     """
     docs_dir_abs = paths["docs_dir_abs"]
-    tmp_dir = paths["tmp_dir"]
-    scan_logs_dir = paths["scan_logs_dir"]
+    generate_dir = paths["generate_dir"]
+    terms_dir = paths["terms_dir"]
     manifests_dir = paths["manifests_dir"]
 
     # Create output directories
     for aud in ["end-users", "developers", "agents", "devops"]:
         os.makedirs(os.path.join(docs_dir_abs, aud), exist_ok=True)
-    os.makedirs(scan_logs_dir, exist_ok=True)
-    os.makedirs(tmp_dir, exist_ok=True)
+    os.makedirs(generate_dir, exist_ok=True)
     os.makedirs(manifests_dir, exist_ok=True)
+    os.makedirs(terms_dir, exist_ok=True)
 
     # Clean stale term proposals
-    for f in glob_mod.glob(os.path.join(scan_logs_dir, "terms-*.json")):
+    for f in glob_mod.glob(os.path.join(terms_dir, "terms-*.json")):
         os.remove(f)
 
     # Clean glossary reconciliation log
-    reconciliation_log = os.path.join(scan_logs_dir, "glossary-reconciliation.log")
+    reconciliation_log = os.path.join(terms_dir, "glossary-reconciliation.log")
     if os.path.exists(reconciliation_log):
         os.remove(reconciliation_log)
 
@@ -198,7 +200,7 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         "refs-*.json", "header-*.md",
         "heading-state-*.json",
     ]:
-        for f in glob_mod.glob(os.path.join(tmp_dir, pattern)):
+        for f in glob_mod.glob(os.path.join(generate_dir, pattern)):
             os.remove(f)
 
     # Clean per-run artifacts so they are regenerated fresh
@@ -208,7 +210,7 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         "database-model-summary.json",
         "db-table-map.json",
     ]:
-        p = os.path.join(tmp_dir, stale)
+        p = os.path.join(generate_dir, stale)
         if os.path.exists(p):
             os.remove(p)
 
@@ -220,10 +222,12 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
     )
 
     # Split scan data into per-audience views
+    scan_views_dir = os.path.join(generate_dir, "scan-views")
+    os.makedirs(scan_views_dir, exist_ok=True)
     scan_views = {}
     for aud_name, aud_conf in audiences.items():
         documents = ",".join(aud_conf["documents"])
-        view_path = os.path.join(tmp_dir, f"scan-view-{aud_name}.json")
+        view_path = os.path.join(scan_views_dir, f"scan-view-{aud_name}.json")
         _run_script(
             [sys.executable, os.path.join(scripts_dir, "split-scan-by-audience.py"),
              "--input", paths["scan_data_path"],
@@ -237,7 +241,7 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         scan_views[aud_name] = view_path
 
     # Glossary view (always created regardless of filter)
-    glossary_view = os.path.join(tmp_dir, "scan-view-glossary.json")
+    glossary_view = os.path.join(scan_views_dir, "scan-view-glossary.json")
     _run_script(
         [sys.executable, os.path.join(scripts_dir, "split-scan-by-audience.py"),
          "--input", paths["scan_data_path"],
@@ -319,7 +323,7 @@ def _extract_database_model(paths, scripts_dir):
         return None
 
     output = paths["database_model_path"]
-    summary_output = os.path.join(paths["tmp_dir"], "database-model-summary.json")
+    summary_output = os.path.join(paths["generate_dir"], "database-model-summary.json")
     cmd = [
         "uv", "run", "--directory", paths["project_root"],
         sys.executable, os.path.join(scripts_dir, "extract-database-model.py"),
@@ -413,7 +417,7 @@ def detect_refined_templates(project_root, audiences, scan_date):
     return refined, stale
 
 
-def _build_db_table_map(project_model_path, scan_path, tmp_dir):
+def _build_db_table_map(project_model_path, scan_path, generate_dir):
     """Build section-to-tables mapping from project model and scan data.
 
     Reads ``database_tables`` from each component in the slimmed project
@@ -459,7 +463,7 @@ def _build_db_table_map(project_model_path, scan_path, tmp_dir):
     if not table_map:
         return None
 
-    output_path = os.path.join(tmp_dir, "db-table-map.json")
+    output_path = os.path.join(generate_dir, "db-table-map.json")
     save_json(output_path, table_map)
     return output_path
 
@@ -551,7 +555,7 @@ def main():
     db_table_map_path = None
     if db_result:
         db_table_map_path = _build_db_table_map(
-            paths["project_model_path"], scan_file, paths["tmp_dir"],
+            paths["project_model_path"], scan_file, paths["generate_dir"],
         )
 
     # Output everything the orchestrator needs

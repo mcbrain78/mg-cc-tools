@@ -53,21 +53,21 @@ Only gather the small decisions needed to drive the pipeline. Heavy project anal
 
 5. **Detect incremental mode.** If mode is "update":
     a. Read `.mg/docs/docs-scan.json` and check for `last_generated` field (non-null string)
-    b. Check `.mg/docs/reference-manifests/` for at least one `*.json` manifest file (via Bash `ls`)
+    b. Check `.mg/docs/generate/reference-manifests/` for at least one `*.json` manifest file (via Bash `ls`)
     c. If BOTH exist: `mode = "incremental"` (upgrade from "update")
     d. If either missing: remain as `mode = "update"` (full scan, same as current)
     e. Print the detected mode: `"Mode: incremental (scoped to changes since {last_generated})"` or `"Mode: update (full scan)"`
 
-6. **Clear scan-logs (Pitfall 6).** Remove stale data from prior runs to prevent merge contamination:
+6. **Clear scan dir (Pitfall 6).** Remove stale data from prior runs to prevent merge contamination:
     ```bash
-    rm -f <project_root>/.mg/docs/scan-logs/*.json
-    rm -f <project_root>/.mg/docs/scan-logs/*.md
+    rm -f <project_root>/.mg/docs/scan/*.json
+    rm -f <project_root>/.mg/docs/scan/*.md
     ```
-    **Do NOT delete** `notes-inbox.json` or `.docs.config.json` -- those live in the parent `.mg/docs/` directory, not in `scan-logs/`.
+    **Do NOT delete** `notes-inbox.json` or `.docs.config.json` -- those live in the parent `.mg/docs/` directory, not in `scan/`.
 
 7. **Create workspace** if it does not exist:
     ```bash
-    mkdir -p <project_root>/.mg/docs/scan-logs <project_root>/.mg/docs/scan-logs/templates <project_root>/.mg/docs/tmp
+    mkdir -p <project_root>/.mg/docs/scan <project_root>/.mg/docs/scan/templates <project_root>/.mg/docs/tmp
     ```
 
 ### Step 2: Orient (subagent)
@@ -125,10 +125,10 @@ GSD integration: {true|false}
    - If user_interfaces exists AND is a non-empty array: include it in project_model as-is (Priority 1 — already confirmed)
    - If absent or empty: include your detected interfaces (from step 3) but mark them as unconfirmed
 
-6. **Write scan-orientation.md** to {project_root}/.mg/docs/scan-logs/scan-orientation.md
+6. **Write scan-orientation.md** to {project_root}/.mg/docs/scan/scan-orientation.md
    Include: project name, structure overview, languages/frameworks, entry points, components, deployment artifacts, existing documentation, environment files, config loaded, python3 version.
 
-7. **Write scan-project.json** to {project_root}/.mg/docs/scan-logs/scan-project.json
+7. **Write scan-project.json** to {project_root}/.mg/docs/scan/scan-project.json
    Format:
    {
      'project_model': {
@@ -176,7 +176,7 @@ GSD integration: {true|false}
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/persist-interfaces.py \
        --config <project_root>/.mg/docs/.docs.config.json \
-       --scan-project <project_root>/.mg/docs/scan-logs/scan-project.json \
+       --scan-project <project_root>/.mg/docs/scan/scan-project.json \
        --interfaces '$INTERFACES_JSON'
    ```
 
@@ -189,7 +189,7 @@ GSD integration: {true|false}
 
 **Only run this step if** mode is "incremental". If mode is "initial" or "update", skip entirely.
 
-**Important ordering:** In incremental mode, read previous docs-scan.json in this step BEFORE clearing scan-logs in Step 1.6. The previous scan data provides baseline entries for carry-forward.
+**Important ordering:** In incremental mode, read previous docs-scan.json in this step BEFORE clearing scan dir in Step 1.6. The previous scan data provides baseline entries for carry-forward.
 
 1. **Load previous scan data.** Read `.mg/docs/docs-scan.json` and store the complete object in memory as `previous_scan`. This provides baseline entries for carry-forward.
 
@@ -197,15 +197,15 @@ GSD integration: {true|false}
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/diff-scan.py \
        --project-root <project_root> \
-       --manifests-dir <project_root>/.mg/docs/reference-manifests \
+       --manifests-dir <project_root>/.mg/docs/generate/reference-manifests \
        --docs-dir <docs_dir_abs> \
        --since <last_generated value from docs-scan.json> \
        --gsd-dir <project_root>/.planning/phases \
-       --output <project_root>/.mg/docs/diff-scope.json
+       --output <project_root>/.mg/docs/scan/diff-scope.json
    ```
    If `--gsd-dir` path doesn't exist, still pass it -- diff-scan.py handles missing dirs gracefully.
 
-3. **Read diff-scope.json** from `<project_root>/.mg/docs/diff-scope.json`. Extract `affected_sections`, `new_file_candidates`, `deleted_files`, `gsd_phases_since`, and `summary`.
+3. **Read diff-scope.json** from `<project_root>/.mg/docs/scan/diff-scope.json`. Extract `affected_sections`, `new_file_candidates`, `deleted_files`, `gsd_phases_since`, and `summary`.
 
 4. **Prepare per-audience scoped data.** For each enabled audience, filter:
    - `audience_affected`: entries from `affected_sections` where `audience` matches
@@ -236,7 +236,7 @@ If mode is `"initial"`, skip this step entirely.
    python3 {MG_INSTALL_SCRIPTS_DIR}/staleness-check.py \
        --docs-dir <docs_dir> \
        --project-root <project_root> \
-       --output <project_root>/.mg/docs/scan-logs/staleness-results.json
+       --output <project_root>/.mg/docs/scan/staleness-results.json
    ```
 
 2. **Note:** The staleness-check script uses `--docs-dir` (directory-level), NOT `--doc-file` (per-file). It iterates the directory internally. **(Pitfall 1)**
@@ -254,13 +254,13 @@ Pre-parse all templates into structured JSON so scan agents use deterministic sl
    python3 {MG_INSTALL_SCRIPTS_DIR}/parse-template.py \
        --template {MG_INSTALL_TEMPLATES_DIR}/{audience}/{DOCUMENT}.template.md \
        --document {DOCUMENT} \
-       --output <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json
+       --output <project_root>/.mg/docs/scan/templates/template-{DOCUMENT}.json
    ```
    For shared documents (OVERVIEW, GLOSSARY), use `{MG_INSTALL_TEMPLATES_DIR}/{DOCUMENT}.template.md` (no audience subdirectory).
 
 3. **Check stderr** for warnings about invalid `synthesized_from` paths. These indicate template issues but do not block the scan.
 
-**Note:** Template JSON files go to `scan-logs/templates/` subdirectory. `merge-scan.py` globs `scan-logs/*.json` (not recursive), so template files are not picked up by the merge.
+**Note:** Template JSON files go to `scan/templates/` subdirectory. `merge-scan.py` globs `scan/*.json` (not recursive), so template files are not picked up by the merge.
 
 ### Step 5: Per-Audience Scan (parallel foreground)
 
@@ -282,15 +282,15 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
    Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/scan-audience.md
 
    Project root: {project_root}
-   Read orientation: {project_root}/.mg/docs/scan-logs/scan-orientation.md
+   Read orientation: {project_root}/.mg/docs/scan/scan-orientation.md
    Your audience: {audience}
    Your documents: {document_list}
    Templates directory: {MG_INSTALL_TEMPLATES_DIR}
-   Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json
+   Write output: {project_root}/.mg/docs/scan/scan-{audience}.json
    Scripts directory: {MG_INSTALL_SCRIPTS_DIR}
 
    Parsed template sections:
-   {For each DOCUMENT in document_list, list: DOCUMENT: <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json}"
+   {For each DOCUMENT in document_list, list: DOCUMENT: <project_root>/.mg/docs/scan/templates/template-{DOCUMENT}.json}"
    )
    ```
 
@@ -304,15 +304,15 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
    Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/scan-audience.md
 
    Project root: {project_root}
-   Read orientation: {project_root}/.mg/docs/scan-logs/scan-orientation.md
+   Read orientation: {project_root}/.mg/docs/scan/scan-orientation.md
    Your audience: {audience}
    Your documents: {document_list}
    Templates directory: {MG_INSTALL_TEMPLATES_DIR}
-   Write output: {project_root}/.mg/docs/scan-logs/scan-{audience}.json
+   Write output: {project_root}/.mg/docs/scan/scan-{audience}.json
    Scripts directory: {MG_INSTALL_SCRIPTS_DIR}
 
    Parsed template sections:
-   {For each DOCUMENT in document_list, list: DOCUMENT: <project_root>/.mg/docs/scan-logs/templates/template-{DOCUMENT}.json}
+   {For each DOCUMENT in document_list, list: DOCUMENT: <project_root>/.mg/docs/scan/templates/template-{DOCUMENT}.json}
 
    Mode: incremental
    Changed files for your audience: {JSON array of changed_files from audience_affected entries}
@@ -331,7 +331,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
 
 4. **After all subagents complete,** check each subagent's return for `status=ok`. If any returned `status=error`, log a warning with the error message. Then verify output files exist via Bash `test -f`:
    ```
-   Check: <project_root>/.mg/docs/scan-logs/scan-{audience}.json
+   Check: <project_root>/.mg/docs/scan/scan-{audience}.json
    ```
    If a subagent failed to produce output, log a warning and continue. The merge handles partial results gracefully.
 
@@ -342,7 +342,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
 1. **Run merge-scan.py** to combine all partial results into the final scan output:
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/merge-scan.py \
-       --scan-dir <project_root>/.mg/docs/scan-logs \
+       --scan-dir <project_root>/.mg/docs/scan \
        --output <project_root>/.mg/docs/docs-scan.json \
        --project-name "<project_name>" \
        --root-path "<project_root>" \
@@ -437,6 +437,6 @@ Default config structure (from `{MG_INSTALL_GLOBAL_CONFIG}`):
 - **The `{MG_INSTALL_AGENTS_DIR}` placeholder in file references gets resolved to absolute paths by install.sh.** At runtime, `{MG_INSTALL_AGENTS_DIR}/scan-audience.md` points to the installed absolute path.
 - **If a subagent fails** (no output JSON), log a warning and continue with other audiences. The merge script handles partial results. Missing data is better than a crashed pipeline.
 - **If python3 is not available,** abort immediately with install instructions. All scripts require Python 3.8+.
-- **Clear scan-logs/ at the start of every run** to prevent stale data from prior scans contaminating the merge (Pitfall 6).
+- **Clear scan/ at the start of every run** to prevent stale data from prior scans contaminating the merge (Pitfall 6).
 - **Scan-project.json must include project_model** so merge-scan.py picks it up. The merge takes project_model from the first file that has it (Pitfall 3).
 - **GSD context loading is conditional** on both `.planning/` directory existence AND `gsd_integration: true` in config (Pitfall 5).

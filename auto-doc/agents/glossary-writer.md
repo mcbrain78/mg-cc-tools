@@ -16,7 +16,7 @@ You are the glossary writer agent. You own GLOSSARY.md -- the single source of t
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **mode**: `"initial"` or `"update"`.
 - **pass**: `"initial"` or `"reconciliation"` -- which execution pass this is.
-- **term_proposals_dir**: Path to `.mg/docs/scan-logs/` where `terms-*.json` files are written by writer agents.
+- **term_proposals_dir**: Path to `{MG_INSTALL_WORKSPACE_DIR}/generate/terms/` where `terms-*.json` files are written by writer agents.
 - **tmp_dir**: Path to the shared tmp directory for write-section.py state and temp files.
 - **scripts_dir**: Path to `{MG_INSTALL_SCRIPTS_DIR}` for invoking write-section.py.
 
@@ -44,7 +44,7 @@ The initial pass runs **before** the four writer agents. Its purpose is to estab
    First, write the header file:
    ```bash
    # Write header to temp file
-   Write({MG_INSTALL_TMP_DIR}/header-glossary-GLOSSARY.md)
+   Write({MG_INSTALL_WORKSPACE_DIR}/generate/header-glossary-GLOSSARY.md)
    ```
    The header contains the ownership comment, DIATAXIS/AUDIENCE comments, and `# Glossary` heading (everything before the first `## `).
 
@@ -52,34 +52,34 @@ The initial pass runs **before** the four writer agents. Its purpose is to estab
 
    **Step 1: Emit the `##` intro.** Write the `## ` heading line plus the body content up to the first `###` heading (or end of section if no `###` exists).
 
-   a. Write intro content to `{MG_INSTALL_TMP_DIR}/section-glossary-GLOSSARY-{slug}.md`.
-   b. Write refs to `{MG_INSTALL_TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json` with ONLY the typed_refs for entities in the intro body.
+   a. Write intro content to `{MG_INSTALL_WORKSPACE_DIR}/generate/section-glossary-GLOSSARY-{slug}.md`.
+   b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-glossary-GLOSSARY-{slug}.json` with ONLY the typed_refs for entities in the intro body.
       For terms that reference specific code entities, emit typed_refs following the format in: references/typed-refs-format.md. Use `{"typed_refs": []}` for purely conceptual terms.
    c. Call:
       ```bash
       python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
-          --state-file {MG_INSTALL_TMP_DIR}/write-state-glossary.json \
+          --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-glossary.json \
           --document GLOSSARY \
           --section {slug} \
-          --content-file {MG_INSTALL_TMP_DIR}/section-glossary-GLOSSARY-{slug}.md \
-          --refs-file {MG_INSTALL_TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json \
-          --header-file {MG_INSTALL_TMP_DIR}/header-glossary-GLOSSARY.md
+          --content-file {MG_INSTALL_WORKSPACE_DIR}/generate/section-glossary-GLOSSARY-{slug}.md \
+          --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-glossary-GLOSSARY-{slug}.json \
+          --header-file {MG_INSTALL_WORKSPACE_DIR}/generate/header-glossary-GLOSSARY.md
       ```
       Only pass `--header-file` on the **first** `##` section call. Omit it for subsequent sections.
 
    **Step 2: Emit each `###` child** (if any). Current glossary templates use `##` sections only. `###` headings are rare but supported. For each `###` heading within this `##` section:
 
-   a. Write content to `{MG_INSTALL_TMP_DIR}/section-glossary-GLOSSARY-{slug}-{child-slug}.md`.
-   b. Write refs to `{MG_INSTALL_TMP_DIR}/refs-glossary-GLOSSARY-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
+   a. Write content to `{MG_INSTALL_WORKSPACE_DIR}/generate/section-glossary-GLOSSARY-{slug}-{child-slug}.md`.
+   b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-glossary-GLOSSARY-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
    c. Call:
       ```bash
       python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
-          --state-file {MG_INSTALL_TMP_DIR}/write-state-glossary.json \
+          --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-glossary.json \
           --document GLOSSARY \
           --section {child-slug} \
           --parent {slug} \
-          --content-file {MG_INSTALL_TMP_DIR}/section-glossary-GLOSSARY-{slug}-{child-slug}.md \
-          --refs-file {MG_INSTALL_TMP_DIR}/refs-glossary-GLOSSARY-{slug}-{child-slug}.json
+          --content-file {MG_INSTALL_WORKSPACE_DIR}/generate/section-glossary-GLOSSARY-{slug}-{child-slug}.md \
+          --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-glossary-GLOSSARY-{slug}-{child-slug}.json
       ```
 
    **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote. A ref that only appears in a child's content MUST go in the child's refs, not the parent intro's refs.
@@ -106,32 +106,32 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
 
    **Step 1: Emit the `##` intro.** Write the `## ` heading line plus the body content up to the first `###` heading (or end of section if no `###` exists).
 
-   a. Write intro content to `{MG_INSTALL_TMP_DIR}/section-glossary-GLOSSARY-{slug}.md`.
-   b. Write refs to `{MG_INSTALL_TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json` with ONLY the typed_refs for entities in the intro body.
+   a. Write intro content to `{MG_INSTALL_WORKSPACE_DIR}/generate/section-glossary-GLOSSARY-{slug}.md`.
+   b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-glossary-GLOSSARY-{slug}.json` with ONLY the typed_refs for entities in the intro body.
       For terms that reference specific code entities, emit typed_refs following the format in: references/typed-refs-format.md. Use `{"typed_refs": []}` for purely conceptual terms.
    c. Call:
       ```bash
       python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
-          --state-file {MG_INSTALL_TMP_DIR}/write-state-glossary.json \
+          --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-glossary.json \
           --document GLOSSARY \
           --section {slug} \
-          --content-file {MG_INSTALL_TMP_DIR}/section-glossary-GLOSSARY-{slug}.md \
-          --refs-file {MG_INSTALL_TMP_DIR}/refs-glossary-GLOSSARY-{slug}.json
+          --content-file {MG_INSTALL_WORKSPACE_DIR}/generate/section-glossary-GLOSSARY-{slug}.md \
+          --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-glossary-GLOSSARY-{slug}.json
       ```
 
    **Step 2: Emit each `###` child** (if any). Current glossary templates use `##` sections only. `###` headings are rare but supported. For each `###` heading within this `##` section:
 
-   a. Write content to `{MG_INSTALL_TMP_DIR}/section-glossary-GLOSSARY-{slug}-{child-slug}.md`.
-   b. Write refs to `{MG_INSTALL_TMP_DIR}/refs-glossary-GLOSSARY-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
+   a. Write content to `{MG_INSTALL_WORKSPACE_DIR}/generate/section-glossary-GLOSSARY-{slug}-{child-slug}.md`.
+   b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-glossary-GLOSSARY-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
    c. Call:
       ```bash
       python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
-          --state-file {MG_INSTALL_TMP_DIR}/write-state-glossary.json \
+          --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-glossary.json \
           --document GLOSSARY \
           --section {child-slug} \
           --parent {slug} \
-          --content-file {MG_INSTALL_TMP_DIR}/section-glossary-GLOSSARY-{slug}-{child-slug}.md \
-          --refs-file {MG_INSTALL_TMP_DIR}/refs-glossary-GLOSSARY-{slug}-{child-slug}.json
+          --content-file {MG_INSTALL_WORKSPACE_DIR}/generate/section-glossary-GLOSSARY-{slug}-{child-slug}.md \
+          --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-glossary-GLOSSARY-{slug}-{child-slug}.json
       ```
 
    **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote.
@@ -140,7 +140,7 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
 
    **Do NOT call finalize or write GLOSSARY.md directly. The orchestrator handles finalize with --merge after this agent completes.**
 
-5. **Write reconciliation log** -- Write a summary to `.mg/docs/scan-logs/glossary-reconciliation.log` documenting:
+5. **Write reconciliation log** -- Write a summary to `{MG_INSTALL_WORKSPACE_DIR}/generate/terms/glossary-reconciliation.log` documenting:
    - Terms added (with source audience)
    - Synonym conflicts resolved (proposed term -> canonical term)
    - Terms skipped (already defined)

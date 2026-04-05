@@ -60,19 +60,19 @@ Parse the user's input text for optional audience names. Example: user types `/m
 3. **Build runtime paths:**
    - `docs_dir_abs` = `{project_root}/{docs_dir}`
    - `glossary_path` = `{docs_dir_abs}/GLOSSARY.md`
-   - `output_report_path` = `{project_root}/.mg/docs/docs-verify-report.md`
-   - `findings_file` = `{project_root}/.mg/docs/docs-verify-findings.json`
+   - `output_report_path` = `{project_root}/.mg/docs/verify/report.md`
+   - `findings_file` = `{project_root}/.mg/docs/verify/findings.json`
 
 4. **Ensure workspace directories exist:**
    ```bash
-   mkdir -p {project_root}/.mg/docs/scan-logs {project_root}/.mg/docs/tmp
+   mkdir -p {project_root}/.mg/docs/verify {project_root}/.mg/docs/tmp
    ```
 
 5. **Clear prior verify artifacts.** Remove all verify artifacts from prior runs to start fresh:
    ```bash
    python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
      --clean \
-     --findings-file {project_root}/.mg/docs/docs-verify-findings.json
+     --findings-file {project_root}/.mg/docs/verify/findings.json
    ```
    This ensures each verify run produces findings reflecting the current documentation state. Generate reads findings but never clears them -- only verify clears (per finding lifecycle convention).
 
@@ -101,20 +101,20 @@ Parse the user's input text for optional audience names. Example: user types `/m
 Run the deterministic reference integrity checker directly (not in an agent):
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/verify-references.py \
-    --manifests-dir {project_root}/.mg/docs/reference-manifests \
+    --manifests-dir {project_root}/.mg/docs/generate/reference-manifests \
     --project-root {project_root} \
     --scan-file {project_root}/.mg/docs/docs-scan.json \
-    --findings-file {project_root}/.mg/docs/docs-verify-findings.json
+    --findings-file {project_root}/.mg/docs/verify/findings.json
 ```
 
 This checks file paths, symbols, and function call signatures in reference manifests. Findings are written directly to the main findings file. If the script exits non-zero (e.g., no reference-manifests directory yet), log the error and continue -- other agents can still produce useful findings.
 
-**If XML sources exist** (check if `.mg/docs/xml-sources/` directory exists and contains `.xml` files), also run the deterministic XML ref verifier:
+**If XML sources exist** (check if `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` directory exists and contains `.xml` files), also run the deterministic XML ref verifier:
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
-    --xml-dir {project_root}/.mg/docs/xml-sources \
+    --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
     --project-root {project_root} \
-    --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
+    --findings-file {project_root}/.mg/docs/verify/findings.json \
     [--audience AUDIENCES]
 ```
 
@@ -127,19 +127,19 @@ Each agent gets its own isolated findings file. Read the review manifest to dete
 ```bash
 # 4 fact-checker files
 python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
-  --findings-file {project_root}/.mg/docs/docs-verify-findings-code-example.json
+  --findings-file {project_root}/.mg/docs/verify/findings-code-example.json
 python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
-  --findings-file {project_root}/.mg/docs/docs-verify-findings-data-model.json
+  --findings-file {project_root}/.mg/docs/verify/findings-data-model.json
 python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
-  --findings-file {project_root}/.mg/docs/docs-verify-findings-cross-doc.json
+  --findings-file {project_root}/.mg/docs/verify/findings-cross-doc.json
 python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
-  --findings-file {project_root}/.mg/docs/docs-verify-findings-completeness.json
+  --findings-file {project_root}/.mg/docs/verify/findings-completeness.json
 ```
 
 Read the manifest JSON at `{project_root}/.mg/docs/tmp/review-chunks/manifest.json`. For each entry, compute `doc_name` = basename of `source` without `.md` extension. Init one editorial findings file per document:
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
-  --findings-file {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name}.json
+  --findings-file {project_root}/.mg/docs/verify/findings-editorial-{doc_name}.json
 ```
 
 ### Step 4: Spawn All Agents in Parallel
@@ -159,7 +159,7 @@ Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/code-example-verifi
 Parameters:
 - project_root: {project_root}
 - review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
-- findings_file: {project_root}/.mg/docs/docs-verify-findings-code-example.json"
+- findings_file: {project_root}/.mg/docs/verify/findings-code-example.json"
 )
 
 Agent(
@@ -174,7 +174,7 @@ Parameters:
 - review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
 - scan_context_path: {project_root}/.mg/docs/tmp/verify-scan-context.json
 - database_model_path: {project_root}/.mg/docs/tmp/database-model.json
-- findings_file: {project_root}/.mg/docs/docs-verify-findings-data-model.json"
+- findings_file: {project_root}/.mg/docs/verify/findings-data-model.json"
 )
 
 Agent(
@@ -188,7 +188,7 @@ Parameters:
 - project_root: {project_root}
 - review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
 - glossary_path: {docs_dir_abs}/GLOSSARY.md
-- findings_file: {project_root}/.mg/docs/docs-verify-findings-cross-doc.json"
+- findings_file: {project_root}/.mg/docs/verify/findings-cross-doc.json"
 )
 
 Agent(
@@ -202,7 +202,7 @@ Parameters:
 - project_root: {project_root}
 - review_manifest: {project_root}/.mg/docs/tmp/review-chunks/manifest.json
 - scan_context_path: {project_root}/.mg/docs/tmp/verify-scan-context.json
-- findings_file: {project_root}/.mg/docs/docs-verify-findings-completeness.json"
+- findings_file: {project_root}/.mg/docs/verify/findings-completeness.json"
 )
 ```
 
@@ -223,7 +223,7 @@ Parameters:
 - doc_audience: {entry.audience}
 - review_files: {JSON array of entry.review_files}
 - style_guide_path: references/style-guide.md
-- findings_file: {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name}.json"
+- findings_file: {project_root}/.mg/docs/verify/findings-editorial-{doc_name}.json"
 )
 ```
 
@@ -235,20 +235,20 @@ Build the `--merge-from` list dynamically from the 4 fact-checker files plus N p
 
 ```bash
 python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
-  --merge-from {project_root}/.mg/docs/docs-verify-findings-code-example.json \
-  --merge-from {project_root}/.mg/docs/docs-verify-findings-data-model.json \
-  --merge-from {project_root}/.mg/docs/docs-verify-findings-cross-doc.json \
-  --merge-from {project_root}/.mg/docs/docs-verify-findings-completeness.json \
-  --merge-from {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name_1}.json \
-  --merge-from {project_root}/.mg/docs/docs-verify-findings-editorial-{doc_name_2}.json \
+  --merge-from {project_root}/.mg/docs/verify/findings-code-example.json \
+  --merge-from {project_root}/.mg/docs/verify/findings-data-model.json \
+  --merge-from {project_root}/.mg/docs/verify/findings-cross-doc.json \
+  --merge-from {project_root}/.mg/docs/verify/findings-completeness.json \
+  --merge-from {project_root}/.mg/docs/verify/findings-editorial-{doc_name_1}.json \
+  --merge-from {project_root}/.mg/docs/verify/findings-editorial-{doc_name_2}.json \
   ... (one --merge-from per document) \
-  --findings-file {project_root}/.mg/docs/docs-verify-findings.json \
-  --output {MG_INSTALL_TMP_DIR}/all-findings.json
+  --findings-file {project_root}/.mg/docs/verify/findings.json \
+  --output {MG_INSTALL_WORKSPACE_DIR}/verify/all-findings.json
 ```
 
 ### Step 6: Generate Report
 
-1. **Read** `{MG_INSTALL_TMP_DIR}/all-findings.json` to get all recorded findings.
+1. **Read** `{MG_INSTALL_WORKSPACE_DIR}/verify/all-findings.json` to get all recorded findings.
 
 2. **Identify systemic issues.** Look for patterns across findings:
    - Same broken reference appearing in multiple documents
@@ -257,7 +257,7 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
    - Same editorial issue (e.g., filler content) appearing across multiple documents
    Group these as systemic issues rather than listing each occurrence separately.
 
-3. **Write** `docs-verify-report.md` to `{project_root}/.mg/docs/docs-verify-report.md` with this structure:
+3. **Write** `verify/report.md` to `{project_root}/.mg/docs/verify/report.md` with this structure:
 
 ```markdown
 # Documentation Verification Report
@@ -287,7 +287,7 @@ List systemic issues first (patterns that span multiple documents). Then group r
 
 ### Step 7: Present Results
 
-1. **Read the report** you just wrote: `{project_root}/.mg/docs/docs-verify-report.md`.
+1. **Read the report** you just wrote: `{project_root}/.mg/docs/verify/report.md`.
 
 2. **Count total findings** from the merged findings data.
 
@@ -295,7 +295,7 @@ List systemic issues first (patterns that span multiple documents). Then group r
    ```
    Verification complete -- {total} issues found.
 
-   Full report: .mg/docs/docs-verify-report.md
+   Full report: .mg/docs/verify/report.md
    ```
 
 4. **Conditional guidance:**
@@ -324,11 +324,11 @@ List systemic issues first (patterns that span multiple documents). Then group r
 
 ## Important Principles
 
-- **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `docs-verify-report.md`, `docs-verify-findings.json`.
+- **Read-only on documentation files.** Never modify, delete, or create files in the docs directory. Write only to `.mg/docs/` workspace files: `verify/report.md`, `verify/findings.json`.
 - **Subagents read their own instructions via file path.** The Agent prompt passes a reference (`Read and follow the instructions in: agents/...`) rather than inlining the full agent definition. This keeps agent instructions out of the orchestrator's context.
 - **Focused agents with isolated findings.** Each agent has a narrow scope and writes to its own findings file. The orchestrator merges all findings after agents complete. Agents never touch the shared findings file directly.
 - **Reference integrity runs in the orchestrator.** The `verify-references.py` script is deterministic and fast -- it runs directly without an agent wrapper.
-- **Reference integrity is manifest-based.** The script reads structured manifests from `.mg/docs/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
+- **Reference integrity is manifest-based.** The script reads structured manifests from `.mg/docs/generate/reference-manifests/` produced by the generate pipeline. No extraction from markdown is performed.
 - **Prefer false negatives over false positives.** Same principle across all agents -- only flag issues with high confidence. A noisy report trains users to ignore it.
 - **Verify clears all verify artifacts before each run** via `list-verify-findings.py --clean`. Generate reads findings but never clears them. This ensures each verify run reflects the current documentation state.
 - **Use `{MG_INSTALL_SCRIPTS_DIR}` placeholder for script paths** -- resolved by install.sh at install time.

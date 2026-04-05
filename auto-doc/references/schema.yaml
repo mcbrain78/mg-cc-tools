@@ -144,7 +144,7 @@ docs-scan:
 
 # ── 2. database-model ────────────────────────────────────────
 database-model:
-  location: ".mg/docs/tmp/database-model.json"
+  location: ".mg/docs/generate/database-model.json"
   notes: |
     Deterministic extraction of DB schema/table/column metadata from SQLAlchemy
     ORM models. Produced by extract-database-model.py during generate setup.
@@ -194,7 +194,7 @@ database-model:
 
 # ── 3. database-model-summary (Phase B) ─────────────────────
 database-model-summary:
-  location: ".mg/docs/tmp/database-model-summary.json"
+  location: ".mg/docs/generate/database-model-summary.json"
   notes: |
     Compact summary of database-model.json for writer agents to load in a
     single read at orient time. Contains schema names, table names, column
@@ -221,7 +221,7 @@ database-model-summary:
 
 # ── 4. db-table-map (Phase B) ────────────────────────────────
 db-table-map:
-  location: ".mg/docs/tmp/db-table-map.json"
+  location: ".mg/docs/generate/db-table-map.json"
   notes: |
     Section-to-tables mapping built by generate-setup.py at generate time.
     Maps each documentation section to the database tables it needs.
@@ -241,7 +241,7 @@ db-table-map:
 
 # ── 5. docs-verify-findings ──────────────────────────────────
 docs-verify-findings:
-  location: ".mg/docs/docs-verify-findings.json"
+  location: ".mg/docs/verify/findings.json"
   notes: |
     Flat array of verification findings. One per quality issue per section.
     Created/cleared by auto-doc-verify.md before each verify run.
@@ -276,11 +276,11 @@ docs-verify-findings:
 
 # ── 6. diff-scope ────────────────────────────────────────────
 diff-scope:
-  location: ".mg/docs/diff-scope.json"
+  location: ".mg/docs/scan/diff-scope.json"
   notes: |
     Scoped work order from diff-scan.py for incremental scans. Sections
     affected by code changes since last generation, plus new/deleted files.
-    NOT in scan-logs/ (avoids merge-scan.py which reads *.json there).
+    NOT in scan/ root (avoids merge-scan.py which reads *.json there).
     Created by scan in incremental mode. Read by scan agents to scope analysis.
     Overwritten on next scan run.
   fields:
@@ -366,11 +366,11 @@ diff-scope:
 
 # ── 7. xml-sources ───────────────────────────────────────────
 xml-sources:
-  location: ".mg/docs/xml-sources/{audience}/{DOCUMENT}.xml"
+  location: ".mg/docs/generate/xml-sources/{audience}/{DOCUMENT}.xml"
   notes: |
     Structured source of truth for documentation. Stores prose alongside typed
     code references per section. Markdown in docs/auto-doc/ is assembled from
-    XML. Standalone docs (GLOSSARY, OVERVIEW) at .mg/docs/xml-sources/{DOCUMENT}.xml.
+    XML. Standalone docs (GLOSSARY, OVERVIEW) at .mg/docs/generate/xml-sources/{DOCUMENT}.xml.
   schema: |
     Recursive <section> nesting with no depth limit. One uniform element type
     at all depths. Within each section, <refs> and <body> precede child
@@ -451,7 +451,7 @@ xml-sources:
 
 # ── 8. reference-manifests ───────────────────────────────────
 reference-manifests:
-  location: ".mg/docs/reference-manifests/{audience}.json"
+  location: ".mg/docs/generate/reference-manifests/{audience}.json"
   notes: |
     Per-audience symbol/file manifests. Track which code symbols and file paths
     each section references. Produced by generate, consumed by verify for
@@ -499,29 +499,47 @@ reference-manifests:
 # ── 9. file-locations ────────────────────────────────────────
 file-locations:
   notes: |
-    Scanner creates workspace and docs-scan.json. Generator creates xml-sources/
-    and reference-manifests/. Verifier expects them to exist.
+    Each pipeline step owns a directory. Scanner creates scan/ and docs-scan.json.
+    Generator creates generate/. Verifier creates verify/. Resetting a step = rm -rf its dir.
   tree: |
     <project-root>/.mg/docs/
       .docs.config.json            -- project config overrides
       notes-inbox.json             -- captured documentation notes
-      docs-scan.json               -- shared scan contract
-      docs-verify-findings.json    -- verify findings (flat array)
-      diff-scope.json              -- incremental scan work order
+      docs-scan.json               -- shared scan contract (created by SCAN, read by all)
       docs-update-report.md        -- generation report
-      docs-verify-report.md        -- verification report
-      tmp/
-        database-model.json              -- full DB schema extraction
-        database-model-summary.json      -- compact DB summary (Phase B)
-        db-table-map.json                -- section-to-tables map (Phase B)
-      xml-sources/                 -- XML source files (source of truth)
-        devops/OPERATIONS.xml
-        devops/TROUBLESHOOTING.xml
-        end-users/USER_GUIDE.xml
-        GLOSSARY.xml
-        OVERVIEW.xml
-      reference-manifests/         -- per-audience symbol/file manifests
-      scan-logs/                   -- per-audience scan intermediates
+      scan/                        -- SCAN step outputs
+        scan-{audience}.json
+        scan-orientation.md
+        scan-project.json
+        diff-scope.json            -- incremental scan work order
+        staleness-results.json
+        note-classifications.json
+        templates/
+      templates/                   -- PREPARE-TEMPLATES refined templates
+      generate/                    -- GENERATE step outputs
+        reference-manifests/       -- per-audience symbol/file manifests
+        xml-sources/               -- XML source files (source of truth)
+          devops/OPERATIONS.xml
+          end-users/USER_GUIDE.xml
+          GLOSSARY.xml
+          OVERVIEW.xml
+        terms/                     -- glossary term proposals + reconciliation
+        scan-views/                -- per-audience scan view splits
+        project-model.json
+        database-model.json        -- full DB schema extraction
+        database-model-summary.json
+        db-table-map.json          -- section-to-tables map
+        all-notes.json
+      audit/                       -- AUDIT step outputs
+      fix/                         -- FIX step outputs
+      verify/                      -- VERIFY step outputs
+        findings.json              -- verify findings (flat array)
+        report.md                  -- verification report
+        findings-dismissed.json    -- persistent dismissals
+        findings-*.json            -- per-agent findings
+        review-chunks/
+      update/                      -- UPDATE step outputs
+      verify-runs/                 -- archived verify runs
 
 # ── 10. docs-scan-example ────────────────────────────────────
 docs-scan-example: |
