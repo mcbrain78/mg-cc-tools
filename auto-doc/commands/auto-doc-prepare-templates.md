@@ -90,6 +90,34 @@ mkdir -p .mg/docs/templates/{audience}/
 
 This creates the project-local directory structure where refined templates will be written. One directory per audience.
 
+### Step 3.5: Split Scan Data into Per-Audience Views
+
+Create a temporary directory and split the full scan into lightweight per-audience view files
+that refiner agents can read within their context limits:
+
+```bash
+TMP_DIR=$(mktemp -d)
+```
+
+For each audience to process, run:
+```bash
+python3 {SCRIPTS_DIR}/split-scan-by-audience.py \
+  --input .mg/docs/docs-scan.json \
+  --output ${TMP_DIR}/scan-view-${audience}.json \
+  --mode audience \
+  --audience ${audience} \
+  --documents ${comma_separated_documents} \
+  --project-model-output ${TMP_DIR}/project-model.json
+```
+
+Where `${comma_separated_documents}` is the comma-joined list of document names for that audience (e.g., `OPERATIONS,TROUBLESHOOTING`).
+
+This produces:
+- One `scan-view-{audience}.json` per audience (filtered source_material_index + gap_analysis, source_files stripped)
+- One `project-model.json` (slimmed, written once by first caller)
+
+These are read-only shared resources -- safe for parallel agent access.
+
 ### Step 4: Spawn Refiner Agents
 
 Spawn **all** Agent calls in a **single message** (parallel foreground -- do NOT set `run_in_background`). For each `(audience, document)` pair:
@@ -103,12 +131,15 @@ Read and follow the instructions in: {AGENTS_DIR}/template-refiner.md
 
 Project root: {project_root}
 Generic template: {TEMPLATES_DIR}/{audience}/{document}.template.md
-Scan data path: {project_root}/.mg/docs/docs-scan.json
+Scan view path: ${TMP_DIR}/scan-view-${audience}.json
+Project model path: ${TMP_DIR}/project-model.json
+Full scan path: {project_root}/.mg/docs/docs-scan.json
 Output path: {project_root}/.mg/docs/templates/{audience}/{document}.template.md
 Audience: {audience}
 Document: {document}
 Scan date: {scan_date}
-Scripts dir: {SCRIPTS_DIR}"
+Scripts dir: {SCRIPTS_DIR}
+Validate script: {SCRIPTS_DIR}/validate-refined-template.py"
 )
 ```
 
@@ -116,7 +147,9 @@ Scripts dir: {SCRIPTS_DIR}"
 - `{TEMPLATES_DIR}` resolves to the installed generic templates directory (e.g., `.claude/auto-doc/references/templates/`)
 - Output goes to `.mg/docs/templates/` (project-local, not inside `.claude/`)
 - Each Agent call passes `{SCRIPTS_DIR}` so the refiner can invoke `get-section-sources.py` and `list-optional-sections.py`
-- Parallel execution is safe: all shared resources (docs-scan.json, generic templates, scripts) are read-only; each agent writes to a unique output path
+- Agents read the lightweight `scan-view-{audience}.json` instead of the full `docs-scan.json` -- avoids context limit failures
+- `full_scan_path` is passed only for `get-section-sources.py` which needs `source_files` arrays
+- Parallel execution is safe: all shared resources (view files, project model, generic templates, scripts) are read-only; each agent writes to a unique output path
 
 After all agents complete, log each result:
 ```
