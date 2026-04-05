@@ -60,11 +60,10 @@ def migrate(mg_docs, dry_run=False):
     if os.path.isdir(scan_logs):
         import glob
 
-        # Named scan outputs
+        # Named scan outputs (scan-project.json covered by scan-*.json glob)
         for pattern in [
             "scan-*.json",
             "scan-orientation.md",
-            "scan-project.json",
             "staleness-results.json",
             "note-classifications.json",
         ]:
@@ -167,20 +166,21 @@ def migrate(mg_docs, dry_run=False):
 
     # Remove empty scan-logs/ after migration
     if os.path.isdir(scan_logs):
-        try:
-            remaining = os.listdir(scan_logs)
-        except OSError:
-            remaining = []
-        if not remaining:
-            if dry_run:
-                discards.append(f"  WOULD REMOVE: {scan_logs}/ (empty)")
-            else:
+        if dry_run:
+            # In dry-run, files haven't actually moved — report intent
+            discards.append(f"  WOULD REMOVE: {scan_logs}/ (if empty after migration)")
+        else:
+            try:
+                remaining = os.listdir(scan_logs)
+            except OSError:
+                remaining = []
+            if not remaining:
                 os.rmdir(scan_logs)
                 discards.append(f"  REMOVED: {scan_logs}/ (empty after migration)")
-        else:
-            discards.append(
-                f"  KEPT: {scan_logs}/ ({len(remaining)} files remain)"
-            )
+            else:
+                discards.append(
+                    f"  KEPT: {scan_logs}/ ({len(remaining)} files remain)"
+                )
 
     return moves, discards
 
