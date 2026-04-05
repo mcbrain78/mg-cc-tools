@@ -16,7 +16,7 @@ set -euo pipefail
 #   2. Copies supporting files (scripts, references, agents) to <target>/auto-doc/
 #   3. Resolves all relative paths in command files to absolute paths,
 #      so the LLM can find scripts, agents, and references at runtime.
-#   4. (--project only) Scaffolds .mg/docs/ workspace with config, inbox, scan-logs.
+#   4. (--project only) Scaffolds .mg/docs/ workspace with config, inbox, scan/.
 # ------------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -107,7 +107,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
+    TARGET_DIR="${PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""
@@ -256,7 +256,7 @@ AGENTS_ABS="${SUPPORT_DIR}/agents"
 SCRIPTS_ABS="${SUPPORT_DIR}/scripts"
 TEMPLATES_ABS="${SUPPORT_DIR}/references/templates"
 CHECKS_ABS="${SUPPORT_DIR}/references/verify-checks.json"
-TMP_ABS="${MG_INSTALL_PROJECT_ROOT}/.mg/docs/tmp"
+WORKSPACE_ABS="${PROJECT_ROOT}/.mg/docs"
 EMIT_CONTEXT_ABS="${TARGET_DIR}/permission-hooks/scripts/emit-context.py"
 
 echo "  Resolving path placeholders in command files ..."
@@ -284,8 +284,8 @@ for cmd in "${COMMANDS[@]}"; do
     sed -i "s|{MG_INSTALL_TEMPLATES_DIR}|${TEMPLATES_ABS}|g" "$cmd_file"
   fi
   # Resolve tmp dir placeholder
-  if grep -q '{MG_INSTALL_TMP_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_TMP_DIR}|${TMP_ABS}|g" "$cmd_file"
+  if grep -q '{MG_INSTALL_WORKSPACE_DIR}' "$cmd_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_WORKSPACE_DIR}|${WORKSPACE_ABS}|g" "$cmd_file"
   fi
   # Resolve agents dir placeholder
   if grep -q '{MG_INSTALL_AGENTS_DIR}' "$cmd_file" 2>/dev/null; then
@@ -322,8 +322,8 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   if grep -q '{MG_INSTALL_TEMPLATES_DIR}' "$agent_file" 2>/dev/null; then
     sed -i "s|{MG_INSTALL_TEMPLATES_DIR}|${TEMPLATES_ABS}|g" "$agent_file"
   fi
-  if grep -q '{MG_INSTALL_TMP_DIR}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_TMP_DIR}|${TMP_ABS}|g" "$agent_file"
+  if grep -q '{MG_INSTALL_WORKSPACE_DIR}' "$agent_file" 2>/dev/null; then
+    sed -i "s|{MG_INSTALL_WORKSPACE_DIR}|${WORKSPACE_ABS}|g" "$agent_file"
   fi
   if grep -q '{MG_INSTALL_CHECKS_FILE}' "$agent_file" 2>/dev/null; then
     sed -i "s|{MG_INSTALL_CHECKS_FILE}|${CHECKS_ABS}|g" "$agent_file"
@@ -340,13 +340,13 @@ done
 # user customizations.
 
 if [[ -n "$PROJECT_ROOT" ]]; then
-  DOCS_WORKSPACE="${MG_INSTALL_PROJECT_ROOT}/.mg/docs"
+  DOCS_WORKSPACE="${PROJECT_ROOT}/.mg/docs"
 
   if [[ -d "$DOCS_WORKSPACE" ]]; then
     echo "  Scaffolding: .mg/docs/ already exists -- skipping (preserving existing config)"
   else
     echo "  Scaffolding -> ${DOCS_WORKSPACE}/"
-    mkdir -p "${DOCS_WORKSPACE}/scan-logs" "${DOCS_WORKSPACE}/tmp"
+    mkdir -p "${DOCS_WORKSPACE}/scan"
 
     # Project-local config (copy of global defaults for user to customize)
     cp "${SCRIPT_DIR}/references/.docs.config.json" "${DOCS_WORKSPACE}/.docs.config.json"
@@ -356,8 +356,14 @@ if [[ -n "$PROJECT_ROOT" ]]; then
     echo '{"notes": []}' > "${DOCS_WORKSPACE}/notes-inbox.json"
     echo "    Created notes-inbox.json (empty inbox)"
 
-    # scan-logs directory already created above
-    echo "    Created scan-logs/ directory"
+    echo "    Created scan/ directory"
+  fi
+
+  # Detect old workspace layout and advise migration
+  if [[ -d "${DOCS_WORKSPACE}/scan-logs" ]] || [[ -d "${DOCS_WORKSPACE}/tmp" ]]; then
+    echo ""
+    echo "  Old workspace layout detected. Run migration:"
+    echo "    python3 ${SUPPORT_DIR}/scripts/migrate-workspace.py ${DOCS_WORKSPACE}"
   fi
 fi
 
@@ -414,7 +420,7 @@ done
 # 3. Unresolved install-time placeholders in installed .md files
 #    Only checks placeholders that install.sh is responsible for resolving.
 #    Runtime placeholders ({DOCUMENT}, {DOC_NAME}, etc.) are filled by the orchestrator.
-INSTALL_PLACEHOLDERS='{MG_INSTALL_GLOBAL_CONFIG} {MG_INSTALL_SCRIPTS_DIR} {MG_INSTALL_TEMPLATES_DIR} {MG_INSTALL_TMP_DIR} {MG_INSTALL_AGENTS_DIR} {MG_INSTALL_CHECKS_FILE} {MG_INSTALL_EMIT_CONTEXT_SCRIPT}'
+INSTALL_PLACEHOLDERS='{MG_INSTALL_GLOBAL_CONFIG} {MG_INSTALL_SCRIPTS_DIR} {MG_INSTALL_TEMPLATES_DIR} {MG_INSTALL_WORKSPACE_DIR} {MG_INSTALL_AGENTS_DIR} {MG_INSTALL_CHECKS_FILE} {MG_INSTALL_EMIT_CONTEXT_SCRIPT}'
 for md_file in "${COMMANDS_DIR}"/auto-doc*.md "${SUPPORT_DIR}/agents/"*.md; do
   [[ -f "$md_file" ]] || continue
   for placeholder in $INSTALL_PLACEHOLDERS; do
@@ -448,8 +454,8 @@ echo "  References:  ${REF_COUNT} reference files -> .claude/auto-doc/references
 echo "  Templates:   ${TEMPLATE_COUNT} templates -> .claude/auto-doc/references/templates/"
 echo "  Agents:      ${AGENT_COUNT} agent definitions -> .claude/auto-doc/agents/"
 if [[ -n "$PROJECT_ROOT" ]]; then
-  if [[ -d "${MG_INSTALL_PROJECT_ROOT}/.mg/docs" ]]; then
-    echo "  Scaffolded:  .mg/docs/ (config, inbox, scan-logs)"
+  if [[ -d "${PROJECT_ROOT}/.mg/docs" ]]; then
+    echo "  Scaffolded:  .mg/docs/ (config, inbox, scan)"
   fi
 fi
 echo ""

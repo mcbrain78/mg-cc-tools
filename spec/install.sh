@@ -157,7 +157,7 @@ SCRIPTS_DIR="${TARGET_DIR}/spec/scripts"
 mkdir -p "$SCRIPTS_DIR"
 cp "${SCRIPT_DIR}/scripts/"*.py "$SCRIPTS_DIR/"
 chmod +x "$SCRIPTS_DIR/"*.py
-echo "  Scripts → ${MG_INSTALL_SCRIPTS_DIR}/"
+echo "  Scripts → ${SCRIPTS_DIR}/"
 
 # References
 REFS_DIR="${TARGET_DIR}/spec/references"
@@ -172,7 +172,7 @@ echo "  References → ${REFS_DIR}/"
 SNAPSHOT_ABSOLUTE="${REFS_DIR}/context-template.snapshot"
 TEMPLATE_ABSOLUTE="${REFS_DIR}/concept-spec-template.md"
 
-SCRIPTS_ABSOLUTE="${MG_INSTALL_SCRIPTS_DIR}"
+SCRIPTS_ABSOLUTE="${SCRIPTS_DIR}"
 
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"

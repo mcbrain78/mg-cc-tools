@@ -76,7 +76,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
+    TARGET_DIR="${PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""

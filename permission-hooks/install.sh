@@ -69,7 +69,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
+    TARGET_DIR="${PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""
@@ -142,7 +142,7 @@ echo "  Resolving placeholders ..."
 
 # Hook file: {MG_INSTALL_PROJECT_ROOT}
 hook_file="${SUPPORT_DIR}/hooks/permission-guard.py"
-sed -i "s|{MG_INSTALL_PROJECT_ROOT}|${MG_INSTALL_PROJECT_ROOT}|g" "$hook_file"
+sed -i "s|{MG_INSTALL_PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
 
 # Command files: {MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}
 EMIT_EDIT_GUARD_ABS="${SUPPORT_DIR}/scripts/emit-edit-guard.py"
@@ -185,7 +185,7 @@ echo ""
 echo "  Hook:"
 echo "    ${SUPPORT_DIR}/hooks/permission-guard.py"
 if [[ -n "$PROJECT_ROOT" ]]; then
-  echo "    PROJECT_ROOT: ${MG_INSTALL_PROJECT_ROOT}"
+  echo "    PROJECT_ROOT: ${PROJECT_ROOT}"
 else
   echo "    PROJECT_ROOT: (empty — falls back to cwd from hook event)"
 fi

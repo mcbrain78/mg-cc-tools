@@ -80,7 +80,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
+    TARGET_DIR="${PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""
@@ -224,7 +224,7 @@ done
 # exist to preserve user edits.
 
 if [[ -n "$PROJECT_ROOT" ]]; then
-  HEALTH_DIR="${MG_INSTALL_PROJECT_ROOT}/.mg/health-scan"
+  HEALTH_DIR="${PROJECT_ROOT}/.mg/health-scan"
   mkdir -p "$HEALTH_DIR"
   echo "  Config    → ${HEALTH_DIR}/"
 

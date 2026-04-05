@@ -80,7 +80,7 @@ fi
 case "$MODE" in
   project)
     PROJECT_ROOT="$(cd "${PROJECT_PATH:-.}" && pwd)"
-    TARGET_DIR="${MG_INSTALL_PROJECT_ROOT}/.claude"
+    TARGET_DIR="${PROJECT_ROOT}/.claude"
     ;;
   global)
     PROJECT_ROOT=""
@@ -176,7 +176,7 @@ done
 # directory structure and seed the input files.
 
 if [[ -n "$PROJECT_ROOT" ]]; then
-  WORK_DIR="${MG_INSTALL_PROJECT_ROOT}/.mg/data-provider"
+  WORK_DIR="${PROJECT_ROOT}/.mg/data-provider"
   echo "  Work dir   → ${WORK_DIR}/"
 
   mkdir -p "${WORK_DIR}/input" "${WORK_DIR}/tasks" "${WORK_DIR}/output"
