@@ -4,13 +4,15 @@ description: Block Edit/Write tools (enable edit guard)
 allowed-tools: Bash
 ---
 
-Run the edit guard emitter to block edits:
+**IMPORTANT: Run these two commands as SEPARATE sequential tool calls. Do NOT combine them in a single parallel message — the second call's hook must see the first call's output in the transcript.**
+
+Step 1 — Run the edit guard emitter to block edits:
 
 ```
 python3 {EMIT_EDIT_GUARD_SCRIPT} OFF
 ```
 
-Then trigger a statusline bridge update:
+Step 2 — After step 1 completes, trigger a statusline bridge update:
 
 ```
 echo "Statusline Update: EDITS OFF"

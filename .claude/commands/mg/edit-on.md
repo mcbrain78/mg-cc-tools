@@ -5,13 +5,15 @@ argument-hint: "[<instruction>]"
 allowed-tools: Bash
 ---
 
-Run the edit guard emitter to re-enable edits:
+**IMPORTANT: Run these two commands as SEPARATE sequential tool calls. Do NOT combine them in a single parallel message — the second call's hook must see the first call's output in the transcript.**
+
+Step 1 — Run the edit guard emitter to re-enable edits:
 
 ```
 python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/scripts/emit-edit-guard.py ON
 ```
 
-Then trigger a statusline bridge update:
+Step 2 — After step 1 completes, trigger a statusline bridge update:
 
 ```
 echo "Statusline Update: EDITS ON"
