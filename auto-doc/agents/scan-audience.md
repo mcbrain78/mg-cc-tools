@@ -121,6 +121,22 @@ When the orchestrator passes `Mode: incremental` in your prompt, you operate dif
 
    c. If the script exits non-zero (validation failed), review the error message, fix the output data in the temp file, and retry once. If it fails again, log the error -- the merge step handles missing audience data gracefully.
 
+6. **Return summary.** After writing the output file, return a structured summary (this is what the orchestrator sees):
+   ```
+   SCAN COMPLETE audience={audience}
+   status=ok
+   entries={count of source_material_index keys}
+   gaps={count of undocumented_components}
+   missing={count of missing_for_audience topics}
+   output={output_path}
+   ```
+   If the write-scan-output.py validation failed on both attempts, return:
+   ```
+   SCAN COMPLETE audience={audience}
+   status=error
+   error={error message from write-scan-output.py}
+   ```
+
 ## Output Format
 
 The temp file written in step 5 must match this structure:
@@ -169,3 +185,4 @@ The `"source"` field is optional. Only present on entries added during increment
 - **BOUNDARY is not OPTIONAL.** BOUNDARY means "this content belongs elsewhere" -- the section still exists and still gets an index entry. Only OPTIONAL means a section can be skipped entirely.
 - **In incremental mode, completeness is critical.** Your output must contain ALL section entries (changed + unchanged). Missing entries cause merge-scan.py to lose data for those sections.
 - **Carry-forward entries are verbatim.** Do not modify baseline entries. Copy them exactly as provided.
+- **Prefer `.env.example` over `.env`.** Use `.env.example` for environment variable names and structure. Only read `.env` if no `.env.example` exists — `.env` may contain secrets that end up in the LLM context.

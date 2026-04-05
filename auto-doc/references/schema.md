@@ -160,7 +160,7 @@ Each component object:
 
 - **Type:** `object or null`
 - **Required:** yes
-- **Description:** Lightweight database metadata. `null` if the project has no database. The `schemas` field is **stripped** by `slim_project_model()` during generate setup -- detailed schema/table/column data is extracted deterministically into a separate `database-model.json` file (see below). Only `orm_framework`, `migration_tool`, and `engine` survive into the slimmed project model.
+- **Description:** Lightweight database metadata. `null` if the project has no database. Orient only produces `{orm_framework, migration_tool, engine}`. Full schema detail is in `database-model.json` (produced at generate time by `extract-database-model.py`).
 
 ```json
 "database": {

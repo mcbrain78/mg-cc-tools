@@ -96,15 +96,14 @@ GSD integration: {true|false}
    - Database schemas, API contracts, configuration files
    - Environment files: .env.example, config templates (never read .env — may contain secrets)
 
-2. **Database schema extraction.** If ORM models are detected (SQLAlchemy, Django, Prisma, etc.):
-   a. Find all model definition files (Glob for models.py, models/*.py, schema.prisma, etc.)
-   b. Use get_symbols_overview to identify model classes
-   c. For each model class, use find_symbol to read its table/schema configuration
-      (SQLAlchemy: __tablename__ and __table_args__["schema"];
-       Django: Meta.db_table; Prisma: @@map and schema)
-   d. Find migration configurations (alembic.ini, alembic/env.py, django settings)
-   e. Build the database field mapping each schema to its tables and migration chain
-   f. If no ORM detected, set database to null
+2. **Database detection.** If ORM models are detected (SQLAlchemy, Django, Prisma, etc.):
+   a. Find model definition files (Glob for models.py, models/*.py, schema.prisma, etc.)
+   b. Use get_symbols_overview to identify model classes (class names only — already collected in step 1)
+   c. Find migration configurations (alembic.ini, alembic/env.py, django settings) to identify the migration tool
+   d. Build a lightweight database field: {orm_framework, migration_tool, engine}
+   e. Do NOT extract per-model table/schema configuration via find_symbol — that data is stripped by slim_project_model() and re-extracted deterministically by extract-database-model.py at generate time
+   f. For components[].database_tables, list the model class names found in that component's directory (from step b). These are stripped before writers see them but help the scan summary.
+   g. If no ORM detected, set database to null
 
 3. **Detect user interfaces.** Apply heuristics:
    - Front-end frameworks with routes/templates (React, Vue, Next.js, Flask+templates, Django+templates) -> type: web
@@ -152,7 +151,7 @@ GSD integration: {true|false}
    gsd_loaded: true|false
    interfaces_confirmed: true|false
    detected_interfaces: [{type, name, primary}] or []
-   database_schemas: N (or 'none')"
+   database_orm: <name>|none"
 )
 ```
 
@@ -305,7 +304,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
    )
    ```
 
-4. **After all subagents complete,** verify output files exist:
+4. **After all subagents complete,** check each subagent's return for `status=ok`. If any returned `status=error`, log a warning with the error message. Then verify output files exist via Bash `test -f`:
    ```
    Check: <project_root>/.mg/docs/scan-logs/scan-{audience}.json
    ```

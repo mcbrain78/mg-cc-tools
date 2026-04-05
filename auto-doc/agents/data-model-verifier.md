@@ -41,7 +41,7 @@ For each manifest entry, read each file in `review_files`. For each review file,
 For each identified claim:
 
 - **Table/model counts:** Compare against `project_model.components[].database_tables` or count model classes via Serena's `find_symbol`.
-- **Schema names:** If `database_model_path` is provided, check against its `schemas` keys (authoritative). Otherwise fall back to `project_model.database.schemas` if available.
+- **Schema names:** If `database_model_path` is provided, check against its `schemas` keys (authoritative). If `database_model_path` is null, skip schema verification.
 - **Model class names:** Use `find_symbol` (Serena) to verify the class exists in the codebase.
 - **Component counts:** Compare against the number of entries in `project_model.components`.
 
