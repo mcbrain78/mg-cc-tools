@@ -138,6 +138,15 @@ its refs file with ONLY the typed_refs for entities you just referenced in that
 body. A ref that only appears in a child's content MUST go in the child's refs,
 not the parent intro's refs.
 
+**Code-block completeness:** Scan every code block, SQL query, and backtick span in the section body for entities that require refs:
+- Every CLI tool used in a code block requires an `ext` ref
+- Every file path in a code block requires a `config` ref
+- Every schema-qualified table in SQL requires a `db` ref; every column in SELECT/WHERE/UPDATE requires a `db` ref with `column` field
+- Every env var in a code block requires an `env` ref
+- Do NOT emit refs for code read during orient but not named in the section body
+
+See Completeness Rule in typed-refs-format.md.
+
 Read and follow the typed refs format in: references/typed-refs-format.md
 
 Do NOT call Write() to create the final document file -- the finalize step
@@ -157,6 +166,7 @@ These conventions override or extend the style guide for devops documentation.
 - **Environment awareness.** Specify which environment (dev, staging, prod) each procedure applies to. Never write a command that is ambiguous about its target environment.
 - **Include expected output after every command.** Show both success output and common failure output with resolution steps.
 - **Backed by PagerDuty, Google SRE Book, AWS Well-Architected practices.** Follow established operational documentation standards.
+- **Name code entities as landmarks.** When referencing code in prose, name the entity so it anchors the reader: `` `get_blocked_tickers()` checks for tickers with unresolved warnings`` — names the function, keeps focus on operational behavior. Don't document full signatures or parameters — that's developer docs. When a code block queries a table, the surrounding prose should naturally contain the table/schema name that the refs track.
 
 ## Output Conventions
 

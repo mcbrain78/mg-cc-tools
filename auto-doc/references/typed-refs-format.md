@@ -42,3 +42,29 @@ For sections with no code references, use `{"typed_refs": []}`.
 
 If the script prints a WARNING about unresolved symbols, check which file you
 read that symbol from, add the correct `module` to the code ref, and re-run.
+
+## Completeness Rule
+
+**Name → Ref rule:** Every code entity that appears in the section body — in backtick-quoted prose, code blocks, SQL queries, or table cells — MUST have a corresponding typed ref. This includes:
+- CLI tools in code blocks → `ext` (e.g., `psql`, `curl`, `systemctl`, `pg_dump`)
+- File paths in code blocks → `config` (e.g., `.env.production`, `alembic_road_runner.ini`)
+- Table/column names in SQL → `db` with `column` field when columns are used
+- Env vars in code blocks → `env`
+
+**Ref → Name rule:** Every typed ref emitted MUST have its identifier appear somewhere in the section body. If you read a function during orient but described its behavior without naming it, do NOT emit a ref for it.
+
+### Example
+
+Given a code block:
+```sql
+psql -h $DB_HOST -d road_runner_db -c "SELECT flow_name FROM road_runner.etl_runs"
+```
+
+Required refs:
+```json
+{"typed_refs": [
+  {"type": "ext", "name": "psql"},
+  {"type": "env", "name": "DB_HOST"},
+  {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}
+]}
+```

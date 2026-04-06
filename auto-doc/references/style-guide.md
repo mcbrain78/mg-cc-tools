@@ -277,6 +277,25 @@ Scan for conflicting statements: version requirements, naming, parameter types, 
 ### No Placeholder Content
 Remove all: TODOs, `{placeholder}` tokens, `TBD`, leftover template comments (`<!-- PURPOSE:`, `<!-- EXAMPLE:`, `<!-- AUDIENCE:`), `lorem ipsum`.
 
+## 7. Reference Naming by Audience
+
+Code entities named in prose create verifiable anchors for the ref system. The density of naming varies by audience — devops names functions when they tell operators where to look; end-user docs rarely name internal code at all.
+
+| Audience | Naming Density | What to Name | What NOT to Name |
+|----------|---------------|--------------|------------------|
+| Developer/Agent | High | Functions, classes, modules, parameters, types | — |
+| DevOps | Medium | Config files, env vars, service units, DB objects, CLI tools, flow names. Functions/classes when they tell the operator where to look. | Full signatures, parameter types, internal implementation patterns |
+| End-user | Low | Flow names, config paths the user interacts with | Internal functions, classes, modules |
+| Glossary | Map-level | The specific code entity each term maps to | — |
+
+### DevOps Naming Examples
+
+**Good:** "The `classify_severity()` function assigns severity based on change magnitude: `info` (below 1%), `warning` (1-5%), `critical` (above 5%)."
+
+**Bad:** "Drift detection classifies severity into three levels." (no verifiable anchor — if the writer read `classify_severity` during orient, the function name must appear in prose or the ref must be omitted)
+
+**Bad:** "`classify_severity(changed_fields: dict[str, FieldDiff]) -> Severity` iterates..." (too much implementation detail for devops — full signatures belong in developer docs)
+
 ---
 
 *This style guide is referenced by writer agents during documentation generation. Updates to these conventions affect all future document generation runs.*
