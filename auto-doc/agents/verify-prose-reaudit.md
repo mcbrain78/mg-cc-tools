@@ -29,7 +29,8 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
 
    a. **Read the section JSON** at the `file` path returned by next-section.
       Do NOT read any other section files. Do NOT read the manifest. Each file has:
-      - `slug`: Section identifier
+      - `path`: Full section path (e.g., `infrastructure-overview/deployment-topology`)
+      - `slug`: Leaf section identifier
       - `document`: Document title
       - `audience`: Target audience
       - `body`: The section's markdown prose
@@ -96,7 +97,7 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
    python3 {scripts_dir}/add-verify-finding.py \
        --findings-file {findings_file} \
        --document "{document}" \
-       --section "{slug}" \
+       --section "{path}" \
        --audience "{audience}" \
        --check "{check_type}" \
        --description "{description}" \
