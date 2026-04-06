@@ -209,6 +209,7 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         "database-model.json",
         "database-model-summary.json",
         "db-table-map.json",
+        "db-usage-index.json",
     ]:
         p = os.path.join(generate_dir, stale)
         if os.path.exists(p):
@@ -324,6 +325,7 @@ def _extract_database_model(paths, scripts_dir):
 
     output = paths["database_model_path"]
     summary_output = os.path.join(paths["generate_dir"], "database-model-summary.json")
+    usage_output = os.path.join(paths["generate_dir"], "db-usage-index.json")
     cmd = [
         "uv", "run", "--directory", paths["project_root"],
         sys.executable, os.path.join(scripts_dir, "extract-database-model.py"),
@@ -332,13 +334,18 @@ def _extract_database_model(paths, scripts_dir):
         "--project-model", pm_path,
         "--output", output,
         "--summary-output", summary_output,
+        "--usage-output", usage_output,
     ]
     _run_script(cmd, "extract-database-model", critical=False)
 
     if os.path.isfile(output):
         result = load_json(output, default={})
         if result.get("schemas"):
-            return {"full": output, "summary": summary_output}
+            return {
+                "full": output,
+                "summary": summary_output,
+                "usage": usage_output if os.path.isfile(usage_output) else None,
+            }
     return None
 
 
@@ -417,20 +424,77 @@ def detect_refined_templates(project_root, audiences, scan_date):
     return refined, stale
 
 
-def _build_db_table_map(project_model_path, scan_path, generate_dir):
-    """Build section-to-tables mapping from project model and scan data.
+def _build_db_table_map(project_model_path, scan_path, generate_dir,
+                        usage_index_path=None):
+    """Build section-to-tables mapping from usage index or project model.
 
-    Reads ``database_tables`` from each component in the slimmed project
-    model and cross-references with ``source_material_index`` sections
-    to produce a map of section_key -> [table_names].
+    Primary path (usage index available): looks up each section's source_files
+    in the usage index's file_usage to get precise function-level table mappings.
+
+    Fallback path (no usage index): uses component-level prefix matching from
+    project_model.components[].database_tables (legacy behavior).
 
     Returns path to db-table-map.json, or None if no database tables found.
     """
+    # Load scan data for source_material_index
+    scan_data = load_json(scan_path, default={})
+    smi = scan_data.get("source_material_index", {})
+
+    # Try usage-index-based mapping first
+    if usage_index_path and os.path.isfile(usage_index_path):
+        usage_index = load_json(usage_index_path, default={})
+        file_usage = usage_index.get("file_usage", {})
+        table_defs = usage_index.get("table_definitions", {})
+
+        if file_usage or table_defs:
+            # Set of files that define tables
+            def_files = {
+                info["source_file"]
+                for info in table_defs.values()
+                if "source_file" in info
+            }
+
+            table_map = {}
+            for section_key, section_data in smi.items():
+                source_files = section_data.get("source_files", [])
+                section_tables = set()
+                usage_detail = {}  # table -> [{file, functions}]
+
+                for sf in source_files:
+                    # Check if file uses any tables
+                    if sf in file_usage:
+                        for func_name, tables in file_usage[sf].items():
+                            for tbl in tables:
+                                section_tables.add(tbl)
+                                if tbl not in usage_detail:
+                                    usage_detail[tbl] = []
+                                usage_detail[tbl].append({
+                                    "file": sf,
+                                    "functions": [func_name],
+                                })
+
+                    # Check if file defines a table
+                    if sf in def_files:
+                        for tbl_name, tbl_info in table_defs.items():
+                            if tbl_info.get("source_file") == sf:
+                                section_tables.add(tbl_name)
+
+                if section_tables:
+                    entry = {"tables": sorted(section_tables)}
+                    if usage_detail:
+                        entry["usage"] = usage_detail
+                    table_map[section_key] = entry
+
+            if table_map:
+                output_path = os.path.join(generate_dir, "db-table-map.json")
+                save_json(output_path, table_map)
+                return output_path
+
+    # Fallback: component-level prefix matching (legacy)
     pm = load_json(project_model_path)
     if not pm:
         return None
 
-    # Build reverse index: component directory -> [table_names]
     dir_to_tables = {}
     for comp in pm.get("components", []):
         tables = comp.get("database_tables", [])
@@ -443,18 +507,12 @@ def _build_db_table_map(project_model_path, scan_path, generate_dir):
     if not dir_to_tables:
         return None
 
-    # Load scan data for source_material_index
-    scan_data = load_json(scan_path, default={})
-    smi = scan_data.get("source_material_index", {})
-
-    # For each section, collect tables from its source files
     table_map = {}
     for section_key, section_data in smi.items():
         source_files = section_data.get("source_files", [])
         section_tables = set()
         for sf in source_files:
             for comp_path, tables in dir_to_tables.items():
-                # Check if source file is within the component's path
                 if sf.startswith(comp_path) or sf == comp_path:
                     section_tables.update(tables)
         if section_tables:
@@ -601,6 +659,7 @@ def main():
     if db_result:
         db_table_map_path = _build_db_table_map(
             paths["project_model_path"], scan_file, paths["generate_dir"],
+            usage_index_path=db_result.get("usage"),
         )
 
     # Pre-initialize heading states for orient-write documents

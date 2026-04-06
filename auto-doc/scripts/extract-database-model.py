@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import ast
 import datetime
 import importlib
 import importlib.util
@@ -62,7 +63,9 @@ def _find_python_files(project_root, search_paths):
 def _discover_bases(project_root, python_files):
     """Import each file and discover SQLAlchemy DeclarativeBase subclasses.
 
-    Returns a list of unique MetaData objects with populated tables.
+    Returns a tuple of:
+        - list of unique MetaData objects with populated tables
+        - dict mapping model class name -> {table_name, schema, source_file}
     """
     # Ensure project root is on sys.path for imports
     if project_root not in sys.path:
@@ -76,9 +79,10 @@ def _discover_bases(project_root, python_files):
             DeclarativeBase = None
             DeclarativeBaseNoMeta = None
         except ImportError:
-            return []
+            return [], {}
 
     metadata_map = {}  # id(MetaData) -> MetaData
+    model_class_map = {}  # class_name -> {table_name, schema, source_file}
 
     def _register(meta):
         if meta is not None and hasattr(meta, "sorted_tables"):
@@ -126,7 +130,137 @@ def _discover_bases(project_root, python_files):
             if hasattr(obj, "metadata") and hasattr(obj, "__tablename__"):
                 _register(getattr(obj, "metadata", None))
 
-    return list(metadata_map.values())
+            # Track model class -> table mapping
+            if hasattr(obj, "__tablename__") and hasattr(obj, "__table__"):
+                tbl = obj.__table__
+                model_class_map[attr_name] = {
+                    "table_name": tbl.name,
+                    "schema": tbl.schema or "public",
+                    "source_file": rel.replace(os.sep, "/"),
+                }
+
+    return list(metadata_map.values()), model_class_map
+
+
+def _build_usage_index(project_root, model_class_map):
+    """Build file-level usage index via static AST analysis.
+
+    Walks all .py files under project_root, finds imports of known model
+    classes, and tracks which functions reference them.
+
+    Args:
+        project_root: Absolute path to the project root.
+        model_class_map: Dict from _discover_bases(): class_name -> {table_name, ...}
+
+    Returns:
+        Dict with table_definitions and file_usage keys.
+    """
+    if not model_class_map:
+        return {"table_definitions": {}, "file_usage": {}}
+
+    # Build table_definitions from model_class_map
+    table_definitions = {}
+    for class_name, info in model_class_map.items():
+        table_definitions[info["table_name"]] = {
+            "schema": info["schema"],
+            "model_class": class_name,
+            "source_file": info["source_file"],
+        }
+
+    known_classes = set(model_class_map.keys())
+    # Reverse: class_name -> table_name
+    class_to_table = {cn: info["table_name"] for cn, info in model_class_map.items()}
+
+    file_usage = {}
+
+    for dirpath, _dirnames, filenames in os.walk(project_root):
+        # Skip hidden dirs, __pycache__, .venv, node_modules
+        rel_dir = os.path.relpath(dirpath, project_root)
+        if any(
+            part.startswith(".") or part == "__pycache__" or part == "node_modules"
+            for part in rel_dir.split(os.sep)
+        ):
+            continue
+
+        for fname in filenames:
+            if not fname.endswith(".py"):
+                continue
+            fpath = os.path.join(dirpath, fname)
+            rel = os.path.relpath(fpath, project_root).replace(os.sep, "/")
+
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    source = f.read()
+                tree = ast.parse(source, filename=rel)
+            except (SyntaxError, UnicodeDecodeError, OSError):
+                print(f"Warning: could not parse {rel}", file=sys.stderr)
+                continue
+
+            # Step 1: find imports of known model classes, track aliases
+            # alias_to_class: local_name -> class_name
+            alias_to_class = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    for alias in node.names:
+                        if alias.name == "*":
+                            continue  # skip star imports
+                        if alias.name in known_classes:
+                            local = alias.asname if alias.asname else alias.name
+                            alias_to_class[local] = alias.name
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name in known_classes:
+                            local = alias.asname if alias.asname else alias.name
+                            alias_to_class[local] = alias.name
+
+            if not alias_to_class:
+                continue
+
+            local_names = set(alias_to_class.keys())
+
+            # Step 2: walk top-level statements for function/class defs
+            # and module-level references
+            func_tables = {}  # function_name -> set of table_names
+
+            def _collect_names(body_nodes):
+                """Collect model class references from AST nodes."""
+                tables = set()
+                for node in ast.walk(ast.Module(body=body_nodes, type_ignores=[])):
+                    if isinstance(node, ast.Name) and node.id in local_names:
+                        tables.add(class_to_table[alias_to_class[node.id]])
+                    elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                        if node.value.id in local_names:
+                            tables.add(class_to_table[alias_to_class[node.value.id]])
+                return tables
+
+            module_level_tables = set()
+            for stmt in tree.body:
+                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    tables = _collect_names(stmt.body)
+                    if tables:
+                        func_tables[stmt.name] = sorted(tables)
+                elif isinstance(stmt, ast.ClassDef):
+                    # Check class-level and method-level references
+                    for item in stmt.body:
+                        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            tables = _collect_names(item.body)
+                            if tables:
+                                func_tables[f"{stmt.name}.{item.name}"] = sorted(tables)
+                        else:
+                            module_level_tables.update(_collect_names([item]))
+                else:
+                    # Module-level statements (assignments, expressions, etc.)
+                    # Skip import statements themselves
+                    if not isinstance(stmt, (ast.Import, ast.ImportFrom)):
+                        module_level_tables.update(_collect_names([stmt]))
+
+            if module_level_tables:
+                func_tables["<module>"] = sorted(module_level_tables)
+
+            if func_tables:
+                file_usage[rel] = func_tables
+
+    return {"table_definitions": table_definitions, "file_usage": file_usage}
 
 
 def _build_summary(schemas):
@@ -213,6 +347,10 @@ def main():
         "--summary-output",
         help="Optional path to write compact summary JSON",
     )
+    parser.add_argument(
+        "--usage-output",
+        help="Optional path to write db-usage-index.json (file-level usage index)",
+    )
 
     args = parser.parse_args()
 
@@ -238,7 +376,7 @@ def main():
         return
 
     # Discover Base classes and extract metadata
-    metadata_list = _discover_bases(project_root, python_files)
+    metadata_list, model_class_map = _discover_bases(project_root, python_files)
     if not metadata_list:
         _skip(output_path, "no SQLAlchemy DeclarativeBase subclasses found")
         return
@@ -267,6 +405,11 @@ def main():
             "schemas": summary_schemas,
         }
         save_json(os.path.abspath(args.summary_output), summary_result)
+
+    # Write usage index if requested
+    if args.usage_output:
+        usage_index = _build_usage_index(project_root, model_class_map)
+        save_json(os.path.abspath(args.usage_output), usage_index)
 
     save_json(output_path, result)
 

@@ -46,7 +46,7 @@ docs-scan:
             purpose:         {type: string, required: true, description: "What this component does"}
             public_api:      {type: "array of string", required: true, description: "Exported functions, classes, or endpoints"}
             dependencies:    {type: "array of string", required: true, description: "Other components or libraries depended on"}
-            database_tables: {type: "array of string", required: true, description: "DB tables read/written (empty array if none)"}
+            database_tables: {type: "array of string", required: true, description: "LLM-produced class names of DB tables (e.g., EtlRun). Used for component overview only; section-to-table mapping now uses db-usage-index.json"}
         infrastructure:
           type: object
           required: true
@@ -225,18 +225,80 @@ db-table-map:
   notes: |
     Section-to-tables mapping built by generate-setup.py at generate time.
     Maps each documentation section to the database tables it needs.
-    Chained from: source_material_index[section].source_files ->
-    project_model.components[].path -> components[].database_tables.
-    Injected into next-heading.py orient responses as relevant_tables.
-    Omitted when project has no database.
+    Primary path: source_material_index[section].source_files ->
+    db-usage-index.json file_usage -> table names (precise, file+function level).
+    Fallback: component-level prefix matching from project_model.components[].database_tables
+    (legacy, coarser). Injected into next-heading.py orient responses as
+    relevant_tables and db_table_usage. Omitted when project has no database.
   fields:
     _keys:
       type: string
-      description: 'Keys are "DOCUMENT/section-slug" format. Values are arrays of table names.'
+      description: |
+        Keys are "DOCUMENT/section-slug" format.
+        Values are either:
+          - New format (usage-index-based): {tables: [str], usage: {table: [{file, functions}]}}
+          - Legacy format (fallback): [str] (plain list of table names)
+        next-heading.py handles both formats via isinstance check.
   example: |
     {
-      "OPERATIONS/infrastructure-overview": ["etl_runs", "stocks", "finance_metrics"],
-      "OPERATIONS/backup-recovery": ["etl_runs", "finance_metrics"]
+      "OPERATIONS/monitoring": {
+        "tables": ["etl_runs", "stocks"],
+        "usage": {
+          "etl_runs": [{"file": "src/services/monitoring.py",
+                        "functions": ["check_quarterly_staleness"]}],
+          "stocks": [{"file": "src/services/monitoring.py",
+                      "functions": ["check_missing_tickers"]}]
+        }
+      },
+      "OPERATIONS/backup-recovery": {
+        "tables": ["etl_runs", "finance_metrics"]
+      }
+    }
+
+# ── 4b. db-usage-index ──────────────────────────────────────
+db-usage-index:
+  location: ".mg/docs/generate/db-usage-index.json"
+  notes: |
+    File-level usage index produced by extract-database-model.py --usage-output.
+    Maps Python source files to the SQLAlchemy model classes they import and use,
+    at function granularity. Consumed by generate-setup.py _build_db_table_map()
+    to produce precise section-to-table mappings. Regenerated each generate run.
+  fields:
+    table_definitions:
+      type: object
+      required: true
+      description: "Map of table_name -> {schema, model_class, source_file}."
+      children:
+        _table_entry:
+          type: object
+          children:
+            schema:       {type: string, required: true, description: "Database schema name"}
+            model_class:  {type: string, required: true, description: "Python class name (e.g., EtlRun)"}
+            source_file:  {type: string, required: true, description: "Relative path to file defining this model"}
+    file_usage:
+      type: object
+      required: true
+      description: "Map of relative file path -> {function_name: [table_names]}."
+      children:
+        _file_entry:
+          type: object
+          description: "Each key is a function/method name. <module> for module-level refs."
+          children:
+            _function_entry:
+              type: "array of string"
+              description: "Table names referenced by this function."
+  example: |
+    {
+      "table_definitions": {
+        "etl_runs": {"schema": "road_runner", "model_class": "EtlRun",
+                     "source_file": "src/road_runner/db/models.py"}
+      },
+      "file_usage": {
+        "src/road_runner/services/monitoring.py": {
+          "check_quarterly_staleness": ["etl_runs"],
+          "check_missing_tickers": ["stocks"]
+        }
+      }
     }
 
 # ── 5. docs-verify-findings ──────────────────────────────────
@@ -528,6 +590,7 @@ file-locations:
         project-model.json
         database-model.json        -- full DB schema extraction
         database-model-summary.json
+        db-usage-index.json        -- file-level DB usage index
         db-table-map.json          -- section-to-tables map
         all-notes.json
       audit/                       -- AUDIT step outputs

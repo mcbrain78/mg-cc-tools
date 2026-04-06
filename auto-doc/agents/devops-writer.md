@@ -63,6 +63,8 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 
         If `db_column_detail` is present in the orient response, use it as the database schema context for this section. It contains compact column detail (types, PKs, FKs) for only the tables this section needs.
 
+        If `db_table_usage` is present, it maps each relevant table to the specific files and functions that interact with it. Use this for targeted Serena exploration: call `find_symbol` with `include_body: true` on the listed functions instead of scanning entire source files.
+
         Call `next-heading.py` again with the same arguments for the next response.
 
       - **If `type` = `"write"`:**

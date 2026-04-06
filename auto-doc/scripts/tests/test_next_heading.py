@@ -962,6 +962,117 @@ class TestDbTableMap:
             assert orients[0].get("relevant_tables") == ["etl_runs"]
             assert orients[1].get("relevant_tables") == ["stocks"]
 
+    def test_new_dict_format_extracts_tables(self):
+        """New dict-of-dicts format {tables, usage} extracts relevant_tables."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": {
+                "tables": ["etl_runs", "stocks"],
+                "usage": {
+                    "etl_runs": [{"file": "src/monitoring.py",
+                                  "functions": ["check_staleness"]}],
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            map_path = os.path.join(td, "db-table-map.json")
+            with open(map_path, "w") as f:
+                json.dump(db_table_map, f)
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", paths["state"],
+                 "--template", paths["template"],
+                 "--scan-file", paths["scan"],
+                 "--document", paths["document"],
+                 "--db-table-map", map_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            out = json.loads(result.stdout)
+            assert out["type"] == "orient"
+            assert out["relevant_tables"] == ["etl_runs", "stocks"]
+
+    def test_new_dict_format_includes_db_table_usage(self):
+        """New dict-of-dicts format injects db_table_usage into orient."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": {
+                "tables": ["etl_runs"],
+                "usage": {
+                    "etl_runs": [{"file": "src/monitoring.py",
+                                  "functions": ["check_staleness"]}],
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            map_path = os.path.join(td, "db-table-map.json")
+            with open(map_path, "w") as f:
+                json.dump(db_table_map, f)
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", paths["state"],
+                 "--template", paths["template"],
+                 "--scan-file", paths["scan"],
+                 "--document", paths["document"],
+                 "--db-table-map", map_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            out = json.loads(result.stdout)
+            assert "db_table_usage" in out
+            assert "etl_runs" in out["db_table_usage"]
+            assert out["db_table_usage"]["etl_runs"][0]["file"] == "src/monitoring.py"
+
+    def test_dict_format_without_usage_omits_db_table_usage(self):
+        """Dict format without usage key omits db_table_usage."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": {
+                "tables": ["etl_runs"],
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            map_path = os.path.join(td, "db-table-map.json")
+            with open(map_path, "w") as f:
+                json.dump(db_table_map, f)
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", paths["state"],
+                 "--template", paths["template"],
+                 "--scan-file", paths["scan"],
+                 "--document", paths["document"],
+                 "--db-table-map", map_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            out = json.loads(result.stdout)
+            assert out["relevant_tables"] == ["etl_runs"]
+            assert "db_table_usage" not in out
+
+    def test_legacy_list_format_still_works(self):
+        """Legacy list format (backward compat) still produces relevant_tables."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": ["etl_runs", "stocks"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            map_path = os.path.join(td, "db-table-map.json")
+            with open(map_path, "w") as f:
+                json.dump(db_table_map, f)
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", paths["state"],
+                 "--template", paths["template"],
+                 "--scan-file", paths["scan"],
+                 "--document", paths["document"],
+                 "--db-table-map", map_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            out = json.loads(result.stdout)
+            assert out["relevant_tables"] == ["etl_runs", "stocks"]
+            assert "db_table_usage" not in out
+
 
 # ---------------------------------------------------------------------------
 # DB model for init mode tests
@@ -1185,6 +1296,51 @@ class TestInitMode:
             assert "db_column_detail" not in orients[0]
             # Second orient (deployment) has tables
             assert "db_column_detail" in orients[1]
+
+    def test_init_new_dict_format_with_db_table_usage(self):
+        """--init with new dict-of-dicts format injects db_table_usage."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": {
+                "tables": ["etl_runs", "stocks"],
+                "usage": {
+                    "etl_runs": [{"file": "src/monitoring.py",
+                                  "functions": ["check_staleness"]}],
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td, db_table_map=db_table_map, db_model=DB_MODEL,
+            )
+            rc, _, stderr = _run_init(fixtures)
+            assert rc == 0, f"stderr: {stderr}"
+
+            with open(fixtures["state"]) as f:
+                state = json.load(f)
+            orients = [e for e in state["queue"] if e.get("type") == "orient"]
+            assert orients[0]["relevant_tables"] == ["etl_runs", "stocks"]
+            assert "db_table_usage" in orients[0]
+            assert "etl_runs" in orients[0]["db_table_usage"]
+            # db_column_detail should also be present (db_model provided)
+            assert "db_column_detail" in orients[0]
+
+    def test_init_new_dict_format_column_detail_uses_tables_key(self):
+        """Init with new format: _inject_db_column_detail reads from relevant_tables."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": {
+                "tables": ["etl_runs"],
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td, db_table_map=db_table_map, db_model=DB_MODEL,
+            )
+            _run_init(fixtures)
+            with open(fixtures["state"]) as f:
+                state = json.load(f)
+            orients = [e for e in state["queue"] if e.get("type") == "orient"]
+            assert "db_column_detail" in orients[0]
+            assert "road_runner.etl_runs:" in orients[0]["db_column_detail"]
 
 
 # ---------------------------------------------------------------------------

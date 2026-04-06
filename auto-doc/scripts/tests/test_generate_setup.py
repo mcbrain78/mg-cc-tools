@@ -809,3 +809,165 @@ class TestPreInitHeadingStates:
             assert len(state["queue"]) > 0
             # Last entry should be done
             assert state["queue"][-1].get("done") is True
+
+
+# =============================================================================
+# DB table map from usage index (direct function tests)
+# =============================================================================
+
+class TestDbTableMapFromUsageIndex:
+    """_build_db_table_map with usage index input."""
+
+    def _make_usage_index(self, tmp):
+        """Write usage index fixture. Returns (usage_path, pm_path, scan_path, gen_dir)."""
+        gen_dir = os.path.join(tmp, "generate")
+        os.makedirs(gen_dir, exist_ok=True)
+
+        usage = {
+            "table_definitions": {
+                "etl_runs": {
+                    "schema": "road_runner",
+                    "model_class": "EtlRun",
+                    "source_file": "src/db/models.py",
+                },
+                "stocks": {
+                    "schema": "road_runner",
+                    "model_class": "Stock",
+                    "source_file": "src/db/models.py",
+                },
+            },
+            "file_usage": {
+                "src/services/monitoring.py": {
+                    "check_quarterly_staleness": ["etl_runs"],
+                    "check_missing_tickers": ["stocks"],
+                },
+                "src/services/ingest.py": {
+                    "run_ingest": ["etl_runs", "stocks"],
+                },
+            },
+        }
+        usage_path = os.path.join(gen_dir, "db-usage-index.json")
+        _write_json(usage_path, usage)
+
+        # Project model (for fallback path)
+        pm = {
+            "components": [
+                {
+                    "path": "src/db/",
+                    "database_tables": ["EtlRun", "Stock"],
+                },
+            ],
+        }
+        pm_path = os.path.join(gen_dir, "project-model.json")
+        _write_json(pm_path, pm)
+
+        # Scan data with source_material_index
+        scan = {
+            "source_material_index": {
+                "OPERATIONS/monitoring": {
+                    "source_files": ["src/services/monitoring.py"],
+                },
+                "OPERATIONS/data-pipeline": {
+                    "source_files": ["src/services/ingest.py"],
+                },
+                "OPERATIONS/data-model": {
+                    "source_files": ["src/db/models.py"],
+                },
+                "OPERATIONS/unrelated": {
+                    "source_files": ["src/utils/helpers.py"],
+                },
+            },
+        }
+        scan_path = os.path.join(tmp, "scan.json")
+        _write_json(scan_path, scan)
+
+        return usage_path, pm_path, scan_path, gen_dir
+
+    def test_new_format_has_tables_and_usage(self):
+        """Usage-index-based map produces {tables, usage} entries."""
+        with tempfile.TemporaryDirectory() as tmp:
+            usage_path, pm_path, scan_path, gen_dir = self._make_usage_index(tmp)
+            result = _mod._build_db_table_map(
+                pm_path, scan_path, gen_dir, usage_index_path=usage_path,
+            )
+            assert result is not None
+            table_map = _read_json(result)
+            entry = table_map["OPERATIONS/monitoring"]
+            assert "tables" in entry
+            assert "usage" in entry
+            assert "etl_runs" in entry["tables"]
+            assert "stocks" in entry["tables"]
+
+    def test_function_level_usage_detail(self):
+        """Usage dict maps table to [{file, functions}]."""
+        with tempfile.TemporaryDirectory() as tmp:
+            usage_path, pm_path, scan_path, gen_dir = self._make_usage_index(tmp)
+            result = _mod._build_db_table_map(
+                pm_path, scan_path, gen_dir, usage_index_path=usage_path,
+            )
+            table_map = _read_json(result)
+            entry = table_map["OPERATIONS/monitoring"]
+            usage = entry["usage"]
+            assert "etl_runs" in usage
+            assert usage["etl_runs"][0]["file"] == "src/services/monitoring.py"
+            assert "check_quarterly_staleness" in usage["etl_runs"][0]["functions"]
+
+    def test_table_definition_files_included(self):
+        """Files that define tables are included in section mapping."""
+        with tempfile.TemporaryDirectory() as tmp:
+            usage_path, pm_path, scan_path, gen_dir = self._make_usage_index(tmp)
+            result = _mod._build_db_table_map(
+                pm_path, scan_path, gen_dir, usage_index_path=usage_path,
+            )
+            table_map = _read_json(result)
+            # data-model section has src/db/models.py which defines tables
+            entry = table_map["OPERATIONS/data-model"]
+            assert "etl_runs" in entry["tables"]
+            assert "stocks" in entry["tables"]
+
+    def test_unrelated_sections_excluded(self):
+        """Sections with no table-touching files are excluded."""
+        with tempfile.TemporaryDirectory() as tmp:
+            usage_path, pm_path, scan_path, gen_dir = self._make_usage_index(tmp)
+            result = _mod._build_db_table_map(
+                pm_path, scan_path, gen_dir, usage_index_path=usage_path,
+            )
+            table_map = _read_json(result)
+            assert "OPERATIONS/unrelated" not in table_map
+
+    def test_fallback_when_no_usage_index(self):
+        """Without usage index, falls back to component-prefix matching."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _, pm_path, scan_path, gen_dir = self._make_usage_index(tmp)
+            # Modify scan to have source files under component path
+            scan = {
+                "source_material_index": {
+                    "OPERATIONS/data-model": {
+                        "source_files": ["src/db/models.py"],
+                    },
+                },
+            }
+            _write_json(scan_path, scan)
+            result = _mod._build_db_table_map(
+                pm_path, scan_path, gen_dir, usage_index_path=None,
+            )
+            assert result is not None
+            table_map = _read_json(result)
+            # Fallback uses component-level tables (class names, legacy format)
+            entry = table_map["OPERATIONS/data-model"]
+            assert isinstance(entry, list)  # legacy format is a plain list
+
+    def test_stale_usage_index_cleaned(self):
+        """db-usage-index.json from prior runs is cleaned during workspace prep."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+            generate_dir = os.path.join(project_root, ".mg", "docs", "generate")
+            os.makedirs(generate_dir, exist_ok=True)
+            stale = os.path.join(generate_dir, "db-usage-index.json")
+            _write_json(stale, {"stale": True})
+
+            _run([
+                "--scan-file", scan_path, "--config", config_path,
+                "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
+            ])
+            assert not os.path.exists(stale)

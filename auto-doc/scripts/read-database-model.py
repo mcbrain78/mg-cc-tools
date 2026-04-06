@@ -2,7 +2,9 @@
 """Slice reader for database-model.json.
 
 Filters to requested tables and outputs compact column detail to stdout.
-Called by writer agents during orient blocks with relevant_tables.
+Utility/debugging tool. At runtime, column detail is inlined into orient
+responses by next-heading.py --init (via db_column_detail), so writers no
+longer need to call this script directly.
 
 Usage:
     python3 read-database-model.py --db-model PATH --tables t1,t2,t3

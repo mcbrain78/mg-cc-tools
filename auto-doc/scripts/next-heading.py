@@ -247,9 +247,15 @@ def build_emission_queue(sections, document, source_material_index, db_table_map
 
         # Inject relevant tables from db-table-map
         if db_table_map:
-            tables = db_table_map.get(key, [])
-            if tables:
-                orient["relevant_tables"] = tables
+            entry = db_table_map.get(key)
+            if entry is not None:
+                if isinstance(entry, dict) and "tables" in entry:
+                    orient["relevant_tables"] = entry["tables"]
+                    if entry.get("usage"):
+                        orient["db_table_usage"] = entry["usage"]
+                elif isinstance(entry, list):
+                    # Legacy format: plain list of table names
+                    orient["relevant_tables"] = entry
 
         queue.append(orient)
 

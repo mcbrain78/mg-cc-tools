@@ -38,7 +38,8 @@ def _write_file(path, content):
         f.write(textwrap.dedent(content))
 
 
-def _run(project_root, search_paths, pm_path, output_path, summary_output=None):
+def _run(project_root, search_paths, pm_path, output_path,
+         summary_output=None, usage_output=None):
     """Run extract-database-model.py and return (result_dict, returncode, stderr)."""
     cmd = [
         sys.executable, SCRIPT_PATH,
@@ -49,6 +50,8 @@ def _run(project_root, search_paths, pm_path, output_path, summary_output=None):
     ]
     if summary_output:
         cmd.extend(["--summary-output", summary_output])
+    if usage_output:
+        cmd.extend(["--usage-output", usage_output])
     result = subprocess.run(cmd, capture_output=True, text=True)
     data = None
     if os.path.isfile(output_path):
@@ -504,3 +507,174 @@ class TestSummaryOutput:
             summary_path = os.path.join(tmp, "database-model-summary.json")
             _run(tmp, "src", pm_path, output)  # no summary_output
             assert not os.path.isfile(summary_path)
+
+
+class TestUsageIndex:
+    """--usage-output flag produces file-level usage index."""
+
+    def _model_and_usage_files(self, tmp):
+        """Create model file + usage file, return (pm_path, output, usage_path)."""
+        pm_path = os.path.join(tmp, "project-model.json")
+        _write_json(pm_path, _make_project_model())
+
+        _write_file(os.path.join(tmp, "src", "db", "models.py"), """\
+            from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+            from sqlalchemy import String, Integer
+
+            class Base(DeclarativeBase):
+                pass
+
+            class EtlRun(Base):
+                __tablename__ = "etl_runs"
+                __table_args__ = {"schema": "road_runner"}
+                id: Mapped[int] = mapped_column(Integer, primary_key=True)
+                flow_name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+            class Stock(Base):
+                __tablename__ = "stocks"
+                __table_args__ = {"schema": "road_runner"}
+                id: Mapped[int] = mapped_column(Integer, primary_key=True)
+                ticker: Mapped[str] = mapped_column(String(10), nullable=False)
+        """)
+
+        _write_file(os.path.join(tmp, "src", "services", "monitoring.py"), """\
+            from src.db.models import EtlRun, Stock
+
+            def check_quarterly_staleness(session):
+                runs = session.query(EtlRun).all()
+                return runs
+
+            def check_missing_tickers(session):
+                stocks = session.query(Stock).all()
+                return stocks
+        """)
+
+        output = os.path.join(tmp, "database-model.json")
+        usage_path = os.path.join(tmp, "db-usage-index.json")
+        return pm_path, output, usage_path
+
+    def test_usage_output_created(self):
+        """Usage index file is created when --usage-output is provided."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path, output, usage_path = self._model_and_usage_files(tmp)
+            _, rc, stderr = _run(tmp, "src/db", pm_path, output,
+                                 usage_output=usage_path)
+            assert rc == 0, f"stderr: {stderr}"
+            assert os.path.isfile(usage_path)
+
+    def test_no_output_without_flag(self):
+        """Usage index NOT created when --usage-output is omitted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path, output, usage_path = self._model_and_usage_files(tmp)
+            _run(tmp, "src/db", pm_path, output)
+            assert not os.path.isfile(usage_path)
+
+    def test_table_definitions_populated(self):
+        """table_definitions maps table_name to schema, model_class, source_file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path, output, usage_path = self._model_and_usage_files(tmp)
+            _run(tmp, "src/db", pm_path, output, usage_output=usage_path)
+            usage = _read_json(usage_path)
+            defs = usage["table_definitions"]
+            assert "etl_runs" in defs
+            assert defs["etl_runs"]["schema"] == "road_runner"
+            assert defs["etl_runs"]["model_class"] == "EtlRun"
+            assert "models.py" in defs["etl_runs"]["source_file"]
+
+    def test_tracks_function_level_references(self):
+        """file_usage tracks which functions use which tables."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path, output, usage_path = self._model_and_usage_files(tmp)
+            _run(tmp, "src/db", pm_path, output, usage_output=usage_path)
+            usage = _read_json(usage_path)
+            fu = usage["file_usage"]
+            # Find monitoring.py entry
+            monitoring_key = [k for k in fu if "monitoring" in k]
+            assert len(monitoring_key) == 1, f"Expected monitoring in {list(fu.keys())}"
+            monitoring = fu[monitoring_key[0]]
+            assert "etl_runs" in monitoring["check_quarterly_staleness"]
+            assert "stocks" in monitoring["check_missing_tickers"]
+
+    def test_aliased_imports_tracked(self):
+        """Aliased imports (from X import Y as Z) are tracked correctly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path = os.path.join(tmp, "project-model.json")
+            _write_json(pm_path, _make_project_model())
+
+            _write_file(os.path.join(tmp, "src", "db", "models.py"), """\
+                from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+                from sqlalchemy import Integer
+
+                class Base(DeclarativeBase):
+                    pass
+
+                class EtlRun(Base):
+                    __tablename__ = "etl_runs"
+                    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+            """)
+
+            _write_file(os.path.join(tmp, "src", "consumer.py"), """\
+                from src.db.models import EtlRun as Run
+
+                def process(session):
+                    return session.query(Run).first()
+            """)
+
+            output = os.path.join(tmp, "database-model.json")
+            usage_path = os.path.join(tmp, "db-usage-index.json")
+            _run(tmp, "src/db", pm_path, output, usage_output=usage_path)
+            usage = _read_json(usage_path)
+            fu = usage["file_usage"]
+            consumer_key = [k for k in fu if "consumer" in k]
+            assert len(consumer_key) == 1
+            assert "etl_runs" in fu[consumer_key[0]]["process"]
+
+    def test_star_imports_skipped(self):
+        """Star imports do not produce usage entries."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path = os.path.join(tmp, "project-model.json")
+            _write_json(pm_path, _make_project_model())
+
+            _write_file(os.path.join(tmp, "src", "db", "models.py"), """\
+                from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+                from sqlalchemy import Integer
+
+                class Base(DeclarativeBase):
+                    pass
+
+                class EtlRun(Base):
+                    __tablename__ = "etl_runs"
+                    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+            """)
+
+            _write_file(os.path.join(tmp, "src", "star_user.py"), """\
+                from src.db.models import *
+
+                def do_something():
+                    return 42
+            """)
+
+            output = os.path.join(tmp, "database-model.json")
+            usage_path = os.path.join(tmp, "db-usage-index.json")
+            _run(tmp, "src/db", pm_path, output, usage_output=usage_path)
+            usage = _read_json(usage_path)
+            fu = usage["file_usage"]
+            star_keys = [k for k in fu if "star_user" in k]
+            assert len(star_keys) == 0
+
+    def test_parse_errors_handled_gracefully(self):
+        """Files with syntax errors are skipped without crashing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pm_path, output, usage_path = self._model_and_usage_files(tmp)
+
+            # Add a file with a syntax error
+            _write_file(os.path.join(tmp, "src", "bad_syntax.py"),
+                        "def broken(\n")
+
+            _, rc, stderr = _run(tmp, "src/db", pm_path, output,
+                                 usage_output=usage_path)
+            assert rc == 0
+            assert os.path.isfile(usage_path)
+            # Good files should still be tracked
+            usage = _read_json(usage_path)
+            assert len(usage["table_definitions"]) > 0
