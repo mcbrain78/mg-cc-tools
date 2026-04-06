@@ -746,27 +746,27 @@ class TestDatabaseModel:
                 "road_runner": {
                     "tables": {
                         "etl_runs": {
-                            "columns": {
-                                "id": {"type": "integer"},
-                                "flow_name": {"type": "varchar"},
-                                "status": {"type": "varchar"},
-                            },
+                            "columns": [
+                                {"name": "id", "type": "integer", "primary_key": True, "nullable": False, "foreign_key": None},
+                                {"name": "flow_name", "type": "varchar", "primary_key": False, "nullable": False, "foreign_key": None},
+                                {"name": "status", "type": "varchar", "primary_key": False, "nullable": False, "foreign_key": None},
+                            ],
                         },
                         "audit_log": {
-                            "columns": {
-                                "id": {"type": "integer"},
-                                "action": {"type": "varchar"},
-                            },
+                            "columns": [
+                                {"name": "id", "type": "integer", "primary_key": True, "nullable": False, "foreign_key": None},
+                                {"name": "action", "type": "varchar", "primary_key": False, "nullable": False, "foreign_key": None},
+                            ],
                         },
                     },
                 },
                 "public": {
                     "tables": {
                         "users": {
-                            "columns": {
-                                "id": {"type": "integer"},
-                                "email": {"type": "varchar"},
-                            },
+                            "columns": [
+                                {"name": "id", "type": "integer", "primary_key": True, "nullable": False, "foreign_key": None},
+                                {"name": "email", "type": "varchar", "primary_key": False, "nullable": False, "foreign_key": None},
+                            ],
                         },
                     },
                 },
@@ -865,6 +865,28 @@ class TestDatabaseModel:
             # Use standard _run_verify (no --database-model)
             _run_verify(xml_dir, project_root, findings_file)
             findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_skip_marker_falls_back_to_ast(self):
+        """A database-model.json with extraction=skipped falls back to AST."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # Write a skip-marker model
+            model_path = os.path.join(project_root, ".mg", "docs", "tmp", "database-model.json")
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                json.dump({"extraction": "skipped", "reason": "no database configured"}, f)
+
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
+                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
+            )])
+
+            result = self._run_with_db_model(xml_dir, project_root, findings_file, model_path)
+            assert result.returncode == 0
+            findings = json.loads(open(findings_file).read())
+            # Should find it via AST fallback (models.py has this table)
             assert len(findings) == 0
 
 

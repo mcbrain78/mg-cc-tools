@@ -133,11 +133,9 @@ class SourceCache:
 
     def walk_py_files(self):
         """Yield relative paths of all .py files in the project."""
-        for dirpath, _dirnames, filenames in os.walk(self.project_root):
-            # Skip common non-source directories
-            basename = os.path.basename(dirpath)
-            if basename in (".git", ".venv", "node_modules", "__pycache__", ".tox"):
-                continue
+        for dirpath, dirnames, filenames in os.walk(self.project_root):
+            # Prune skipped directories in-place
+            dirnames[:] = [d for d in dirnames if d not in self._SKIP_DIRS]
             for fname in filenames:
                 if fname.endswith(".py"):
                     abs_path = os.path.join(dirpath, fname)
@@ -218,6 +216,15 @@ def check_db_ref(ref, cache):
     return _check_db_ref_from_ast(schema, table, column, cache)
 
 
+def _extract_column_names(columns):
+    """Extract column name set from list-of-dicts or dict-of-dicts format."""
+    if isinstance(columns, list):
+        return {col["name"] for col in columns if isinstance(col, dict) and "name" in col}
+    if isinstance(columns, dict):
+        return set(columns.keys())
+    return set()
+
+
 def _check_db_ref_from_model(schema, table, column, db_model):
     """Check db ref against pre-extracted database-model.json data."""
     schemas = db_model.get("schemas", {})
@@ -232,9 +239,9 @@ def _check_db_ref_from_model(schema, table, column, db_model):
             available = ", ".join(sorted(tables.keys())) if tables else "(none)"
             return f"Table `{table}` not found in schema `{schema}` (available: {available})"
         if column:
-            columns = tables[table].get("columns", {})
-            if column not in columns:
-                available = ", ".join(sorted(columns.keys())) if columns else "(none)"
+            col_names = _extract_column_names(tables[table].get("columns", {}))
+            if column not in col_names:
+                available = ", ".join(sorted(col_names)) if col_names else "(none)"
                 return f"Column `{column}` not found on `{schema}.{table}` (columns: {available})"
         return None
 
@@ -243,9 +250,9 @@ def _check_db_ref_from_model(schema, table, column, db_model):
         tables = s_data.get("tables", {})
         if table in tables:
             if column:
-                columns = tables[table].get("columns", {})
-                if column not in columns:
-                    available = ", ".join(sorted(columns.keys())) if columns else "(none)"
+                col_names = _extract_column_names(tables[table].get("columns", {}))
+                if column not in col_names:
+                    available = ", ".join(sorted(col_names)) if col_names else "(none)"
                     return f"Column `{column}` not found on `{s_name}.{table}` (columns: {available})"
             return None
 
@@ -547,12 +554,13 @@ def _check_malformed_ref(ref, body):
     )
 
 
-def verify_xml_file(xml_path, cache):
+def verify_xml_file(xml_path, cache, doc=None):
     """Verify all refs in a single XML document.
 
     Returns list of finding dicts.
     """
-    doc = parse_xml_doc(xml_path)
+    if doc is None:
+        doc = parse_xml_doc(xml_path)
     audience = doc["audience"]
     doc_name = _doc_name_from_path(xml_path)
 
@@ -648,6 +656,8 @@ def main():
     database_model = None
     if args.database_model and os.path.isfile(args.database_model):
         database_model = load_json(args.database_model)
+        if database_model and database_model.get("extraction") == "skipped":
+            database_model = None  # Skip marker — fall back to AST
         if database_model:
             print(f"  Using database model: {args.database_model}", file=sys.stderr)
 
@@ -677,7 +687,7 @@ def main():
         if filter_audiences and doc["audience"] not in filter_audiences and doc["audience"] != "all":
             continue
 
-        doc_findings = verify_xml_file(xml_path, cache)
+        doc_findings = verify_xml_file(xml_path, cache, doc=doc)
         doc_refs = sum(len(s["refs"]) for _, s in walk_sections(doc["sections"]))
         total_refs += doc_refs
         new_findings.extend(doc_findings)
