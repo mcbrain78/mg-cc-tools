@@ -154,6 +154,7 @@ class TestOutput:
                 "mode", "audiences", "audience_filter_active",
                 "scan_views", "notes_by_audience",
                 "refined_templates", "stale_templates",
+                "pre_init_documents",
             }
             assert expected == set(result.keys())
 
@@ -713,3 +714,98 @@ class TestDatabaseModelPath:
         with tempfile.TemporaryDirectory() as tmp:
             _, result = _run_setup(tmp)
             assert "database_model_path" in result
+
+
+# =============================================================================
+# Pre-init heading states
+# =============================================================================
+
+class TestPreInitHeadingStates:
+    """Heading state pre-initialization for orient-write documents."""
+
+    def test_creates_heading_state_for_refined_template(self):
+        """Pre-init creates heading-state file for documents with refined templates."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+
+            # Add scan_date
+            scan_data = _read_json(scan_path)
+            scan_data["scan_date"] = "2026-04-01T14:30:00Z"
+            _write_json(scan_path, scan_data)
+
+            # Create refined template for devops/OPERATIONS
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops",
+            )
+            tpl_path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(tpl_path, scan_date="2026-04-01")
+
+            stdout, _, _ = _run([
+                "--scan-file", scan_path, "--config", config_path,
+                "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
+            ])
+            result = json.loads(stdout)
+
+            # heading-state file should exist
+            generate_dir = result["generate_dir"]
+            state_path = os.path.join(
+                generate_dir, "heading-state-devops-OPERATIONS.json",
+            )
+            assert os.path.isfile(state_path), f"Missing: {state_path}"
+
+            # pre_init_documents should list this pair
+            assert {"audience": "devops", "document": "OPERATIONS"} in result["pre_init_documents"]
+
+    def test_no_preinit_for_null_refined_template(self):
+        """Documents without refined templates are not pre-initialized."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _, result = _run_setup(tmp)
+            # No refined templates created -> empty pre_init list
+            assert result["pre_init_documents"] == []
+
+    def test_heading_state_cleaned_on_rerun(self):
+        """Heading-state files from prior runs are cleaned before pre-init."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+            generate_dir = os.path.join(project_root, ".mg", "docs", "generate")
+            os.makedirs(generate_dir, exist_ok=True)
+
+            # Place a stale heading-state file
+            stale = os.path.join(generate_dir, "heading-state-devops-OLD_DOC.json")
+            _write_json(stale, {"queue": [], "index": 0})
+
+            _run([
+                "--scan-file", scan_path, "--config", config_path,
+                "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
+            ])
+            assert not os.path.exists(stale)
+
+    def test_preinit_state_has_valid_queue(self):
+        """Pre-initialized state file contains a valid queue with orient/write/done."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+
+            scan_data = _read_json(scan_path)
+            scan_data["scan_date"] = "2026-04-01"
+            _write_json(scan_path, scan_data)
+
+            templates_base = os.path.join(
+                project_root, ".mg", "docs", "templates", "devops",
+            )
+            tpl_path = os.path.join(templates_base, "OPERATIONS.template.md")
+            _write_refined_template(tpl_path, scan_date="2026-04-01")
+
+            stdout, _, _ = _run([
+                "--scan-file", scan_path, "--config", config_path,
+                "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
+            ])
+            result = json.loads(stdout)
+
+            state_path = os.path.join(
+                result["generate_dir"], "heading-state-devops-OPERATIONS.json",
+            )
+            state = _read_json(state_path)
+            assert state["index"] == 0
+            assert len(state["queue"]) > 0
+            # Last entry should be done
+            assert state["queue"][-1].get("done") is True

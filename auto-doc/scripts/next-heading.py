@@ -5,15 +5,22 @@ Parses a refined template on first invocation, builds a flat
 emission queue of orient/write/done responses, and returns one
 response per call. State is persisted to a JSON file between calls.
 
-On each call:
-1. Load state (or initialize by parsing template + scan file)
-2. Emit the next response from the queue
-3. Advance index and persist state
+Two modes of operation:
 
-Usage:
+Init mode (called by generate-setup.py, never by agent):
+    next-heading.py --init --state-file PATH --template PATH --scan-file PATH --document DOC
+                    [--db-table-map PATH] [--db-model PATH]
+    Builds queue, saves state file, exits with no stdout.
+
+Runtime mode (called by writer agents -- no file paths):
+    next-heading.py --generate-dir DIR --audience AUD --document DOC
+    Derives state file from convention: {generate_dir}/heading-state-{audience}-{DOCUMENT}.json
+
+Legacy mode (backward compatible):
     next-heading.py --state-file PATH --template PATH --scan-file PATH --document DOC
+    Initializes on first call if state file doesn't exist.
 
-Returns JSON to stdout:
+Returns JSON to stdout (runtime/legacy only):
     {"type": "orient", "section": "...", "heading_outline": [...], "source_files": [...]}
     {"type": "write", "heading_path": "...", "level": N, "title": "...", "heading_line": "## ...", "purpose": "...", "example": "..."}
     {"done": true, "headings_processed": N}
@@ -26,6 +33,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib.db_format import slice_and_format
 from lib.heading_map import slugify_heading
 from lib.json_io import load_json, save_json
 
@@ -264,21 +272,54 @@ def build_emission_queue(sections, document, source_material_index, db_table_map
     return queue
 
 
+def _inject_db_column_detail(queue, db_model_data, db_table_map):
+    """Inject db_column_detail into orient responses that have relevant_tables.
+
+    Modifies queue in-place. For each orient response with relevant_tables,
+    calls slice_and_format() to produce the formatted column detail string
+    and stores it as db_column_detail on the orient dict.
+    """
+    if not db_model_data or not db_table_map:
+        return
+    for entry in queue:
+        if entry.get("type") != "orient":
+            continue
+        tables = entry.get("relevant_tables")
+        if not tables:
+            continue
+        detail = slice_and_format(db_model_data, tables)
+        if detail:
+            entry["db_column_detail"] = detail
+
+
+def _derive_state_path(generate_dir, audience, document):
+    """Derive convention-based state file path.
+
+    Returns: {generate_dir}/heading-state-{audience}-{document}.json
+    """
+    return os.path.join(generate_dir, f"heading-state-{audience}-{document}.json")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Script-gated heading iterator for writer agent loop",
     )
+    # Init mode args (called by generate-setup.py)
     parser.add_argument(
-        "--state-file", required=True,
-        help="Path to state file (created on first call)",
+        "--init", action="store_true",
+        help="Init mode: build queue, save state, exit (no stdout output)",
     )
     parser.add_argument(
-        "--template", required=True,
-        help="Path to refined template file",
+        "--state-file",
+        help="Path to state file (required for init and legacy mode)",
     )
     parser.add_argument(
-        "--scan-file", required=True,
-        help="Path to docs-scan.json",
+        "--template",
+        help="Path to refined template file (required for init and legacy mode)",
+    )
+    parser.add_argument(
+        "--scan-file",
+        help="Path to docs-scan.json (required for init and legacy mode)",
     )
     parser.add_argument(
         "--document", required=True,
@@ -288,24 +329,40 @@ def main():
         "--db-table-map",
         help="Path to db-table-map.json (optional, adds relevant_tables to orient responses)",
     )
+    parser.add_argument(
+        "--db-model",
+        help="Path to database-model.json (optional, --init only, inlines column detail)",
+    )
+
+    # Runtime mode args (called by writer agents)
+    parser.add_argument(
+        "--generate-dir",
+        help="Path to generate directory (runtime mode: derives state file path)",
+    )
+    parser.add_argument(
+        "--audience",
+        help="Audience name (runtime mode: used with --generate-dir to derive state path)",
+    )
 
     args = parser.parse_args()
 
-    state = load_json(args.state_file)
-    if state is None:
-        # First call: parse template and build queue.
-        if not os.path.isfile(args.template):
-            print(
-                f"Error: template not found: {args.template}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    # --- Init mode ---
+    if args.init:
+        if not args.state_file:
+            print("Error: --state-file required with --init", file=sys.stderr)
+            sys.exit(2)
+        if not args.template:
+            print("Error: --template required with --init", file=sys.stderr)
+            sys.exit(2)
+        if not args.scan_file:
+            print("Error: --scan-file required with --init", file=sys.stderr)
+            sys.exit(2)
 
+        if not os.path.isfile(args.template):
+            print(f"Error: template not found: {args.template}", file=sys.stderr)
+            sys.exit(1)
         if not os.path.isfile(args.scan_file):
-            print(
-                f"Error: scan file not found: {args.scan_file}",
-                file=sys.stderr,
-            )
+            print(f"Error: scan file not found: {args.scan_file}", file=sys.stderr)
             sys.exit(1)
 
         with open(args.template, "r", encoding="utf-8") as f:
@@ -319,7 +376,65 @@ def main():
             db_table_map = load_json(args.db_table_map, default={})
 
         sections = parse_template(template_text)
-        queue = build_emission_queue(sections, args.document, source_material_index, db_table_map)
+        queue = build_emission_queue(
+            sections, args.document, source_material_index, db_table_map,
+        )
+
+        # Inject inline db_column_detail if --db-model provided
+        if args.db_model and os.path.isfile(args.db_model):
+            db_model_data = load_json(args.db_model, default={})
+            _inject_db_column_detail(queue, db_model_data, db_table_map)
+
+        state = {"queue": queue, "index": 0}
+        save_json(args.state_file, state)
+        return  # No stdout output in init mode
+
+    # --- Determine state file path ---
+    if args.generate_dir and args.audience:
+        # Runtime mode: derive from convention
+        state_file = _derive_state_path(args.generate_dir, args.audience, args.document)
+    elif args.state_file:
+        # Legacy mode: explicit state file (also used when template/scan-file provided)
+        state_file = args.state_file
+    else:
+        print(
+            "Error: provide either --generate-dir + --audience or --state-file",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    state = load_json(state_file)
+    if state is None:
+        # First call with no pre-initialized state: parse template and build queue.
+        # This is the legacy path — kept for backward compat and non-devops writers.
+        if not args.template:
+            print("Error: --template required when state not pre-initialized", file=sys.stderr)
+            sys.exit(2)
+        if not args.scan_file:
+            print("Error: --scan-file required when state not pre-initialized", file=sys.stderr)
+            sys.exit(2)
+
+        if not os.path.isfile(args.template):
+            print(f"Error: template not found: {args.template}", file=sys.stderr)
+            sys.exit(1)
+        if not os.path.isfile(args.scan_file):
+            print(f"Error: scan file not found: {args.scan_file}", file=sys.stderr)
+            sys.exit(1)
+
+        with open(args.template, "r", encoding="utf-8") as f:
+            template_text = f.read()
+
+        scan_data = load_json(args.scan_file, default={})
+        source_material_index = scan_data.get("source_material_index", {})
+
+        db_table_map = None
+        if args.db_table_map and os.path.isfile(args.db_table_map):
+            db_table_map = load_json(args.db_table_map, default={})
+
+        sections = parse_template(template_text)
+        queue = build_emission_queue(
+            sections, args.document, source_material_index, db_table_map,
+        )
         state = {"queue": queue, "index": 0}
 
     queue = state["queue"]
@@ -338,12 +453,12 @@ def main():
     # If this is the done response, don't advance past it so repeated
     # calls keep returning done (idempotent).
     if response.get("done"):
-        save_json(args.state_file, state)
+        save_json(state_file, state)
         print(json.dumps(response))
         return
 
     state["index"] = index + 1
-    save_json(args.state_file, state)
+    save_json(state_file, state)
     print(json.dumps(response))
 
 

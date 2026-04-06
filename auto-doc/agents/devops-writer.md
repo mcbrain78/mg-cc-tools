@@ -13,10 +13,8 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 - **scan_data_path**: Path to per-audience view file (read for source material index and gap analysis).
 - **project_model_path**: Path to `project-model.json` (read for project model: tech stack, components, entry points, infrastructure).
 - **database_model_summary_path**: Path to `database-model-summary.json` (compact summary with column counts and FK targets). May be `null` if project has no SQLAlchemy database. Read this once at orient time for high-level schema awareness.
-- **database_model_path**: Path to `database-model.json` (full authoritative schema->table->column mappings). Used with `read-database-model.py` for per-section column detail slicing. May be `null` if project has no SQLAlchemy database.
-- **db_table_map_path**: Path to `db-table-map.json` (section-to-tables mapping). Passed to `next-heading.py --db-table-map` so orient responses include `relevant_tables`. May be `null`.
-- **refined_template_path**: Path to the project-specific refined template for this document (e.g., `.mg/docs/templates/devops/OPERATIONS.template.md`).
-- **state_file_path**: Path to the `next-heading.py` state file for this document, scoped per document (e.g., `{MG_INSTALL_WORKSPACE_DIR}/generate/heading-state-devops-OPERATIONS.json`). Do not read this file directly — `next-heading.py` creates and manages it on first call.
+- **audience**: Audience name (e.g., `"devops"`).
+- **generate_dir**: Path to the generate workspace directory (e.g., `{MG_INSTALL_WORKSPACE_DIR}/generate`).
 - **scripts_dir**: Absolute path to `auto-doc/scripts/` for calling `next-heading.py` and `write-section.py`.
 - **style_guide_path**: Path to `references/style-guide.md`.
 - **glossary_path**: Path to the current GLOSSARY.md (for terminology consistency).
@@ -47,13 +45,11 @@ You are a specialized writer agent for the **devops** audience. You generate doc
    b. **First call to next-heading.py:**
       ```bash
       python3 {MG_INSTALL_SCRIPTS_DIR}/next-heading.py \
-        --state-file {STATE_FILE_PATH} \
-        --template {REFINED_TEMPLATE_PATH} \
-        --scan-file {project_root}/.mg/docs/docs-scan.json \
-        --document {DOCUMENT} \
-        [--db-table-map {db_table_map_path}]
+        --generate-dir {generate_dir} \
+        --audience {audience} \
+        --document {DOCUMENT}
       ```
-      Include `--db-table-map` only if `db_table_map_path` is not null. Parse the JSON output.
+      Parse the JSON output. The state file is pre-initialized by `generate-setup.py` — no file paths needed.
 
    c. **LOOP** until done:
 
@@ -65,13 +61,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
         - For Python files: call `get_symbols_overview` (depth: 1) to understand the file structure. Then use `find_symbol` with `include_info: true` for signatures and docstrings of deployment and configuration symbols. Use `find_symbol` with `include_body: true` for configuration parsing and environment variable handling functions.
         - For non-code files (yaml, toml, Dockerfile, .env.example, shell scripts, SQL, config files): use `Read` to load the full file.
 
-        If `relevant_tables` is present and non-empty in the orient response, load column detail for this section's tables:
-        ```bash
-        python3 {MG_INSTALL_SCRIPTS_DIR}/read-database-model.py \
-          --db-model {database_model_path} \
-          --tables {comma-separated relevant_tables}
-        ```
-        This returns compact column detail (types, PKs, FKs) for only the tables this section needs.
+        If `db_column_detail` is present in the orient response, use it as the database schema context for this section. It contains compact column detail (types, PKs, FKs) for only the tables this section needs.
 
         Call `next-heading.py` again with the same arguments for the next response.
 
@@ -112,7 +102,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
           --content-file {MG_INSTALL_WORKSPACE_DIR}/generate/section-devops-{DOCUMENT}-{heading_path_dashed}.md \
           --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-devops-{DOCUMENT}-{heading_path_dashed}.json \
           [--header-file {MG_INSTALL_WORKSPACE_DIR}/generate/header-devops-{DOCUMENT}.md] \
-          --heading-state {STATE_FILE_PATH} \
+          --heading-state {generate_dir}/heading-state-{audience}-{DOCUMENT}.json \
           --project-root {project_root}
         ```
 
@@ -177,8 +167,6 @@ These conventions override or extend the style guide for devops documentation.
 ## Principles
 
 - **No inline Python.** Do NOT use `python3 -c` or `python3 << 'PYEOF'` inline scripts. All deterministic logic is in `scripts/*.py` -- call them via Bash.
-- **Do NOT read the refined template directly** -- `next-heading.py` reads it for you. You receive headings one at a time via its orient/write/done responses.
-- **Do NOT read `docs-scan.json` directly** -- use only the scan view file passed as `scan_data_path`. Source files come from `next-heading.py` orient responses.
 - **Do NOT read `write-state-*.json`** -- it is internal to `write-section.py`. The finalize step handles document assembly.
 - **Symbols first, Read second.** When reading source files from the orient response, always call `get_symbols_overview` (depth: 1) first to understand the file structure. Use `find_symbol` with `include_body: true` for functions and classes you need to document in detail. Use `find_symbol` with `include_info: true` for signatures and docstrings only. Only fall back to `Read` for files Serena cannot parse (yaml, toml, config, markdown, shell scripts, SQL, Dockerfile, .env.example). Never read an entire source file blind. Prefer `include_info: true` for deployment and configuration symbols; use `include_body: true` for configuration parsing and environment variable handling.
 - **Source material over inference.** Generate from what the scan found in source files. Do not invent capabilities or behaviors.
@@ -187,5 +175,5 @@ These conventions override or extend the style guide for devops documentation.
 - **Skip optional sections rather than generating boilerplate.** An absent section is better than a vague one.
 - **One Diataxis type per document.** Check the `<!-- DIATAXIS: type -->` comment in the template.
 - **Be concrete.** Use specific service names, ports, and paths from the source material.
-- **Database schema authority.** When `database_model_path` is provided, all database schema names, table names, and column references MUST come from the database model file -- never inferred from `__tablename__`, class names, or other heuristics. Schema-qualified references in SQL examples (e.g., `road_runner.etl_runs`) must match the database model exactly.
+- **Database schema authority.** When `db_column_detail` is present in orient responses, all database schema names, table names, and column references MUST come from that data -- never inferred from `__tablename__`, class names, or other heuristics. Schema-qualified references in SQL examples (e.g., `road_runner.etl_runs`) must match the database model exactly.
 - **Every procedure is written for 3am with no prior context.**

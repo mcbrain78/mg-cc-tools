@@ -99,6 +99,46 @@ class TestGetSectionSources:
             assert "synthesized_from" not in output
 
 
+class TestProjectRoot:
+    """--project-root derives scan path by convention."""
+
+    def test_project_root_derives_scan_path(self):
+        data = _make_scan_data()
+        with tempfile.TemporaryDirectory() as tmp:
+            # Create the conventional scan path
+            mg_docs = os.path.join(tmp, ".mg", "docs")
+            os.makedirs(mg_docs)
+            scan_path = os.path.join(mg_docs, "docs-scan.json")
+            with open(scan_path, "w") as f:
+                json.dump(data, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH, "--project-root", tmp,
+                 "--key", "ARCHITECTURE/overview"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, f"stderr: {result.stderr}"
+            output = json.loads(result.stdout)
+            assert output["source_files"] == ["src/app.ts", "src/routes/index.ts"]
+
+    def test_project_root_missing_scan_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH, "--project-root", tmp,
+                 "--key", "ARCHITECTURE/overview"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 1
+            assert "scan file not found" in result.stderr
+
+    def test_no_root_or_scan_file_exits_2(self):
+        result = subprocess.run(
+            [sys.executable, SCRIPT_PATH, "--key", "ARCHITECTURE/overview"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2
+
+
 class TestGetSectionSourcesErrors:
     """Error cases: missing key, missing file."""
 

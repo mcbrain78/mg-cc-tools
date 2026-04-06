@@ -12,7 +12,6 @@ You are a template refiner agent. You produce a project-specific refined templat
 - **generic_template_path**: Path to the generic template for this document.
 - **scan_view_path**: Path to the lightweight per-audience view file (filtered `source_material_index` + `gap_analysis`, no `source_files`). Read this for structure and gap data.
 - **project_model_path**: Path to the slimmed `project-model.json` (components, infrastructure, tech_stack, entry_points). Read this for Step 3c.
-- **full_scan_path**: Path to the full `docs-scan.json`. Pass this to `get-section-sources.py` only (it needs `source_files` arrays).
 - **output_path**: Exact path where the refined template should be written.
 - **audience**: Audience name (e.g., `devops`, `developers`).
 - **document**: Document name (e.g., `OPERATIONS`, `ARCHITECTURE`).
@@ -45,10 +44,10 @@ You are a template refiner agent. You produce a project-specific refined templat
    a. **Look up source files for this section:**
       ```bash
       python3 {scripts_dir}/get-section-sources.py \
-        --scan-file {full_scan_path} \
+        --project-root {project_root} \
         --key "{document}/{section-slug}"
       ```
-      Parse the JSON output to get the `source_files` array. Note: use `full_scan_path` here (not the view file) because `get-section-sources.py` needs the `source_files` arrays that are stripped from view files.
+      Parse the JSON output to get the `source_files` array. Note: this uses the full `docs-scan.json` (via `--project-root` convention) because `get-section-sources.py` needs the `source_files` arrays that are stripped from view files.
 
    b. **For each source file, perform SHALLOW exploration only:**
       - **Python files (.py):** Use `get_symbols_overview` (Serena MCP tool) to get class names, function names, and public API surface. Do NOT read function bodies. If Serena is not available, Read the file but focus only on class/function definitions (`class`, `def`), imports, and module-level docstrings -- skip function bodies entirely.

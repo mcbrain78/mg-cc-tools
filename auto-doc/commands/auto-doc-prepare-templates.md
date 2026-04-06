@@ -133,7 +133,6 @@ Project root: {project_root}
 Generic template: {MG_INSTALL_TEMPLATES_DIR}/{audience}/{document}.template.md
 Scan view path: ${MG_INSTALL_WORKSPACE_DIR}/generate/scan-views/scan-view-${audience}.json
 Project model path: ${MG_INSTALL_WORKSPACE_DIR}/generate/project-model.json
-Full scan path: {project_root}/.mg/docs/docs-scan.json
 Output path: {project_root}/.mg/docs/templates/{audience}/{document}.template.md
 Audience: {audience}
 Document: {document}
@@ -148,7 +147,7 @@ Validate script: {MG_INSTALL_SCRIPTS_DIR}/validate-refined-template.py"
 - Output goes to `.mg/docs/templates/` (project-local, not inside `.claude/`)
 - Each Agent call passes `{MG_INSTALL_SCRIPTS_DIR}` so the refiner can invoke `get-section-sources.py` and `list-optional-sections.py`
 - Agents read the lightweight `scan-view-{audience}.json` instead of the full `docs-scan.json` -- avoids context limit failures
-- `full_scan_path` is passed only for `get-section-sources.py` which needs `source_files` arrays
+- `get-section-sources.py` uses `--project-root` to derive the full scan path by convention
 - Parallel execution is safe: all shared resources (view files, project model, generic templates, scripts) are read-only; each agent writes to a unique output path
 
 After all agents complete, log each result:

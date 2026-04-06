@@ -961,3 +961,288 @@ class TestDbTableMap:
             assert len(orients) == 2
             assert orients[0].get("relevant_tables") == ["etl_runs"]
             assert orients[1].get("relevant_tables") == ["stocks"]
+
+
+# ---------------------------------------------------------------------------
+# DB model for init mode tests
+# ---------------------------------------------------------------------------
+
+DB_MODEL = {
+    "schemas": {
+        "road_runner": {
+            "tables": {
+                "etl_runs": {
+                    "columns": [
+                        {"name": "id", "type": "Integer", "primary_key": True,
+                         "nullable": False, "foreign_key": None},
+                        {"name": "flow_name", "type": "String(100)", "primary_key": False,
+                         "nullable": False, "foreign_key": None},
+                    ]
+                },
+                "stocks": {
+                    "columns": [
+                        {"name": "id", "type": "Integer", "primary_key": True,
+                         "nullable": False, "foreign_key": None},
+                        {"name": "ticker", "type": "String(10)", "primary_key": False,
+                         "nullable": False, "foreign_key": None},
+                    ]
+                },
+            }
+        }
+    }
+}
+
+
+def _write_init_fixtures(td, template_text=SIMPLE_TEMPLATE, scan=None,
+                         document="OPERATIONS", db_table_map=None, db_model=None):
+    """Write fixtures for init mode tests. Returns dict of paths."""
+    template_path = os.path.join(td, "template.md")
+    with open(template_path, "w") as f:
+        f.write(template_text)
+
+    scan_path = os.path.join(td, "scan.json")
+    scan_data = scan if scan is not None else SCAN_DATA
+    with open(scan_path, "w") as f:
+        json.dump(scan_data, f)
+
+    state_path = os.path.join(td, f"heading-state-devops-{document}.json")
+
+    result = {
+        "template": template_path,
+        "scan": scan_path,
+        "state": state_path,
+        "document": document,
+    }
+
+    if db_table_map is not None:
+        map_path = os.path.join(td, "db-table-map.json")
+        with open(map_path, "w") as f:
+            json.dump(db_table_map, f)
+        result["db_table_map"] = map_path
+
+    if db_model is not None:
+        model_path = os.path.join(td, "database-model.json")
+        with open(model_path, "w") as f:
+            json.dump(db_model, f)
+        result["db_model"] = model_path
+
+    return result
+
+
+def _run_init(fixtures):
+    """Run next-heading.py --init and return (returncode, stderr)."""
+    cmd = [
+        sys.executable, SCRIPT, "--init",
+        "--state-file", fixtures["state"],
+        "--template", fixtures["template"],
+        "--scan-file", fixtures["scan"],
+        "--document", fixtures["document"],
+    ]
+    if "db_table_map" in fixtures:
+        cmd.extend(["--db-table-map", fixtures["db_table_map"]])
+    if "db_model" in fixtures:
+        cmd.extend(["--db-model", fixtures["db_model"]])
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.returncode, result.stdout, result.stderr
+
+
+def _run_runtime(generate_dir, audience, document):
+    """Run next-heading.py in runtime mode and return parsed JSON."""
+    result = subprocess.run(
+        [sys.executable, SCRIPT,
+         "--generate-dir", generate_dir,
+         "--audience", audience,
+         "--document", document],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    return json.loads(result.stdout)
+
+
+def _drain_runtime(generate_dir, audience, document):
+    """Drain all responses from runtime mode."""
+    responses = []
+    for _ in range(100):
+        out = _run_runtime(generate_dir, audience, document)
+        responses.append(out)
+        if out.get("done"):
+            break
+    return responses
+
+
+# ---------------------------------------------------------------------------
+# Init mode tests
+# ---------------------------------------------------------------------------
+
+class TestInitMode:
+    """--init mode: builds queue and saves state without stdout."""
+
+    def test_init_creates_state_file(self):
+        """--init creates the state file."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(td)
+            rc, stdout, stderr = _run_init(fixtures)
+            assert rc == 0, f"stderr: {stderr}"
+            assert os.path.isfile(fixtures["state"])
+
+    def test_init_no_stdout(self):
+        """--init produces no stdout output."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(td)
+            rc, stdout, stderr = _run_init(fixtures)
+            assert rc == 0
+            assert stdout.strip() == ""
+
+    def test_init_state_has_queue(self):
+        """State file from --init contains queue and index."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(td)
+            _run_init(fixtures)
+            with open(fixtures["state"]) as f:
+                state = json.load(f)
+            assert "queue" in state
+            assert state["index"] == 0
+            assert len(state["queue"]) > 0
+
+    def test_init_requires_state_file(self):
+        """--init without --state-file exits with error."""
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "--init",
+             "--template", "/fake", "--scan-file", "/fake",
+             "--document", "DOC"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2
+
+    def test_init_requires_template(self):
+        """--init without --template exits with error."""
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "--init",
+             "--state-file", "/fake", "--scan-file", "/fake",
+             "--document", "DOC"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2
+
+    def test_init_requires_scan_file(self):
+        """--init without --scan-file exits with error."""
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "--init",
+             "--state-file", "/fake", "--template", "/fake",
+             "--document", "DOC"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2
+
+    def test_init_with_db_model_injects_column_detail(self):
+        """--init with --db-model injects db_column_detail into orient responses."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": ["etl_runs", "stocks"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td, db_table_map=db_table_map, db_model=DB_MODEL,
+            )
+            rc, _, stderr = _run_init(fixtures)
+            assert rc == 0, f"stderr: {stderr}"
+
+            with open(fixtures["state"]) as f:
+                state = json.load(f)
+            orients = [e for e in state["queue"] if e.get("type") == "orient"]
+            # First orient (infrastructure-overview) should have db_column_detail
+            assert "db_column_detail" in orients[0]
+            assert "road_runner.etl_runs:" in orients[0]["db_column_detail"]
+            assert "road_runner.stocks:" in orients[0]["db_column_detail"]
+
+    def test_init_without_db_model_no_column_detail(self):
+        """--init without --db-model: no db_column_detail in orients."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": ["etl_runs"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(td, db_table_map=db_table_map)
+            _run_init(fixtures)
+            with open(fixtures["state"]) as f:
+                state = json.load(f)
+            orients = [e for e in state["queue"] if e.get("type") == "orient"]
+            assert "db_column_detail" not in orients[0]
+
+    def test_init_orient_without_tables_no_column_detail(self):
+        """Orient for section with no relevant_tables gets no db_column_detail."""
+        db_table_map = {
+            "OPERATIONS/deployment": ["stocks"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td, db_table_map=db_table_map, db_model=DB_MODEL,
+            )
+            _run_init(fixtures)
+            with open(fixtures["state"]) as f:
+                state = json.load(f)
+            orients = [e for e in state["queue"] if e.get("type") == "orient"]
+            # First orient (infrastructure-overview) has no tables in map
+            assert "db_column_detail" not in orients[0]
+            # Second orient (deployment) has tables
+            assert "db_column_detail" in orients[1]
+
+
+# ---------------------------------------------------------------------------
+# Runtime mode tests (--generate-dir + --audience)
+# ---------------------------------------------------------------------------
+
+class TestRuntimeMode:
+    """Runtime mode: derives state path from convention."""
+
+    def test_runtime_reads_pre_initialized_state(self):
+        """Runtime mode reads from pre-initialized state file."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(td)
+            _run_init(fixtures)
+            # Now call in runtime mode
+            out = _run_runtime(td, "devops", "OPERATIONS")
+            assert out["type"] == "orient"
+
+    def test_runtime_convention_path(self):
+        """State file path follows {generate_dir}/heading-state-{audience}-{document}.json."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(td)
+            _run_init(fixtures)
+            # Verify the convention path works
+            expected = os.path.join(td, "heading-state-devops-OPERATIONS.json")
+            assert os.path.isfile(expected)
+            out = _run_runtime(td, "devops", "OPERATIONS")
+            assert "type" in out or "done" in out
+
+    def test_runtime_full_drain(self):
+        """Runtime mode can drain all responses from pre-initialized state."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(td)
+            _run_init(fixtures)
+            responses = _drain_runtime(td, "devops", "OPERATIONS")
+            assert responses[-1].get("done") is True
+            writes = [r for r in responses if r.get("type") == "write"]
+            assert len(writes) > 0
+
+    def test_runtime_with_db_column_detail(self):
+        """Runtime mode returns orient responses with db_column_detail from init."""
+        db_table_map = {
+            "OPERATIONS/infrastructure-overview": ["etl_runs"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td, db_table_map=db_table_map, db_model=DB_MODEL,
+            )
+            _run_init(fixtures)
+            out = _run_runtime(td, "devops", "OPERATIONS")
+            assert out["type"] == "orient"
+            assert "db_column_detail" in out
+            assert "road_runner.etl_runs:" in out["db_column_detail"]
+
+    def test_runtime_without_generate_dir_and_state_file_fails(self):
+        """Missing both --generate-dir and --state-file exits with error."""
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "--document", "DOC"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2

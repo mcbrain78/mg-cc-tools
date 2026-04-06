@@ -6,6 +6,11 @@ Prints JSON to stdout: {"source_files": [...]} plus synthesized_from if present.
 
 Usage:
     python3 get-section-sources.py \
+        --project-root /path/to/project \
+        --key "ARCHITECTURE/data-acquisition"
+
+    # Legacy (deprecated):
+    python3 get-section-sources.py \
         --scan-file .mg/docs/docs-scan.json \
         --key "ARCHITECTURE/data-acquisition"
 """
@@ -24,14 +29,26 @@ def main():
         description="Fetch source_files for a single section from docs-scan.json"
     )
     parser.add_argument(
-        "--scan-file", required=True, help="Path to docs-scan.json"
+        "--project-root", help="Path to project root (derives scan path by convention)"
+    )
+    parser.add_argument(
+        "--scan-file", help="Path to docs-scan.json (deprecated, use --project-root)"
     )
     parser.add_argument(
         "--key", required=True, help="Section key (e.g. ARCHITECTURE/data-acquisition)"
     )
     args = parser.parse_args()
 
-    scan_path = os.path.abspath(args.scan_file)
+    if args.project_root:
+        scan_path = os.path.abspath(
+            os.path.join(args.project_root, ".mg", "docs", "docs-scan.json")
+        )
+    elif args.scan_file:
+        scan_path = os.path.abspath(args.scan_file)
+    else:
+        print("Error: provide --project-root or --scan-file", file=sys.stderr)
+        sys.exit(2)
+
     data = load_json(scan_path)
     if data is None:
         print(f"Error: scan file not found: {scan_path}", file=sys.stderr)

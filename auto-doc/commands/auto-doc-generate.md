@@ -155,16 +155,13 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    Scan data path: {scan_views["devops"]}
    Project model path: {project_model_path}
    Database model summary path: {database_model_summary_path}
-   Database model path: {database_model_path}
-   DB table map path: {db_table_map_path}
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
    Documents: {DOCUMENT}
    Mode: {mode}
-   Refined template path: {refined_templates["devops"][DOCUMENT]["path"]}
-   State file path: {generate_dir}/heading-state-devops-{DOCUMENT}.json
+   Audience: devops
+   Generate dir: {generate_dir}
    Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
-   Tmp dir: {generate_dir}
 
    Standing notes (incorporate into relevant sections):
    {notes for this document, or 'None'}"
@@ -198,11 +195,10 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    ```
 
    **Key differences in orient-write prompt vs standard prompt:**
-   - `Refined template path` replaces `Templates dir` -- writer sees ONLY the refined template
-   - `State file path` is new -- scoped per document (`heading-state-devops-{DOCUMENT}.json`)
+   - `Audience` + `Generate dir` replace `Templates dir` -- writer derives paths by convention
    - `Scripts dir` is new -- writer needs it for next-heading.py calls
-   - `Tmp dir` is new -- writer needs it for temp files
    - `Documents` is singular (one document per agent call when using orient-write)
+   - No file paths for template, state, db-table-map, or db-model -- all pre-initialized by generate-setup.py
 
    For standing notes: format each as `- {note_id} ({document}/{section}): "{note_text}"`. If none, set to `None`. For orient-write agents, filter notes to only those matching the specific document.
 

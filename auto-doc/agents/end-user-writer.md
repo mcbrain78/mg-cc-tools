@@ -70,7 +70,7 @@ You are a specialized writer agent for the **end-users** audience. You generate 
       - Look up source material: find the matching entry in `scan_data.source_material_index` for this `document/section` key.
       - Fetch source files for this section:
         ```bash
-        python3 {MG_INSTALL_SCRIPTS_DIR}/get-section-sources.py --scan-file {project_root}/.mg/docs/docs-scan.json --key "DOCUMENT/section-slug"
+        python3 {MG_INSTALL_SCRIPTS_DIR}/get-section-sources.py --project-root {project_root} --key "DOCUMENT/section-slug"
         ```
         Parse the JSON output to get the `source_files` array.
       - Read the actual source files from the output's `source_files` array.
@@ -187,7 +187,7 @@ These conventions override or extend the style guide for end-user documentation.
 ## Principles
 
 - **No inline Python.** Do NOT use `python3 -c` or `python3 << 'PYEOF'` inline scripts. All deterministic logic is in `scripts/*.py` — call them via Bash.
-- **Do NOT read `docs-scan.json` directly** — use only the scan view file passed as `scan_data_path`. Source files are fetched via `get-section-sources.py`.
+- **Do NOT read `docs-scan.json` directly** — use only the scan view file passed as `scan_data_path`. Source files are fetched via `get-section-sources.py --project-root`.
 - **Do NOT read `write-state-*.json`** — it is internal to `write-section.py`. The finalize step handles document assembly.
 - **Symbols first, Read second.** When reading source files from the scan index, always call `get_symbols_overview` (depth: 1) first to understand the file structure. Use `find_symbol` with `include_body: true` for functions and classes you need to document in detail. Use `find_symbol` with `include_info: true` for signatures and docstrings only. Only fall back to `Read` for files Serena cannot parse (yaml, toml, config, markdown, shell scripts, SQL, Dockerfile, .env.example). Never read an entire source file blind. Prefer `include_info: true` for understanding what functions do; use `include_body: true` sparingly when you need to understand user-facing logic.
 - **Source material over inference.** Generate from what the scan found in source files. Do not invent capabilities or behaviors.

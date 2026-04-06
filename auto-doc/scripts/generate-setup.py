@@ -468,6 +468,51 @@ def _build_db_table_map(project_model_path, scan_path, generate_dir):
     return output_path
 
 
+def _pre_init_heading_states(
+    refined_templates, audiences, scan_file, generate_dir,
+    db_table_map_path, database_model_path, scripts_dir,
+):
+    """Pre-initialize next-heading.py state files for orient-write documents.
+
+    For each audience/document pair with a refined template, calls
+    ``next-heading.py --init`` to build the emission queue and save state.
+    This removes the need for agents to pass file paths at runtime.
+
+    Returns list of {"audience": str, "document": str} dicts that were
+    pre-initialized.
+    """
+    pre_init = []
+    for aud_name, aud_conf in audiences.items():
+        aud_templates = refined_templates.get(aud_name, {})
+        for doc in aud_conf.get("documents", []):
+            tpl_entry = aud_templates.get(doc)
+            if tpl_entry is None:
+                continue  # No refined template — not orient-write mode
+            tpl_path = tpl_entry["path"]
+            state_path = os.path.join(
+                generate_dir, f"heading-state-{aud_name}-{doc}.json",
+            )
+            cmd = [
+                sys.executable,
+                os.path.join(scripts_dir, "next-heading.py"),
+                "--init",
+                "--state-file", state_path,
+                "--template", tpl_path,
+                "--scan-file", scan_file,
+                "--document", doc,
+            ]
+            if db_table_map_path:
+                cmd.extend(["--db-table-map", db_table_map_path])
+            if database_model_path:
+                cmd.extend(["--db-model", database_model_path])
+
+            _run_script(cmd, f"pre-init heading-state {aud_name}/{doc}", critical=False)
+            if os.path.isfile(state_path):
+                pre_init.append({"audience": aud_name, "document": doc})
+
+    return pre_init
+
+
 def _run_script(cmd, label, critical=True):
     """Run a subprocess, handling errors."""
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -558,10 +603,17 @@ def main():
             paths["project_model_path"], scan_file, paths["generate_dir"],
         )
 
+    # Pre-initialize heading states for orient-write documents
+    database_model_path = db_result["full"] if db_result else None
+    pre_init_documents = _pre_init_heading_states(
+        refined_templates, audiences, scan_file, paths["generate_dir"],
+        db_table_map_path, database_model_path, scripts_dir,
+    )
+
     # Output everything the orchestrator needs
     result = {
         **paths,
-        "database_model_path": db_result["full"] if db_result else None,
+        "database_model_path": database_model_path,
         "database_model_summary_path": db_result["summary"] if db_result else None,
         "db_table_map_path": db_table_map_path,
         "mode": mode,
@@ -571,6 +623,7 @@ def main():
         "notes_by_audience": notes_by_audience,
         "refined_templates": refined_templates,
         "stale_templates": stale_templates,
+        "pre_init_documents": pre_init_documents,
     }
     print(json.dumps(result, indent=2))
 
