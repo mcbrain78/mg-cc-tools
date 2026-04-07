@@ -12,6 +12,7 @@ SCRIPT = os.path.join(SCRIPTS_DIR, "merge-edit-xml.py")
 sys.path.insert(0, SCRIPTS_DIR)
 
 from lib.xml_doc import (  # noqa: E402
+    _build_refs_xml,
     build_xml_doc,
     parse_xml_doc,
     serialize_xml_doc,
@@ -24,6 +25,13 @@ _spec = importlib.util.spec_from_file_location("merge_edit_xml", SCRIPT)
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 merge_edit_xml = _mod.merge_edit_xml
+
+
+def _canonical_refs_xml(flat_refs):
+    """Build canonical <refs> XML string from flat ref dicts."""
+    refs_el = etree.Element("refs")
+    _build_refs_xml(refs_el, flat_refs)
+    return etree.tostring(refs_el, encoding="unicode", pretty_print=True).strip()
 
 
 def _build_master(td, audience, doc_name, sections_with_refs):
@@ -165,11 +173,9 @@ class TestRefsMerge:
                 [{"type": "db", "schema": "wrong", "table": "etl_runs"}],
             )])
 
-            # Edit XML has corrected refs
-            refs_xml = (
-                "<refs><db><schema name=\"road_runner\">"
-                "<table name=\"etl_runs\"/>"
-                "</schema></db></refs>"
+            # Edit XML has corrected refs (canonical form)
+            refs_xml = _canonical_refs_xml(
+                [{"type": "db", "schema": "road_runner", "table": "etl_runs"}],
             )
             edit_path = _build_edit_xml(td, "g1", [{
                 "source": master_path,
@@ -195,10 +201,10 @@ class TestRefsMerge:
                 [],
             )])
 
-            refs_xml = (
-                '<refs><code><function name="start_run" '
-                'module="src/etl/tracking.py"/></code></refs>'
-            )
+            refs_xml = _canonical_refs_xml([{
+                "type": "code", "kind": "function", "name": "start_run",
+                "module": "src/etl/tracking.py",
+            }])
             edit_path = _build_edit_xml(td, "g1", [{
                 "source": master_path,
                 "slug": "monitoring",
@@ -226,10 +232,8 @@ class TestBothChanges:
                 [{"type": "db", "schema": "wrong", "table": "bad"}],
             )])
 
-            refs_xml = (
-                '<refs><db><schema name="correct">'
-                '<table name="good"/>'
-                "</schema></db></refs>"
+            refs_xml = _canonical_refs_xml(
+                [{"type": "db", "schema": "correct", "table": "good"}],
             )
             edit_path = _build_edit_xml(td, "g1", [{
                 "source": master_path,
@@ -507,8 +511,8 @@ class TestNestedMerge:
                 )],
             )])
 
-            refs_xml = (
-                '<refs><code><function name="new_func"/></code></refs>'
+            refs_xml = _canonical_refs_xml(
+                [{"type": "code", "kind": "function", "name": "new_func"}],
             )
             edit_path = _build_edit_xml(td, "g1", [{
                 "source": master_path,
@@ -588,3 +592,106 @@ class TestNestedMerge:
             after_child = after["sections"][0]["children"][0]
             assert orig_child["body"] == after_child["body"]
             assert orig_child["refs"] == after_child["refs"]
+
+
+class TestTamperDetection:
+    """Non-canonical refs are detected and ref changes are skipped."""
+
+    def test_tampered_refs_skipped_body_applied(self):
+        """Direct ref edits (non-canonical) are ignored; body edits still merge."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = _build_master(td, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nOriginal body.",
+                [{"type": "db", "schema": "road_runner", "table": "etl_runs"}],
+            )])
+
+            # Non-canonical refs: column as attribute (parser ignores this)
+            # This simulates an agent using Edit tool to insert malformed XML
+            non_canonical_refs = (
+                '<refs><db><schema name="road_runner">'
+                '<table name="etl_runs" column="status"/>'
+                '</schema></db></refs>'
+            )
+            edit_path = _build_edit_xml(td, "g1", [{
+                "source": master_path,
+                "slug": "monitoring",
+                "body": "<!-- section: monitoring -->\n## Monitoring\n\nFixed body.",
+                "refs_xml": non_canonical_refs,
+            }])
+
+            merge_edit_xml(edit_path)
+
+            # Body change applied
+            doc = parse_xml_doc(master_path)
+            assert "Fixed body" in doc["sections"][0]["body"]
+
+            # Refs should be UNCHANGED (tampered refs ignored)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 1
+            assert refs[0]["schema"] == "road_runner"
+            assert refs[0]["table"] == "etl_runs"
+            assert "column" not in refs[0]  # original had no column
+
+    def test_tampered_refs_warning_on_stderr(self):
+        """Non-canonical refs produce a warning on stderr."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = _build_master(td, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent.",
+                [],
+            )])
+
+            non_canonical_refs = (
+                '<refs><db><schema name="road_runner">'
+                '<table name="etl_runs" column="status"/>'
+                '</schema></db></refs>'
+            )
+            edit_path = _build_edit_xml(td, "g1", [{
+                "source": master_path,
+                "slug": "monitoring",
+                "body": "<!-- section: monitoring -->\n## Monitoring\n\nContent.",
+                "refs_xml": non_canonical_refs,
+            }])
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT, "--edit-file", edit_path],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "modified directly" in result.stderr
+            assert "monitoring" in result.stderr
+
+    def test_canonical_refs_still_merge(self):
+        """Canonical refs (written via script or _build_refs_xml) merge normally."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = _build_master(td, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent.",
+                [],
+            )])
+
+            # Canonical refs built from flat dicts via _build_refs_xml
+            from lib.xml_doc import _build_refs_xml  # noqa: E402
+            refs_el = etree.Element("refs")
+            _build_refs_xml(refs_el, [
+                {"type": "code", "kind": "function", "name": "start_run"},
+            ])
+            canonical_refs = etree.tostring(
+                refs_el, encoding="unicode", pretty_print=True,
+            )
+            # Wrap for _build_edit_xml
+            edit_path = _build_edit_xml(td, "g1", [{
+                "source": master_path,
+                "slug": "monitoring",
+                "body": "<!-- section: monitoring -->\n## Monitoring\n\nContent.",
+                "refs_xml": canonical_refs,
+            }])
+
+            summary = merge_edit_xml(edit_path)
+            assert summary["sections_updated"] == 1
+
+            doc = parse_xml_doc(master_path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 1
+            assert refs[0]["name"] == "start_run"

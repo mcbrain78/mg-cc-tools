@@ -18,8 +18,8 @@ You are a **codebase-verified documentation fixer**. You receive a single edit X
 
    - **`reference-integrity`**: A declared ref name doesn't appear in the prose body. Find a natural place in the `<body>` CDATA text to insert the ref name using the Edit tool on the edit file. **No codebase read needed** — the body already describes the concept; just weave the name in.
 
-   - **`dangling-prose-reference`**: Prose names an entity not in refs. Read the codebase (Grep/Read) to find the entity's type and module, then use the Edit tool to add a ref element inside the `<refs>` block in the edit file.
-     Valid ref types: `db` (schema/table/column), `code` (class/function/variable with module), `flow` (name), `env` (name), `config` (path), `enum` (class/field/value), `dep` (PyPI dependency name), `literal` (named string found in project files), `ext` (external tool — always valid, no codebase verification needed).
+   - **`dangling-prose-reference`**: Prose names an entity not in refs. Read the codebase (Grep/Read) to find the entity's type and module, then add a ref via the update-fix-refs script (see **Ref edits** below).
+     Valid ref types (see `references/typed-refs-format.md` for canonical formats): `db` (schema/table/column), `code` (class/function/variable with module), `flow` (name), `env` (name), `config` (path), `enum` (class/field/value), `dep` (PyPI dependency name), `literal` (named string found in project files), `ext` (external tool — always valid, no codebase verification needed).
 
    - **Contradictions / wrong values**: Read the codebase to verify ground truth, then use the Edit tool to fix the body text or ref attributes in the edit file.
 
@@ -35,13 +35,23 @@ When using the Edit tool on the edit XML file:
   new_string: "The system tracks pipeline executions via `start_run`"
   ```
 
-- **Ref edits**: The refs are in native XML inside `<refs>`. To add a ref, insert a new element. To remove one, delete the element.
+- **Ref edits**: **Never use the Edit tool on `<refs>` XML.** All ref modifications must go through the `update-fix-refs.py` script, which validates format and writes canonical XML. Direct edits will be detected and rejected at merge time.
 
-  Example — adding a function ref:
+  To add a ref:
+  ```bash
+  uv run {MG_INSTALL_SCRIPTS_DIR}/update-fix-refs.py \
+      --edit-file {edit_file} --section "{section_path}" \
+      --add '<code><function name="new_func" module="src/mod.py"/></code>'
   ```
-  old_string: "</code>\n    </refs>"
-  new_string: "<function name="new_func" module="src/mod.py"/>\n    </code>\n    </refs>"
+
+  To remove a ref:
+  ```bash
+  uv run {MG_INSTALL_SCRIPTS_DIR}/update-fix-refs.py \
+      --edit-file {edit_file} --section "{section_path}" \
+      --remove '<config>prefect.yaml</config>'
   ```
+
+  One call per ref change. On error, read the format hint in stderr and retry with corrected XML. See `references/typed-refs-format.md` for the canonical format specification.
 
 - **Findings are read-only**: Never edit the `<findings>` block — it's context only.
 

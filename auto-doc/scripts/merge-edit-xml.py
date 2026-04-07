@@ -18,6 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.xml_doc import (
+    _build_refs_xml,
     _find_section_by_path,
     _parse_refs,
     serialize_xml_doc,
@@ -26,6 +27,25 @@ from lib.xml_doc import (
 )
 
 from lxml import etree
+
+
+def _is_refs_canonical(refs_el):
+    """Check whether a <refs> element is in canonical form.
+
+    Parses to flat dicts, rebuilds, and compares serialized output.
+    Empty refs are always canonical.
+    """
+    if refs_el is None or len(refs_el) == 0:
+        return True
+    original = etree.tostring(
+        refs_el, encoding="unicode", pretty_print=True,
+    ).strip()
+    canonical_el = etree.Element("refs")
+    _build_refs_xml(canonical_el, _parse_refs(refs_el))
+    canonical = etree.tostring(
+        canonical_el, encoding="unicode", pretty_print=True,
+    ).strip()
+    return original == canonical
 
 
 def merge_edit_xml(edit_file):
@@ -85,6 +105,17 @@ def merge_edit_xml(edit_file):
         edit_refs_el = section_el.find("refs")
         edit_refs = _parse_refs(edit_refs_el) if edit_refs_el is not None else []
 
+        # Tamper check: if agent edited refs directly (non-canonical),
+        # skip ref changes and warn. Body changes still apply.
+        refs_tampered = not _is_refs_canonical(edit_refs_el)
+        if refs_tampered:
+            print(
+                f"Warning: <refs> in section '{path}' was modified directly "
+                f"(not via update-fix-refs.py). "
+                f"Ignoring ref changes for this section.",
+                file=sys.stderr,
+            )
+
         # Get current master values
         master_body_el = master_section.find("body")
         master_body = (
@@ -102,7 +133,7 @@ def merge_edit_xml(edit_file):
             update_section_body(master_tree, path, edit_body)
             changed = True
 
-        if edit_refs != master_refs:
+        if not refs_tampered and edit_refs != master_refs:
             update_section_refs(master_tree, path, edit_refs)
             changed = True
 
