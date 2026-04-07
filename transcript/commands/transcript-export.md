@@ -13,9 +13,9 @@ Export the current Claude Code session transcript to a file.
 
 Parse `$ARGUMENTS` to extract:
 - **format** (required): `md` or `json`
-- **file-name** (required): Output filename (written to `/tmp/`)
+- **file-path** (required): Output file path (absolute or relative to `/tmp/`)
 
-Example: `/mg:transcript-export md my-session.md`
+Example: `/mg:transcript-export md /tmp/my-session.md`
 
 If arguments are missing or unclear, ask the user.
 
@@ -32,28 +32,21 @@ Determine the current session ID. Check the `$SESSION_ID` environment variable:
 echo $SESSION_ID
 ```
 
-If `$SESSION_ID` is empty, look for the most recently modified JSONL file in the current project's session directory:
-```
-ls -t ~/.claude/projects/$(pwd | sed 's|/|-|g')/*.jsonl 2>/dev/null | head -1
-```
-
-Extract the UUID from the filename (everything before `.jsonl`).
-
-If that also fails, ask the user for a session ID.
+If `$SESSION_ID` is empty, report an error and stop.
 
 ### Step 2: Export
 
-Run the exporter:
+Run the exporter. The `--project` flag is **required** — always pass it:
 ```
-python3 {MG_INSTALL_SCRIPTS_DIR}/cc_transcript_exporter.py <session-id> --format <format> --output /tmp/<file-name> --project "$(pwd)"
+python3 {MG_INSTALL_SCRIPTS_DIR}/cc_transcript_exporter.py <session-id> \
+  --project "$(pwd)" \
+  --format <format> \
+  --output <file-path>
 ```
 
 ### Step 3: Report
 
-Report the result to the user:
-- Output file path and size
-- Number of messages and tokens
-- Number of subagents (if any)
+Echo the exporter's stdout to the user verbatim — it includes file path, size, token breakdown by model, and subagent count.
 
 ## JSON Schema Reference
 

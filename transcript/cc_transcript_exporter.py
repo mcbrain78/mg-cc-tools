@@ -13,7 +13,7 @@ Usage:
 """
 import argparse
 import json
-import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -472,6 +472,29 @@ def _extract_session_metadata(
     }
 
 
+def _extract_first_command(entries: list[dict]) -> str:
+    """Extract the first slash command name from session entries.
+
+    Looks for <command-name>...</command-name> tags in user messages.
+    Returns the command name (e.g. "/mg:transcript-export") or empty string.
+    """
+    for entry in entries:
+        if entry.get("type") != "user":
+            continue
+        content = entry.get("message", {}).get("content", "")
+        text = ""
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text = " ".join(
+                b.get("text", "") for b in content if isinstance(b, dict)
+            )
+        m = re.search(r"<command-name>(.+?)</command-name>", text)
+        if m:
+            return m.group(1)
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # JSON output
 # ---------------------------------------------------------------------------
@@ -590,6 +613,38 @@ def _format_duration(ms: int) -> str:
 def _format_tokens(n: int) -> str:
     """Format token count with commas."""
     return f"{n:,}"
+
+
+def _print_token_table(by_model: dict[str, dict]) -> None:
+    """Print per-model token breakdown table to stdout."""
+    if not by_model:
+        return
+
+    # Column width for right-aligned numbers
+    W = 14
+
+    header = f"    {'':30s} {'Read':>{W}} {'Write':>{W}} {'Total':>{W}}"
+    print(header)
+    for source, m in by_model.items():
+        agent_count = m.get("agentCount")
+        if agent_count is not None:
+            label = source.replace(" (agents)", f" ({agent_count} agents)")
+        else:
+            label = source
+
+        inp = m.get("inputTokens", 0)
+        out = m.get("outputTokens", 0)
+        cr = m.get("cacheReadTokens", 0)
+        cw = m.get("cacheCreationTokens", 0)
+
+        total_read = inp + cr
+        total_write = out + cw
+        total_all = total_read + total_write
+
+        print(f"    {label}")
+        print(f"    {'  Total':30s} {_format_tokens(total_read):>{W}} {_format_tokens(total_write):>{W}} {_format_tokens(total_all):>{W}}")
+        print(f"    {'  Non-cached':30s} {_format_tokens(inp):>{W}} {_format_tokens(out):>{W}} {_format_tokens(inp + out):>{W}}")
+        print(f"    {'  Cached':30s} {_format_tokens(cr):>{W}} {_format_tokens(cw):>{W}} {_format_tokens(cr + cw):>{W}}")
 
 
 def _extract_text_from_content(content) -> str:
@@ -811,8 +866,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--project", "-p",
-        default=None,
-        help="Project path to search sessions in (default: cwd)",
+        required=True,
+        help="Project path to search sessions in",
     )
     parser.add_argument(
         "--truncate", "-t",
@@ -826,14 +881,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
-    # Resolve project path
-    project_path = args.project or os.getcwd()
-
     # Find the JSONL file
-    session_jsonl = resolve_session(args.session_id, project_path)
+    session_jsonl = resolve_session(args.session_id, args.project)
 
     # Build the session detail
     detail = build_session_detail(session_jsonl)
+
+    # Extract first command from raw JSONL for the prompt hint
+    raw_entries = _parse_jsonl(session_jsonl)
+    first_command = _extract_first_command(raw_entries)
 
     # Export
     if args.format == "json":
@@ -856,9 +912,17 @@ def main(argv: list[str] | None = None) -> None:
     print(f"  Format:    {args.format}")
     print(f"  Output:    {args.output} ({size_str})")
     print(f"  Messages:  {session_meta['messageCount']}")
-    print(f"  Tokens:    {_format_tokens(metrics['totalTokens'])}")
     if detail["processes"]:
         print(f"  Subagents: {len(detail['processes'])}")
+    total = metrics['totalTokens']
+    cache_read = metrics['cacheReadTokens']
+    cache_pct = (cache_read * 100 // total) if total else 0
+    print(f"  Tokens:    {_format_tokens(total)} ({cache_pct}% cache hit)")
+    _print_token_table(metrics.get("byModel", {}))
+    cmd_label = first_command or "a slash command"
+    print("")
+    print(f"To analyze the session further:")
+    print(f"  I ran the {cmd_label} command, please analyze: {args.output}")
 
 
 if __name__ == "__main__":
