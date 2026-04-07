@@ -5,15 +5,15 @@ Stateless CLI tool that loads session JSON, drops chunks, and provides
 subcommands for navigating sessions of any size via pagination.
 
 Usage:
-    python3 cc_session_analyzer.py SESSION.json                  # overview (default)
-    python3 cc_session_analyzer.py SESSION.json overview         # explicit overview
-    python3 cc_session_analyzer.py SESSION.json errors           # paginated error list
-    python3 cc_session_analyzer.py SESSION.json flow             # orchestrator decision trace
-    python3 cc_session_analyzer.py SESSION.json agent-list       # all agents summary
-    python3 cc_session_analyzer.py SESSION.json agent <prefix>   # single agent deep dive
-    python3 cc_session_analyzer.py SESSION.json msg <N>          # single message with context
-    python3 cc_session_analyzer.py SESSION.json search <pattern> # search tool I/O and text
-    python3 cc_session_analyzer.py SESSION.json export           # delegate to compactor
+    python3 cc_transcript_analyzer.py SESSION.json                  # overview (default)
+    python3 cc_transcript_analyzer.py SESSION.json overview         # explicit overview
+    python3 cc_transcript_analyzer.py SESSION.json errors           # paginated error list
+    python3 cc_transcript_analyzer.py SESSION.json flow             # orchestrator decision trace
+    python3 cc_transcript_analyzer.py SESSION.json agent-list       # all agents summary
+    python3 cc_transcript_analyzer.py SESSION.json agent <prefix>   # single agent deep dive
+    python3 cc_transcript_analyzer.py SESSION.json msg <N>          # single message with context
+    python3 cc_transcript_analyzer.py SESSION.json search <pattern> # search tool I/O and text
+    python3 cc_transcript_analyzer.py SESSION.json export           # delegate to compactor
 """
 import argparse
 import importlib.util
@@ -1355,11 +1355,11 @@ def cmd_search(data, session_file, args):
 
 def _import_compactor():
     """Import the compactor module from the same directory."""
-    compactor_path = Path(__file__).parent / "cc_session_compactor.py"
+    compactor_path = Path(__file__).parent / "cc_transcript_compactor.py"
     if not compactor_path.exists():
         print(f"Error: compactor not found at {compactor_path}", file=sys.stderr)
         sys.exit(1)
-    spec = importlib.util.spec_from_file_location("cc_session_compactor", compactor_path)
+    spec = importlib.util.spec_from_file_location("cc_transcript_compactor", compactor_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

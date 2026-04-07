@@ -1,10 +1,10 @@
 ---
-name: analyze-session
+name: transcript-analyze
 description: Analyze a Claude Code session export to understand what happened, find errors, and trace decisions
 allowed-tools: Bash, Read, Write, Glob, Grep
 ---
 
-# /mg:analyze-session
+# /mg:transcript-analyze
 
 You are analyzing a Claude Code session export. The session file and optional goal are provided via $ARGUMENTS.
 
@@ -18,11 +18,11 @@ If no session_file provided, ask the user for the path.
 
 ## Analyzer Tool
 
-The session analyzer is at: `{MG_INSTALL_SCRIPTS_DIR}/cc_session_analyzer.py`
+The session analyzer is at: `{MG_INSTALL_SCRIPTS_DIR}/cc_transcript_analyzer.py`
 
 All commands follow this pattern:
 ```
-python3 {MG_INSTALL_SCRIPTS_DIR}/cc_session_analyzer.py <session_file> <command> [options]
+python3 {MG_INSTALL_SCRIPTS_DIR}/cc_transcript_analyzer.py <session_file> <command> [options]
 ```
 
 Available commands:
@@ -41,7 +41,7 @@ Available commands:
 
 Always start by running the overview command:
 ```
-python3 {MG_INSTALL_SCRIPTS_DIR}/cc_session_analyzer.py <session_file>
+python3 {MG_INSTALL_SCRIPTS_DIR}/cc_transcript_analyzer.py <session_file>
 ```
 
 Read the output carefully. Note:

@@ -104,8 +104,8 @@ class TestIndependentDetection:
         import inspect
         source = inspect.getsource(mod)
         assert "ERROR_MARKERS" not in source
-        assert "from cc_session_compactor" not in source
-        assert "import cc_session_compactor" not in source
+        assert "from cc_transcript_compactor" not in source
+        assert "import cc_transcript_compactor" not in source
 
 
 class TestErrorsCommand:

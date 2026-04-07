@@ -1,4 +1,4 @@
-"""Test infrastructure for session-analyzer tests.
+"""Test infrastructure for transcript tool tests.
 
 Provides:
 - --slow CLI flag for large-sample tests
@@ -7,7 +7,7 @@ Provides:
 - Import helpers using importlib.machinery.SourceFileLoader (project convention)
 
 Import helpers are available both as module-level functions (load_analyzer,
-load_compactor) and as pytest fixtures (analyzer_mod, compactor_mod).
+load_compactor, load_exporter) and as pytest fixtures (analyzer_mod, compactor_mod).
 Tests in this directory can use sys.path to import conftest directly:
 
     import sys; sys.path.insert(0, str(Path(__file__).parent))
@@ -49,8 +49,9 @@ def pytest_collection_modifyitems(config, items):
 # ---------------------------------------------------------------------------
 
 _SAMPLES_DIR = Path(__file__).parent.parent / "samples"
-_ANALYZER_PATH = Path(__file__).parent.parent / "cc_session_analyzer.py"
-_COMPACTOR_PATH = Path(__file__).parent.parent / "cc_session_compactor.py"
+_ANALYZER_PATH = Path(__file__).parent.parent / "cc_transcript_analyzer.py"
+_COMPACTOR_PATH = Path(__file__).parent.parent / "cc_transcript_compactor.py"
+_EXPORTER_PATH = Path(__file__).parent.parent / "cc_transcript_exporter.py"
 
 
 # ---------------------------------------------------------------------------
@@ -58,24 +59,36 @@ _COMPACTOR_PATH = Path(__file__).parent.parent / "cc_session_compactor.py"
 # ---------------------------------------------------------------------------
 
 def load_analyzer():
-    """Import cc_session_analyzer.py as a module."""
+    """Import cc_transcript_analyzer.py as a module."""
     import importlib.machinery
     import importlib.util
 
-    loader = importlib.machinery.SourceFileLoader("cc_session_analyzer", str(_ANALYZER_PATH))
-    spec = importlib.util.spec_from_loader("cc_session_analyzer", loader)
+    loader = importlib.machinery.SourceFileLoader("cc_transcript_analyzer", str(_ANALYZER_PATH))
+    spec = importlib.util.spec_from_loader("cc_transcript_analyzer", loader)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
 def load_compactor():
-    """Import cc_session_compactor.py as a module."""
+    """Import cc_transcript_compactor.py as a module."""
     import importlib.machinery
     import importlib.util
 
-    loader = importlib.machinery.SourceFileLoader("cc_session_compactor", str(_COMPACTOR_PATH))
-    spec = importlib.util.spec_from_loader("cc_session_compactor", loader)
+    loader = importlib.machinery.SourceFileLoader("cc_transcript_compactor", str(_COMPACTOR_PATH))
+    spec = importlib.util.spec_from_loader("cc_transcript_compactor", loader)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def load_exporter():
+    """Import cc_transcript_exporter.py as a module."""
+    import importlib.machinery
+    import importlib.util
+
+    loader = importlib.machinery.SourceFileLoader("cc_transcript_exporter", str(_EXPORTER_PATH))
+    spec = importlib.util.spec_from_loader("cc_transcript_exporter", loader)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -134,3 +147,8 @@ def analyzer_path():
 @pytest.fixture
 def compactor_path():
     return _COMPACTOR_PATH
+
+
+@pytest.fixture
+def exporter_path():
+    return _EXPORTER_PATH

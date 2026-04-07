@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Session Analyzer — Installer ────────────────────────────────────────────
+# ── Transcript Tools — Installer ──────────────────────────────────────────
 #
-# Installs the analyze-session command and supporting Python scripts into
+# Installs transcript commands and supporting Python scripts into
 # a Claude Code project or global configuration.
 #
 # Usage:
@@ -12,18 +12,20 @@ set -euo pipefail
 #   ./install.sh --target <path>    Install into a custom .claude/ directory
 #
 # What it does:
-#   1. Copies command file to <target>/commands/mg/
-#   2. Copies Python scripts to <target>/session-analyzer/
-#   3. Resolves {MG_INSTALL_SCRIPTS_DIR} in the command file to absolute paths
-# ──────────────────────────────────────────────────────────────────────────────
+#   1. Copies command files to <target>/commands/mg/
+#   2. Copies Python scripts to <target>/transcript/
+#   3. Copies reference docs to <target>/transcript/references/
+#   4. Resolves {MG_INSTALL_SCRIPTS_DIR} in command files to absolute paths
+# ──────────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 COMMANDS=(
-  analyze-session
+  transcript-analyze
+  transcript-export
 )
 
-# ── Parse arguments ───────────────────────────────────────────────────────────
+# ── Parse arguments ───────────────────────────────────────────────────────
 
 TARGET_DIR=""
 MODE=""
@@ -71,7 +73,7 @@ if [[ -z "$MODE" ]]; then
   exit 1
 fi
 
-# ── Resolve target directory ──────────────────────────────────────────────────
+# ── Resolve target directory ──────────────────────────────────────────────
 
 case "$MODE" in
   project)
@@ -88,7 +90,7 @@ case "$MODE" in
     ;;
 esac
 
-# ── Validate source ──────────────────────────────────────────────────────────
+# ── Validate source ──────────────────────────────────────────────────────
 
 for cmd in "${COMMANDS[@]}"; do
   if [[ ! -f "${SCRIPT_DIR}/commands/${cmd}.md" ]]; then
@@ -97,32 +99,29 @@ for cmd in "${COMMANDS[@]}"; do
   fi
 done
 
-if [[ ! -f "${SCRIPT_DIR}/cc_session_analyzer.py" ]]; then
-  echo "Error: missing cc_session_analyzer.py"
-  exit 1
-fi
+for script in cc_transcript_analyzer.py cc_transcript_compactor.py cc_transcript_exporter.py; do
+  if [[ ! -f "${SCRIPT_DIR}/${script}" ]]; then
+    echo "Error: missing ${script}"
+    exit 1
+  fi
+done
 
-if [[ ! -f "${SCRIPT_DIR}/cc_session_compactor.py" ]]; then
-  echo "Error: missing cc_session_compactor.py"
-  exit 1
-fi
-
-# ── Check for python3 ────────────────────────────────────────────────────────
+# ── Check for python3 ────────────────────────────────────────────────────
 
 if command -v python3 &>/dev/null; then
   PYTHON_VERSION="$(python3 --version 2>&1)"
   echo "  python3 found: ${PYTHON_VERSION}"
 else
-  echo "Error: python3 is required. The session analyzer scripts need Python 3.11+."
+  echo "Error: python3 is required. The transcript scripts need Python 3.11+."
   exit 1
 fi
 
-# ── Install ───────────────────────────────────────────────────────────────────
+# ── Install ───────────────────────────────────────────────────────────────
 
 COMMANDS_DIR="${TARGET_DIR}/commands/mg"
-SUPPORT_DIR="${TARGET_DIR}/session-analyzer"
+SUPPORT_DIR="${TARGET_DIR}/transcript"
 
-echo "Installing session-analyzer to: ${TARGET_DIR}"
+echo "Installing transcript tools to: ${TARGET_DIR}"
 
 # Commands
 echo "  Commands → ${COMMANDS_DIR}/"
@@ -134,11 +133,17 @@ done
 # Supporting files (Python scripts)
 echo "  Scripts  → ${SUPPORT_DIR}/"
 mkdir -p "${SUPPORT_DIR}"
-cp "${SCRIPT_DIR}/cc_session_analyzer.py" "${SUPPORT_DIR}/"
-cp "${SCRIPT_DIR}/cc_session_compactor.py" "${SUPPORT_DIR}/"
+cp "${SCRIPT_DIR}/cc_transcript_analyzer.py" "${SUPPORT_DIR}/"
+cp "${SCRIPT_DIR}/cc_transcript_compactor.py" "${SUPPORT_DIR}/"
+cp "${SCRIPT_DIR}/cc_transcript_exporter.py" "${SUPPORT_DIR}/"
 chmod +x "${SUPPORT_DIR}/"*.py
 
-# ── Resolve paths ─────────────────────────────────────────────────────────────
+# Reference docs
+echo "  Refs     → ${SUPPORT_DIR}/references/"
+mkdir -p "${SUPPORT_DIR}/references"
+cp "${SCRIPT_DIR}/references/transcript-json-schema.md" "${SUPPORT_DIR}/references/"
+
+# ── Resolve paths ─────────────────────────────────────────────────────────
 #
 # Replace {MG_INSTALL_SCRIPTS_DIR} placeholder with absolute path so the LLM can find
 # the Python scripts at runtime.
@@ -153,30 +158,34 @@ for cmd in "${COMMANDS[@]}"; do
   fi
 done
 
-# ── Update manifest ──────────────────────────────────────────────────────────
+# ── Update manifest ──────────────────────────────────────────────────────
 TOOL_SOURCE_DIR="${SCRIPT_DIR}"
 if command -v python3 &>/dev/null; then
   MG_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
   python3 "${MG_ROOT}/install/scripts/mg-install-lib.py" update-manifest \
     --target "$(dirname "$TARGET_DIR")" \
-    --tool session-analyzer \
+    --tool transcript \
     --source "${TOOL_SOURCE_DIR}" 2>/dev/null || true
 fi
 
-# ── Summary ───────────────────────────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────────────────
 
 echo ""
 echo "Done. Installed:"
 echo ""
-echo "  Command:"
+echo "  Commands:"
 for cmd in "${COMMANDS[@]}"; do
   echo "    ${COMMANDS_DIR}/${cmd}.md"
 done
 echo ""
 echo "  Supporting files:"
-echo "    ${SUPPORT_DIR}/cc_session_analyzer.py"
-echo "    ${SUPPORT_DIR}/cc_session_compactor.py"
+echo "    ${SUPPORT_DIR}/cc_transcript_analyzer.py"
+echo "    ${SUPPORT_DIR}/cc_transcript_compactor.py"
+echo "    ${SUPPORT_DIR}/cc_transcript_exporter.py"
+echo "    ${SUPPORT_DIR}/references/transcript-json-schema.md"
 echo ""
 echo "Invoke with:"
-echo "  /mg:analyze-session <session-file>              -- autonomous analysis"
-echo "  /mg:analyze-session <session-file> <question>   -- goal-directed analysis"
+echo "  /mg:transcript-analyze <session-file>              -- autonomous analysis"
+echo "  /mg:transcript-analyze <session-file> <question>   -- goal-directed analysis"
+echo "  /mg:transcript-export md my-session.md             -- export as markdown"
+echo "  /mg:transcript-export json my-session.json         -- export as JSON"

@@ -79,6 +79,7 @@ Key layers:
 - Install scripts support three modes: `--project [<dir>]`, `--global`, `--target <path>`
 - Install scripts always validate that source files exist before copying
 - Command .md files include YAML-style frontmatter (`name:`, `description:`, `allowed-tools:`)
+- Prefer breaking changes instead of backwards compatibility to avoid technical debt. Clearly show when breaking changes will occur.
 
 ## Testing
 

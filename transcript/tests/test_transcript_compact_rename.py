@@ -1,16 +1,16 @@
-"""Verify SAN-01: compactor renamed from reduce_cc_session_export.py."""
+"""Verify compactor renamed from cc_session_compactor.py to cc_transcript_compactor.py."""
 import importlib.machinery
 import importlib.util
 from pathlib import Path
 
 
-_SESSION_ANALYZER_DIR = Path(__file__).parent.parent
-_COMPACTOR_PATH = _SESSION_ANALYZER_DIR / "cc_session_compactor.py"
+_TRANSCRIPT_DIR = Path(__file__).parent.parent
+_COMPACTOR_PATH = _TRANSCRIPT_DIR / "cc_transcript_compactor.py"
 
 
 def _load_compactor():
-    loader = importlib.machinery.SourceFileLoader("cc_session_compactor", str(_COMPACTOR_PATH))
-    spec = importlib.util.spec_from_loader("cc_session_compactor", loader)
+    loader = importlib.machinery.SourceFileLoader("cc_transcript_compactor", str(_COMPACTOR_PATH))
+    spec = importlib.util.spec_from_loader("cc_transcript_compactor", loader)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -33,5 +33,5 @@ def test_compactor_has_expected_functions():
 
 
 def test_old_filename_does_not_exist():
-    old = _SESSION_ANALYZER_DIR / "reduce_cc_session_export.py"
+    old = _TRANSCRIPT_DIR / "cc_session_compactor.py"
     assert not old.exists(), f"Old filename still present: {old}"
