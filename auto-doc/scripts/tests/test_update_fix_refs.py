@@ -467,6 +467,45 @@ class TestTamperDetection:
             refs = _read_section_refs_flat(edit_path, "monitoring")
             assert len(refs) == 2
 
+    def test_parsed_from_disk_refs_pass_tamper_check(self):
+        """Canonical refs written to disk, re-parsed, pass tamper check.
+
+        Simulates what extract-edit-xml.py does: copy refs from master XML
+        (which was serialized with pretty_print) into an edit XML. The
+        re-parsed refs have whitespace text/tail from the original file.
+        The tamper check must tolerate this parsed whitespace.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            # Build canonical refs XML and write to a file
+            refs_xml = _canonical_refs_xml([
+                {"type": "db", "schema": "road_runner", "table": "etl_runs",
+                 "column": "status"},
+                {"type": "code", "kind": "function", "name": "start_run",
+                 "module": "src/tracking.py"},
+                {"type": "ext", "name": "pg_tables"},
+            ])
+
+            # Write an edit XML with these refs, then re-parse from disk
+            # (simulating extract → write → read cycle)
+            edit_path = _build_edit_xml(td, "g1", [{
+                "slug": "health-checks",
+                "path": "health-checks/service-health-checks",
+                "body": "content",
+                "refs_xml": refs_xml,
+            }])
+
+            # The re-parsed file should pass the tamper check
+            result = update_fix_refs(
+                edit_path, "health-checks/service-health-checks",
+                add_snippet="<ext>pg_indexes</ext>",
+            )
+            assert "Added 1 ref" in result
+
+            refs = _read_section_refs_flat(
+                edit_path, "health-checks/service-health-checks",
+            )
+            assert len(refs) == 4
+
 
 # ---------------------------------------------------------------------------
 # Canonical round-trip

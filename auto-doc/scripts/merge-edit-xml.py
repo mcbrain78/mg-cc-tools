@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import sys
+from copy import deepcopy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.xml_doc import (
@@ -29,22 +30,42 @@ from lib.xml_doc import (
 from lxml import etree
 
 
+def _strip_formatting_whitespace(el):
+    """Remove whitespace-only text/tail so pretty_print controls formatting.
+
+    When lxml parses existing XML, inter-element whitespace is stored as
+    .text/.tail properties.  A freshly built element has none.  Stripping
+    these before serializing makes both produce identical pretty_print output.
+    """
+    if el.text and not el.text.strip():
+        el.text = None
+    if el.tail and not el.tail.strip():
+        el.tail = None
+    for child in el:
+        _strip_formatting_whitespace(child)
+
+
+def _normalize_refs_xml(refs_el):
+    """Serialize a <refs> element with normalized whitespace."""
+    el = deepcopy(refs_el)
+    _strip_formatting_whitespace(el)
+    return etree.tostring(el, encoding="unicode", pretty_print=True).strip()
+
+
 def _is_refs_canonical(refs_el):
     """Check whether a <refs> element is in canonical form.
 
     Parses to flat dicts, rebuilds, and compares serialized output.
+    Normalizes parsed whitespace before comparison so elements read
+    from disk compare equal to freshly built elements.
     Empty refs are always canonical.
     """
     if refs_el is None or len(refs_el) == 0:
         return True
-    original = etree.tostring(
-        refs_el, encoding="unicode", pretty_print=True,
-    ).strip()
+    original = _normalize_refs_xml(refs_el)
     canonical_el = etree.Element("refs")
     _build_refs_xml(canonical_el, _parse_refs(refs_el))
-    canonical = etree.tostring(
-        canonical_el, encoding="unicode", pretty_print=True,
-    ).strip()
+    canonical = _normalize_refs_xml(canonical_el)
     return original == canonical
 
 

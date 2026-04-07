@@ -14,6 +14,7 @@ One operation per call. Always writes canonical XML.
 import argparse
 import os
 import sys
+from copy import deepcopy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.ref_validation import _REQUIRED_FIELDS, ref_has_identifier
@@ -26,9 +27,30 @@ from lxml import etree
 # Canonical form helpers
 # ---------------------------------------------------------------------------
 
+def _strip_formatting_whitespace(el):
+    """Remove whitespace-only text/tail so pretty_print controls formatting.
+
+    When lxml parses existing XML, inter-element whitespace is stored as
+    .text/.tail properties.  A freshly built element has none.  Stripping
+    these before serializing makes both produce identical pretty_print output.
+    """
+    if el.text and not el.text.strip():
+        el.text = None
+    if el.tail and not el.tail.strip():
+        el.tail = None
+    for child in el:
+        _strip_formatting_whitespace(child)
+
+
 def _serialize_refs_el(refs_el):
-    """Serialize a <refs> element to a normalized string for comparison."""
-    return etree.tostring(refs_el, encoding="unicode", pretty_print=True).strip()
+    """Serialize a <refs> element to a normalized string for comparison.
+
+    Deep-copies and strips parsed whitespace first so that elements
+    read from disk compare equal to freshly built canonical elements.
+    """
+    el = deepcopy(refs_el)
+    _strip_formatting_whitespace(el)
+    return etree.tostring(el, encoding="unicode", pretty_print=True).strip()
 
 
 def _build_canonical_refs_el(refs_el):
