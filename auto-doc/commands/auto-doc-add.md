@@ -64,7 +64,7 @@ Gather contextual information to improve note classification and traceability.
 Run `add-note.py` to append the note to the inbox:
 
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/add-note.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/add-note.py \
   --inbox <project_root>/.mg/docs/notes-inbox.json \
   --text "<user_note_text>" \
   --phase "<phase_arg>" \
@@ -80,7 +80,7 @@ Extract the `note_id` from the JSON output (e.g., `NOTE-001`).
 Run `classify-note.py` to auto-classify the note by audience, document, and section:
 
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/classify-note.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/classify-note.py \
   --text "<user_note_text>" \
   --note-id <note_id_from_step_3> \
   --inbox <project_root>/.mg/docs/notes-inbox.json

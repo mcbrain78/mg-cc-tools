@@ -114,7 +114,7 @@ When the orchestrator passes `Mode: incremental` in your prompt, you operate dif
 
    b. Call the validation script with `--sections-file` for each parsed template:
       ```bash
-      python3 {MG_INSTALL_SCRIPTS_DIR}/write-scan-output.py \
+      uv run {MG_INSTALL_SCRIPTS_DIR}/write-scan-output.py \
         --input {MG_INSTALL_WORKSPACE_DIR}/scan/scan-{audience}.json \
         --output {output_path} \
         --audience {audience} \

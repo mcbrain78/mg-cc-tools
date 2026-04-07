@@ -36,14 +36,14 @@ You are a template refiner agent. You produce a project-specific refined templat
    - Also parse any `### ` heading lines from the generic template. These are **pre-existing standard headings**. Record their exact text, PURPOSE, EXAMPLE, and OPTIONAL markers the same way you record `##` headings. Note which `##` section each `###` heading belongs to.
    - You can also use the helper script to identify OPTIONAL sections:
      ```bash
-     python3 {scripts_dir}/list-optional-sections.py --templates-dir {directory_containing_template}
+     uv run {scripts_dir}/list-optional-sections.py --templates-dir {directory_containing_template}
      ```
 
 3. **For each ## section, perform shallow source exploration**
 
    a. **Look up source files for this section:**
       ```bash
-      python3 {scripts_dir}/get-section-sources.py \
+      uv run {scripts_dir}/get-section-sources.py \
         --project-root {project_root} \
         --key "{document}/{section-slug}"
       ```

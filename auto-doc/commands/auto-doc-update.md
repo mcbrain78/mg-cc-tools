@@ -168,7 +168,7 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
 4. **Sync fix edits to XML** (if XML sources exist). Check if `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` directory exists. If so, for each document that was fixed:
 
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/sync-edits-to-xml.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/sync-edits-to-xml.py \
        --md-file {docs_dir_abs}/{audience}/{DOCUMENT}.md \
        --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/{audience}/{DOCUMENT}.xml \
        --changed-only
@@ -177,7 +177,7 @@ Group FIX items by document. Write each document's items to a temp JSON file, th
    Parse the JSON output (list of changed slugs). Then reassemble markdown from the updated XML:
 
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
        --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/{audience}/{DOCUMENT}.xml \
        --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
    ```

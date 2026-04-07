@@ -39,7 +39,7 @@ You are a specialized writer agent for the **developers** audience. You generate
       - Look up source material: find the matching entry in `scan_data.source_material_index` for this `document/section` key.
       - Fetch source files for this section:
         ```bash
-        python3 {MG_INSTALL_SCRIPTS_DIR}/get-section-sources.py --project-root {project_root} --key "DOCUMENT/section-slug"
+        uv run {MG_INSTALL_SCRIPTS_DIR}/get-section-sources.py --project-root {project_root} --key "DOCUMENT/section-slug"
         ```
         Parse the JSON output to get the `source_files` array.
       - Read the actual source files from the output's `source_files` array.
@@ -82,7 +82,7 @@ You are a specialized writer agent for the **developers** audience. You generate
          For sections with no code references, use empty arrays.
       3. Call:
          ```bash
-         python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
+         uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
            --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-developers.json \
            --document {DOCUMENT} \
            --section {section-slug} \
@@ -102,7 +102,7 @@ You are a specialized writer agent for the **developers** audience. You generate
    h. **Verify section references.** For each section, run the verification script:
 
       ```bash
-      python3 {MG_INSTALL_SCRIPTS_DIR}/verify-section-refs.py \
+      uv run {MG_INSTALL_SCRIPTS_DIR}/verify-section-refs.py \
         --content-file {MG_INSTALL_WORKSPACE_DIR}/generate/section-developers-{DOCUMENT}-{section-slug}.md \
         --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-developers-{DOCUMENT}-{section-slug}.json \
         --verifier-prompt {MG_INSTALL_AGENTS_DIR}/section-verifier.md \

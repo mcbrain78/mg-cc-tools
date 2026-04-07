@@ -19,7 +19,7 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
 
 2. **Get first section.** Call next-section to get the first auditable section:
    ```bash
-   python3 {scripts_dir}/next-section.py \
+   uv run {scripts_dir}/next-section.py \
        --state-file {findings_file}.sectionctl \
        --prose-verify-dir {prose_verify_dir}
    ```
@@ -94,7 +94,7 @@ You are a focused verification agent performing a **re-audit pass**. A prior age
 
 4. **Record findings.** For each NEW issue found (not already in prior findings), pick the most appropriate check type and record it via:
    ```bash
-   python3 {scripts_dir}/add-verify-finding.py \
+   uv run {scripts_dir}/add-verify-finding.py \
        --findings-file {findings_file} \
        --document "{document}" \
        --section "{path}" \

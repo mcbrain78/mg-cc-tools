@@ -72,7 +72,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 5. **Clear prior verify artifacts.** Remove all verify artifacts from prior runs to start fresh:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
      --clean \
      --findings-file {project_root}/.mg/docs/verify/findings.json
    ```
@@ -80,7 +80,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 6. **Extract verify context.** Extract the fields the verifier needs from the full scan data:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/extract-verify-context.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/extract-verify-context.py \
      --scan-file {project_root}/.mg/docs/docs-scan.json \
      --output {project_root}/.mg/docs/tmp/verify-scan-context.json \
      --templates-dir {MG_INSTALL_TEMPLATES_DIR} \
@@ -90,7 +90,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 7. **Prepare doc review manifest.** Split large docs into chunks and produce a manifest for all docs:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-doc-review.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/prepare-doc-review.py \
      --docs-dir {docs_dir_abs} \
      --output-dir {project_root}/.mg/docs/tmp/review-chunks \
      --token-limit 5000 \
@@ -102,7 +102,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 Run the deterministic reference integrity checker directly (not in an agent):
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/verify-references.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/verify-references.py \
     --manifests-dir {project_root}/.mg/docs/generate/reference-manifests \
     --project-root {project_root} \
     --scan-file {project_root}/.mg/docs/docs-scan.json \
@@ -116,13 +116,13 @@ This checks file paths, symbols, and function call signatures in reference manif
 Each fact-checker agent gets its own isolated findings file. Editorial findings files are created on-demand per chunk — no init needed.
 
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-code-example.json
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-data-model.json
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-cross-doc.json
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-completeness.json
 ```
 
@@ -201,7 +201,7 @@ rm -f {MG_INSTALL_WORKSPACE_DIR}/verify/editorial-state.json {MG_INSTALL_WORKSPA
 
 **Initialize and get first batch:**
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/editorial-next.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/editorial-next.py \
   --manifest {project_root}/.mg/docs/tmp/review-chunks/manifest.json \
   --checks {checks_file} \
   --state {MG_INSTALL_WORKSPACE_DIR}/verify/editorial-state.json \
@@ -234,10 +234,10 @@ Work file: {work_file}"
 
     # Mark batch done and get next batch in one step:
     indices = comma-separated item_indices from this batch
-    result = Bash("python3 {MG_INSTALL_SCRIPTS_DIR}/editorial-next.py \
+    result = Bash("uv run {MG_INSTALL_SCRIPTS_DIR}/editorial-next.py \
       --state {MG_INSTALL_WORKSPACE_DIR}/verify/editorial-state.json \
       --mark-done-batch {indices} && \
-    python3 {MG_INSTALL_SCRIPTS_DIR}/editorial-next.py \
+    uv run {MG_INSTALL_SCRIPTS_DIR}/editorial-next.py \
       --state {MG_INSTALL_WORKSPACE_DIR}/verify/editorial-state.json \
       --next-batch --batch-size 5")
 
@@ -256,7 +256,7 @@ Work file: {work_file}"
 Merge all agent findings into the main findings file. The 4 fact-checker files are listed explicitly. Editorial findings use a glob pattern to collect all per-chunk files:
 
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {project_root}/.mg/docs/verify/findings-code-example.json \
   --merge-from {project_root}/.mg/docs/verify/findings-data-model.json \
   --merge-from {project_root}/.mg/docs/verify/findings-cross-doc.json \

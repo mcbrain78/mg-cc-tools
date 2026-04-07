@@ -101,7 +101,7 @@ TMP_DIR=$(mktemp -d)
 
 For each audience to process, run:
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/split-scan-by-audience.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/split-scan-by-audience.py \
   --input .mg/docs/docs-scan.json \
   --output ${MG_INSTALL_WORKSPACE_DIR}/generate/scan-views/scan-view-${audience}.json \
   --mode audience \

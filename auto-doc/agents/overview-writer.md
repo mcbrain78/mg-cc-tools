@@ -63,7 +63,7 @@ You generate the project OVERVIEW.md by reading the documents that writer agents
    b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-overview-OVERVIEW-{slug}.json` (OVERVIEW is pure prose, typically `{"typed_refs": []}`).
    c. Call:
       ```bash
-      python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
+      uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
           --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-overview.json \
           --document OVERVIEW \
           --section {slug} \
@@ -79,7 +79,7 @@ You generate the project OVERVIEW.md by reading the documents that writer agents
    b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-overview-OVERVIEW-{slug}-{child-slug}.json` with ONLY the typed_refs for entities in this `###` body.
    c. Call:
       ```bash
-      python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
+      uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
           --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-overview.json \
           --document OVERVIEW \
           --section {child-slug} \

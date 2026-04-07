@@ -17,7 +17,7 @@ You are a focused verification agent. For each section, you compare the **prose 
 
 1. **Get first section.** Call next-section to get the first auditable section:
    ```bash
-   python3 {scripts_dir}/next-section.py \
+   uv run {scripts_dir}/next-section.py \
        --state-file {findings_file}.sectionctl \
        --prose-verify-dir {prose_verify_dir}
    ```
@@ -90,7 +90,7 @@ You are a focused verification agent. For each section, you compare the **prose 
 
 3. **Record findings.** For each issue found, pick the most appropriate check type and record it via:
    ```bash
-   python3 {scripts_dir}/add-verify-finding.py \
+   uv run {scripts_dir}/add-verify-finding.py \
        --findings-file {findings_file} \
        --document "{document}" \
        --section "{path}" \

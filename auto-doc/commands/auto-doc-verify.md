@@ -70,7 +70,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 5. **Clear prior verify artifacts.** Remove all verify artifacts from prior runs to start fresh:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
      --clean \
      --findings-file {project_root}/.mg/docs/verify/findings.json
    ```
@@ -78,7 +78,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 6. **Extract verify context.** Extract the fields the verifier needs from the full scan data:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/extract-verify-context.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/extract-verify-context.py \
      --scan-file {project_root}/.mg/docs/docs-scan.json \
      --output {project_root}/.mg/docs/tmp/verify-scan-context.json \
      --templates-dir {MG_INSTALL_TEMPLATES_DIR} \
@@ -88,7 +88,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 7. **Prepare doc review manifest.** Split large docs into chunks and produce a manifest for all docs:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-doc-review.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/prepare-doc-review.py \
      --docs-dir {docs_dir_abs} \
      --output-dir {project_root}/.mg/docs/tmp/review-chunks \
      --token-limit 5000 \
@@ -100,7 +100,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 Run the deterministic reference integrity checker directly (not in an agent):
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/verify-references.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/verify-references.py \
     --manifests-dir {project_root}/.mg/docs/generate/reference-manifests \
     --project-root {project_root} \
     --scan-file {project_root}/.mg/docs/docs-scan.json \
@@ -111,7 +111,7 @@ This checks file paths, symbols, and function call signatures in reference manif
 
 **If XML sources exist** (check if `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` directory exists and contains `.xml` files), also run the deterministic XML ref verifier:
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
     --project-root {project_root} \
     --findings-file {project_root}/.mg/docs/verify/findings.json \
@@ -126,19 +126,19 @@ Each agent gets its own isolated findings file. Read the review manifest to dete
 
 ```bash
 # 4 fact-checker files
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-code-example.json
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-data-model.json
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-cross-doc.json
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-completeness.json
 ```
 
 Read the manifest JSON at `{project_root}/.mg/docs/tmp/review-chunks/manifest.json`. For each entry, compute `doc_name` = basename of `source` without `.md` extension. Init one editorial findings file per document:
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
   --findings-file {project_root}/.mg/docs/verify/findings-editorial-{doc_name}.json
 ```
 
@@ -234,7 +234,7 @@ All agents (4 fact-checkers + N editorial) must be spawned in a **single Agent m
 Build the `--merge-from` list dynamically from the 4 fact-checker files plus N per-document editorial files:
 
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {project_root}/.mg/docs/verify/findings-code-example.json \
   --merge-from {project_root}/.mg/docs/verify/findings-data-model.json \
   --merge-from {project_root}/.mg/docs/verify/findings-cross-doc.json \

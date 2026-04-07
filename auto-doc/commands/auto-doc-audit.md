@@ -60,7 +60,7 @@ Run verify-xml-refs.py once across all XML sources. It walks the entire xml-sour
 
 Run the verification (this may take 1-2 minutes for large projects):
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
     --project-root {project_root} \
     --findings-file {MG_INSTALL_WORKSPACE_DIR}/audit/findings-refs.json \
@@ -82,7 +82,7 @@ Read `{MG_INSTALL_WORKSPACE_DIR}/audit/findings-refs.json` to get the determinis
 
 2. **For each XML file, prepare input:**
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-prose-verify.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/prepare-prose-verify.py \
        --xml-file {xml_file_path} \
        --output-dir {MG_INSTALL_WORKSPACE_DIR}/audit/prose-verify-{audience}-{DOCUMENT}
    ```

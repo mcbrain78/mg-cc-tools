@@ -28,7 +28,7 @@ Parse the user's input text for optional audience names. Example: user types `/m
 
 Run the setup script to check prerequisites, build paths, run prep scripts, and init findings files:
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/verify-setup.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/verify-setup.py \
   --scan-file .mg/docs/docs-scan.json \
   --config .mg/docs/.docs.config.json \
   --global-config {MG_INSTALL_GLOBAL_CONFIG} \
@@ -49,7 +49,7 @@ Note: `xml_dir` is non-null when XML sources exist (produced by generate). This 
 If `xml_dir` is non-null, run the deterministic XML reference checker **in the orchestrator** (not as a subagent — it's a fast deterministic script):
 
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {xml_dir} \
     --project-root {project_root} \
     --findings-file {findings_file} \
@@ -66,7 +66,7 @@ This checks every typed ref (db schemas/tables/columns, code classes/functions, 
 
 1. **Prepare prose verification data** for each XML file:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/prepare-prose-verify.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/prepare-prose-verify.py \
        --xml-file {xml_file} \
        --output-dir {verify_dir}/prose-verify/{audience}/{doc_name}
    ```
@@ -82,7 +82,7 @@ This checks every typed ref (db schemas/tables/columns, code classes/functions, 
 
    Initialize each prose-verify findings file before spawning:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py --init \
        --findings-file {verify_dir}/prose-verify-findings-{doc_name}.json
    ```
 
@@ -101,7 +101,7 @@ All agents receive `project_root`. The `review_manifest` is the `manifest` path 
 
 **Init:** Run the editorial orchestrator to create state, write first question files, and get spawn targets:
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/editorial-orchestrate.py --init \
+uv run {MG_INSTALL_SCRIPTS_DIR}/editorial-orchestrate.py --init \
   --manifest {manifest} --checks {MG_INSTALL_CHECKS_FILE} \
   --findings-prefix {findings_prefix} --tmp-dir {verify_dir} \
   --state {verify_dir}/ed-orchestrate-state.json
@@ -125,7 +125,7 @@ Merge all findings — fact-checker files + editorial glob + prose-verify files 
 
 **If `xml_dir` is non-null:**
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {fact_checker_findings.cross_doc} \
   --merge-from {fact_checker_findings.completeness} \
   --merge-glob "{findings_prefix}-*.json" \
@@ -136,7 +136,7 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
 
 **If `xml_dir` is null:**
 ```bash
-python3 {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
+uv run {MG_INSTALL_SCRIPTS_DIR}/list-verify-findings.py \
   --merge-from {fact_checker_findings.code_example} \
   --merge-from {fact_checker_findings.data_model} \
   --merge-from {fact_checker_findings.cross_doc} \

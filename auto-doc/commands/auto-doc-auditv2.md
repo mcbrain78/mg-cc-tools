@@ -129,7 +129,7 @@ rm -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/*.sectionctl
 
 b. **Recompute affected sections.** Propagation within the previous wave pruned the uncleared file, so some sections may now have zero entities. Recompute the affected-sections filter for each document:
 ```bash
-uv run python3 -c "
+python3 -c "
 import json, sys
 with open(sys.argv[1]) as f: u = json.load(f)
 s = sorted(set(e['section'] for e in u))

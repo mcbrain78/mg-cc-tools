@@ -174,7 +174,7 @@ GSD integration: {true|false}
 
 4. **Persist to config and update scan-project.json** via script (keeps JSON out of orchestrator context):
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/persist-interfaces.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/persist-interfaces.py \
        --config <project_root>/.mg/docs/.docs.config.json \
        --scan-project <project_root>/.mg/docs/scan/scan-project.json \
        --interfaces '$INTERFACES_JSON'
@@ -195,7 +195,7 @@ GSD integration: {true|false}
 
 2. **Run diff-scan.py** to produce the scoped work order:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/diff-scan.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/diff-scan.py \
        --project-root <project_root> \
        --manifests-dir <project_root>/.mg/docs/generate/reference-manifests \
        --docs-dir <docs_dir_abs> \
@@ -233,7 +233,7 @@ If mode is `"initial"`, skip this step entirely.
 
 1. **Run staleness-check.py** to detect sections whose source files have changed since last generation:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/staleness-check.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/staleness-check.py \
        --docs-dir <docs_dir> \
        --project-root <project_root> \
        --output <project_root>/.mg/docs/scan/staleness-results.json
@@ -251,7 +251,7 @@ Pre-parse all templates into structured JSON so scan agents use deterministic sl
 
 2. **For each document**, run the template parser:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/parse-template.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/parse-template.py \
        --template {MG_INSTALL_TEMPLATES_DIR}/{audience}/{DOCUMENT}.template.md \
        --document {DOCUMENT} \
        --output <project_root>/.mg/docs/scan/templates/template-{DOCUMENT}.json
@@ -341,7 +341,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
 
 1. **Run merge-scan.py** to combine all partial results into the final scan output:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/merge-scan.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/merge-scan.py \
        --scan-dir <project_root>/.mg/docs/scan \
        --output <project_root>/.mg/docs/docs-scan.json \
        --project-name "<project_name>" \
@@ -357,7 +357,7 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
 
 2. **Read the summary counts** from docs-scan.json via script (keeps full JSON out of orchestrator context):
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/scan-summary.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/scan-summary.py \
        --scan-file <project_root>/.mg/docs/docs-scan.json
    ```
 

@@ -44,7 +44,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 
    b. **First call to next-heading.py:**
       ```bash
-      python3 {MG_INSTALL_SCRIPTS_DIR}/next-heading.py \
+      uv run {MG_INSTALL_SCRIPTS_DIR}/next-heading.py \
         --generate-dir {generate_dir} \
         --audience {audience} \
         --document {DOCUMENT}
@@ -96,7 +96,7 @@ You are a specialized writer agent for the **devops** audience. You generate doc
 
         Call `write-section.py`:
         ```bash
-        python3 {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
+        uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
           --state-file {MG_INSTALL_WORKSPACE_DIR}/generate/write-state-devops-{DOCUMENT}.json \
           --document {DOCUMENT} \
           --section {section_slug} \

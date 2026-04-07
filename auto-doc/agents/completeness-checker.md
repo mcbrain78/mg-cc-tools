@@ -66,7 +66,7 @@ For each issue discovered:
 
 2. Call the script to validate and append:
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
+   uv run {MG_INSTALL_SCRIPTS_DIR}/add-verify-finding.py \
      --input {MG_INSTALL_WORKSPACE_DIR}/verify/complete-NNN.json \
      --findings-file {findings_file}
    ```
