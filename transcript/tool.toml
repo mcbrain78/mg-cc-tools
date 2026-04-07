@@ -4,5 +4,8 @@ description = "Analyze, export, and compact Claude Code session transcripts"
 [preflight]
 required = ["python3"]
 
+[post_install]
+script = "post-install.md"
+
 [detect]
 paths = [".claude/transcript/"]

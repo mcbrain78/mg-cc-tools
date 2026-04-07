@@ -357,3 +357,54 @@ class TestMetricsByModel:
         mod = load_exporter()
         result = mod._compute_metrics_by_model([])
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Tests — --transcript flag (direct JSONL path)
+# ---------------------------------------------------------------------------
+
+class TestTranscriptFlag:
+
+    def test_export_with_transcript_flag(self, tmp_path):
+        """Exporter works when given --transcript pointing at a JSONL file."""
+        mod = load_exporter()
+
+        entries = [
+            _make_user_entry(content="Hello"),
+            _make_assistant_entry(),
+        ]
+        jsonl_path = _write_jsonl(entries, tmp_path)
+        output_path = tmp_path / "out.md"
+
+        mod.main(["--transcript", str(jsonl_path), "--format", "md", "--output", str(output_path)])
+        assert output_path.exists()
+        content = output_path.read_text()
+        assert "Session Export" in content
+
+    def test_export_json_with_transcript_flag(self, tmp_path):
+        mod = load_exporter()
+
+        entries = [
+            _make_user_entry(content="Hello"),
+            _make_assistant_entry(),
+        ]
+        jsonl_path = _write_jsonl(entries, tmp_path)
+        output_path = tmp_path / "out.json"
+
+        mod.main(["--transcript", str(jsonl_path), "--format", "json", "--output", str(output_path)])
+        assert output_path.exists()
+        data = json.loads(output_path.read_text())
+        assert "session" in data
+        assert "messages" in data
+
+    def test_transcript_flag_missing_file_exits(self, tmp_path):
+        mod = load_exporter()
+        import pytest
+        with pytest.raises(SystemExit):
+            mod.main(["--transcript", "/nonexistent/file.jsonl", "--output", str(tmp_path / "o.md")])
+
+    def test_no_args_exits(self):
+        mod = load_exporter()
+        import pytest
+        with pytest.raises(SystemExit):
+            mod.main(["--output", "/tmp/o.md"])

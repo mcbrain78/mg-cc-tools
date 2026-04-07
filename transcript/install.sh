@@ -106,6 +106,11 @@ for script in cc_transcript_analyzer.py cc_transcript_compactor.py cc_transcript
   fi
 done
 
+if [[ ! -f "${SCRIPT_DIR}/hooks/inject-transcript-path.py" ]]; then
+  echo "Error: missing hooks/inject-transcript-path.py"
+  exit 1
+fi
+
 # ── Check for python3 ────────────────────────────────────────────────────
 
 if command -v python3 &>/dev/null; then
@@ -142,6 +147,12 @@ chmod +x "${SUPPORT_DIR}/"*.py
 echo "  Refs     → ${SUPPORT_DIR}/references/"
 mkdir -p "${SUPPORT_DIR}/references"
 cp "${SCRIPT_DIR}/references/transcript-json-schema.md" "${SUPPORT_DIR}/references/"
+
+# Hook script
+echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
+mkdir -p "${SUPPORT_DIR}/hooks"
+cp "${SCRIPT_DIR}/hooks/inject-transcript-path.py" "${SUPPORT_DIR}/hooks/"
+chmod +x "${SUPPORT_DIR}/hooks/inject-transcript-path.py"
 
 # ── Resolve paths ─────────────────────────────────────────────────────────
 #
@@ -183,9 +194,7 @@ echo "    ${SUPPORT_DIR}/cc_transcript_analyzer.py"
 echo "    ${SUPPORT_DIR}/cc_transcript_compactor.py"
 echo "    ${SUPPORT_DIR}/cc_transcript_exporter.py"
 echo "    ${SUPPORT_DIR}/references/transcript-json-schema.md"
+echo "    ${SUPPORT_DIR}/hooks/inject-transcript-path.py"
 echo ""
-echo "Invoke with:"
-echo "  /mg:transcript-analyze <session-file>              -- autonomous analysis"
-echo "  /mg:transcript-analyze <session-file> <question>   -- goal-directed analysis"
-echo "  /mg:transcript-export md my-session.md             -- export as markdown"
-echo "  /mg:transcript-export json my-session.json         -- export as JSON"
+echo "Next step:"
+echo "  Post-install subagent will register the hook in settings.json"

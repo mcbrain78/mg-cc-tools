@@ -6,10 +6,13 @@ Reads raw JSONL files from ~/.claude/projects/ and produces either:
 - Markdown with conversation turns, tool calls, and metrics
 
 Usage:
-    python3 cc_transcript_exporter.py <session-id> --format json --output /tmp/out.json
-    python3 cc_transcript_exporter.py <session-id> --format md --output /tmp/out.md
-    python3 cc_transcript_exporter.py <session-id> --format md --output /tmp/out.md --project /path/to/project
-    python3 cc_transcript_exporter.py <session-id> --format md --output /tmp/out.md --truncate 5000
+    python3 cc_transcript_exporter.py --transcript /path/to/session.jsonl --format md --output /tmp/out.md
+    python3 cc_transcript_exporter.py <session-id> --project /path/to/project --format json --output /tmp/out.json
+    python3 cc_transcript_exporter.py --transcript /path/to/session.jsonl --truncate 5000 --output /tmp/out.md
+
+The --transcript flag is the preferred path: it takes the full JSONL path directly
+and skips session-ID resolution.  A PreToolUse hook (inject-transcript-path.py)
+injects this flag automatically when the exporter is invoked inside Claude Code.
 """
 import argparse
 import json
@@ -472,16 +475,23 @@ def _extract_session_metadata(
     }
 
 
-def _extract_first_command(entries: list[dict]) -> str:
-    """Extract the first slash command name from session entries.
+# Built-in CLI commands that don't represent real user work
+_BUILTIN_COMMANDS = {"/clear", "/help", "/compact", "/config", "/cost",
+                     "/doctor", "/init", "/login", "/logout", "/memory",
+                     "/model", "/permissions", "/review", "/status", "/terminal-setup"}
+
+
+def _extract_first_command(messages: list[dict]) -> str:
+    """Extract the first non-builtin slash command name from parsed messages.
 
     Looks for <command-name>...</command-name> tags in user messages.
+    Skips built-in CLI commands (e.g. /clear) that are just session housekeeping.
     Returns the command name (e.g. "/mg:transcript-export") or empty string.
     """
-    for entry in entries:
-        if entry.get("type") != "user":
+    for msg in messages:
+        if msg.get("role") != "user":
             continue
-        content = entry.get("message", {}).get("content", "")
+        content = msg.get("content", "")
         text = ""
         if isinstance(content, str):
             text = content
@@ -490,7 +500,7 @@ def _extract_first_command(entries: list[dict]) -> str:
                 b.get("text", "") for b in content if isinstance(b, dict)
             )
         m = re.search(r"<command-name>(.+?)</command-name>", text)
-        if m:
+        if m and m.group(1) not in _BUILTIN_COMMANDS:
             return m.group(1)
     return ""
 
@@ -851,7 +861,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "session_id",
-        help="Session UUID (full or prefix)",
+        nargs="?",
+        default=None,
+        help="Session UUID (full or prefix). Optional when --transcript is provided.",
+    )
+    parser.add_argument(
+        "--transcript",
+        default=None,
+        help="Direct path to the session JSONL file (bypasses session-ID resolution)",
     )
     parser.add_argument(
         "--format", "-f",
@@ -866,8 +883,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--project", "-p",
-        required=True,
-        help="Project path to search sessions in",
+        default=None,
+        help="Project path to search sessions in (required when using session_id)",
     )
     parser.add_argument(
         "--truncate", "-t",
@@ -881,15 +898,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
-    # Find the JSONL file
-    session_jsonl = resolve_session(args.session_id, args.project)
+    # Resolve the JSONL file: --transcript > session_id + --project > error
+    if args.transcript:
+        session_jsonl = Path(args.transcript)
+        if not session_jsonl.exists():
+            print(f"Error: transcript file not found: {session_jsonl}", file=sys.stderr)
+            sys.exit(1)
+    elif args.session_id:
+        if not args.project:
+            print("Error: --project is required when using a session ID", file=sys.stderr)
+            sys.exit(1)
+        session_jsonl = resolve_session(args.session_id, args.project)
+    else:
+        print("Error: provide --transcript or a session_id argument", file=sys.stderr)
+        sys.exit(1)
 
     # Build the session detail
     detail = build_session_detail(session_jsonl)
 
-    # Extract first command from raw JSONL for the prompt hint
-    raw_entries = _parse_jsonl(session_jsonl)
-    first_command = _extract_first_command(raw_entries)
+    # Extract first command from already-parsed messages
+    first_command = _extract_first_command(detail["messages"])
 
     # Export
     if args.format == "json":

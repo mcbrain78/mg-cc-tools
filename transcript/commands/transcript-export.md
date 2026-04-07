@@ -25,33 +25,16 @@ The exporter is at: `{MG_INSTALL_SCRIPTS_DIR}/cc_transcript_exporter.py`
 
 ## Export Protocol
 
-### Step 1: Resolve Session ID
+### Step 1: Export
 
-Determine the current session ID. Check the `$SESSION_ID` environment variable:
+Run the exporter with only `--format` and `--output`. A PreToolUse hook automatically injects the `--transcript` flag with the current session's JSONL path — no session ID or project path needed:
 ```
-echo $SESSION_ID
-```
-
-If `$SESSION_ID` is empty, find the most recently modified JSONL file for the current project:
-```
-ls -t ~/.claude/projects/$(pwd | sed 's|/|-|g')/*.jsonl 2>/dev/null | head -1
-```
-
-Extract the UUID from the filename (everything before `.jsonl`).
-
-If that also fails, ask the user for a session ID.
-
-### Step 2: Export
-
-Run the exporter. The `--project` flag is **required** — always pass it:
-```
-python3 {MG_INSTALL_SCRIPTS_DIR}/cc_transcript_exporter.py <session-id> \
-  --project "$(pwd)" \
+python3 {MG_INSTALL_SCRIPTS_DIR}/cc_transcript_exporter.py \
   --format <format> \
   --output <file-path>
 ```
 
-### Step 3: Report
+### Step 2: Report
 
 Echo the exporter's stdout to the user verbatim — it includes file path, size, token breakdown by model, and subagent count.
 
