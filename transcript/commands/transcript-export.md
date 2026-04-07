@@ -32,7 +32,14 @@ Determine the current session ID. Check the `$SESSION_ID` environment variable:
 echo $SESSION_ID
 ```
 
-If `$SESSION_ID` is empty, report an error and stop.
+If `$SESSION_ID` is empty, find the most recently modified JSONL file for the current project:
+```
+ls -t ~/.claude/projects/$(pwd | sed 's|/|-|g')/*.jsonl 2>/dev/null | head -1
+```
+
+Extract the UUID from the filename (everything before `.jsonl`).
+
+If that also fails, ask the user for a session ID.
 
 ### Step 2: Export
 
