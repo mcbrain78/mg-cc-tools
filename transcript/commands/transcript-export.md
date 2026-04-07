@@ -2,6 +2,7 @@
 name: transcript-export
 description: Export the current Claude Code session as Markdown or JSON
 allowed-tools: Bash, Read
+argument-hint: "<format: md|json> <file-name>"
 ---
 
 # /mg:transcript-export

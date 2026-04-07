@@ -2,6 +2,7 @@
 name: transcript-analyze
 description: Analyze a Claude Code session export to understand what happened, find errors, and trace decisions
 allowed-tools: Bash, Read, Write, Glob, Grep
+argument-hint: "<session-file> [question]"
 ---
 
 # /mg:transcript-analyze
