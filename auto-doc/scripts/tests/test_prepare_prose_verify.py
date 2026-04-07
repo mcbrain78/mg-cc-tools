@@ -37,7 +37,7 @@ class TestPrepareProsVerify:
                     "monitoring",
                     "<!-- section: monitoring -->\n## Monitoring\n\nThe `etl_runs` table tracks executions.",
                     [
-                        {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
+                        {"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
                         {"type": "code", "kind": "function", "name": "compute_metrics",
                          "module": "src/compute.py", "param": "stale"},
                     ],
@@ -98,7 +98,7 @@ class TestPrepareProsVerify:
         with tempfile.TemporaryDirectory() as td:
             xml_path = _build_xml(td, [
                 ("all-types", "<!-- section: all-types -->\n## All\n\nContent.", [
-                    {"type": "db", "schema": "rr", "table": "runs", "column": "id"},
+                    {"type": "db", "db": "mydb", "schema": "rr", "table": "runs", "column": "id"},
                     {"type": "code", "kind": "class", "name": "Run", "attr": "status"},
                     {"type": "flow", "name": "ingest-data"},
                     {"type": "env", "name": "PORT"},
@@ -577,7 +577,7 @@ class TestRefEntries:
         with tempfile.TemporaryDirectory() as td:
             xml_path = _build_xml(td, [
                 ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
-                    {"type": "db", "schema": "rr", "table": "runs", "column": "id"},
+                    {"type": "db", "db": "mydb", "schema": "rr", "table": "runs", "column": "id"},
                     {"type": "code", "kind": "class", "name": "Run", "attr": "status"},
                     {"type": "code", "kind": "function", "name": "compute",
                      "param": "stale"},
@@ -660,7 +660,7 @@ class TestRefEntries:
         with tempfile.TemporaryDirectory() as td:
             xml_path = _build_xml(td, [
                 ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
-                    {"type": "db", "schema": "rr", "table": "etl_runs"},
+                    {"type": "db", "db": "mydb", "schema": "rr", "table": "etl_runs"},
                 ]),
             ])
             output_dir = os.path.join(td, "output")
@@ -673,4 +673,7 @@ class TestRefEntries:
 
             with open(os.path.join(output_dir, "sec.json")) as f:
                 data = json.load(f)
-            assert data["ref_entries"][0]["identifier"] == "etl_runs"
+            # Table-level ref uses table as identifier
+            table_entries = [e for e in data["ref_entries"]
+                            if e.get("identifier") == "etl_runs"]
+            assert len(table_entries) == 1

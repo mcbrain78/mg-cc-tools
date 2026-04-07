@@ -501,10 +501,13 @@ class TestUpdateSectionRefs:
             os.unlink(path)
 
     def test_db_refs(self):
+        """Round-trip: 2 column refs → 5 total (1 db + 1 schema + 1 table + 2 columns)."""
         tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
         flat_refs = [
-            {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
-            {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "status"},
+            {"type": "db", "db": "road_runner_db", "schema": "road_runner",
+             "table": "etl_runs", "column": "flow_name"},
+            {"type": "db", "db": "road_runner_db", "schema": "road_runner",
+             "table": "etl_runs", "column": "status"},
         ]
         update_section_refs(tree, "monitoring-alerting", flat_refs)
 
@@ -514,11 +517,70 @@ class TestUpdateSectionRefs:
             serialize_xml_doc(tree, path)
             doc = parse_xml_doc(path)
             refs = doc["sections"][0]["refs"]
-            assert len(refs) == 2
-            assert refs[0] == {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}
-            assert refs[1] == {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "status"}
+            # db-level, schema-level, table-level, 2 column-level = 5
+            assert len(refs) == 5
+            assert refs[0] == {"type": "db", "db": "road_runner_db"}
+            assert refs[1] == {"type": "db", "db": "road_runner_db", "schema": "road_runner"}
+            assert refs[2] == {"type": "db", "db": "road_runner_db", "schema": "road_runner",
+                               "table": "etl_runs"}
+            assert refs[3] == {"type": "db", "db": "road_runner_db", "schema": "road_runner",
+                               "table": "etl_runs", "column": "flow_name"}
+            assert refs[4] == {"type": "db", "db": "road_runner_db", "schema": "road_runner",
+                               "table": "etl_runs", "column": "status"}
         finally:
             os.unlink(path)
+
+    def test_db_refs_build_writes_db_name(self):
+        """_build_db_xml writes name= attribute on <db> element."""
+        from lxml import etree
+        from lib.xml_doc import _build_db_xml
+        refs_el = etree.Element("refs")
+        _build_db_xml(refs_el, [
+            {"type": "db", "db": "mydb", "schema": "public", "table": "users"},
+        ])
+        db_el = refs_el.find("db")
+        assert db_el.get("name") == "mydb"
+
+    def test_db_refs_parse_all_levels(self):
+        """_parse_db_refs emits refs at every level (db, schema, table, column)."""
+        from lxml import etree
+        from lib.xml_doc import _parse_db_refs
+        xml = '<db name="mydb"><schema name="public"><table name="users"><column>id</column></table></schema></db>'
+        db_el = etree.fromstring(xml)
+        refs = _parse_db_refs(db_el)
+        assert len(refs) == 4
+        assert refs[0] == {"type": "db", "db": "mydb"}
+        assert refs[1] == {"type": "db", "db": "mydb", "schema": "public"}
+        assert refs[2] == {"type": "db", "db": "mydb", "schema": "public", "table": "users"}
+        assert refs[3] == {"type": "db", "db": "mydb", "schema": "public",
+                           "table": "users", "column": "id"}
+
+    def test_db_refs_full_hierarchy_round_trip(self):
+        """Full hierarchy in → all levels parsed back → rebuild matches."""
+        from lxml import etree
+        from lib.xml_doc import _build_db_xml, _parse_db_refs
+        # Build XML from full hierarchy refs
+        input_refs = [
+            {"type": "db", "db": "testdb"},
+            {"type": "db", "db": "testdb", "schema": "main"},
+            {"type": "db", "db": "testdb", "schema": "main", "table": "orders"},
+            {"type": "db", "db": "testdb", "schema": "main", "table": "orders",
+             "column": "total"},
+        ]
+        refs_el = etree.Element("refs")
+        _build_db_xml(refs_el, input_refs)
+
+        # Parse back
+        db_el = refs_el.find("db")
+        parsed = _parse_db_refs(db_el)
+        assert parsed == input_refs
+
+        # Rebuild and compare XML
+        refs_el2 = etree.Element("refs")
+        _build_db_xml(refs_el2, parsed)
+        xml1 = etree.tostring(refs_el, encoding="unicode", pretty_print=True)
+        xml2 = etree.tostring(refs_el2, encoding="unicode", pretty_print=True)
+        assert xml1 == xml2
 
     def test_code_refs_class_and_function(self):
         tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)

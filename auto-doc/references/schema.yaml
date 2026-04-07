@@ -60,11 +60,12 @@ docs-scan:
           required: true
           description: |
             Lightweight DB metadata. null if no database. Orient produces only
-            {orm_framework, migration_tool, engine}. Full schema detail is in
+            {name, orm_framework, migration_tool, engine}. Full schema detail is in
             database-model.json (produced by extract-database-model.py).
             Writers use database-model-summary.json for high-level awareness
             and read-database-model.py for per-section column detail slicing.
           children:
+            name:           {type: string, required: true, description: "Database name from connection URL"}
             orm_framework:  {type: string, required: true, description: "ORM framework name and version"}
             migration_tool: {type: string, required: true, description: "Migration tool or 'none'"}
             engine:         {type: string, required: false, description: "Database engine (e.g., PostgreSQL)"}
@@ -154,6 +155,7 @@ database-model:
     Writers use database-model-summary.json for high-level awareness and
     read-database-model.py for per-section column detail slicing.
   fields:
+    database_name:  {type: "string | null", required: false, description: "Database name from project_model.database.name"}
     engine:         {type: "string | null", required: false, description: "Database engine from project model"}
     orm_framework:  {type: "string | null", required: false, description: "ORM framework from project model"}
     migration_tool: {type: "string | null", required: false, description: "Migration tool from project model"}
@@ -483,7 +485,7 @@ xml-sources:
     - "monitoring-alerting/etl-run-logging/artifact-format" — #### grandchild
     Bare slug = valid single-segment path (backward-compatible).
   ref_types:
-    db:      {nesting: "<db><schema><table><column>",                          verified: "SQLAlchemy __tablename__, __table_args__, Column defs"}
+    db:      {nesting: '<db name="X"><schema><table><column>',                  verified: "SQLAlchemy __tablename__, __table_args__, Column defs"}
     code:    {nesting: "<code><class attr>, <code><function param>, <code><variable>", verified: "AST via lib/symbols.py"}
     flow:    {nesting: "<flow> (flat)",   verified: "@flow decorators"}
     env:     {nesting: "<env> (flat)",    verified: "Settings classes, .env.example"}
@@ -497,7 +499,7 @@ xml-sources:
     has a type key. lib/xml_doc.py converts between flat JSON and nested XML.
   flat_json_example: |
     [
-      {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
+      {"type": "db", "db": "road_runner_db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
       {"type": "code", "kind": "function", "name": "compute_finance_metrics",
        "module": "src/road_runner/flows/compute.py", "param": "recompute_stale"},
       {"type": "code", "kind": "variable", "name": "FMP_QUARTERLY_ENDPOINTS",

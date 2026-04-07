@@ -141,7 +141,7 @@ not the parent intro's refs.
 **Code-block completeness:** Scan every code block, SQL query, and backtick span in the section body for entities that require refs:
 - Every CLI tool used in a code block requires an `ext` ref
 - Every file path in a code block requires a `config` ref
-- Every schema-qualified table in SQL requires a `db` ref; every column in SELECT/WHERE/UPDATE requires a `db` ref with `column` field
+- Every schema-qualified table in SQL requires a `db` ref with `db`, `schema`, and `table` fields; every column in SELECT/WHERE/UPDATE requires a `db` ref with `column` field. The `db` field (database name) comes from `database_name` in the orient response.
 - Every env var in a code block requires an `env` ref
 - Do NOT emit refs for code read during orient but not named in the section body
 

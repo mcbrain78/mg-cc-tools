@@ -17,7 +17,7 @@ import sys
 from copy import deepcopy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib.ref_validation import _REQUIRED_FIELDS, ref_has_identifier
+from lib.ref_validation import _DB_CHAIN, _REQUIRED_FIELDS, ref_has_identifier
 from lib.xml_doc import _build_refs_xml, _parse_refs
 
 from lxml import etree
@@ -92,7 +92,7 @@ def _check_tamper(refs_el):
 
 _FORMAT_HINTS = {
     "db": (
-        '<db><schema name="SCHEMA">'
+        '<db name="DB"><schema name="SCHEMA">'
         '<table name="TABLE"><column>COL</column></table>'
         "</schema></db>"
     ),
@@ -160,10 +160,11 @@ def _ref_summary(ref):
     """One-line summary of a ref dict."""
     ref_type = ref.get("type", "?")
     if ref_type == "db":
-        parts = [ref.get("schema", ""), ref.get("table", "")]
+        parts = [ref.get("db", ""), ref.get("schema", ""), ref.get("table", "")]
         col = ref.get("column")
         if col:
             parts.append(col)
+        parts = [p for p in parts if p]
         return f"db:{'.'.join(parts)}"
     elif ref_type == "code":
         kind = ref.get("kind", "")
@@ -222,7 +223,8 @@ def update_fix_refs(edit_file, section_path, add_snippet=None, remove_snippet=No
         print(f"Error: edit file not found: {edit_file}", file=sys.stderr)
         sys.exit(1)
 
-    tree = etree.parse(edit_file)
+    parser = etree.XMLParser(strip_cdata=False)
+    tree = etree.parse(edit_file, parser)
     root = tree.getroot()
 
     # Find section by path attribute (fall back to slug)
@@ -267,7 +269,10 @@ def update_fix_refs(edit_file, section_path, add_snippet=None, remove_snippet=No
         for ref in new_flat:
             if not ref_has_identifier(ref):
                 ref_type = ref.get("type", "unknown")
-                required = _REQUIRED_FIELDS.get(ref_type, ())
+                if ref_type == "db":
+                    required = _DB_CHAIN
+                else:
+                    required = _REQUIRED_FIELDS.get(ref_type, ())
                 present = {
                     k: v for k, v in ref.items() if k != "type" and v
                 }

@@ -204,27 +204,30 @@ def _parse_refs(refs_el):
 
 
 def _parse_db_refs(db_el):
-    """Parse <db><schema><table><column> hierarchy into flat refs."""
+    """Parse <db name=X><schema><table><column> hierarchy into flat refs.
+
+    Emits a ref at every named level in the chain: db, schema, table, column.
+    """
     refs = []
+    db_name = db_el.get("name", "")
+    if db_name:
+        refs.append({"type": "db", "db": db_name})
     for schema_el in db_el.findall("schema"):
         schema_name = schema_el.get("name", "")
+        refs.append({"type": "db", "db": db_name, "schema": schema_name})
         for table_el in schema_el.findall("table"):
             table_name = table_el.get("name", "")
-            columns = [col.text for col in table_el.findall("column") if col.text]
-            if columns:
-                for col in columns:
+            refs.append({
+                "type": "db", "db": db_name,
+                "schema": schema_name, "table": table_name,
+            })
+            for col_el in table_el.findall("column"):
+                if col_el.text:
                     refs.append({
-                        "type": "db",
-                        "schema": schema_name,
-                        "table": table_name,
-                        "column": col,
+                        "type": "db", "db": db_name,
+                        "schema": schema_name, "table": table_name,
+                        "column": col_el.text,
                     })
-            else:
-                refs.append({
-                    "type": "db",
-                    "schema": schema_name,
-                    "table": table_name,
-                })
     return refs
 
 
@@ -582,13 +585,27 @@ def _build_refs_xml(refs_el, flat_refs):
 
 
 def _build_db_xml(refs_el, db_refs):
-    """Build <db><schema><table><column> from flat db refs."""
+    """Build <db name=X><schema><table><column> from flat db refs."""
+    # Determine db name from refs
+    db_name = ""
+    for ref in db_refs:
+        if ref.get("db"):
+            db_name = ref["db"]
+            break
+
     db_el = etree.SubElement(refs_el, "db")
-    # Group by schema, then table
+    if db_name:
+        db_el.set("name", db_name)
+
+    # Group by schema, then table — skip db-only and schema-only refs
+    # (they exist for declaration but don't add XML children beyond
+    # what the table/column refs already produce)
     schemas = {}
     for ref in db_refs:
         schema = ref.get("schema", "")
         table = ref.get("table", "")
+        if not schema:
+            continue  # db-level-only ref, already handled by <db name>
         col = ref.get("column")
         key = (schema, table)
         if key not in schemas:
@@ -601,7 +618,10 @@ def _build_db_xml(refs_el, db_refs):
     for (schema, table), cols in schemas.items():
         if schema not in schema_groups:
             schema_groups[schema] = []
-        schema_groups[schema].append((table, cols))
+        if table:  # skip schema-only entries
+            schema_groups[schema].append((table, cols))
+        elif schema not in schema_groups:
+            schema_groups[schema] = []
 
     for schema_name, tables in schema_groups.items():
         schema_el = etree.SubElement(db_el, "schema", name=schema_name)

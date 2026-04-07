@@ -12,11 +12,17 @@ class TestRefHasIdentifier:
 
     # -- Valid refs (all required fields present) --
 
-    def test_db_valid_with_schema_and_table(self):
-        assert ref_has_identifier({"type": "db", "schema": "rr", "table": "runs"})
+    def test_db_valid_full_chain(self):
+        assert ref_has_identifier({"type": "db", "db": "mydb", "schema": "rr", "table": "runs"})
 
     def test_db_valid_with_column(self):
-        assert ref_has_identifier({"type": "db", "schema": "rr", "table": "runs", "column": "id"})
+        assert ref_has_identifier({"type": "db", "db": "mydb", "schema": "rr", "table": "runs", "column": "id"})
+
+    def test_db_valid_db_only(self):
+        assert ref_has_identifier({"type": "db", "db": "mydb"})
+
+    def test_db_valid_db_and_schema(self):
+        assert ref_has_identifier({"type": "db", "db": "mydb", "schema": "rr"})
 
     def test_code_valid_function(self):
         assert ref_has_identifier({"type": "code", "kind": "function", "name": "foo"})
@@ -47,17 +53,21 @@ class TestRefHasIdentifier:
 
     # -- Invalid refs (missing or empty required fields) --
 
-    def test_db_empty_schema(self):
-        assert not ref_has_identifier({"type": "db", "schema": "", "table": "runs"})
+    def test_db_broken_chain_missing_schema(self):
+        """table requires schema — gap in chain is invalid."""
+        assert not ref_has_identifier({"type": "db", "db": "mydb", "table": "runs"})
 
-    def test_db_empty_table(self):
-        assert not ref_has_identifier({"type": "db", "schema": "rr", "table": ""})
+    def test_db_broken_chain_missing_table(self):
+        """column requires table — gap in chain is invalid."""
+        assert not ref_has_identifier({"type": "db", "db": "mydb", "schema": "rr", "column": "id"})
 
-    def test_db_missing_schema(self):
-        assert not ref_has_identifier({"type": "db", "table": "runs"})
+    def test_db_empty_all(self):
+        """No levels present at all — invalid."""
+        assert not ref_has_identifier({"type": "db"})
 
-    def test_db_missing_table(self):
-        assert not ref_has_identifier({"type": "db", "schema": "rr"})
+    def test_db_empty_db(self):
+        """Empty db field counts as missing."""
+        assert not ref_has_identifier({"type": "db", "db": "", "schema": "rr"})
 
     def test_code_empty_name(self):
         assert not ref_has_identifier({"type": "code", "kind": "function", "name": ""})
@@ -116,7 +126,7 @@ class TestDischargeMalformedRefs:
     def test_valid_refs_unchanged(self):
         refs = [
             {"type": "dep", "name": "tenacity"},
-            {"type": "db", "schema": "rr", "table": "runs"},
+            {"type": "db", "db": "mydb", "schema": "rr", "table": "runs"},
         ]
         result = discharge_malformed_refs(refs)
         assert result == refs
@@ -130,7 +140,7 @@ class TestDischargeMalformedRefs:
         assert result[0]["name"] == ""
 
     def test_empty_db_discharged(self):
-        refs = [{"type": "db", "schema": "", "table": ""}]
+        refs = [{"type": "db"}]
         result = discharge_malformed_refs(refs)
         assert result[0]["type"] == "malformed"
         assert result[0]["original_type"] == "db"
@@ -150,13 +160,12 @@ class TestDischargeMalformedRefs:
         assert result[3]["type"] == "malformed"
 
     def test_discharged_ref_preserves_all_fields(self):
-        ref = {"type": "db", "schema": "", "table": "", "column": "id", "extra": "stuff"}
+        ref = {"type": "db", "db": "mydb", "column": "id", "extra": "stuff"}
         result = discharge_malformed_refs([ref])
         r = result[0]
         assert r["type"] == "malformed"
         assert r["original_type"] == "db"
-        assert r["schema"] == ""
-        assert r["table"] == ""
+        assert r["db"] == "mydb"
         assert r["column"] == "id"
         assert r["extra"] == "stuff"
 

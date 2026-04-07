@@ -170,12 +170,12 @@ class TestRefsMerge:
             master_path = _build_master(td, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent.",
-                [{"type": "db", "schema": "wrong", "table": "etl_runs"}],
+                [{"type": "db", "db": "mydb", "schema": "wrong", "table": "etl_runs"}],
             )])
 
             # Edit XML has corrected refs (canonical form)
             refs_xml = _canonical_refs_xml(
-                [{"type": "db", "schema": "road_runner", "table": "etl_runs"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs"}],
             )
             edit_path = _build_edit_xml(td, "g1", [{
                 "source": master_path,
@@ -189,8 +189,11 @@ class TestRefsMerge:
 
             doc = parse_xml_doc(master_path)
             refs = doc["sections"][0]["refs"]
-            assert len(refs) == 1
-            assert refs[0]["schema"] == "road_runner"
+            # db + schema + table = 3
+            assert len(refs) == 3
+            # The table-level ref has the corrected schema
+            table_ref = [r for r in refs if r.get("table")][0]
+            assert table_ref["schema"] == "road_runner"
 
     def test_added_ref(self):
         """Adding a new ref to a section with empty refs."""
@@ -229,11 +232,11 @@ class TestBothChanges:
             master_path = _build_master(td, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nOld text.",
-                [{"type": "db", "schema": "wrong", "table": "bad"}],
+                [{"type": "db", "db": "mydb", "schema": "wrong", "table": "bad"}],
             )])
 
             refs_xml = _canonical_refs_xml(
-                [{"type": "db", "schema": "correct", "table": "good"}],
+                [{"type": "db", "db": "mydb", "schema": "correct", "table": "good"}],
             )
             edit_path = _build_edit_xml(td, "g1", [{
                 "source": master_path,
@@ -248,7 +251,8 @@ class TestBothChanges:
 
             doc = parse_xml_doc(master_path)
             assert "New text" in doc["sections"][0]["body"]
-            assert doc["sections"][0]["refs"][0]["table"] == "good"
+            table_ref = [r for r in doc["sections"][0]["refs"] if r.get("table")][0]
+            assert table_ref["table"] == "good"
 
 
 class TestMultiSection:
@@ -603,7 +607,7 @@ class TestTamperDetection:
             master_path = _build_master(td, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nOriginal body.",
-                [{"type": "db", "schema": "road_runner", "table": "etl_runs"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs"}],
             )])
 
             # Non-canonical refs: column as attribute (parser ignores this)
@@ -628,10 +632,12 @@ class TestTamperDetection:
 
             # Refs should be UNCHANGED (tampered refs ignored)
             refs = doc["sections"][0]["refs"]
-            assert len(refs) == 1
-            assert refs[0]["schema"] == "road_runner"
-            assert refs[0]["table"] == "etl_runs"
-            assert "column" not in refs[0]  # original had no column
+            # db + schema + table = 3 (original hierarchy)
+            assert len(refs) == 3
+            table_ref = [r for r in refs if r.get("table")][0]
+            assert table_ref["schema"] == "road_runner"
+            assert table_ref["table"] == "etl_runs"
+            assert "column" not in table_ref  # original had no column
 
     def test_tampered_refs_warning_on_stderr(self):
         """Non-canonical refs produce a warning on stderr."""

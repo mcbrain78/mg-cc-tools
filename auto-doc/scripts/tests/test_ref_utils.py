@@ -46,23 +46,28 @@ def test_code_with_module():
 
 # -- db refs -----------------------------------------------------------------
 
-def test_db_table_only():
-    ref = {"type": "db", "schema": "road_runner", "table": "etl_runs"}
-    assert identifier_for_ref(ref) == "etl_runs"
-
-
-def test_db_with_column():
-    ref = {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}
+def test_db_full_chain_returns_column():
+    ref = {"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}
     assert identifier_for_ref(ref) == "flow_name"
 
 
-def test_db_empty_schema():
-    ref = {"type": "db", "schema": "", "table": "etl_runs"}
-    assert identifier_for_ref(ref) is None
+def test_db_table_level():
+    ref = {"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs"}
+    assert identifier_for_ref(ref) == "etl_runs"
 
 
-def test_db_empty_table():
-    ref = {"type": "db", "schema": "road_runner", "table": ""}
+def test_db_schema_level():
+    ref = {"type": "db", "db": "mydb", "schema": "road_runner"}
+    assert identifier_for_ref(ref) == "road_runner"
+
+
+def test_db_db_only():
+    ref = {"type": "db", "db": "mydb"}
+    assert identifier_for_ref(ref) == "mydb"
+
+
+def test_db_empty_all():
+    ref = {"type": "db"}
     assert identifier_for_ref(ref) is None
 
 

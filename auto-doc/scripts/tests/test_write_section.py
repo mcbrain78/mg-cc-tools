@@ -232,7 +232,7 @@ class TestSectionWrite:
                 {"type": "code", "kind": "class", "name": "Pipeline",
                  "module": "src/pipeline.py"},
                 {"type": "config", "path": "config/settings.yaml"},
-                {"type": "db", "schema": "public", "table": "users"},
+                {"type": "db", "db": "mydb", "schema": "public", "table": "users"},
                 {"type": "env", "name": "DATABASE_URL"},
             ]
             result = _run_section(
@@ -1098,8 +1098,8 @@ class TestFinalizeXmlOutput:
             typed_refs = [
                 {"type": "code", "kind": "function", "name": "run_etl",
                  "module": "src/etl.py"},
-                {"type": "db", "schema": "public", "table": "etl_runs",
-                 "column": "status"},
+                {"type": "db", "db": "mydb", "schema": "public",
+                 "table": "etl_runs", "column": "status"},
                 {"type": "env", "name": "ETL_WORKERS"},
             ]
             state_file = os.path.join(tmp, "state.json")
@@ -1135,7 +1135,8 @@ class TestFinalizeXmlOutput:
             xml_path = os.path.join(xml_dir, "developers", "ARCHITECTURE.xml")
             doc = parse_xml_doc(xml_path)
             refs = doc["sections"][0]["refs"]
-            assert len(refs) == 3
+            # 4 db (db + schema + table + column) + 1 code + 1 env = 6
+            assert len(refs) == 6
             ref_types = {r["type"] for r in refs}
             assert ref_types == {"code", "db", "env"}
 
@@ -2323,7 +2324,7 @@ class TestMalformedRefDischarge:
                 "## Section\n\nContent.\n",
                 typed_refs=[
                     {"type": "dep", "name": "tenacity"},
-                    {"type": "db", "schema": "rr", "table": "runs"},
+                    {"type": "db", "db": "mydb", "schema": "rr", "table": "runs"},
                 ],
             )
             assert result.returncode == 0

@@ -113,18 +113,19 @@ class TestAddValidRefs:
             }])
 
             snippet = (
-                '<db><schema name="road_runner">'
+                '<db name="road_runner_db"><schema name="road_runner">'
                 '<table name="data_drift_warnings"/>'
                 "</schema></db>"
             )
             result = update_fix_refs(edit_path, "monitoring", add_snippet=snippet)
-            assert "Added 1 ref" in result
+            assert "Added" in result
 
             refs = _read_section_refs_flat(edit_path, "monitoring")
-            assert len(refs) == 1
+            # db-level + schema-level + table-level = 3
+            assert len(refs) == 3
             assert refs[0]["type"] == "db"
-            assert refs[0]["schema"] == "road_runner"
-            assert refs[0]["table"] == "data_drift_warnings"
+            assert refs[0]["db"] == "road_runner_db"
+            assert refs[2]["table"] == "data_drift_warnings"
 
     def test_add_db_ref_with_column(self):
         with tempfile.TemporaryDirectory() as td:
@@ -134,15 +135,17 @@ class TestAddValidRefs:
             }])
 
             snippet = (
-                '<db><schema name="road_runner">'
+                '<db name="road_runner_db"><schema name="road_runner">'
                 '<table name="etl_runs"><column>status</column></table>'
                 "</schema></db>"
             )
             result = update_fix_refs(edit_path, "monitoring", add_snippet=snippet)
-            assert "Added 1 ref" in result
+            assert "Added" in result
 
             refs = _read_section_refs_flat(edit_path, "monitoring")
-            assert refs[0]["column"] == "status"
+            # db + schema + table + column = 4
+            assert len(refs) == 4
+            assert refs[3]["column"] == "status"
 
     def test_add_code_function_ref(self):
         with tempfile.TemporaryDirectory() as td:
@@ -478,8 +481,8 @@ class TestTamperDetection:
         with tempfile.TemporaryDirectory() as td:
             # Build canonical refs XML and write to a file
             refs_xml = _canonical_refs_xml([
-                {"type": "db", "schema": "road_runner", "table": "etl_runs",
-                 "column": "status"},
+                {"type": "db", "db": "road_runner_db", "schema": "road_runner",
+                 "table": "etl_runs", "column": "status"},
                 {"type": "code", "kind": "function", "name": "start_run",
                  "module": "src/tracking.py"},
                 {"type": "ext", "name": "pg_tables"},
@@ -504,7 +507,8 @@ class TestTamperDetection:
             refs = _read_section_refs_flat(
                 edit_path, "health-checks/service-health-checks",
             )
-            assert len(refs) == 4
+            # 4 db (db + schema + table + column) + 1 code + 2 ext = 7
+            assert len(refs) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -525,7 +529,7 @@ class TestCanonicalRoundTrip:
 
             # Add a db ref with column
             snippet = (
-                '<db><schema name="road_runner">'
+                '<db name="road_runner_db"><schema name="road_runner">'
                 '<table name="etl_runs"><column>flow_name</column></table>'
                 "</schema></db>"
             )
@@ -662,3 +666,35 @@ class TestCLI:
             )
             assert result.returncode != 0
             assert "0 refs" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# CDATA preservation (Bug 2)
+# ---------------------------------------------------------------------------
+
+
+class TestCDATAPreservation:
+    """Verify that update-fix-refs.py preserves CDATA blocks."""
+
+    def test_cdata_preserved_after_add(self):
+        """Adding a ref must not strip CDATA wrapping from <body>."""
+        with tempfile.TemporaryDirectory() as td:
+            edit_path = _build_edit_xml(td, "g1", [{
+                "slug": "monitoring",
+                "body": "Some **markdown** with `code`",
+            }])
+
+            # Verify CDATA exists before
+            with open(edit_path) as f:
+                raw_before = f.read()
+            assert "CDATA" in raw_before
+
+            update_fix_refs(
+                edit_path, "monitoring",
+                add_snippet="<ext>pg_dump</ext>",
+            )
+
+            # Verify CDATA still present after write-back
+            with open(edit_path) as f:
+                raw_after = f.read()
+            assert "<![CDATA[" in raw_after

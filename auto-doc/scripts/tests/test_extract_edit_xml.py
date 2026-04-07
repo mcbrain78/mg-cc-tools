@@ -338,9 +338,10 @@ class TestRefsPreservation:
         with tempfile.TemporaryDirectory() as td:
             xml_dir = os.path.join(td, "xml-sources")
             refs = [
-                {"type": "db", "schema": "road_runner", "table": "etl_runs"},
-                {"type": "db", "schema": "road_runner", "table": "etl_runs",
-                 "column": "status"},
+                {"type": "db", "db": "road_runner_db", "schema": "road_runner",
+                 "table": "etl_runs"},
+                {"type": "db", "db": "road_runner_db", "schema": "road_runner",
+                 "table": "etl_runs", "column": "status"},
             ]
             _build_xml(xml_dir, "devops", "OPS", [(
                 "monitoring",
@@ -364,9 +365,10 @@ class TestRefsPreservation:
             sec = tree.getroot().findall("section")[0]
             refs_el = sec.find("refs")
 
-            # DB refs should be in native XML
+            # DB refs should be in native XML with name attribute
             db_el = refs_el.find("db")
             assert db_el is not None
+            assert db_el.get("name") == "road_runner_db"
             schema_el = db_el.find("schema")
             assert schema_el.get("name") == "road_runner"
             tables = schema_el.findall("table")

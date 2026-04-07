@@ -133,7 +133,7 @@ class TestDbRefs:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
             )])
 
             result = _run_verify(xml_dir, project_root, findings_file)
@@ -148,7 +148,7 @@ class TestDbRefs:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "nonexistent_col"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "nonexistent_col"}],
             )])
 
             _run_verify(xml_dir, project_root, findings_file)
@@ -162,7 +162,7 @@ class TestDbRefs:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "road_runner", "table": "nonexistent_table"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "nonexistent_table"}],
             )])
 
             _run_verify(xml_dir, project_root, findings_file)
@@ -604,8 +604,8 @@ class TestMixedRefs:
                 "overview",
                 "<!-- section: overview -->\n## Overview\n\nContent",
                 [
-                    {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},  # valid
-                    {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "wrong_col"},  # invalid
+                    {"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},  # valid
+                    {"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "wrong_col"},  # invalid
                     {"type": "code", "kind": "function", "name": "compute_finance_metrics"},              # valid
                     {"type": "config", "path": "config/nonexistent.yaml"},                                 # invalid
                 ],
@@ -796,7 +796,7 @@ class TestDatabaseModel:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
             )])
 
             result = self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
@@ -812,7 +812,7 @@ class TestDatabaseModel:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "bogus_col"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "bogus_col"}],
             )])
 
             self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
@@ -828,7 +828,7 @@ class TestDatabaseModel:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "nonexistent_schema", "table": "etl_runs"}],
+                [{"type": "db", "db": "mydb", "schema": "nonexistent_schema", "table": "etl_runs"}],
             )])
 
             self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
@@ -844,7 +844,7 @@ class TestDatabaseModel:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "road_runner", "table": "nonexistent_table"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "nonexistent_table"}],
             )])
 
             self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
@@ -859,7 +859,7 @@ class TestDatabaseModel:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
             )])
 
             # Use standard _run_verify (no --database-model)
@@ -880,7 +880,7 @@ class TestDatabaseModel:
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
+                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}],
             )])
 
             result = self._run_with_db_model(xml_dir, project_root, findings_file, model_path)

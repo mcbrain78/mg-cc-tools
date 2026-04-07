@@ -4,9 +4,12 @@ Used by read-database-model.py (CLI output) and next-heading.py (inline db_colum
 """
 
 
-def format_table(schema_name, table_name, table_data):
+def format_table(schema_name, table_name, table_data, database_name=None):
     """Format a single table as compact text."""
-    lines = [f"{schema_name}.{table_name}:"]
+    if database_name:
+        lines = [f"{database_name}.{schema_name}.{table_name}:"]
+    else:
+        lines = [f"{schema_name}.{table_name}:"]
     for col in table_data["columns"]:
         parts = [f"  {col['name']}: {col['type']}"]
         if col.get("primary_key"):
@@ -34,11 +37,14 @@ def slice_and_format(model_data, table_names):
         return ""
 
     requested_set = set(table_names)
+    database_name = model_data.get("database_name")
     blocks = []
 
     for schema_name, schema_data in model_data["schemas"].items():
         for table_name, table_data in schema_data.get("tables", {}).items():
             if table_name in requested_set:
-                blocks.append(format_table(schema_name, table_name, table_data))
+                blocks.append(format_table(
+                    schema_name, table_name, table_data, database_name,
+                ))
 
     return "\n\n".join(blocks)

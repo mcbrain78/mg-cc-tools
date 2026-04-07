@@ -16,7 +16,7 @@ def identifier_for_ref(ref):
 
     * **code** with ``attr`` → ``attr``; with ``param`` → ``param``;
       otherwise → ``name``
-    * **db** with ``column`` → ``column``; otherwise → ``table``
+    * **db** cascades ``column`` → ``table`` → ``schema`` → ``db``
     * **flow / dep / ext / literal / env** → ``name``
     * **config** → basename of ``path``
     * **enum** → ``value``
@@ -43,14 +43,20 @@ def identifier_for_ref(ref):
         return name
 
     if ref_type == "db":
-        schema = ref.get("schema", "")
-        table = ref.get("table", "")
-        if not schema or not table:
-            return None
+        # Cascade: column → table → schema → db
         column = ref.get("column", "")
         if column:
             return column
-        return table
+        table = ref.get("table", "")
+        if table:
+            return table
+        schema = ref.get("schema", "")
+        if schema:
+            return schema
+        db = ref.get("db", "")
+        if db:
+            return db
+        return None
 
     if ref_type in ("flow", "dep", "ext", "literal", "env"):
         name = ref.get("name", "")

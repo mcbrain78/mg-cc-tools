@@ -88,7 +88,7 @@ You generate the project OVERVIEW.md by reading the documents that writer agents
           --refs-file {MG_INSTALL_WORKSPACE_DIR}/generate/refs-overview-OVERVIEW-{slug}-{child-slug}.json
       ```
 
-   **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote. A ref that only appears in a child's content MUST go in the child's refs, not the parent intro's refs.
+   **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote. A ref that only appears in a child's content MUST go in the child's refs, not the parent intro's refs. For `db` refs, always include the `db` field (database name).
 
    **Do NOT call finalize or write OVERVIEW.md directly. The orchestrator handles finalize after this agent completes.**
 

@@ -84,7 +84,7 @@ The initial pass runs **before** the four writer agents. Its purpose is to estab
 
    **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote. A ref that only appears in a child's content MUST go in the child's refs, not the parent intro's refs.
 
-   **Completeness:** If a glossary definition names a function, class, table, or config file in backticks, emit a matching typed ref. If a term is purely conceptual (no specific code entity named), use `{"typed_refs": []}`. Do NOT attach refs for code entities the definition doesn't name. See Completeness Rule in typed-refs-format.md.
+   **Completeness:** If a glossary definition names a function, class, table, or config file in backticks, emit a matching typed ref. For `db` refs, always include the `db` field (database name). If a term is purely conceptual (no specific code entity named), use `{"typed_refs": []}`. Do NOT attach refs for code entities the definition doesn't name. See Completeness Rule in typed-refs-format.md.
 
    **Do NOT call finalize or write GLOSSARY.md directly. The orchestrator handles finalize after this agent completes.**
 
@@ -138,7 +138,7 @@ The reconciliation pass runs **after** all four writer agents complete. Its purp
 
    **Refs scoping rule:** Write refs with ONLY the typed_refs for entities in the body you just wrote.
 
-   **Completeness:** If a glossary definition names a function, class, table, or config file in backticks, emit a matching typed ref. If a term is purely conceptual (no specific code entity named), use `{"typed_refs": []}`. Do NOT attach refs for code entities the definition doesn't name. See Completeness Rule in typed-refs-format.md.
+   **Completeness:** If a glossary definition names a function, class, table, or config file in backticks, emit a matching typed ref. For `db` refs, always include the `db` field (database name). If a term is purely conceptual (no specific code entity named), use `{"typed_refs": []}`. Do NOT attach refs for code entities the definition doesn't name. See Completeness Rule in typed-refs-format.md.
 
    Only write sections that actually changed. Unchanged sections are preserved by the `--merge` flag during finalize (handled by the orchestrator).
 

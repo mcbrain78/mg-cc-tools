@@ -203,10 +203,18 @@ class SourceCache:
 # ---------------------------------------------------------------------------
 
 def check_db_ref(ref, cache):
-    """Check a db ref (schema.table.column) against database model or SQLAlchemy AST."""
+    """Check a db ref (db.schema.table.column) against database model or SQLAlchemy AST.
+
+    Skips db-only and schema-only refs — these are declaration-level entries
+    in the hierarchy, not verifiable against table/column metadata.
+    """
     schema = ref.get("schema", "")
     table = ref.get("table", "")
     column = ref.get("column")
+
+    # db-only or schema-only refs are structural — nothing to verify
+    if not table:
+        return None
 
     # Prefer database model when available (authoritative, pre-extracted)
     if cache.database_model:

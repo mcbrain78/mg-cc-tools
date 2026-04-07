@@ -6,7 +6,7 @@ This is the canonical specification for typed code references emitted by writer 
 
 ```json
 {"typed_refs": [
-  {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
+  {"type": "db", "db": "road_runner_db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
   {"type": "code", "kind": "function", "name": "compute_finance_metrics",
    "module": "src/road_runner/flows/compute.py", "param": "recompute_stale"},
   {"type": "code", "kind": "class", "name": "EtlRun",
@@ -25,7 +25,7 @@ This is the canonical specification for typed code references emitted by writer 
 
 | type | required fields |
 |------|----------------|
-| `db` | `schema`, `table`, optionally `column` |
+| `db` | `db` (database name), then contiguous chain: `schema`, `table`, optionally `column` |
 | `code` | `kind` (function/class), `name`, optionally `module`, `param` |
 | `flow` | `name` |
 | `env` | `name` |
@@ -65,6 +65,6 @@ Required refs:
 {"typed_refs": [
   {"type": "ext", "name": "psql"},
   {"type": "env", "name": "DB_HOST"},
-  {"type": "db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}
+  {"type": "db", "db": "road_runner_db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}
 ]}
 ```

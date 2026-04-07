@@ -279,14 +279,17 @@ def build_emission_queue(sections, document, source_material_index, db_table_map
 
 
 def _inject_db_column_detail(queue, db_model_data, db_table_map):
-    """Inject db_column_detail into orient responses that have relevant_tables.
+    """Inject db_column_detail and database_name into orient responses.
 
     Modifies queue in-place. For each orient response with relevant_tables,
     calls slice_and_format() to produce the formatted column detail string
-    and stores it as db_column_detail on the orient dict.
+    and stores it as db_column_detail on the orient dict. Also injects
+    database_name from the database model so writers have it when
+    constructing db refs.
     """
     if not db_model_data or not db_table_map:
         return
+    db_name = db_model_data.get("database_name")
     for entry in queue:
         if entry.get("type") != "orient":
             continue
@@ -296,6 +299,8 @@ def _inject_db_column_detail(queue, db_model_data, db_table_map):
         detail = slice_and_format(db_model_data, tables)
         if detail:
             entry["db_column_detail"] = detail
+        if db_name:
+            entry["database_name"] = db_name
 
 
 def _derive_state_path(generate_dir, audience, document):

@@ -387,6 +387,7 @@ def main():
     # Build output with metadata from project model
     db = pm.get("database", {})
     result = {
+        "database_name": db.get("name", None),
         "engine": db.get("engine", None),
         "orm_framework": db.get("orm_framework", db.get("orm", None)),
         "migration_tool": db.get("migration_tool", None),
