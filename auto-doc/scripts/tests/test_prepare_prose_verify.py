@@ -544,3 +544,133 @@ class TestMalformedRefsField:
             with open(os.path.join(output_dir, "sec.json")) as f:
                 data = json.load(f)
             assert "[malformed:dep] tenacity" in data["refs_as_text"]
+
+
+class TestRefEntries:
+    """prepare-prose-verify.py includes ref_entries with pre-computed identifiers."""
+
+    def test_ref_entries_present(self):
+        """Section JSON includes ref_entries list."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "dep", "name": "tenacity"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert "ref_entries" in data
+            assert len(data["ref_entries"]) == 1
+            assert data["ref_entries"][0]["display"] == "[dep] tenacity"
+            assert data["ref_entries"][0]["identifier"] == "tenacity"
+
+    def test_ref_entries_all_types(self):
+        """Each ref type produces correct identifier in ref_entries."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "db", "schema": "rr", "table": "runs", "column": "id"},
+                    {"type": "code", "kind": "class", "name": "Run", "attr": "status"},
+                    {"type": "code", "kind": "function", "name": "compute",
+                     "param": "stale"},
+                    {"type": "code", "kind": "function", "name": "do_thing"},
+                    {"type": "flow", "name": "ingest-data"},
+                    {"type": "env", "name": "PORT"},
+                    {"type": "config", "path": "config/settings.yaml"},
+                    {"type": "enum", "class": "Status", "field": "state", "value": "ok"},
+                    {"type": "dep", "name": "tenacity"},
+                    {"type": "literal", "name": "fmp-api"},
+                    {"type": "ext", "name": "pg_dump"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+
+            entries = {e["identifier"]: e["display"] for e in data["ref_entries"]}
+            assert entries["id"] == "[db] rr.runs.id"
+            assert entries["status"] == "[code:class] Run (attr: status)"
+            assert entries["stale"] == "[code:function] compute (param: stale)"
+            assert entries["do_thing"] == "[code:function] do_thing"
+            assert entries["ingest-data"] == "[flow] ingest-data"
+            assert entries["PORT"] == "[env] PORT"
+            assert entries["settings.yaml"] == "[config] config/settings.yaml"
+            assert entries["ok"] == "[enum] Status.state = ok"
+            assert entries["tenacity"] == "[dep] tenacity"
+            assert entries["fmp-api"] == "[literal] fmp-api"
+            assert entries["pg_dump"] == "[ext] pg_dump"
+
+    def test_ref_entries_excludes_malformed(self):
+        """Malformed refs do not appear in ref_entries."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "malformed", "original_type": "dep", "name": "bad"},
+                    {"type": "dep", "name": "good"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert len(data["ref_entries"]) == 1
+            assert data["ref_entries"][0]["identifier"] == "good"
+
+    def test_ref_entries_empty_for_no_refs(self):
+        """Section with no refs has empty ref_entries list."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", []),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert data["ref_entries"] == []
+
+    def test_ref_entries_db_table_only(self):
+        """DB ref without column uses table as identifier."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\nContent.", [
+                    {"type": "db", "schema": "rr", "table": "etl_runs"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+            assert data["ref_entries"][0]["identifier"] == "etl_runs"

@@ -25,6 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import save_json
+from lib.ref_utils import identifier_for_ref
 from lib.xml_doc import parse_xml_doc, walk_sections
 
 
@@ -155,6 +156,15 @@ def prepare(xml_path, output_dir):
 
         malformed = [r for r in section["refs"] if r.get("type") == "malformed"]
 
+        ref_entries = []
+        for ref in section["refs"]:
+            if ref.get("type") == "malformed":
+                continue
+            display = _format_single_ref(ref.get("type", ""), ref)
+            ident = identifier_for_ref(ref)
+            if display or ident:
+                ref_entries.append({"display": display, "identifier": ident})
+
         section_data = {
             "path": path,
             "slug": slug,
@@ -163,6 +173,7 @@ def prepare(xml_path, output_dir):
             "body": body,
             "refs_as_text": refs_text,
             "malformed_refs": malformed,
+            "ref_entries": ref_entries,
         }
 
         # Nested directory structure: monitoring-alerting/etl-run-logging.json

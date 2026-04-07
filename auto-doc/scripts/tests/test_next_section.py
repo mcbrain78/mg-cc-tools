@@ -46,14 +46,16 @@ def _setup_prose_dir(td, sections):
     return prose_dir
 
 
-def _run(state_file, prose_dir):
+def _run(state_file, prose_dir, sections_filter_file=None):
     """Run next-section.py and return parsed JSON output."""
-    result = subprocess.run(
-        [sys.executable, SCRIPT,
-         "--state-file", state_file,
-         "--prose-verify-dir", prose_dir],
-        capture_output=True, text=True,
-    )
+    cmd = [
+        sys.executable, SCRIPT,
+        "--state-file", state_file,
+        "--prose-verify-dir", prose_dir,
+    ]
+    if sections_filter_file:
+        cmd.extend(["--sections-filter", sections_filter_file])
+    result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
@@ -189,3 +191,105 @@ class TestNextSection:
 
             assert done1["done"] is True
             assert done2["done"] is True
+
+
+class TestSectionsFilter:
+    """--sections-filter restricts which sections are visited."""
+
+    def _write_filter(self, td, sections):
+        """Write a sections filter JSON file and return its path."""
+        path = os.path.join(td, "filter.json")
+        with open(path, "w") as f:
+            json.dump(sections, f)
+        return path
+
+    def test_filter_restricts_iteration(self):
+        """Only sections in the filter list are visited."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir = _setup_prose_dir(td, [
+                ("alpha", "- [env] A"),
+                ("beta", "- [env] B"),
+                ("gamma", "- [env] G"),
+                ("delta", "- [env] D"),
+            ])
+            state_file = os.path.join(td, "state.json")
+            filter_file = self._write_filter(td, ["beta", "delta"])
+
+            out1 = _run(state_file, prose_dir, filter_file)
+            assert out1["section"] == "beta"
+
+            out2 = _run(state_file, prose_dir, filter_file)
+            assert out2["section"] == "delta"
+
+            out3 = _run(state_file, prose_dir, filter_file)
+            assert out3["done"] is True
+            assert out3["sections_processed"] == 2
+
+    def test_filter_intersects_with_no_refs(self):
+        """Filter cannot force visit of a no-ref section."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir = _setup_prose_dir(td, [
+                ("alpha", "- [env] A"),
+                ("beta", "(no refs declared)"),
+                ("gamma", "- [env] G"),
+            ])
+            state_file = os.path.join(td, "state.json")
+            filter_file = self._write_filter(td, ["beta", "gamma"])
+
+            out1 = _run(state_file, prose_dir, filter_file)
+            assert out1["section"] == "gamma"
+
+            out2 = _run(state_file, prose_dir, filter_file)
+            assert out2["done"] is True
+
+    def test_empty_filter_means_done(self):
+        """Empty filter list → immediate done."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir = _setup_prose_dir(td, [
+                ("alpha", "- [env] A"),
+                ("beta", "- [env] B"),
+            ])
+            state_file = os.path.join(td, "state.json")
+            filter_file = self._write_filter(td, [])
+
+            out = _run(state_file, prose_dir, filter_file)
+            assert out["done"] is True
+            assert out["sections_processed"] == 0
+
+    def test_missing_filter_file_exits_1(self):
+        """Non-existent filter file exits with error."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir = _setup_prose_dir(td, [
+                ("alpha", "- [env] A"),
+            ])
+            state_file = os.path.join(td, "state.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--state-file", state_file,
+                 "--prose-verify-dir", prose_dir,
+                 "--sections-filter", "/nonexistent/filter.json"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 1
+            assert "not found" in result.stderr
+
+    def test_no_filter_is_backward_compatible(self):
+        """Omitting --sections-filter visits all sections with refs."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir = _setup_prose_dir(td, [
+                ("alpha", "- [env] A"),
+                ("beta", "- [env] B"),
+                ("gamma", "(no refs declared)"),
+            ])
+            state_file = os.path.join(td, "state.json")
+
+            out1 = _run(state_file, prose_dir)
+            assert out1["section"] == "alpha"
+
+            out2 = _run(state_file, prose_dir)
+            assert out2["section"] == "beta"
+
+            out3 = _run(state_file, prose_dir)
+            assert out3["done"] is True
+            assert out3["sections_processed"] == 2
