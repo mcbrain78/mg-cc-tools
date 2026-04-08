@@ -18,6 +18,8 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 - **sections_filter**: Path to `affected-sections.json` (for `--sections-filter`).
 - **document**: Document name (e.g. `OPERATIONS`).
 - **audience**: Audience name (e.g. `devops`).
+- **wave**: Wave number (integer, e.g. `1`). Passed to finding scripts for metadata tagging.
+- **ref_types_reference**: Path to `typed-refs-format.md` (valid ref type grammar).
 
 ## Process
 
@@ -40,10 +42,12 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
       ```
       Parse the JSON output. If `count` is `0`, this section's entities were already resolved by propagation — skip to step 2g.
 
-   b. **Read the section JSON** at the `file` path returned by next-section.
+   b. **Read ref types reference.** Read `{ref_types_reference}` to understand valid ref types before resolving entities.
+
+   c. **Read the section JSON** at the `file` path returned by next-section.
       Read `body`, `refs_as_text`, and `malformed_refs`.
 
-   c. **Entity resolution.** For each entity name from the entity list:
+   d. **Entity resolution.** For each entity name from the entity list:
 
       1. **Confirm ref-worthiness.** Skip if the name is:
          - A Python builtin (`list`, `dict`, `str`, `int`, `None`, `True`, `False`, `print`, `len`, etc.)
@@ -66,7 +70,8 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
              --audience "{audience}" \
              --check "dangling-prose-reference" \
              --description "Prose mentions `{entity_name}` which is not covered by any declared ref" \
-             --suggestion "Add ref: {suggested_ref}"
+             --suggestion "Add ref: {suggested_ref}" \
+             --wave {wave}
          ```
          Where `{suggested_ref}` describes the ref that should be added (e.g., `[db] road_runner.etl_runs.flow_name` or `[code:function] compute_metrics in src/compute.py`).
 
@@ -81,11 +86,12 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
              --uncleared-file {uncleared_file} \
              --document "{document}" \
              --audience "{audience}" \
-             --suggestion "Add ref: {suggested_ref}"
+             --suggestion "Add ref: {suggested_ref}" \
+             --wave {wave}
          ```
          This automatically files the same finding in every other section where the entity appears and removes it from the uncleared list. Later sections will no longer see this entity.
 
-   d. **Judgment checks.** After resolving entities, perform these checks on the section:
+   e. **Judgment checks.** After resolving entities, perform these checks on the section:
 
       **Contradictions:** Does the prose make claims that contradict the declared refs? For example, prose says "the `users` table" but refs declare `etl_runs` table. Or prose says a function takes `timeout` parameter but refs declare `recompute_stale`. If found:
       ```bash
@@ -100,9 +106,9 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 
       **Malformed refs:** If `malformed_refs` is non-empty, for each malformed ref, search the section body for any mention of its non-empty fields. If a malformed ref has candidates not mentioned in the body, emit a `malformed-ref-unresolved` finding.
 
-   e. **Report section results.** Note how many findings were added for this section.
+   f. **Report section results.** Note how many findings were added for this section.
 
-   f. **Get next section.** Call next-section again (same command as step 1).
+   g. **Get next section.** Call next-section again (same command as step 1).
       If `done` is `true`, proceed to step 3 (report).
       Otherwise, go to step 2a.
 

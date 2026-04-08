@@ -26,6 +26,7 @@ import argparse
 import os
 import subprocess
 import sys
+from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
@@ -59,9 +60,48 @@ def _emit_finding(findings_file, document, audience, section_path, display):
             "--suggestion",
             "Remove the ref if the entity is no longer discussed, "
             "or mention it in the prose",
+            "--wave", "0",
         ],
         capture_output=True, text=True,
     )
+
+
+def _resolve_entities(section_entities, ref_entries):
+    """Conservative path resolution for multi-component clearing.
+
+    An entity clears only when there is exactly one ref path consistent
+    with the entity set in the section.  Uses a fixed-point loop: when
+    a path is uniquely resolved, its newly-cleared components may
+    disambiguate remaining entities.
+
+    Returns:
+        Tuple of (cleared_set, uncleared_set).
+    """
+    paths = [tuple(e["path"]) for e in ref_entries if e.get("path")]
+    entity_set = set(section_entities)
+
+    # Inverted index: component name → list of paths containing it
+    by_name = defaultdict(list)
+    for path in paths:
+        for component in path:
+            by_name[component].append(path)
+
+    cleared = set()
+    progress = True
+    while progress:
+        progress = False
+        for name in sorted(entity_set - cleared,
+                           key=lambda n: len(by_name.get(n, []))):
+            candidates = [
+                p for p in by_name.get(name, [])
+                if all(c in entity_set for c in p)
+            ]
+            if len(candidates) == 1:
+                cleared.update(candidates[0])
+                progress = True
+                break  # restart — new clearings may disambiguate others
+
+    return cleared, entity_set - cleared
 
 
 def clear(entities_file, prose_verify_dir, uncleared_file,
@@ -108,22 +148,16 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
                     section_path, entry.get("display", ident),
                 )
 
-        # -- Clearing: entity name → ref identifiers ------------
+        # -- Clearing: conservative path resolution ---------------
         section_entities = entities_by_section.get(section_path, [])
         if not section_entities:
             continue
 
-        # Build per-ref identifier list (non-deduped) for counting
-        all_identifiers = [
-            entry.get("identifier")
-            for entry in ref_entries
-            if entry.get("identifier")
-        ]
+        cleared, _ = _resolve_entities(section_entities, ref_entries)
 
         section_has_uncleared = False
         for name in section_entities:
-            match_count = all_identifiers.count(name)
-            if match_count == 1:
+            if name in cleared:
                 total_cleared += 1
             else:
                 uncleared.append({"name": name, "section": section_path})

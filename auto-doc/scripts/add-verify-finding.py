@@ -144,6 +144,7 @@ def main():
     parser.add_argument("--check", help="Check type")
     parser.add_argument("--description", help="Finding description")
     parser.add_argument("--suggestion", help="Suggested fix")
+    parser.add_argument("--wave", type=int, help="Wave number (resolution wave that produced this finding)")
 
     args = parser.parse_args()
     findings_path = os.path.abspath(args.findings_file)
@@ -197,6 +198,10 @@ def main():
 
     # Compute group_id for grouping related findings
     input_data["group_id"] = f"{input_data['document']}/{input_data['section']}"
+
+    # Store wave metadata if provided (via CLI or already in file-mode JSON)
+    if has_inline and args.wave is not None:
+        input_data["wave"] = args.wave
 
     # Load existing, append, save atomically
     findings = load_json(findings_path, default=[])

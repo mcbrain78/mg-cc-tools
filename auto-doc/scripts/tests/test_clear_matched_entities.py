@@ -90,11 +90,14 @@ class TestClearing:
                     "path": "monitoring",
                     "body": "## Monitoring\n\nThe `etl_runs` table has `flow_name`.",
                     "ref_entries": [
-                        {"display": "[db] rr.etl_runs", "identifier": "etl_runs"},
-                        {"display": "[db] rr.etl_runs.flow_name", "identifier": "flow_name"},
+                        {"display": "[db] rr.etl_runs", "identifier": "etl_runs",
+                         "path": ["road_runner", "etl_runs"]},
+                        {"display": "[db] rr.etl_runs.flow_name", "identifier": "flow_name",
+                         "path": ["road_runner", "etl_runs", "flow_name"]},
                     ],
                 },
             ], [
+                {"name": "road_runner", "section": "monitoring"},
                 {"name": "etl_runs", "section": "monitoring"},
                 {"name": "flow_name", "section": "monitoring"},
             ])
@@ -105,7 +108,7 @@ class TestClearing:
             with open(uf) as f:
                 uncleared = json.load(f)
             assert uncleared == []
-            assert "Cleared: 2" in result.stderr
+            assert "Cleared: 3" in result.stderr
 
     def test_no_entities_clear(self):
         """No matches → all entities uncleared."""
@@ -138,7 +141,8 @@ class TestClearing:
                     "path": "monitoring",
                     "body": "## Monitoring\n\nThe `etl_runs` table.",
                     "ref_entries": [
-                        {"display": "[db] rr.etl_runs", "identifier": "etl_runs"},
+                        {"display": "[dep] etl_runs", "identifier": "etl_runs",
+                         "path": ["etl_runs"]},
                     ],
                 },
             ], [
@@ -156,19 +160,25 @@ class TestClearing:
             assert "Cleared: 1" in result.stderr
 
     def test_multi_match_does_not_clear(self):
-        """Entity matching 2 different refs stays uncleared (ambiguity)."""
+        """Entity matching 2 fully-present ref paths stays uncleared (ambiguity).
+
+        When two paths share components and all components are present,
+        none can uniquely resolve — everything stays uncleared.
+        """
         with tempfile.TemporaryDirectory() as td:
             prose_dir, ef, uf, ff = _setup(td, [
                 {
                     "path": "monitoring",
-                    "body": "## Monitoring\n\nThe `name` field.",
+                    "body": "## Monitoring\n\nThe alpha beta field.",
                     "ref_entries": [
-                        {"display": "[db] rr.etl_runs.name", "identifier": "name"},
-                        {"display": "[code:function] name", "identifier": "name"},
+                        {"display": "[db] s.t1.alpha", "identifier": "alpha",
+                         "path": ["alpha", "beta"]},
+                        {"display": "[db] s.t2.alpha", "identifier": "alpha",
+                         "path": ["alpha", "gamma"]},
                     ],
                 },
             ], [
-                {"name": "name", "section": "monitoring"},
+                {"name": "alpha", "section": "monitoring"},
             ])
 
             result = _run(prose_dir, ef, uf, ff)
@@ -176,8 +186,10 @@ class TestClearing:
 
             with open(uf) as f:
                 uncleared = json.load(f)
+            # alpha appears in both paths, neither fully present (beta, gamma missing)
+            # → no candidates → stays uncleared
             assert len(uncleared) == 1
-            assert uncleared[0]["name"] == "name"
+            assert uncleared[0]["name"] == "alpha"
 
     def test_empty_entities_file(self):
         """Empty entities list → empty uncleared file."""
@@ -288,14 +300,16 @@ class TestAffectedSections:
                     "path": "monitoring",
                     "body": "## Monitoring\n\nThe `etl_runs` table.",
                     "ref_entries": [
-                        {"display": "[db] rr.etl_runs", "identifier": "etl_runs"},
+                        {"display": "[dep] etl_runs", "identifier": "etl_runs",
+                         "path": ["etl_runs"]},
                     ],
                 },
                 {
                     "path": "deployment",
                     "body": "## Deployment\n\nDeploy via CI.",
                     "ref_entries": [
-                        {"display": "[env] PORT", "identifier": "PORT"},
+                        {"display": "[env] PORT", "identifier": "PORT",
+                         "path": ["PORT"]},
                     ],
                 },
             ], [
@@ -319,7 +333,8 @@ class TestAffectedSections:
                     "path": "monitoring",
                     "body": "## Monitoring\n\nThe `etl_runs` table.",
                     "ref_entries": [
-                        {"display": "[db] rr.etl_runs", "identifier": "etl_runs"},
+                        {"display": "[dep] etl_runs", "identifier": "etl_runs",
+                         "path": ["etl_runs"]},
                     ],
                 },
             ], [
@@ -334,6 +349,228 @@ class TestAffectedSections:
             assert affected == []
 
 
+class TestMultiComponentClearing:
+    """Conservative path resolver for multi-component refs."""
+
+    def test_all_path_components_clear(self):
+        """All components of a ref path clear when path is present."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nThe road_runner.etl_runs.flow_name column.",
+                    "ref_entries": [
+                        {
+                            "display": "[db] road_runner.etl_runs.flow_name",
+                            "identifier": "flow_name",
+                            "path": ["road_runner", "etl_runs", "flow_name"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "road_runner", "section": "monitoring"},
+                {"name": "etl_runs", "section": "monitoring"},
+                {"name": "flow_name", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 3" in result.stderr
+
+    def test_ambiguous_component_stays_uncleared(self):
+        """Entity matching 2 paths stays uncleared."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nThe status field.",
+                    "ref_entries": [
+                        {
+                            "display": "[db] rr.etl_runs.status",
+                            "identifier": "status",
+                            "path": ["road_runner", "etl_runs", "status"],
+                        },
+                        {
+                            "display": "[db] rr.jobs.status",
+                            "identifier": "status",
+                            "path": ["road_runner", "jobs", "status"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "status", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "status"
+
+    def test_disambiguation_via_context(self):
+        """Sibling entity disambiguates which path status belongs to."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nThe etl_runs table has status.",
+                    "ref_entries": [
+                        {
+                            "display": "[db] rr.etl_runs.status",
+                            "identifier": "status",
+                            "path": ["road_runner", "etl_runs", "status"],
+                        },
+                        {
+                            "display": "[db] rr.jobs.status",
+                            "identifier": "status",
+                            "path": ["road_runner", "jobs", "status"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "road_runner", "section": "monitoring"},
+                {"name": "etl_runs", "section": "monitoring"},
+                {"name": "status", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            # etl_runs is only in one path, so it resolves that path,
+            # which then clears road_runner and status too
+            assert uncleared == []
+            assert "Cleared: 3" in result.stderr
+
+    def test_fixed_point_iteration(self):
+        """Earlier clearings disambiguate later entities across iterations.
+
+        flow_name is unique to the etl_runs path → resolves it (iteration 1).
+        This disambiguates status: the jobs path needs `jobs` which is absent
+        from entity set, so only the etl_runs path survives → resolves (iteration 2).
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nflow_name and status in etl_runs.",
+                    "ref_entries": [
+                        {
+                            "display": "[db] rr.etl_runs.flow_name",
+                            "identifier": "flow_name",
+                            "path": ["etl_runs", "flow_name"],
+                        },
+                        {
+                            "display": "[db] rr.etl_runs.status",
+                            "identifier": "status",
+                            "path": ["etl_runs", "status"],
+                        },
+                        {
+                            "display": "[db] rr.jobs.status",
+                            "identifier": "status",
+                            "path": ["jobs", "status"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "flow_name", "section": "monitoring"},
+                {"name": "status", "section": "monitoring"},
+                {"name": "etl_runs", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            # Iteration 1: flow_name uniquely in etl_runs path → clears etl_runs, flow_name
+            # Iteration 2: status has two candidates, but jobs path needs `jobs`
+            # (not in entity set) → only etl_runs path survives → clears status
+            assert uncleared == []
+            assert "Cleared: 3" in result.stderr
+
+    def test_no_path_field_falls_through(self):
+        """Ref entries without path field → entities stay uncleared."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nThe etl_runs table.",
+                    "ref_entries": [
+                        {"display": "[db] rr.etl_runs", "identifier": "etl_runs"},
+                    ],
+                },
+            ], [
+                {"name": "road_runner", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "road_runner"
+
+    def test_single_component_path_clears(self):
+        """Single-component path (e.g. config basename) still clears."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nConfig in settings.yaml.",
+                    "ref_entries": [
+                        {
+                            "display": "[config] config/settings.yaml",
+                            "identifier": "settings.yaml",
+                            "path": ["settings.yaml"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "settings.yaml", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+
+
+class TestCheckBWave:
+    """Check B findings have wave=0 metadata."""
+
+    def test_check_b_findings_have_wave_zero(self):
+        """Reference-integrity findings from Check B have wave=0."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nGeneral info.",
+                    "ref_entries": [
+                        {"display": "[env] MISSING_VAR", "identifier": "MISSING_VAR"},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(ff) as f:
+                findings = json.load(f)
+            assert len(findings) == 1
+            assert findings[0]["wave"] == 0
+
+
 class TestSummary:
     """Summary output on stderr."""
 
@@ -345,7 +582,8 @@ class TestSummary:
                     "path": "monitoring",
                     "body": "## Monitoring\n\nThe `etl_runs` table.",
                     "ref_entries": [
-                        {"display": "[db] rr.etl_runs", "identifier": "etl_runs"},
+                        {"display": "[dep] etl_runs", "identifier": "etl_runs",
+                         "path": ["etl_runs"]},
                     ],
                 },
             ], [

@@ -157,7 +157,9 @@ Scan data: {MG_INSTALL_WORKSPACE_DIR}/docs-scan.json
 Database model: {MG_INSTALL_WORKSPACE_DIR}/generate/database-model.json
 Sections filter: {MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}/affected-sections.json
 Document: {DOCUMENT}
-Audience: {audience}"
+Audience: {audience}
+Wave: {N}
+Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md"
 )
 ```
 

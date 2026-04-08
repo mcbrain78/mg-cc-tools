@@ -640,3 +640,102 @@ class TestAddVerifyFindingInlineMode:
             assert result.returncode == 0
             assert "OPERATIONS" in result.stderr
             assert "reference-integrity" in result.stderr
+
+
+class TestAddVerifyFindingWave:
+    """Wave metadata field."""
+
+    def test_wave_stored_when_provided_inline(self):
+        """--wave N stores wave field in finding."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--document", "OPERATIONS",
+                 "--section", "monitoring",
+                 "--audience", "devops",
+                 "--check", "dangling-prose-reference",
+                 "--description", "test",
+                 "--suggestion", "fix it",
+                 "--wave", "2"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert data[0]["wave"] == 2
+
+    def test_wave_absent_when_not_provided(self):
+        """Without --wave, finding has no wave field."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--document", "OPERATIONS",
+                 "--section", "monitoring",
+                 "--audience", "devops",
+                 "--check", "dangling-prose-reference",
+                 "--description", "test",
+                 "--suggestion", "fix it"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert "wave" not in data[0]
+
+    def test_wave_stored_in_file_mode(self):
+        """Wave field in file-mode JSON is preserved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            finding = _valid_finding()
+            finding["wave"] = 3
+            with open(input_file, "w") as f:
+                json.dump(finding, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert data[0]["wave"] == 3
+
+    def test_wave_zero(self):
+        """--wave 0 stores wave=0 (used by clearing step)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--document", "OPERATIONS",
+                 "--section", "monitoring",
+                 "--audience", "devops",
+                 "--check", "reference-integrity",
+                 "--description", "test",
+                 "--suggestion", "fix it",
+                 "--wave", "0"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+
+            assert data[0]["wave"] == 0

@@ -35,7 +35,7 @@ ADD_FINDING_SCRIPT = os.path.join(
 
 
 def propagate(entity, section, findings_file, uncleared_file,
-              document, audience, suggestion):
+              document, audience, suggestion, wave=None):
     """Propagate finding to other sections and remove entity from uncleared.
 
     Returns:
@@ -52,21 +52,21 @@ def propagate(entity, section, findings_file, uncleared_file,
 
     # Propagate finding to each other section
     for target_section in other_sections:
-        subprocess.run(
-            [
-                sys.executable, ADD_FINDING_SCRIPT,
-                "--findings-file", findings_file,
-                "--document", document,
-                "--section", target_section,
-                "--audience", audience,
-                "--check", "dangling-prose-reference",
-                "--description",
-                f"Prose mentions `{entity}` which is not covered by any "
-                f"declared ref (propagated from {section})",
-                "--suggestion", suggestion,
-            ],
-            capture_output=True, text=True,
-        )
+        cmd = [
+            sys.executable, ADD_FINDING_SCRIPT,
+            "--findings-file", findings_file,
+            "--document", document,
+            "--section", target_section,
+            "--audience", audience,
+            "--check", "dangling-prose-reference",
+            "--description",
+            f"Prose mentions `{entity}` which is not covered by any "
+            f"declared ref (propagated from {section})",
+            "--suggestion", suggestion,
+        ]
+        if wave is not None:
+            cmd.extend(["--wave", str(wave)])
+        subprocess.run(cmd, capture_output=True, text=True)
 
     # Remove ALL entries for this entity from uncleared
     updated = [e for e in uncleared if e["name"] != entity]
@@ -114,6 +114,10 @@ def main():
         "--suggestion", required=True,
         help="Suggested fix text",
     )
+    parser.add_argument(
+        "--wave", type=int, default=None,
+        help="Wave number to tag propagated findings with",
+    )
 
     args = parser.parse_args()
     propagate(
@@ -124,6 +128,7 @@ def main():
         document=args.document,
         audience=args.audience,
         suggestion=args.suggestion,
+        wave=args.wave,
     )
 
 

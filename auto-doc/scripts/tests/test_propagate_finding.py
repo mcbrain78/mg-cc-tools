@@ -26,19 +26,21 @@ def _read_json(path):
 
 def _run(entity, section, findings_file, uncleared_file,
          document="OPERATIONS", audience="devops",
-         suggestion="Add ref: [dep] example"):
+         suggestion="Add ref: [dep] example", wave=None):
     """Run propagate-finding.py and return result."""
-    return subprocess.run(
-        [sys.executable, SCRIPT,
-         "--entity", entity,
-         "--section", section,
-         "--findings-file", findings_file,
-         "--uncleared-file", uncleared_file,
-         "--document", document,
-         "--audience", audience,
-         "--suggestion", suggestion],
-        capture_output=True, text=True,
-    )
+    cmd = [
+        sys.executable, SCRIPT,
+        "--entity", entity,
+        "--section", section,
+        "--findings-file", findings_file,
+        "--uncleared-file", uncleared_file,
+        "--document", document,
+        "--audience", audience,
+        "--suggestion", suggestion,
+    ]
+    if wave is not None:
+        cmd.extend(["--wave", str(wave)])
+    return subprocess.run(cmd, capture_output=True, text=True)
 
 
 class TestPropagation:
@@ -252,3 +254,40 @@ class TestPropagation:
             assert len(findings) == 2  # 1 existing + 1 propagated
             assert findings[0]["check"] == "reference-integrity"
             assert findings[1]["check"] == "dangling-prose-reference"
+
+
+class TestPropagationWave:
+    """Wave metadata forwarded to propagated findings."""
+
+    def test_wave_forwarded_to_propagated_findings(self):
+        """--wave N tags all propagated findings with wave=N."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "prefect", "section": "monitoring"},
+                {"name": "prefect", "section": "orchestration"},
+                {"name": "prefect", "section": "deployment"},
+            ])
+            ff = _write_json(td, "findings.json", [])
+
+            result = _run("prefect", "monitoring", ff, uf, wave=2)
+            assert result.returncode == 0
+
+            findings = _read_json(ff)
+            assert len(findings) == 2
+            for f in findings:
+                assert f["wave"] == 2
+
+    def test_no_wave_means_no_wave_field(self):
+        """Without --wave, propagated findings have no wave field."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "prefect", "section": "monitoring"},
+                {"name": "prefect", "section": "deployment"},
+            ])
+            ff = _write_json(td, "findings.json", [])
+
+            _run("prefect", "monitoring", ff, uf)
+
+            findings = _read_json(ff)
+            assert len(findings) == 1
+            assert "wave" not in findings[0]

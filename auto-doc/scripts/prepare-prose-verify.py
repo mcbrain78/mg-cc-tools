@@ -25,7 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import save_json
-from lib.ref_utils import identifier_for_ref
+from lib.ref_utils import identifier_for_ref, path_for_ref
 from lib.xml_doc import parse_xml_doc, walk_sections
 
 
@@ -163,7 +163,11 @@ def prepare(xml_path, output_dir):
             display = _format_single_ref(ref.get("type", ""), ref)
             ident = identifier_for_ref(ref)
             if display or ident:
-                ref_entries.append({"display": display, "identifier": ident})
+                entry = {"display": display, "identifier": ident}
+                ref_path = path_for_ref(ref)
+                if ref_path:
+                    entry["path"] = list(ref_path)
+                ref_entries.append(entry)
 
         section_data = {
             "path": path,
