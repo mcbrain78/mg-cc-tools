@@ -123,30 +123,87 @@ def _deduplicate_by_request_id(entries: list[dict]) -> list[dict]:
     """Deduplicate streaming assistant entries by requestId.
 
     Claude Code writes multiple entries per API response while streaming.
-    Keep only the last entry per requestId (it has final token counts and
-    complete content).
+    For streaming updates of the *same* response, keep only the last entry
+    (it has final token counts and complete content).
+
+    However, for parallel tool calls (e.g. 3 Agent spawns in one turn), CC
+    writes separate entries with the same requestId, each containing a
+    different tool_use block.  We detect this case (multiple entries with
+    distinct tool_use IDs) and *merge* their content arrays into a single
+    entry, keeping the last entry's metadata (usage, timestamp).
     """
-    # Build map of requestId -> last entry index for assistant entries
-    request_last: dict[str, int] = {}
+    # Group assistant entries by requestId, preserving order
+    from collections import OrderedDict
+    request_groups: OrderedDict[str, list[int]] = OrderedDict()
     for i, entry in enumerate(entries):
         if entry.get("type") == "assistant":
             rid = entry.get("requestId")
             if rid:
-                request_last[rid] = i
+                request_groups.setdefault(rid, []).append(i)
 
-    # Keep: non-assistant entries, and only the last assistant per requestId
-    keep_indices: set[int] = set()
-    for i, entry in enumerate(entries):
-        if entry.get("type") == "assistant":
-            rid = entry.get("requestId")
-            if rid and request_last.get(rid) == i:
-                keep_indices.add(i)
-            elif not rid:
-                keep_indices.add(i)
+    # Decide per group: merge (parallel tool calls) or keep-last (streaming)
+    # Values: None = keep as-is, "skip" = drop, dict = merged entry
+    keep_or_merge: dict[int, dict | str | None] = {}
+    for rid, indices in request_groups.items():
+        if len(indices) == 1:
+            keep_or_merge[indices[0]] = None  # keep as-is
+            continue
+
+        # Collect distinct tool_use IDs across all entries in the group
+        tool_use_ids: set[str] = set()
+        for idx in indices:
+            content = entries[idx].get("message", {}).get("content", [])
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        tool_use_ids.add(block.get("id", ""))
+
+        if len(tool_use_ids) > 1:
+            # Parallel tool calls — merge content from all entries
+            merged_content: list[dict] = []
+            seen_tool_ids: set[str] = set()
+            for idx in indices:
+                content = entries[idx].get("message", {}).get("content", [])
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "tool_use":
+                            tid = block.get("id", "")
+                            if tid not in seen_tool_ids:
+                                seen_tool_ids.add(tid)
+                                merged_content.append(block)
+                        else:
+                            merged_content.append(block)
+
+            # Use last entry as base, replace content with merged
+            last_idx = indices[-1]
+            merged_entry = dict(entries[last_idx])
+            merged_entry["message"] = dict(merged_entry.get("message", {}))
+            merged_entry["message"]["content"] = merged_content
+            keep_or_merge[last_idx] = merged_entry
+            for idx in indices[:-1]:
+                keep_or_merge[idx] = "skip"
         else:
-            keep_indices.add(i)
+            # Streaming updates — keep only last
+            last_idx = indices[-1]
+            keep_or_merge[last_idx] = None  # keep as-is
+            for idx in indices[:-1]:
+                keep_or_merge[idx] = "skip"
 
-    return [entries[i] for i in sorted(keep_indices)]
+    # Build result preserving original order
+    result = []
+    for i, entry in enumerate(entries):
+        if entry.get("type") != "assistant" or not entry.get("requestId"):
+            result.append(entry)
+            continue
+        action = keep_or_merge.get(i)
+        if action == "skip":
+            continue  # skip (merged into another or streaming duplicate)
+        elif action is None:
+            result.append(entry)  # keep as-is
+        else:
+            result.append(action)  # merged entry
+
+    return result
 
 
 def _entry_to_message(entry: dict) -> dict | None:
@@ -852,6 +909,288 @@ def export_markdown(detail: dict, output_path: str, truncate: int = DEFAULT_TRUN
 
 
 # ---------------------------------------------------------------------------
+# Compact markdown with subagent conversations (md-subagent format)
+# ---------------------------------------------------------------------------
+
+def _is_command_template(content) -> bool:
+    """Detect if a user message is a command template (expanded slash command).
+
+    Heuristic: >2KB text containing markdown headers or <command-name> tag.
+    """
+    text = _extract_text_from_content(content)
+    if len(text) < 2048:
+        return False
+    return bool(re.search(r"<command-name>", text) or re.search(r"^## ", text, re.MULTILINE))
+
+
+def _extract_command_label(content) -> str:
+    """Extract command name from a command template message.
+
+    Looks for <command-name>...</command-name> tag, falls back to first ## heading.
+    """
+    text = _extract_text_from_content(content)
+    m = re.search(r"<command-name>(.+?)</command-name>", text)
+    if m:
+        return m.group(1)
+    m = re.search(r"^##\s+(.+)", text, re.MULTILINE)
+    if m:
+        return m.group(1).strip()
+    return "unknown-command"
+
+
+def _compact_tool_call(block: dict) -> str:
+    """Render a tool_use block as a compact one-liner."""
+    name = block.get("name", "unknown")
+    inp = block.get("input", {})
+
+    if name == "Agent":
+        desc = inp.get("description", "")
+        return f"Agent({desc})"
+    if name == "Bash":
+        cmd = inp.get("command", "")
+        if len(cmd) > 120:
+            cmd = cmd[:120] + "..."
+        return f"Bash({cmd})"
+    if name == "Read":
+        return f"Read({inp.get('file_path', '')})"
+    if name in ("Grep", "Glob"):
+        pattern = inp.get("pattern", "")
+        path = inp.get("path", "")
+        if path:
+            return f"{name}({pattern}, {path})"
+        return f"{name}({pattern})"
+    if name in ("Write", "Edit"):
+        return f"{name}({inp.get('file_path', '')})"
+    # Generic fallback
+    keys = ", ".join(f"{k}=..." for k in list(inp.keys())[:3])
+    return f"{name}({keys})"
+
+
+def _compact_tool_result(block: dict, tool_name: str) -> str:
+    """Render a tool_result block as a compact one-liner."""
+    raw_content = block.get("content", "")
+    is_error = block.get("is_error", False)
+
+    # Normalize content to text
+    if isinstance(raw_content, list):
+        text = "\n".join(
+            b.get("text", "") for b in raw_content if isinstance(b, dict)
+        )
+    elif isinstance(raw_content, str):
+        text = raw_content
+    else:
+        text = str(raw_content)
+
+    if is_error:
+        truncated = text[:500] if len(text) > 500 else text
+        return f"ERROR: {truncated}"
+
+    # Agent results: show first 200 chars
+    if tool_name == "Agent":
+        truncated = text[:200] if len(text) > 200 else text
+        return truncated
+
+    # Bash: preserve output (signal), truncated
+    if tool_name == "Bash":
+        if len(text) > 500:
+            return text[:500] + f"... [{len(text):,} chars]"
+        return text
+
+    # Read/Grep/Glob: size only
+    if tool_name in ("Read", "Grep", "Glob"):
+        return f"[{len(text):,} chars]"
+
+    # Write/Edit: ok
+    if tool_name in ("Write", "Edit"):
+        return "ok"
+
+    # Generic: size
+    return f"[{len(text):,} chars]"
+
+
+def _render_compact_messages(messages: list[dict], lines: list[str]) -> None:
+    """Render messages in compact form, appending to lines."""
+    # Build tool_use_id -> tool_name map for result rendering
+    tool_id_to_name: dict[str, str] = {}
+    for msg in messages:
+        for tc in msg.get("toolCalls", []):
+            tool_id_to_name[tc.get("id", "")] = tc.get("name", "")
+
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+
+        if role == "system":
+            continue  # omit system messages
+
+        if role == "user":
+            # Check for tool results
+            if isinstance(content, list):
+                has_tool_results = any(
+                    isinstance(b, dict) and b.get("type") == "tool_result"
+                    for b in content
+                )
+                if has_tool_results:
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get("type") == "tool_result":
+                            tool_use_id = block.get("tool_use_id", "")
+                            tool_name = tool_id_to_name.get(tool_use_id, "")
+                            result_text = _compact_tool_result(block, tool_name)
+                            lines.append(f"  → {result_text}")
+                    continue
+
+            # Check for command template
+            if _is_command_template(content):
+                label = _extract_command_label(content)
+                lines.append(f"[command: {label}]")
+                continue
+
+            # Regular user text
+            text = _extract_text_from_content(content)
+            if text.strip():
+                truncated = text.strip()[:200]
+                if len(text.strip()) > 200:
+                    truncated += "..."
+                lines.append(f"User: {truncated}")
+
+        elif role == "assistant":
+            if isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    btype = block.get("type", "")
+                    if btype == "thinking":
+                        continue  # omit thinking blocks
+                    elif btype == "text":
+                        text = block.get("text", "").strip()
+                        if text:
+                            truncated = text[:200]
+                            if len(text) > 200:
+                                truncated += "..."
+                            lines.append(truncated)
+                    elif btype == "tool_use":
+                        lines.append(_compact_tool_call(block))
+            elif isinstance(content, str) and content.strip():
+                truncated = content.strip()[:200]
+                if len(content.strip()) > 200:
+                    truncated += "..."
+                lines.append(truncated)
+
+
+def _count_tools(messages: list[dict]) -> dict[str, int]:
+    """Count tool calls by name from messages."""
+    counts: dict[str, int] = {}
+    for msg in messages:
+        for tc in msg.get("toolCalls", []):
+            name = tc.get("name", "unknown")
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def export_markdown_subagent(detail: dict, output_path: str) -> None:
+    """Write session detail as compact Markdown with full subagent conversations."""
+    session = detail["session"]
+    messages = detail["messages"]
+    metrics = detail["metrics"]
+    processes = detail["processes"]
+
+    lines: list[str] = []
+
+    # --- <session-meta> ---
+    lines.append("<session-meta>")
+    lines.append(f"Session: {session.get('id', 'unknown')}")
+    lines.append(f"Project: {session.get('projectPath', 'unknown')}")
+    if session.get("gitBranch"):
+        lines.append(f"Branch: {session['gitBranch']}")
+    if session.get("createdAt"):
+        lines.append(f"Date: {session['createdAt']}")
+    lines.append(f"Duration: {_format_duration(metrics.get('durationMs', 0))}")
+    lines.append("")
+
+    # Per-agent metrics table
+    if processes:
+        lines.append(f"Agents: {len(processes)}")
+        lines.append("")
+        lines.append("| ID | Description | Tokens | Duration | Tools |")
+        lines.append("|----|-------------|--------|----------|-------|")
+        for proc in processes:
+            pid = proc.get("id", "?")[:12]
+            desc = proc.get("description", "—")
+            pm = proc.get("metrics", {})
+            tool_counts = _count_tools(proc.get("messages", []))
+            tools_str = " ".join(f"{k}:{v}" for k, v in sorted(tool_counts.items(), key=lambda x: -x[1]))
+            lines.append(
+                f"| {pid} | {desc} "
+                f"| {_format_tokens(pm.get('totalTokens', 0))} "
+                f"| {_format_duration(pm.get('durationMs', 0))} "
+                f"| {tools_str} |"
+            )
+        lines.append("")
+
+    # Per-model token breakdown
+    by_model = metrics.get("byModel", {})
+    if by_model:
+        lines.append("| Source | Input | Cache Read | Cache Write | Output | Total |")
+        lines.append("|--------|-------|------------|-------------|--------|-------|")
+        for source, m in by_model.items():
+            agent_count = m.get("agentCount")
+            if agent_count is not None:
+                label = source.replace(" (agents)", f" ({agent_count} agents)")
+            else:
+                label = source
+            lines.append(
+                f"| {label} "
+                f"| {_format_tokens(m.get('inputTokens', 0))} "
+                f"| {_format_tokens(m.get('cacheReadTokens', 0))} "
+                f"| {_format_tokens(m.get('cacheCreationTokens', 0))} "
+                f"| {_format_tokens(m.get('outputTokens', 0))} "
+                f"| {_format_tokens(m.get('totalTokens', 0))} |"
+            )
+        if len(by_model) > 1:
+            lines.append(
+                f"| **Total** "
+                f"| **{_format_tokens(metrics.get('inputTokens', 0))}** "
+                f"| **{_format_tokens(metrics.get('cacheReadTokens', 0))}** "
+                f"| **{_format_tokens(metrics.get('cacheCreationTokens', 0))}** "
+                f"| **{_format_tokens(metrics.get('outputTokens', 0))}** "
+                f"| **{_format_tokens(metrics.get('totalTokens', 0))}** |"
+            )
+        lines.append("")
+
+    lines.append("</session-meta>")
+    lines.append("")
+
+    # --- <orchestrator> ---
+    lines.append("<orchestrator>")
+    _render_compact_messages(messages, lines)
+    lines.append("</orchestrator>")
+    lines.append("")
+
+    # --- <agent> sections ---
+    for proc in processes:
+        pid = proc.get("id", "?")[:12]
+        desc = proc.get("description", "—")
+        pm = proc.get("metrics", {})
+        tool_counts = _count_tools(proc.get("messages", []))
+        tools_str = " ".join(f"{k}:{v}" for k, v in sorted(tool_counts.items(), key=lambda x: -x[1]))
+        lines.append(
+            f'<agent id="{pid}" description="{desc}" '
+            f'tokens="{_format_tokens(pm.get("totalTokens", 0))}" '
+            f'duration="{_format_duration(pm.get("durationMs", 0))}" '
+            f'tools="{tools_str}">'
+        )
+        _render_compact_messages(proc.get("messages", []), lines)
+        lines.append("</agent>")
+        lines.append("")
+
+    with open(output_path, "w") as f:
+        f.write("\n".join(lines))
+        f.write("\n")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -872,13 +1211,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--format", "-f",
-        choices=["json", "md"],
+        choices=["json", "md", "md-subagent"],
         default="md",
         help="Output format (default: md)",
     )
     parser.add_argument(
+        "--print-transcript-path",
+        action="store_true",
+        default=False,
+        help="Print the resolved JSONL transcript path and exit (no export)",
+    )
+    parser.add_argument(
         "--output", "-o",
-        required=True,
+        default=None,
         help="Output file path",
     )
     parser.add_argument(
@@ -913,6 +1258,16 @@ def main(argv: list[str] | None = None) -> None:
         print("Error: provide --transcript or a session_id argument", file=sys.stderr)
         sys.exit(1)
 
+    # --print-transcript-path: emit the resolved path and exit
+    if args.print_transcript_path:
+        print(session_jsonl)
+        return
+
+    # --output is required for actual exports
+    if not args.output:
+        print("Error: --output is required for export (omit only with --print-transcript-path)", file=sys.stderr)
+        sys.exit(1)
+
     # Build the session detail
     detail = build_session_detail(session_jsonl)
 
@@ -922,6 +1277,8 @@ def main(argv: list[str] | None = None) -> None:
     # Export
     if args.format == "json":
         export_json(detail, args.output)
+    elif args.format == "md-subagent":
+        export_markdown_subagent(detail, args.output)
     else:
         export_markdown(detail, args.output, truncate=args.truncate)
 

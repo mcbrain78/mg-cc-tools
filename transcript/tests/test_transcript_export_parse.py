@@ -183,6 +183,42 @@ class TestDeduplication:
         # All non-assistant + 1 assistant = 5
         assert len(result) == 5
 
+    def test_merges_parallel_tool_calls_same_request_id(self, tmp_path):
+        """Parallel tool calls (e.g. 3 Agent spawns) share a requestId but have
+        distinct tool_use blocks.  All must be preserved after deduplication."""
+        mod = load_exporter()
+        entries = [
+            _make_user_entry(),
+            # Three separate JSONL entries for the same API response,
+            # each containing one tool_use block with a unique ID.
+            _make_assistant_entry(
+                content=[{"type": "tool_use", "id": "tu_1", "name": "Agent", "input": {"description": "agent 1"}}],
+                uuid="a1", request_id="req_parallel", ts="2026-01-01T00:00:01.000Z",
+                usage={"input_tokens": 1, "output_tokens": 1, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            ),
+            _make_assistant_entry(
+                content=[{"type": "tool_use", "id": "tu_2", "name": "Agent", "input": {"description": "agent 2"}}],
+                uuid="a2", request_id="req_parallel", ts="2026-01-01T00:00:01.100Z",
+                usage={"input_tokens": 2, "output_tokens": 2, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            ),
+            _make_assistant_entry(
+                content=[{"type": "tool_use", "id": "tu_3", "name": "Agent", "input": {"description": "agent 3"}}],
+                uuid="a3", request_id="req_parallel", ts="2026-01-01T00:00:01.200Z",
+                usage={"input_tokens": 5, "output_tokens": 10, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            ),
+        ]
+        result = mod._deduplicate_by_request_id(entries)
+        # Should keep: user + 1 merged assistant entry
+        assert len(result) == 2
+        merged = result[1]
+        assert merged["type"] == "assistant"
+        # All three tool_use blocks must be in the merged content
+        content = merged["message"]["content"]
+        tool_ids = [b["id"] for b in content if b.get("type") == "tool_use"]
+        assert tool_ids == ["tu_1", "tu_2", "tu_3"]
+        # Usage comes from the last entry
+        assert merged["message"]["usage"]["input_tokens"] == 5
+
 
 # ---------------------------------------------------------------------------
 # Tests — Entry to message conversion
@@ -408,3 +444,71 @@ class TestTranscriptFlag:
         import pytest
         with pytest.raises(SystemExit):
             mod.main(["--output", "/tmp/o.md"])
+
+    def test_export_without_output_exits(self, tmp_path):
+        """Normal export (no --print-transcript-path) requires --output."""
+        mod = load_exporter()
+        import pytest
+        entries = [_make_user_entry()]
+        jsonl_path = _write_jsonl(entries, tmp_path)
+        with pytest.raises(SystemExit):
+            mod.main(["--transcript", str(jsonl_path)])
+
+    def test_export_md_subagent_basic_structure(self, tmp_path):
+        """md-subagent format produces session-meta, orchestrator, and agent sections."""
+        mod = load_exporter()
+
+        entries = [
+            _make_user_entry(content="Hello"),
+            _make_assistant_entry(),
+        ]
+        jsonl_path = _write_jsonl(entries, tmp_path)
+        output_path = tmp_path / "out.md"
+
+        mod.main(["--transcript", str(jsonl_path), "--format", "md-subagent", "--output", str(output_path)])
+        assert output_path.exists()
+        content = output_path.read_text()
+        assert "<session-meta>" in content
+        assert "</session-meta>" in content
+        assert "<orchestrator>" in content
+        assert "</orchestrator>" in content
+
+
+# ---------------------------------------------------------------------------
+# Tests — --print-transcript-path flag
+# ---------------------------------------------------------------------------
+
+class TestPrintTranscriptPath:
+
+    def test_prints_path_and_exits(self, tmp_path, capsys):
+        """--print-transcript-path prints the resolved path without requiring --output."""
+        mod = load_exporter()
+        entries = [_make_user_entry()]
+        jsonl_path = _write_jsonl(entries, tmp_path)
+
+        mod.main(["--transcript", str(jsonl_path), "--print-transcript-path"])
+        captured = capsys.readouterr()
+        assert captured.out.strip() == str(jsonl_path)
+
+    def test_prints_resolved_path(self, tmp_path, capsys):
+        """The printed path matches the --transcript value exactly."""
+        mod = load_exporter()
+        entries = [_make_user_entry()]
+        jsonl_path = _write_jsonl(entries, tmp_path)
+
+        mod.main(["--transcript", str(jsonl_path), "--print-transcript-path"])
+        printed = capsys.readouterr().out.strip()
+        from pathlib import Path
+        assert Path(printed).exists()
+        assert Path(printed) == jsonl_path
+
+    def test_no_export_performed(self, tmp_path, capsys):
+        """--print-transcript-path returns early — no output file is created."""
+        mod = load_exporter()
+        entries = [_make_user_entry()]
+        jsonl_path = _write_jsonl(entries, tmp_path)
+        output_path = tmp_path / "should-not-exist.md"
+
+        mod.main(["--transcript", str(jsonl_path), "--print-transcript-path",
+                   "--output", str(output_path)])
+        assert not output_path.exists()
