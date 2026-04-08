@@ -9,35 +9,23 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 ## Inputs
 
 - **project_root**: Absolute path to the project root directory.
-- **prose_verify_dir**: Path to directory containing per-section JSON files.
-- **uncleared_file**: Path to JSON file with uncleared entities (`[{name, section}, ...]`).
-- **findings_file**: Path to the findings JSON file (shared across waves — append only).
 - **scripts_dir**: Path to the scripts directory.
-- **scan_data**: Path to `docs-scan.json` (project model).
-- **database_model**: Path to `database-model.json`.
-- **sections_filter**: Path to `affected-sections.json` (for `--sections-filter`).
-- **document**: Document name (e.g. `OPERATIONS`).
-- **audience**: Audience name (e.g. `devops`).
-- **wave**: Wave number (integer, e.g. `1`). Passed to finding scripts for metadata tagging.
+- **session**: Path to the session config (pass to `audit-cmd.py --session`).
 - **ref_types_reference**: Path to `typed-refs-format.md` (valid ref type grammar).
 
 ## Process
 
-1. **Get first section.** Call next-section with the sections filter:
+1. **Get first section.** Call next-section:
    ```bash
-   uv run {scripts_dir}/next-section.py \
-       --state-file {findings_file}.sectionctl \
-       --prose-verify-dir {prose_verify_dir} \
-       --sections-filter {sections_filter}
+   uv run {scripts_dir}/audit-cmd.py --session {session} next-section
    ```
    If `done` is `true`, there are no affected sections — report this and stop.
 
 2. **Process sections one at a time.** For each section returned by next-section:
 
-   a. **Get fresh entity list.** Call get-section-entities to read the current uncleared file (which reflects any propagation from earlier sections):
+   a. **Get fresh entity list.** Call get-entities to read the current uncleared data (which reflects any propagation from earlier sections):
       ```bash
-      uv run {scripts_dir}/get-section-entities.py \
-          --uncleared-file {uncleared_file} \
+      uv run {scripts_dir}/audit-cmd.py --session {session} get-entities \
           --section "{section_path}"
       ```
       Parse the JSON output. If `count` is `0`, this section's entities were already resolved by propagation — skip to step 2g.
@@ -56,22 +44,21 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
          - A markdown/formatting artifact
 
       2. **Map to source.** For ref-worthy entities, investigate where they come from:
-         - Search `{database_model}` for table/column/schema matches
+         - Query the database model for table/column/schema matches:
+           ```bash
+           uv run {scripts_dir}/audit-cmd.py --session {session} query-db \
+               --tables "{comma_separated_table_guesses}"
+           ```
          - Search the codebase (using Grep/Glob from `{project_root}`) for function/class/variable definitions
-         - Check `{scan_data}` for known project artifacts
          - Use the section context to disambiguate (e.g., if the section is about ETL monitoring, `status` likely means `etl_runs.status`, not some other `status`)
 
       3. **Emit finding and propagate.** If the entity is ref-worthy and you can identify its source:
          ```bash
-         uv run {scripts_dir}/add-verify-finding.py \
-             --findings-file {findings_file} \
-             --document "{document}" \
+         uv run {scripts_dir}/audit-cmd.py --session {session} file-finding \
              --section "{section_path}" \
-             --audience "{audience}" \
              --check "dangling-prose-reference" \
              --description "Prose mentions `{entity_name}` which is not covered by any declared ref" \
-             --suggestion "Add ref: {suggested_ref}" \
-             --wave {wave}
+             --suggestion "Add ref: {suggested_ref}"
          ```
          Where `{suggested_ref}` describes the ref that should be added (e.g., `[db] road_runner.etl_runs.flow_name` or `[code:function] compute_metrics in src/compute.py`).
 
@@ -79,15 +66,10 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 
          **Immediately after filing**, propagate the finding to all other sections with the same entity:
          ```bash
-         uv run {scripts_dir}/propagate-finding.py \
+         uv run {scripts_dir}/audit-cmd.py --session {session} propagate \
              --entity "{entity_name}" \
              --section "{section_path}" \
-             --findings-file {findings_file} \
-             --uncleared-file {uncleared_file} \
-             --document "{document}" \
-             --audience "{audience}" \
-             --suggestion "Add ref: {suggested_ref}" \
-             --wave {wave}
+             --suggestion "Add ref: {suggested_ref}"
          ```
          This automatically files the same finding in every other section where the entity appears and removes it from the uncleared list. Later sections will no longer see this entity.
 
@@ -95,10 +77,8 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 
       **Contradictions:** Does the prose make claims that contradict the declared refs? For example, prose says "the `users` table" but refs declare `etl_runs` table. Or prose says a function takes `timeout` parameter but refs declare `recompute_stale`. If found:
       ```bash
-      uv run {scripts_dir}/add-verify-finding.py \
-          --findings-file {findings_file} \
-          --document "{document}" --section "{section_path}" \
-          --audience "{audience}" --check "internal-contradiction" \
+      uv run {scripts_dir}/audit-cmd.py --session {session} file-finding \
+          --section "{section_path}" --check "internal-contradiction" \
           --description "{description}" --suggestion "{suggestion}"
       ```
 
@@ -108,7 +88,10 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 
    f. **Report section results.** Note how many findings were added for this section.
 
-   g. **Get next section.** Call next-section again (same command as step 1).
+   g. **Get next section.** Call next-section again:
+      ```bash
+      uv run {scripts_dir}/audit-cmd.py --session {session} next-section
+      ```
       If `done` is `true`, proceed to step 3 (report).
       Otherwise, go to step 2a.
 

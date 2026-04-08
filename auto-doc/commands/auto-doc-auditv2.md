@@ -139,7 +139,30 @@ with open(sys.argv[2], 'w') as f: json.dump(s, f, indent=2)
 ```
 If the uncleared file is empty (`[]`) for a document, skip that document for the remaining waves.
 
-c. **Spawn resolution agents** (one per document that still has uncleared entities, parallel foreground, **model: sonnet**):
+c. **Write session config** for each document that still has uncleared entities:
+```bash
+python3 -c "
+import json, os
+session = {
+    'workspace': '{MG_INSTALL_WORKSPACE_DIR}',
+    'document': '{DOCUMENT}',
+    'audience': '{audience}',
+    'wave': {N},
+    'prose_verify_dir': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}',
+    'uncleared_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/uncleared-{audience}-{DOCUMENT}.json',
+    'findings_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-prose-{audience}-{DOCUMENT}.json',
+    'sections_filter': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}/affected-sections.json',
+    'db_model': '{MG_INSTALL_WORKSPACE_DIR}/generate/database-model.json',
+}
+path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'session-{audience}-{DOCUMENT}.json')
+with open(path, 'w') as f:
+    json.dump(session, f, indent=2)
+"
+```
+
+Where `{N}` is the current wave number (1, 2, 3, ...).
+
+d. **Spawn resolution agents** (one per document that still has uncleared entities, parallel foreground, **model: sonnet**):
 ```
 Agent(
   model="sonnet",
@@ -149,21 +172,11 @@ Agent(
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/resolve-prose-entities.md
 
 Project root: {project_root}
-Prose verify dir: {MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}
-Uncleared file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/uncleared-{audience}-{DOCUMENT}.json
-Findings file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-prose-{audience}-{DOCUMENT}.json
 Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
-Scan data: {MG_INSTALL_WORKSPACE_DIR}/docs-scan.json
-Database model: {MG_INSTALL_WORKSPACE_DIR}/generate/database-model.json
-Sections filter: {MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}/affected-sections.json
-Document: {DOCUMENT}
-Audience: {audience}
-Wave: {N}
+Session: {MG_INSTALL_WORKSPACE_DIR}/auditv2/session-{audience}-{DOCUMENT}.json
 Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md"
 )
 ```
-
-Where `{N}` is the current wave number (1, 2, 3, ...).
 
 ### Step 7: Report
 
