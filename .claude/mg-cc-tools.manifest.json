@@ -84,10 +84,31 @@
       "source_checksums": {
         "install.sh": "sha256:cec1aefbf8270eda94d01fe736454ed0d44168044003786dde3edcde72b678d0"
       }
+    },
+    "transcript": {
+      "version": "0.1.0",
+      "installed_at": "2026-04-08T09:55:27.684908+00:00",
+      "commands": [
+        "transcript-analyze.md",
+        "transcript-export.md",
+        "transcript-session-file.md"
+      ],
+      "source_checksums": {
+        "cc_transcript_analyzer.py": "sha256:d0cfa07fcbd09406d081118a29e5622f28fc474a69309e9d0ab682476669703d",
+        "cc_transcript_compactor.py": "sha256:3b8ceac80325b4e306c40e5d2829ee4b7a1cb9fbd49fa77408a8321b7d7b1080",
+        "cc_transcript_exporter.py": "sha256:83ad27556298d76c3028a6690c54ad2a468ced231c8bff2adea1dbf3319c794c",
+        "commands/transcript-analyze.md": "sha256:5cb9027b58ef1a0ebee6451471485aca423b2cf08ceb1a4aa74a4a91a1afff7d",
+        "commands/transcript-export.md": "sha256:469791e5dd7f57a641bbf52ac37a8104861aba7a034b82da962b708c87c62238",
+        "commands/transcript-session-file.md": "sha256:6f0a105dc68fb0ca0ac389781ed3c301ee5c6c1a31a5f5cb0f91e1b2faff7104",
+        "hooks/inject-transcript-path.py": "sha256:f1c2799f94cb576646989d2ffb02312c2f4cf990c4a0b0eb7b8e16d0c777ba6e",
+        "install.sh": "sha256:cff975e6d99be2735b6e9a40f0a7b337a1611b85ed9ed51741d2661cfbbfd38e",
+        "post-install.md": "sha256:b7188244566cd679b1beede3b07f964391aa9ac3b9a2b8c440d08cabd179b5f2",
+        "references/transcript-json-schema.md": "sha256:ec09c9e21789de533eec50366eb98a7e196fee4c3d60da0a82662541c1ebfff0"
+      }
     }
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools",
-  "last_updated": "2026-04-05T10:26:20.259987+00:00"
+  "last_updated": "2026-04-08T09:55:27.676109+00:00"
 }

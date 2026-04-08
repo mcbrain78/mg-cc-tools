@@ -65,6 +65,15 @@
             "command": "python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/hooks/permission-guard.py"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/transcript/hooks/inject-transcript-path.py"
+          }
+        ]
       }
     ]
   },

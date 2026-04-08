@@ -481,14 +481,16 @@ class TestTranscriptFlag:
 class TestPrintTranscriptPath:
 
     def test_prints_path_and_exits(self, tmp_path, capsys):
-        """--print-transcript-path prints the resolved path without requiring --output."""
+        """--print-transcript-path prints the resolved path wrapped in verbatim tags."""
         mod = load_exporter()
         entries = [_make_user_entry()]
         jsonl_path = _write_jsonl(entries, tmp_path)
 
         mod.main(["--transcript", str(jsonl_path), "--print-transcript-path"])
         captured = capsys.readouterr()
-        assert captured.out.strip() == str(jsonl_path)
+        assert "<verbatim>" in captured.out
+        assert "</verbatim>" in captured.out
+        assert str(jsonl_path) in captured.out
 
     def test_prints_resolved_path(self, tmp_path, capsys):
         """The printed path matches the --transcript value exactly."""
@@ -497,7 +499,10 @@ class TestPrintTranscriptPath:
         jsonl_path = _write_jsonl(entries, tmp_path)
 
         mod.main(["--transcript", str(jsonl_path), "--print-transcript-path"])
-        printed = capsys.readouterr().out.strip()
+        # Extract the path between verbatim tags
+        lines = capsys.readouterr().out.strip().splitlines()
+        path_lines = [l for l in lines if l.strip() not in ("<verbatim>", "</verbatim>")]
+        printed = path_lines[0].strip()
         from pathlib import Path
         assert Path(printed).exists()
         assert Path(printed) == jsonl_path
