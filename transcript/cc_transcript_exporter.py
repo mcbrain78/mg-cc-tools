@@ -1089,6 +1089,59 @@ def _count_tools(messages: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _group_processes_by_wave(
+    messages: list[dict], processes: list[dict],
+) -> list[list[dict]]:
+    """Group subagent processes into waves based on orchestrator Agent tool calls.
+
+    Each orchestrator assistant message containing Agent tool calls = one wave.
+    Processes are matched to waves by checking if the process description ends
+    with the Agent tool call's input description.
+
+    Returns list of waves (each wave is a list of processes).
+    Unmatched processes go into a final group.
+    """
+    # Collect waves: each wave is a list of Agent input descriptions, in message order
+    wave_descs: list[list[str]] = []
+    for msg in messages:
+        if msg.get("role") != "assistant":
+            continue
+        agent_descs = []
+        for tc in msg.get("toolCalls", []):
+            if tc.get("name") == "Agent":
+                desc = tc.get("input", {}).get("description", "")
+                if desc:
+                    agent_descs.append(desc)
+        if agent_descs:
+            wave_descs.append(agent_descs)
+
+    # Match each process to a wave
+    matched: set[str] = set()  # process IDs already assigned
+    waves: list[list[dict]] = []
+
+    for descs in wave_descs:
+        wave: list[dict] = []
+        for agent_desc in descs:
+            for proc in processes:
+                pid = proc.get("id", "")
+                if pid in matched:
+                    continue
+                proc_desc = proc.get("description", "")
+                if proc_desc.endswith(agent_desc):
+                    wave.append(proc)
+                    matched.add(pid)
+                    break
+        if wave:
+            waves.append(wave)
+
+    # Unmatched processes → final group
+    unmatched = [p for p in processes if p.get("id", "") not in matched]
+    if unmatched:
+        waves.append(unmatched)
+
+    return waves
+
+
 def export_markdown_subagent(detail: dict, output_path: str) -> None:
     """Write session detail as compact Markdown with full subagent conversations."""
     session = detail["session"]
@@ -1109,24 +1162,26 @@ def export_markdown_subagent(detail: dict, output_path: str) -> None:
     lines.append(f"Duration: {_format_duration(metrics.get('durationMs', 0))}")
     lines.append("")
 
-    # Per-agent metrics table
+    # Per-agent metrics table (with wave grouping)
+    waves = _group_processes_by_wave(messages, processes) if processes else []
     if processes:
         lines.append(f"Agents: {len(processes)}")
         lines.append("")
-        lines.append("| ID | Description | Tokens | Duration | Tools |")
-        lines.append("|----|-------------|--------|----------|-------|")
-        for proc in processes:
-            pid = proc.get("id", "?")[:12]
-            desc = proc.get("description", "—")
-            pm = proc.get("metrics", {})
-            tool_counts = _count_tools(proc.get("messages", []))
-            tools_str = " ".join(f"{k}:{v}" for k, v in sorted(tool_counts.items(), key=lambda x: -x[1]))
-            lines.append(
-                f"| {pid} | {desc} "
-                f"| {_format_tokens(pm.get('totalTokens', 0))} "
-                f"| {_format_duration(pm.get('durationMs', 0))} "
-                f"| {tools_str} |"
-            )
+        lines.append("| Wave | ID | Description | Tokens | Duration | Tools |")
+        lines.append("|------|----|-------------|--------|----------|-------|")
+        for wave_num, wave_procs in enumerate(waves, 1):
+            for proc in wave_procs:
+                pid = proc.get("id", "?")[:12]
+                desc = proc.get("description", "—")
+                pm = proc.get("metrics", {})
+                tool_counts = _count_tools(proc.get("messages", []))
+                tools_str = " ".join(f"{k}:{v}" for k, v in sorted(tool_counts.items(), key=lambda x: -x[1]))
+                lines.append(
+                    f"| {wave_num} | {pid} | {desc} "
+                    f"| {_format_tokens(pm.get('totalTokens', 0))} "
+                    f"| {_format_duration(pm.get('durationMs', 0))} "
+                    f"| {tools_str} |"
+                )
         lines.append("")
 
     # Per-model token breakdown
@@ -1168,21 +1223,25 @@ def export_markdown_subagent(detail: dict, output_path: str) -> None:
     lines.append("</orchestrator>")
     lines.append("")
 
-    # --- <agent> sections ---
-    for proc in processes:
-        pid = proc.get("id", "?")[:12]
-        desc = proc.get("description", "—")
-        pm = proc.get("metrics", {})
-        tool_counts = _count_tools(proc.get("messages", []))
-        tools_str = " ".join(f"{k}:{v}" for k, v in sorted(tool_counts.items(), key=lambda x: -x[1]))
-        lines.append(
-            f'<agent id="{pid}" description="{desc}" '
-            f'tokens="{_format_tokens(pm.get("totalTokens", 0))}" '
-            f'duration="{_format_duration(pm.get("durationMs", 0))}" '
-            f'tools="{tools_str}">'
-        )
-        _render_compact_messages(proc.get("messages", []), lines)
-        lines.append("</agent>")
+    # --- <wave> / <agent> sections ---
+    for wave_num, wave_procs in enumerate(waves, 1):
+        lines.append(f'<wave n="{wave_num}">')
+        for proc in wave_procs:
+            pid = proc.get("id", "?")[:12]
+            desc = proc.get("description", "—")
+            pm = proc.get("metrics", {})
+            tool_counts = _count_tools(proc.get("messages", []))
+            tools_str = " ".join(f"{k}:{v}" for k, v in sorted(tool_counts.items(), key=lambda x: -x[1]))
+            lines.append(
+                f'<agent id="{pid}" description="{desc}" '
+                f'tokens="{_format_tokens(pm.get("totalTokens", 0))}" '
+                f'duration="{_format_duration(pm.get("durationMs", 0))}" '
+                f'tools="{tools_str}">'
+            )
+            _render_compact_messages(proc.get("messages", []), lines)
+            lines.append("</agent>")
+            lines.append("")
+        lines.append("</wave>")
         lines.append("")
 
     with open(output_path, "w") as f:
@@ -1260,7 +1319,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # --print-transcript-path: emit the resolved path and exit
     if args.print_transcript_path:
+        print("<verbatim>")
         print(session_jsonl)
+        print("</verbatim>")
         return
 
     # --output is required for actual exports
@@ -1282,7 +1343,8 @@ def main(argv: list[str] | None = None) -> None:
     else:
         export_markdown(detail, args.output, truncate=args.truncate)
 
-    # Report
+    # Report (wrapped in <verbatim> for display-rule compliance)
+    print("<verbatim>")
     output_size = Path(args.output).stat().st_size
     if output_size >= 1_048_576:
         size_str = f"{output_size / 1_048_576:.1f}MB"
@@ -1308,6 +1370,7 @@ def main(argv: list[str] | None = None) -> None:
     print("")
     print(f"To analyze the session further:")
     print(f"  I ran the {cmd_label} command, please analyze: {args.output}")
+    print("</verbatim>")
 
 
 if __name__ == "__main__":

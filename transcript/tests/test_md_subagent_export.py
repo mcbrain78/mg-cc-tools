@@ -395,3 +395,238 @@ class TestAssistantTextTruncation:
         assert "A" * 300 not in output
         # Should have the first 200 chars
         assert "A" * 200 in output
+
+
+# ---------------------------------------------------------------------------
+# Tests — Wave grouping
+# ---------------------------------------------------------------------------
+
+class TestWaveGrouping:
+    """Test _group_processes_by_wave directly."""
+
+    def _load_fn(self):
+        mod = load_exporter()
+        return mod._group_processes_by_wave
+
+    def _make_messages_with_agent_calls(self, *wave_descs):
+        """Build orchestrator messages. Each arg is a list of Agent descriptions for one wave."""
+        msgs = []
+        for descs in wave_descs:
+            tool_calls = [
+                {"name": "Agent", "input": {"description": d}, "id": f"tc_{i}"}
+                for i, d in enumerate(descs)
+            ]
+            msgs.append({
+                "role": "assistant",
+                "toolCalls": tool_calls,
+            })
+        return msgs
+
+    def _make_proc(self, agent_id, description):
+        return {"id": agent_id, "description": description, "messages": [], "metrics": {}}
+
+    def test_parallel_agents_same_wave(self):
+        """Two Agent calls in the same message → one wave with both processes."""
+        group = self._load_fn()
+        messages = self._make_messages_with_agent_calls(
+            ["scan alpha", "scan beta"],
+        )
+        processes = [
+            self._make_proc("p1", "general-purpose: scan alpha"),
+            self._make_proc("p2", "general-purpose: scan beta"),
+        ]
+        waves = group(messages, processes)
+        assert len(waves) == 1
+        assert len(waves[0]) == 2
+        assert waves[0][0]["id"] == "p1"
+        assert waves[0][1]["id"] == "p2"
+
+    def test_sequential_agents_separate_waves(self):
+        """Agent calls in different messages → separate waves."""
+        group = self._load_fn()
+        messages = self._make_messages_with_agent_calls(
+            ["task A"],
+            ["task B"],
+        )
+        processes = [
+            self._make_proc("p1", "general-purpose: task A"),
+            self._make_proc("p2", "general-purpose: task B"),
+        ]
+        waves = group(messages, processes)
+        assert len(waves) == 2
+        assert len(waves[0]) == 1
+        assert waves[0][0]["id"] == "p1"
+        assert len(waves[1]) == 1
+        assert waves[1][0]["id"] == "p2"
+
+    def test_unmatched_processes_in_final_group(self):
+        """Processes with no matching Agent call go into a trailing group."""
+        group = self._load_fn()
+        messages = self._make_messages_with_agent_calls(
+            ["task A"],
+        )
+        processes = [
+            self._make_proc("p1", "general-purpose: task A"),
+            self._make_proc("p2", "general-purpose: orphan task"),
+        ]
+        waves = group(messages, processes)
+        assert len(waves) == 2
+        assert waves[0][0]["id"] == "p1"
+        assert waves[1][0]["id"] == "p2"
+
+    def test_wave_numbering_sequential(self):
+        """Three separate waves should be numbered 1, 2, 3."""
+        group = self._load_fn()
+        messages = self._make_messages_with_agent_calls(
+            ["task A"],
+            ["task B"],
+            ["task C"],
+        )
+        processes = [
+            self._make_proc("p1", "general-purpose: task A"),
+            self._make_proc("p2", "general-purpose: task B"),
+            self._make_proc("p3", "general-purpose: task C"),
+        ]
+        waves = group(messages, processes)
+        assert len(waves) == 3
+        # Each wave has exactly one process
+        for w in waves:
+            assert len(w) == 1
+
+    def test_no_agent_calls_all_unmatched(self):
+        """When orchestrator has no Agent calls, all processes are unmatched."""
+        group = self._load_fn()
+        messages = [{"role": "assistant", "toolCalls": [
+            {"name": "Bash", "input": {"command": "ls"}, "id": "tc_1"},
+        ]}]
+        processes = [
+            self._make_proc("p1", "general-purpose: task A"),
+        ]
+        waves = group(messages, processes)
+        assert len(waves) == 1
+        assert waves[0][0]["id"] == "p1"
+
+    def test_empty_processes(self):
+        """No processes → no waves."""
+        group = self._load_fn()
+        messages = self._make_messages_with_agent_calls(["task A"])
+        waves = group(messages, [])
+        assert waves == []
+
+    def test_mixed_waves_and_unmatched(self):
+        """Two waves + one orphan → 3 groups total."""
+        group = self._load_fn()
+        messages = self._make_messages_with_agent_calls(
+            ["alpha", "beta"],
+            ["gamma"],
+        )
+        processes = [
+            self._make_proc("p1", "general-purpose: alpha"),
+            self._make_proc("p2", "general-purpose: beta"),
+            self._make_proc("p3", "general-purpose: gamma"),
+            self._make_proc("p4", "general-purpose: orphan"),
+        ]
+        waves = group(messages, processes)
+        assert len(waves) == 3
+        assert [p["id"] for p in waves[0]] == ["p1", "p2"]
+        assert [p["id"] for p in waves[1]] == ["p3"]
+        assert [p["id"] for p in waves[2]] == ["p4"]
+
+
+class TestWaveGroupingIntegration:
+    """Test that wave tags appear in actual md-subagent output."""
+
+    def _make_session_with_agents(self, tmp_path, wave_specs):
+        """Create a JSONL session with subagent files.
+
+        wave_specs: list of lists of descriptions, e.g. [["task A", "task B"], ["task C"]]
+        """
+        # Build orchestrator entries
+        entries = [_make_user_entry()]
+        agent_idx = 0
+        for wave in wave_specs:
+            # One assistant message per wave, with all Agent tool calls
+            tool_use_blocks = []
+            for desc in wave:
+                tool_use_blocks.append({
+                    "type": "tool_use",
+                    "id": f"tu_agent_{agent_idx}",
+                    "name": "Agent",
+                    "input": {"description": desc},
+                })
+                agent_idx += 1
+            entries.append(_make_assistant_entry(
+                content=tool_use_blocks,
+                uuid=f"a_wave_{agent_idx}",
+                request_id=f"req_wave_{agent_idx}",
+            ))
+
+        # Write orchestrator JSONL
+        jsonl_path = tmp_path / "sess-1.jsonl"
+        with open(jsonl_path, "w") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+
+        # Create subagent dir: <stem>/subagents/agent-<id>.jsonl
+        subagents_dir = tmp_path / "sess-1" / "subagents"
+        subagents_dir.mkdir(parents=True)
+
+        agent_idx = 0
+        for wave in wave_specs:
+            for desc in wave:
+                agent_id = f"agent-{agent_idx:03d}"
+                # Write metadata
+                meta_path = subagents_dir / f"{agent_id}.meta.json"
+                meta_path.write_text(json.dumps({
+                    "agentType": "general-purpose",
+                    "description": desc,
+                }))
+                # Write agent JSONL (minimal)
+                agent_jsonl = subagents_dir / f"{agent_id}.jsonl"
+                agent_entries = [
+                    _make_user_entry(content=f"Task: {desc}", uuid=f"au_{agent_idx}"),
+                    _make_assistant_entry(
+                        content=[{"type": "text", "text": f"Done: {desc}"}],
+                        uuid=f"aa_{agent_idx}",
+                        parent=f"au_{agent_idx}",
+                        request_id=f"req_sub_{agent_idx}",
+                    ),
+                ]
+                with open(agent_jsonl, "w") as f:
+                    for e in agent_entries:
+                        f.write(json.dumps(e) + "\n")
+                agent_idx += 1
+
+        return jsonl_path
+
+    def test_wave_tags_in_output(self, tmp_path):
+        """Parallel agents produce <wave> tags in md-subagent output."""
+        mod = load_exporter()
+        jsonl_path = self._make_session_with_agents(tmp_path, [
+            ["scan alpha", "scan beta"],
+            ["scan gamma"],
+        ])
+        output_path = tmp_path / "out.md"
+        mod.main(["--transcript", str(jsonl_path), "--format", "md-subagent", "--output", str(output_path)])
+        output = output_path.read_text()
+
+        assert '<wave n="1">' in output
+        assert '<wave n="2">' in output
+        assert output.count("<wave") == 2
+        assert output.count("</wave>") == 2
+
+    def test_wave_column_in_session_meta(self, tmp_path):
+        """Session-meta agent table includes Wave column."""
+        mod = load_exporter()
+        jsonl_path = self._make_session_with_agents(tmp_path, [
+            ["task A"],
+            ["task B"],
+        ])
+        output_path = tmp_path / "out.md"
+        mod.main(["--transcript", str(jsonl_path), "--format", "md-subagent", "--output", str(output_path)])
+        output = output_path.read_text()
+
+        assert "| Wave | ID |" in output
+        # Wave numbers should appear in table rows
+        assert "| 1 |" in output
+        assert "| 2 |" in output
