@@ -17,4 +17,4 @@ Run:
 python3 {MG_INSTALL_SCRIPTS_DIR}/cc_transcript_exporter.py --print-transcript-path
 ```
 
-Echo the output path to the user verbatim.
+The Bash tool output is collapsed in the CC UI — the user cannot see it. You MUST echo the printed path as text in your response so the user can copy it.

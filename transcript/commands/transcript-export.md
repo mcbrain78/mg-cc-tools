@@ -41,7 +41,12 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/cc_transcript_exporter.py \
 
 ### Step 2: Report
 
-Echo the exporter's stdout to the user verbatim — it includes file path, size, token breakdown by model, and subagent count.
+The Bash tool output is collapsed in the CC UI — the user cannot see it. You MUST echo the **complete** exporter stdout as text in your response. This includes:
+1. Session ID, format, output path + size, message count, subagent count
+2. The full per-model token table
+3. The "To analyze the session further:" line with the command suggestion
+
+Copy-paste the entire stdout block — do not summarize or omit any part.
 
 ## JSON Schema Reference
 
