@@ -2,7 +2,7 @@
   "tools": {
     "mg-gsd-wrappers": {
       "version": "0.1.0",
-      "installed_at": "2026-03-23T08:27:19.871073+00:00",
+      "installed_at": "2026-04-08T16:10:55.482615+00:00",
       "commands": [
         "discuss-milestone.md",
         "discuss-phase.md",
@@ -10,35 +10,35 @@
         "plan-phase.md"
       ],
       "source_checksums": {
-        "install.sh": "sha256:96ea027523882bc35c9b9db1a2f2a3d2c3da8c8f2904317404a767857cd07350",
-        "commands/discuss-milestone.md": "sha256:dc9ba622c6a89b3ebc18c1f1e2a5bee06c4e2067b79f1c1bd417effba82d03db",
+        "commands/discuss-milestone.md": "sha256:d9c00d02aabd36449f0db1a4fa354a1fb942430158a3f4c140efa0247abb370b",
         "commands/discuss-phase.md": "sha256:f51de294666cd57d5eef2041c2375bba3e4df17440b6423e52bdddfe463ff5f8",
         "commands/execute-phase.md": "sha256:a975cca696ae85441901ad3f34808295467505bc45443f44b3d599e92b31e6ff",
-        "commands/plan-phase.md": "sha256:3f6bc7497e7cca9aa1893af1de5ff898f48e962505cca0f6582768ab6a6dd802",
+        "commands/plan-phase.md": "sha256:6f5b53a3a635b106fd1edcd2fb4ed18d8ad1b402d6093519c3e41c079bcf689d",
+        "install.sh": "sha256:4f887d99e90466ab0266144d1b37266d7b35c3c386cbd9f8e7a8f5054459fd89",
         "references/discuss-methodology.snapshot.md": "sha256:b9489288e6b7968d8725f49075594e92220d23c6c6224cb337981a3688724fc5",
         "references/requirement-generator.md": "sha256:da00751ac9dcfbd2615f9448c41538cfd627e9cf272614cbd15013d65466befe"
       }
     },
     "permission-hooks": {
       "version": "0.1.0",
-      "installed_at": "2026-04-03T11:21:56.130958+00:00",
+      "installed_at": "2026-04-08T15:51:05.669551+00:00",
       "commands": [
         "edit-off.md",
         "edit-on.md"
       ],
       "source_checksums": {
-        "commands/edit-off.md": "sha256:58496e728a3b70316da830dc787699d8801ad2efcdad0da5509c06365a17545c",
-        "commands/edit-on.md": "sha256:e3d6d1dcbeefef61aa7fac9d250e7764b3b4991f68e000dba03bd0edbf073956",
-        "hooks/permission-guard.py": "sha256:bb8769293684a4bf5b2bec8e664823b2c613f0ed9d2badce789140f87a1741fe",
-        "install.sh": "sha256:30a2799fe5ca375029e77778fbc0880a48cb0b6fd69eef6815a227a0cda1a3c9",
-        "post-install.md": "sha256:cf1c0ce815a178eb426d494ba2f3bf8d20b562b21c667eb362cccba3112e4302",
+        "commands/edit-off.md": "sha256:dc1c9bc98893d2fc660d4708bf15da98d8b1958cc51aa1eba3bd89a8671b89fa",
+        "commands/edit-on.md": "sha256:acdec3b5eafe4b2cd92df5901a002b2f33a253afd87c04daa94b2c61cce666b2",
+        "hooks/permission-guard.py": "sha256:61e4f05cf82fba7736f1068dbb574103f7b39f94527b18ab38d9d9638e169c0a",
+        "install.sh": "sha256:60479cc54b0db7208706d90d5b3b45e4d214bea841db2fd059c329301237c2e7",
+        "post-install.md": "sha256:e03e78230ba49d9abb52072c59b5fc8ac54bce2149b4789cd4e8d0874aa78fac",
         "scripts/emit-context.py": "sha256:54db2e0a0b3a3ebe850bc100a38f3690ea4f0ba480dda4c5f49ccdc2b14644ea",
         "scripts/emit-edit-guard.py": "sha256:98f50a8762a4f6e8860f40c5147f1d3e040aa233d373d809e8d31a2a0cdb1c99"
       }
     },
     "spec": {
       "version": "0.1.0",
-      "installed_at": "2026-04-04T17:41:48.315042+00:00",
+      "installed_at": "2026-04-08T16:08:57.142685+00:00",
       "commands": [
         "spec-create-context.md",
         "spec-draft.md",
@@ -48,13 +48,13 @@
         "spec-prepare-context.md"
       ],
       "source_checksums": {
-        "commands/spec-create-context.md": "sha256:9965ad72d2e978a7dbd0796e802e13f668d99619ce8a41a878f8698a1ad7d91d",
-        "commands/spec-draft.md": "sha256:aca8aee94fdf3de63066e43d24670c8f25a3fcf9d50212f5ee9ed0cf17351424",
+        "commands/spec-create-context.md": "sha256:48064c9ba66660f1376ddfe007d2f7fdc48e2a1d99cfc6214236c15fe984ae35",
+        "commands/spec-draft.md": "sha256:467a07c6eb122dd7b47d7530355185c46bc22e2442eb6ba1915a7a2e7bf61ff8",
         "commands/spec-gsd-phases.md": "sha256:20a1005f058986bd181c29de7ac18a69239b0645927a008f3c60492a012432ac",
         "commands/spec-help.md": "sha256:b96efca5a02a7fdd82de293db9975347266baf089ab05dd5acf5872ab4b2fc64",
-        "commands/spec-improve.md": "sha256:8e9e9e67e998a94518e5b261dd7bfdfc4ef99c172b56baced3639cc8ee584516",
+        "commands/spec-improve.md": "sha256:d8a9ff95594f87df41feea7ac818e7dfbd94a2be7f975b249ceaca84756174a7",
         "commands/spec-prepare-context.md": "sha256:e9b67366eeb4f20b3f31ebb8f068b9c5154b53078ca2ec05964217ac5c23f355",
-        "install.sh": "sha256:396cc624693c8fd615b20f573341c03b6c6b2af04dbab793026607fe8bca06b6",
+        "install.sh": "sha256:458f9f7048a06d893c7d332e77ab41f037fe2e3d0ab4f0848f72d6cc73ef4c9e",
         "references/concept-spec-template.md": "sha256:d2af0abd56f568d6a7370e9fe46d6d29be1240201840f36aaea6a065803411dd",
         "scripts/__init__.py": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "scripts/improve_files.py": "sha256:16ef92f5df849de8939a4d1590b89fb4e7aeeb02617bf2d6595b23a3ef10a378"
@@ -62,10 +62,10 @@
     },
     "gsd-patches": {
       "version": "0.1.0",
-      "installed_at": "2026-04-03T11:05:25.848524+00:00",
+      "installed_at": "2026-04-08T16:10:51.729206+00:00",
       "commands": [],
       "source_checksums": {
-        "commands/apply-gsd-patches.md": "sha256:5cd12ef0c2dd75b96eca3e03eca9e7a6ec6d3cb8a13795dc7b2f725629525bf7",
+        "commands/apply-gsd-patches.md": "sha256:f993573385b1e096ce80f386ed0038778dd43d571955d701f475f2746f237ade",
         "patches/context-monitor-session-dir.md": "sha256:2c3023a35471a19527a718df0d11c8709ff4c9328b779d9c116d3eed8d96c69c",
         "patches/discuss-phase-check-remaining.md": "sha256:5691433ce7a3da7915465161508b9dcdbd6636ce40a31fb36dde10a9661470b4",
         "patches/discuss-phase-enhanced.md": "sha256:07f50b717491f97f2b0bdf8fc9ea1106bbeb7a1416cc296d9adad050be445e4b",
@@ -73,7 +73,7 @@
         "patches/execute-phase-pyright-gate.md": "sha256:408d3bffc2fc86c88a7933881887d7e804ef0429c9c979ff24391cc649a51e88",
         "patches/plan-phase-key-findings.md": "sha256:66eee4768cc21b869e94433f10c3476df85dd36179c0e372edf7e2daa068cb96",
         "patches/statusline-context-cache.md": "sha256:50c14824d2976b000b6d392b0c89b6f8ac9d7da4bfaf52d916ad62ec56db7406",
-        "patches/statusline-edit-guard.md": "sha256:1ed96bdc60a128b4bb242c28e9766657d3a1e9b719ed20e7b39bbc76878098ff",
+        "patches/statusline-edit-guard.md": "sha256:8d1a52ec8dc05bd2c6157b9a7bbb62b0bae1ef6b4e5b4a8ef04a2bfbaf76f998",
         "post-install.md": "sha256:d30a468da045fad3f0b242b120c8c85f5ecaab3a020b053e19c8a64cbcab9f61"
       }
     },
@@ -87,7 +87,7 @@
     },
     "transcript": {
       "version": "0.1.0",
-      "installed_at": "2026-04-08T09:55:27.684908+00:00",
+      "installed_at": "2026-04-08T12:53:20.177324+00:00",
       "commands": [
         "transcript-analyze.md",
         "transcript-export.md",
@@ -96,7 +96,7 @@
       "source_checksums": {
         "cc_transcript_analyzer.py": "sha256:d0cfa07fcbd09406d081118a29e5622f28fc474a69309e9d0ab682476669703d",
         "cc_transcript_compactor.py": "sha256:3b8ceac80325b4e306c40e5d2829ee4b7a1cb9fbd49fa77408a8321b7d7b1080",
-        "cc_transcript_exporter.py": "sha256:83ad27556298d76c3028a6690c54ad2a468ced231c8bff2adea1dbf3319c794c",
+        "cc_transcript_exporter.py": "sha256:0f8cc234220bbdb324d05f50690c6997f589ffb40f4c8d940dc0b9128fd98fa0",
         "commands/transcript-analyze.md": "sha256:5cb9027b58ef1a0ebee6451471485aca423b2cf08ceb1a4aa74a4a91a1afff7d",
         "commands/transcript-export.md": "sha256:469791e5dd7f57a641bbf52ac37a8104861aba7a034b82da962b708c87c62238",
         "commands/transcript-session-file.md": "sha256:6f0a105dc68fb0ca0ac389781ed3c301ee5c6c1a31a5f5cb0f91e1b2faff7104",
@@ -110,5 +110,5 @@
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools",
-  "last_updated": "2026-04-08T09:55:27.676109+00:00"
+  "last_updated": "2026-04-08T16:10:55.481607+00:00"
 }
