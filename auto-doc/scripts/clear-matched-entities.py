@@ -105,7 +105,7 @@ def _resolve_entities(section_entities, ref_entries):
 
 
 def clear(entities_file, prose_verify_dir, uncleared_file,
-          findings_file, document, audience):
+          findings_file, document, audience, not_entities_file=None):
     """Run clearing + Check B across all sections.
 
     Returns:
@@ -113,6 +113,14 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
         affected_sections).
     """
     entities = load_json(entities_file, default=[])
+
+    # Pre-filter entities against not-entities list (from prior dismissals)
+    if not_entities_file:
+        raw = load_json(not_entities_file, default=[])
+        not_entity_names = {
+            e["name"] if isinstance(e, dict) else e for e in raw
+        }
+        entities = [e for e in entities if e["name"] not in not_entity_names]
     manifest = load_json(os.path.join(prose_verify_dir, "manifest.json"))
     if manifest is None:
         print("Error: manifest.json not found", file=sys.stderr)
@@ -209,6 +217,10 @@ def main():
         "--audience", required=True,
         help="Audience name (e.g. devops)",
     )
+    parser.add_argument(
+        "--not-entities-file", default=None,
+        help="Path to not-entities JSON file (entities to pre-filter)",
+    )
 
     args = parser.parse_args()
     clear(
@@ -218,6 +230,7 @@ def main():
         findings_file=args.findings_file,
         document=args.document,
         audience=args.audience,
+        not_entities_file=args.not_entities_file,
     )
 
 

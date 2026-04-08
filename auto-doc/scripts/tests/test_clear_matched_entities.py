@@ -65,18 +65,18 @@ def _setup(td, sections, entities):
 
 
 def _run(prose_dir, entities_file, uncleared_file, findings_file,
-         document="OPERATIONS", audience="devops"):
+         document="OPERATIONS", audience="devops", not_entities_file=None):
     """Run clear-matched-entities.py and return result."""
-    return subprocess.run(
-        [sys.executable, SCRIPT,
-         "--entities-file", entities_file,
-         "--prose-verify-dir", prose_dir,
-         "--uncleared-file", uncleared_file,
-         "--findings-file", findings_file,
-         "--document", document,
-         "--audience", audience],
-        capture_output=True, text=True,
-    )
+    cmd = [sys.executable, SCRIPT,
+           "--entities-file", entities_file,
+           "--prose-verify-dir", prose_dir,
+           "--uncleared-file", uncleared_file,
+           "--findings-file", findings_file,
+           "--document", document,
+           "--audience", audience]
+    if not_entities_file:
+        cmd.extend(["--not-entities-file", not_entities_file])
+    return subprocess.run(cmd, capture_output=True, text=True)
 
 
 class TestClearing:
@@ -595,3 +595,112 @@ class TestSummary:
             assert "Extracted: 2" in result.stderr
             assert "Cleared: 1" in result.stderr
             assert "Uncleared: 1" in result.stderr
+
+
+class TestNotEntitiesFilter:
+    """Pre-filtering entities against not-entities list."""
+
+    def test_not_entities_filtered_before_clearing(self):
+        """Entities in not-entities list are excluded before clearing."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nSome prose.",
+                    "ref_entries": [],
+                },
+            ], [
+                {"name": "bash", "section": "monitoring"},
+                {"name": "python3", "section": "monitoring"},
+                {"name": "etl_runs", "section": "monitoring"},
+            ])
+
+            nf = os.path.join(td, "not-entities.json")
+            with open(nf, "w") as f:
+                json.dump([
+                    {"name": "bash", "dismissed_in": "deployment"},
+                    {"name": "python3", "dismissed_in": "deployment"},
+                ], f)
+
+            result = _run(prose_dir, ef, uf, ff, not_entities_file=nf)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            # bash and python3 filtered out, only etl_runs remains
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "etl_runs"
+            # Extracted count reflects post-filter
+            assert "Extracted: 1" in result.stderr
+
+    def test_not_entities_plain_string_format(self):
+        """Not-entities list with plain string entries works."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nSome prose.",
+                    "ref_entries": [],
+                },
+            ], [
+                {"name": "bash", "section": "monitoring"},
+                {"name": "etl_runs", "section": "monitoring"},
+            ])
+
+            nf = os.path.join(td, "not-entities.json")
+            with open(nf, "w") as f:
+                json.dump(["bash"], f)
+
+            result = _run(prose_dir, ef, uf, ff, not_entities_file=nf)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "etl_runs"
+
+    def test_without_not_entities_file_unchanged(self):
+        """Without --not-entities-file, behavior is unchanged."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nSome prose.",
+                    "ref_entries": [],
+                },
+            ], [
+                {"name": "bash", "section": "monitoring"},
+                {"name": "etl_runs", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            # Both entities uncleared (no refs to match)
+            assert len(uncleared) == 2
+
+    def test_empty_not_entities_file(self):
+        """Empty not-entities list has no effect."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nSome prose.",
+                    "ref_entries": [],
+                },
+            ], [
+                {"name": "bash", "section": "monitoring"},
+            ])
+
+            nf = os.path.join(td, "not-entities.json")
+            with open(nf, "w") as f:
+                json.dump([], f)
+
+            result = _run(prose_dir, ef, uf, ff, not_entities_file=nf)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1

@@ -48,10 +48,18 @@ Store the wave count as `num_waves` (integer, minimum 1, default 2).
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
-4. **Create auditv2 directory:**
+4. **Create auditv2 directory** (preserve not-entities across runs):
    ```bash
+   if [ -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json ]; then
+     cp {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json /tmp/_mg_not_entities_backup.json
+   fi
    rm -rf {MG_INSTALL_WORKSPACE_DIR}/auditv2
    mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2
+   if [ -f /tmp/_mg_not_entities_backup.json ]; then
+     mv /tmp/_mg_not_entities_backup.json {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
+   else
+     echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
+   fi
    ```
 
 ### Step 2: Deterministic Reference Checks
@@ -111,7 +119,8 @@ uv run {MG_INSTALL_SCRIPTS_DIR}/clear-matched-entities.py \
     --uncleared-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/uncleared-{audience}-{DOCUMENT}.json \
     --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-prose-{audience}-{DOCUMENT}.json \
     --document {DOCUMENT} \
-    --audience {audience}
+    --audience {audience} \
+    --not-entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
 ```
 
 Read the stderr output for the clearing summary (Extracted/Cleared/Uncleared counts).
@@ -152,7 +161,7 @@ session = {
     'uncleared_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/uncleared-{audience}-{DOCUMENT}.json',
     'findings_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-prose-{audience}-{DOCUMENT}.json',
     'sections_filter': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}/affected-sections.json',
-    'db_model': '{MG_INSTALL_WORKSPACE_DIR}/generate/database-model.json',
+    'not_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json',
 }
 path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'session-{audience}-{DOCUMENT}.json')
 with open(path, 'w') as f:
@@ -171,10 +180,11 @@ Agent(
 
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/resolve-prose-entities.md
 
-Project root: {project_root}
 Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
 Session: {MG_INSTALL_WORKSPACE_DIR}/auditv2/session-{audience}-{DOCUMENT}.json
-Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md"
+Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md
+Wave: {N}
+Num waves: {num_waves}"
 )
 ```
 

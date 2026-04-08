@@ -37,7 +37,7 @@ def _make_session(td, **overrides):
         "uncleared_file": os.path.join(td, "uncleared.json"),
         "findings_file": os.path.join(td, "findings.json"),
         "sections_filter": os.path.join(td, "affected-sections.json"),
-        "db_model": os.path.join(td, "database-model.json"),
+        "not_entities_file": os.path.join(td, "not-entities.json"),
     }
     defaults.update(overrides)
     return _write_json(td, "session.json", defaults), defaults
@@ -199,43 +199,32 @@ class TestPropagate:
             assert uncleared[0]["name"] == "PORT"
 
 
-class TestQueryDb:
-    """query-db subcommand resolves db_model from session."""
+class TestDismiss:
+    """dismiss subcommand resolves session paths and passes args."""
 
-    def test_queries_database_model(self):
+    def test_dismisses_entity(self):
         with tempfile.TemporaryDirectory() as td:
             session_path, sess = _make_session(td)
-            _write_json(td, "database-model.json", {
-                "schemas": {
-                    "public": {
-                        "tables": {
-                            "users": {
-                                "columns": [
-                                    {"name": "id", "type": "integer", "primary_key": True},
-                                    {"name": "name", "type": "varchar", "nullable": False},
-                                ],
-                            },
-                        },
-                    },
-                },
-            })
+            _write_json(td, "uncleared.json", [
+                {"name": "bash", "section": "monitoring"},
+                {"name": "bash", "section": "deployment"},
+                {"name": "PORT", "section": "deployment"},
+            ])
+            _write_json(td, "not-entities.json", [])
 
-            result = _run(session_path, "query-db", ["--tables", "users"])
-            assert result.returncode == 0
-            assert "users" in result.stdout
-
-    def test_missing_table_warns(self):
-        with tempfile.TemporaryDirectory() as td:
-            session_path, sess = _make_session(td)
-            _write_json(td, "database-model.json", {
-                "schemas": {"public": {"tables": {}}},
-            })
-
-            result = _run(session_path, "query-db", [
-                "--tables", "nonexistent",
+            result = _run(session_path, "dismiss", [
+                "--entity", "bash",
+                "--section", "monitoring",
             ])
             assert result.returncode == 0
-            assert "not found" in result.stderr
+
+            uncleared = _read_json(sess["uncleared_file"])
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "PORT"
+
+            not_entities = _read_json(sess["not_entities_file"])
+            assert len(not_entities) == 1
+            assert not_entities[0]["name"] == "bash"
 
 
 class TestErrors:

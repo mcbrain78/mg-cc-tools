@@ -10,7 +10,7 @@ Subcommands:
     get-entities   — get uncleared entities for a section
     file-finding   — file a verification finding
     propagate      — propagate a finding to other sections
-    query-db       — query the database model for table details
+    dismiss        — dismiss an entity as not ref-worthy
 
 Usage:
     audit-cmd.py --session SESSION next-section
@@ -19,7 +19,7 @@ Usage:
         --description DESC --suggestion SUG
     audit-cmd.py --session SESSION propagate --entity ENT --section SEC \
         --suggestion SUG
-    audit-cmd.py --session SESSION query-db --tables t1,t2
+    audit-cmd.py --session SESSION dismiss --entity ENT --section SEC
 """
 
 import argparse
@@ -90,10 +90,12 @@ def cmd_propagate(session, args):
     return _delegate("propagate-finding.py", cmd_args)
 
 
-def cmd_query_db(session, args):
-    return _delegate("read-database-model.py", [
-        "--db-model", session["db_model"],
-        "--tables", args.tables,
+def cmd_dismiss(session, args):
+    return _delegate("dismiss-entity.py", [
+        "--entity", args.entity,
+        "--section", args.section,
+        "--uncleared-file", session["uncleared_file"],
+        "--not-entities-file", session["not_entities_file"],
     ])
 
 
@@ -135,11 +137,12 @@ def main():
     p_propagate.add_argument("--section", required=True)
     p_propagate.add_argument("--suggestion", required=True)
 
-    # query-db
-    p_query = subparsers.add_parser(
-        "query-db", help="Query database model",
+    # dismiss
+    p_dismiss = subparsers.add_parser(
+        "dismiss", help="Dismiss entity as not ref-worthy",
     )
-    p_query.add_argument("--tables", required=True)
+    p_dismiss.add_argument("--entity", required=True)
+    p_dismiss.add_argument("--section", required=True)
 
     args = parser.parse_args()
 
@@ -158,7 +161,7 @@ def main():
         "get-entities": lambda: cmd_get_entities(session, args),
         "file-finding": lambda: cmd_file_finding(session, args),
         "propagate": lambda: cmd_propagate(session, args),
-        "query-db": lambda: cmd_query_db(session, args),
+        "dismiss": lambda: cmd_dismiss(session, args),
     }
     rc = handlers[args.command]()
     sys.exit(rc)
