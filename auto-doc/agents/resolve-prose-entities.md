@@ -40,12 +40,28 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 
       1. **Assess ref-worthiness.** For each entity, decide using ONLY the section context:
          - Read `refs_as_text` — does any declared ref seem to cover this entity? If yes, it may be a clearing false negative; dismiss it.
-         - Does the entity look like a project-specific code artifact (function, class, table, config file, env var)? → File finding.
-         - Does it look like a generic tool, programming term, or formatting artifact? → Dismiss.
-         - Is the name a Python builtin (`list`, `dict`, `str`, `int`, `None`, `True`, `False`, `print`, `len`, etc.)? → Dismiss.
-         - Is the name a SQL keyword (`SELECT`, `FROM`, `WHERE`, `JOIN`, etc.)? → Dismiss.
-         - Is the name a generic programming term (`API`, `HTTP`, `URL`, `JSON`, `SQL`, `CLI`, `SSH`, etc.)? → Dismiss.
-         - Is the name a markdown/formatting artifact? → Dismiss.
+         - Otherwise, use these categories to decide:
+
+         <always-findings>
+         These entity categories are ALWAYS ref-worthy — file a finding:
+         - File paths and file names (.py, .yaml, .json, .sh, .ini, .toml, .env files)
+         - Database references (tables, schemas, qualified names like schema.table)
+         - Function, class, or method names from the project
+         - Environment variables and config keys
+         - Service names and deployment artifacts (systemd units, worker names)
+         - Project dependencies when used in project-specific context
+         </always-findings>
+
+         <dismiss-only>
+         Only dismiss entities that are clearly universal — not specific to ANY project:
+         - Language builtins (list, dict, str, int, None, True, False, print, len)
+         - SQL keywords (SELECT, FROM, WHERE, JOIN, INSERT, UPDATE, DELETE)
+         - Generic tool names used generically (git, docker, bash, python, curl)
+         - Generic programming terms (API, HTTP, URL, JSON, SQL, CLI, SSH, REST)
+         - Generic directives (Type=simple, Restart=always, StandardOutput=journal)
+         - Markdown/formatting artifacts
+         </dismiss-only>
+
          - Unsure? → File finding (prefer false positives over lost refs). **In final wave** — must decide for every entity.
 
       **Three outcomes per entity:**
@@ -134,4 +150,4 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 - **Additive only.** Never remove or second-guess findings from prior passes. Only add new ones.
 - **Use section context for disambiguation.** When an entity name is ambiguous (e.g., `status`), use the section topic and refs_as_text to determine the most likely interpretation.
 - **Trust the entity list.** If an entity appears in the list from get-section-entities, it needs investigation. If it doesn't appear, it's already been handled by propagation from an earlier section — don't look for it.
-- **Dismiss conservatively.** Only dismiss when clearly NOT a project-specific code reference. When in doubt, file a finding. The cost of a false finding is low (the fix agent validates it). The cost of a false dismiss is high (entity gets permanently blacklisted and can never be flagged again).
+- **Default is finding.** If an entity doesn't clearly fit in `<dismiss-only>`, file a finding. The fix agent validates findings — false positives are cheap. False dismissals lose real refs.

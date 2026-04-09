@@ -216,3 +216,102 @@ class TestProtected:
 
             dismissed = _read_json(df)
             assert len(dismissed) == 1
+
+
+class TestPatternBlocked:
+    """Pattern guard blocks dismissal of structurally ref-like entities."""
+
+    def test_file_path_blocked(self):
+        """Entity with / is blocked as file path, stays in uncleared."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "src/road_runner/flows/ingestion.py", "section": "monitoring"},
+                {"name": "PORT", "section": "deployment"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+
+            result = _run("src/road_runner/flows/ingestion.py", "monitoring", uf, df)
+            assert result.returncode == 0
+            assert "Cannot dismiss" in result.stderr
+            assert "file path" in result.stderr
+
+            # Entity stays in uncleared
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 2
+
+            # Not added to dismissed
+            dismissed = _read_json(df)
+            assert len(dismissed) == 0
+
+    def test_file_extension_blocked(self):
+        """Entity ending with .py is blocked as file reference."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "config.py", "section": "monitoring"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+
+            result = _run("config.py", "monitoring", uf, df)
+            assert result.returncode == 0
+            assert "Cannot dismiss" in result.stderr
+            assert "file reference (.py)" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 1
+
+    def test_schema_qualified_blocked(self):
+        """Schema-qualified name like raw_fmp.income_statements is blocked."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "raw_fmp.income_statements", "section": "data"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+
+            result = _run("raw_fmp.income_statements", "data", uf, df)
+            assert result.returncode == 0
+            assert "Cannot dismiss" in result.stderr
+            assert "schema-qualified name" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 1
+
+    def test_generic_tool_not_blocked(self):
+        """Generic tool name like bash passes through pattern guard."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "bash", "section": "monitoring"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+
+            result = _run("bash", "monitoring", uf, df)
+            assert result.returncode == 0
+            assert "Cannot dismiss" not in result.stderr
+            assert "Dismissed: bash" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 0
+
+    def test_short_dotted_not_blocked(self):
+        """Short dotted names like os.path pass through (segments < 3 chars)."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "os.path", "section": "monitoring"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+
+            result = _run("os.path", "monitoring", uf, df)
+            assert result.returncode == 0
+            assert "Cannot dismiss" not in result.stderr
+            assert "Dismissed: os.path" in result.stderr
+
+    def test_pattern_blocked_stderr_message(self):
+        """Pattern blocked message includes entity name and 'File a finding instead'."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "public.stocks", "section": "data"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+
+            result = _run("public.stocks", "data", uf, df)
+            assert "Cannot dismiss public.stocks" in result.stderr
+            assert "File a finding instead" in result.stderr
