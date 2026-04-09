@@ -38,6 +38,8 @@ def _make_session(td, **overrides):
         "findings_file": os.path.join(td, "findings.json"),
         "sections_filter": os.path.join(td, "affected-sections.json"),
         "not_entities_file": os.path.join(td, "not-entities.json"),
+        "dismissed_this_run_file": os.path.join(td, "dismissed-this-run.json"),
+        "protected_entities_file": os.path.join(td, "protected-entities.json"),
     }
     defaults.update(overrides)
     return _write_json(td, "session.json", defaults), defaults
@@ -210,7 +212,8 @@ class TestDismiss:
                 {"name": "bash", "section": "deployment"},
                 {"name": "PORT", "section": "deployment"},
             ])
-            _write_json(td, "not-entities.json", [])
+            _write_json(td, "dismissed-this-run.json", [])
+            _write_json(td, "protected-entities.json", [])
 
             result = _run(session_path, "dismiss", [
                 "--entity", "bash",
@@ -222,9 +225,37 @@ class TestDismiss:
             assert len(uncleared) == 1
             assert uncleared[0]["name"] == "PORT"
 
-            not_entities = _read_json(sess["not_entities_file"])
-            assert len(not_entities) == 1
-            assert not_entities[0]["name"] == "bash"
+            dismissed = _read_json(sess["dismissed_this_run_file"])
+            assert len(dismissed) == 1
+            assert dismissed[0]["name"] == "bash"
+            assert dismissed[0]["audience"] == "devops"
+            assert dismissed[0]["document"] == "OPERATIONS"
+
+    def test_dismiss_protected_entity(self):
+        """Protected entity is refused — uncleared unchanged."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "uncleared.json", [
+                {"name": "compute_hash", "section": "monitoring"},
+                {"name": "PORT", "section": "deployment"},
+            ])
+            _write_json(td, "dismissed-this-run.json", [])
+            _write_json(td, "protected-entities.json", [
+                {"name": "compute_hash", "reason": "Project function"},
+            ])
+
+            result = _run(session_path, "dismiss", [
+                "--entity", "compute_hash",
+                "--section", "monitoring",
+            ])
+            assert result.returncode == 0
+            assert "PROTECTED: compute_hash" in result.stderr
+
+            uncleared = _read_json(sess["uncleared_file"])
+            assert len(uncleared) == 2
+
+            dismissed = _read_json(sess["dismissed_this_run_file"])
+            assert len(dismissed) == 0
 
 
 class TestErrors:

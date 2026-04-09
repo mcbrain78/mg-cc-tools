@@ -23,19 +23,25 @@ def _read_json(path):
         return json.load(f)
 
 
-def _run(entity, section, uncleared_file, not_entities_file):
-    return subprocess.run(
-        [sys.executable, SCRIPT,
-         "--entity", entity,
-         "--section", section,
-         "--uncleared-file", uncleared_file,
-         "--not-entities-file", not_entities_file],
-        capture_output=True, text=True,
-    )
+def _run(entity, section, uncleared_file, dismissed_this_run_file,
+         audience="devops", document="OPERATIONS",
+         protected_entities_file=None):
+    cmd = [
+        sys.executable, SCRIPT,
+        "--entity", entity,
+        "--section", section,
+        "--uncleared-file", uncleared_file,
+        "--dismissed-this-run-file", dismissed_this_run_file,
+        "--audience", audience,
+        "--document", document,
+    ]
+    if protected_entities_file:
+        cmd.extend(["--protected-entities-file", protected_entities_file])
+    return subprocess.run(cmd, capture_output=True, text=True)
 
 
 class TestDismiss:
-    """Entity removal from uncleared and addition to not-entities."""
+    """Entity removal from uncleared and addition to dismissed-this-run."""
 
     def test_entity_removed_from_all_sections(self):
         """Entity in multiple sections → all removed from uncleared."""
@@ -46,100 +52,102 @@ class TestDismiss:
                 {"name": "bash", "section": "orchestration"},
                 {"name": "PORT", "section": "deployment"},
             ])
-            nf = _write_json(td, "not-entities.json", [])
+            df = _write_json(td, "dismissed-this-run.json", [])
 
-            result = _run("bash", "monitoring", uf, nf)
+            result = _run("bash", "monitoring", uf, df)
             assert result.returncode == 0
 
             uncleared = _read_json(uf)
             assert len(uncleared) == 1
             assert uncleared[0]["name"] == "PORT"
 
-    def test_entity_added_to_not_entities(self):
-        """Dismissed entity appended to not-entities list."""
+    def test_entity_added_to_dismissed_this_run(self):
+        """Dismissed entity appended to dismissed-this-run list."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [
                 {"name": "bash", "section": "monitoring"},
             ])
-            nf = _write_json(td, "not-entities.json", [])
+            df = _write_json(td, "dismissed-this-run.json", [])
 
-            _run("bash", "monitoring", uf, nf)
+            _run("bash", "monitoring", uf, df)
 
-            not_entities = _read_json(nf)
-            assert len(not_entities) == 1
-            assert not_entities[0]["name"] == "bash"
-            assert not_entities[0]["dismissed_in"] == "monitoring"
+            dismissed = _read_json(df)
+            assert len(dismissed) == 1
+            assert dismissed[0]["name"] == "bash"
+            assert dismissed[0]["dismissed_in"] == "monitoring"
+            assert dismissed[0]["audience"] == "devops"
+            assert dismissed[0]["document"] == "OPERATIONS"
 
-    def test_dedup_not_entities(self):
-        """Dismissing same entity twice does not duplicate in not-entities."""
+    def test_dedup_dismissed_this_run(self):
+        """Dismissing same entity twice does not duplicate in dismissed-this-run."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [
                 {"name": "bash", "section": "monitoring"},
             ])
-            nf = _write_json(td, "not-entities.json", [
-                {"name": "bash", "dismissed_in": "deployment"},
+            df = _write_json(td, "dismissed-this-run.json", [
+                {"name": "bash", "dismissed_in": "deployment",
+                 "audience": "devops", "document": "OPERATIONS"},
             ])
 
-            _run("bash", "monitoring", uf, nf)
+            _run("bash", "monitoring", uf, df)
 
-            not_entities = _read_json(nf)
-            assert len(not_entities) == 1
-            assert not_entities[0]["dismissed_in"] == "deployment"  # original preserved
+            dismissed = _read_json(df)
+            assert len(dismissed) == 1
+            assert dismissed[0]["dismissed_in"] == "deployment"  # original preserved
 
     def test_entity_not_in_uncleared(self):
-        """Entity not in uncleared → no-op on uncleared, still added to not-entities."""
+        """Entity not in uncleared → no-op on uncleared, still added to dismissed."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [
                 {"name": "PORT", "section": "deployment"},
             ])
-            nf = _write_json(td, "not-entities.json", [])
+            df = _write_json(td, "dismissed-this-run.json", [])
 
-            result = _run("nonexistent", "monitoring", uf, nf)
+            result = _run("nonexistent", "monitoring", uf, df)
             assert result.returncode == 0
 
             uncleared = _read_json(uf)
             assert len(uncleared) == 1
             assert uncleared[0]["name"] == "PORT"
 
-            not_entities = _read_json(nf)
-            assert len(not_entities) == 1
-            assert not_entities[0]["name"] == "nonexistent"
+            dismissed = _read_json(df)
+            assert len(dismissed) == 1
+            assert dismissed[0]["name"] == "nonexistent"
 
     def test_empty_uncleared(self):
         """Empty uncleared file → no-op on uncleared."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [])
-            nf = _write_json(td, "not-entities.json", [])
+            df = _write_json(td, "dismissed-this-run.json", [])
 
-            result = _run("bash", "monitoring", uf, nf)
+            result = _run("bash", "monitoring", uf, df)
             assert result.returncode == 0
 
             uncleared = _read_json(uf)
             assert uncleared == []
 
-    def test_missing_not_entities_file(self):
-        """Non-existent not-entities file → created with the entity."""
+    def test_missing_dismissed_file(self):
+        """Non-existent dismissed file → created with the entity."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [
                 {"name": "bash", "section": "monitoring"},
             ])
-            nf = os.path.join(td, "not-entities.json")
-            # not-entities file does not exist
+            df = os.path.join(td, "dismissed-this-run.json")
 
-            result = _run("bash", "monitoring", uf, nf)
+            result = _run("bash", "monitoring", uf, df)
             assert result.returncode == 0
 
-            not_entities = _read_json(nf)
-            assert len(not_entities) == 1
-            assert not_entities[0]["name"] == "bash"
+            dismissed = _read_json(df)
+            assert len(dismissed) == 1
+            assert dismissed[0]["name"] == "bash"
 
     def test_missing_uncleared_file(self):
         """Non-existent uncleared file → defaults to empty, created."""
         with tempfile.TemporaryDirectory() as td:
             uf = os.path.join(td, "uncleared.json")
-            nf = _write_json(td, "not-entities.json", [])
+            df = _write_json(td, "dismissed-this-run.json", [])
 
-            result = _run("bash", "monitoring", uf, nf)
+            result = _run("bash", "monitoring", uf, df)
             assert result.returncode == 0
 
             uncleared = _read_json(uf)
@@ -153,22 +161,58 @@ class TestDismiss:
                 {"name": "bash", "section": "deployment"},
                 {"name": "PORT", "section": "deployment"},
             ])
-            nf = _write_json(td, "not-entities.json", [])
+            df = _write_json(td, "dismissed-this-run.json", [])
 
-            result = _run("bash", "monitoring", uf, nf)
+            result = _run("bash", "monitoring", uf, df)
             assert "Dismissed: bash" in result.stderr
             assert "3 → 1" in result.stderr
 
-    def test_dedup_with_plain_string_entries(self):
-        """Not-entities list with plain string entries (legacy format) deduped correctly."""
+
+class TestProtected:
+    """Protected entity handling."""
+
+    def test_protected_entity_refused(self):
+        """Protected entity stays in uncleared, not written to dismissed."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "compute_hash", "section": "monitoring"},
+                {"name": "PORT", "section": "deployment"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            pf = _write_json(td, "protected-entities.json", [
+                {"name": "compute_hash", "reason": "Project function"},
+            ])
+
+            result = _run(
+                "compute_hash", "monitoring", uf, df,
+                protected_entities_file=pf,
+            )
+            assert result.returncode == 0
+            assert "PROTECTED: compute_hash" in result.stderr
+
+            # Uncleared unchanged
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 2
+
+            # Not written to dismissed
+            dismissed = _read_json(df)
+            assert len(dismissed) == 0
+
+    def test_no_protected_file_means_no_check(self):
+        """Omitting --protected-entities-file → dismiss proceeds normally."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [
                 {"name": "bash", "section": "monitoring"},
             ])
-            nf = _write_json(td, "not-entities.json", ["bash"])
+            df = _write_json(td, "dismissed-this-run.json", [])
 
-            _run("bash", "monitoring", uf, nf)
+            result = _run("bash", "monitoring", uf, df)
+            assert result.returncode == 0
+            assert "PROTECTED" not in result.stderr
+            assert "Dismissed: bash" in result.stderr
 
-            not_entities = _read_json(nf)
-            assert len(not_entities) == 1
-            assert not_entities[0] == "bash"  # original preserved, not duplicated
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 0
+
+            dismissed = _read_json(df)
+            assert len(dismissed) == 1

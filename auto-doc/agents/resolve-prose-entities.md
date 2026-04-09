@@ -46,7 +46,7 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
          - Is the name a SQL keyword (`SELECT`, `FROM`, `WHERE`, `JOIN`, etc.)? → Dismiss.
          - Is the name a generic programming term (`API`, `HTTP`, `URL`, `JSON`, `SQL`, `CLI`, `SSH`, etc.)? → Dismiss.
          - Is the name a markdown/formatting artifact? → Dismiss.
-         - Unsure? → Skip (leave for next wave). **NOT allowed in final wave** — must decide.
+         - Unsure? → File finding (prefer false positives over lost refs). **In final wave** — must decide for every entity.
 
       **Three outcomes per entity:**
 
@@ -74,7 +74,7 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
              --entity "{entity_name}" \
              --section "{section_path}"
          ```
-         This removes the entity from uncleared across all sections and adds it to the project's not-entity list so it won't be re-examined in future runs.
+         This removes the entity from uncleared across all sections and records it in the per-run dismissals list. A post-wave classification agent will later decide whether the entity is permanently non-ref-worthy or should be protected from future dismissal.
 
       4. **Unsure → skip.** Entity stays in uncleared for the next wave.
 
@@ -134,4 +134,4 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 - **Additive only.** Never remove or second-guess findings from prior passes. Only add new ones.
 - **Use section context for disambiguation.** When an entity name is ambiguous (e.g., `status`), use the section topic and refs_as_text to determine the most likely interpretation.
 - **Trust the entity list.** If an entity appears in the list from get-section-entities, it needs investigation. If it doesn't appear, it's already been handled by propagation from an earlier section — don't look for it.
-- **Dismiss aggressively.** When in doubt about ref-worthiness, dismiss. The cost of a missed finding is low (caught in next audit or by verify). The cost of a false positive is high (junk fixes waste tokens).
+- **Dismiss conservatively.** Only dismiss when clearly NOT a project-specific code reference. When in doubt, file a finding. The cost of a false finding is low (the fix agent validates it). The cost of a false dismiss is high (entity gets permanently blacklisted and can never be flagged again).

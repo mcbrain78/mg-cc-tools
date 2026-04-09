@@ -91,12 +91,19 @@ def cmd_propagate(session, args):
 
 
 def cmd_dismiss(session, args):
-    return _delegate("dismiss-entity.py", [
+    cmd_args = [
         "--entity", args.entity,
         "--section", args.section,
         "--uncleared-file", session["uncleared_file"],
-        "--not-entities-file", session["not_entities_file"],
-    ])
+        "--dismissed-this-run-file", session["dismissed_this_run_file"],
+        "--audience", session["audience"],
+        "--document", session["document"],
+    ]
+    if session.get("protected_entities_file"):
+        cmd_args.extend([
+            "--protected-entities-file", session["protected_entities_file"],
+        ])
+    return _delegate("dismiss-entity.py", cmd_args)
 
 
 def main():

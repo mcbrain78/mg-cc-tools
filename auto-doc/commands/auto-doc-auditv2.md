@@ -48,18 +48,24 @@ Store the wave count as `num_waves` (integer, minimum 1, default 2).
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
-4. **Create auditv2 directory** (preserve not-entities across runs):
+4. **Create auditv2 directory** (preserve not-entities and protected-entities across runs):
    ```bash
-   if [ -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json ]; then
-     cp {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json /tmp/_mg_not_entities_backup.json
-   fi
+   for f in not-entities.json protected-entities.json; do
+     if [ -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f ]; then
+       cp {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f /tmp/_mg_${f%.json}_backup.json
+     fi
+   done
    rm -rf {MG_INSTALL_WORKSPACE_DIR}/auditv2
    mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2
-   if [ -f /tmp/_mg_not_entities_backup.json ]; then
-     mv /tmp/_mg_not_entities_backup.json {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
-   else
-     echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
-   fi
+   for f in not-entities.json protected-entities.json; do
+     backup="/tmp/_mg_${f%.json}_backup.json"
+     if [ -f "$backup" ]; then
+       mv "$backup" {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f
+     else
+       echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f
+     fi
+   done
+   echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/dismissed-this-run.json
    ```
 
 ### Step 2: Deterministic Reference Checks
@@ -162,6 +168,8 @@ session = {
     'findings_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-prose-{audience}-{DOCUMENT}.json',
     'sections_filter': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}/affected-sections.json',
     'not_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json',
+    'dismissed_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/dismissed-this-run.json',
+    'protected_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json',
 }
 path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'session-{audience}-{DOCUMENT}.json')
 with open(path, 'w') as f:
@@ -187,6 +195,38 @@ Wave: {N}
 Num waves: {num_waves}"
 )
 ```
+
+### Step 6.5: Classify Dismissed Entities
+
+After all resolution waves complete, check if any entities were dismissed during this run:
+
+```bash
+python3 -c "
+import json, sys
+with open(sys.argv[1]) as f: d = json.load(f)
+print(len(d))
+" {MG_INSTALL_WORKSPACE_DIR}/auditv2/dismissed-this-run.json
+```
+
+If the count is greater than 0, spawn a classification agent (**model: sonnet**, foreground):
+```
+Agent(
+  model="sonnet",
+  description="Classify dismissed entities",
+  prompt="You are a dismissed entity classification agent.
+
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/classify-dismissed-entities.md
+
+Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
+Dismissed this run file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/dismissed-this-run.json
+Not entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
+Protected entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json
+Workspace: {MG_INSTALL_WORKSPACE_DIR}/auditv2
+Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md"
+)
+```
+
+If the count is 0, skip classification (no dismissed entities to classify).
 
 ### Step 7: Report
 
