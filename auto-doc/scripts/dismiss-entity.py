@@ -84,7 +84,11 @@ def dismiss(
             e["name"] if isinstance(e, dict) else e for e in protected
         }
         if entity in protected_names:
-            print(f"PROTECTED: {entity}", file=sys.stderr)
+            print(
+                f"PROTECTED: {entity} — this entity was previously confirmed "
+                "as ref-worthy. File a finding instead.",
+                file=sys.stderr,
+            )
             return None
 
     # Pattern guard: refuse to dismiss structurally ref-like entities
