@@ -1,6 +1,6 @@
 ---
 name: mg:auto-doc-fix
-description: Fix audit findings by correcting XML refs and prose
+description: "Fix audit findings by correcting XML refs and prose. Args: [audit-source]"
 allowed-tools: Bash, Read, Write, Glob, Grep, Agent, AskUserQuestion
 ---
 
@@ -37,26 +37,31 @@ Read references/schema.yaml
    ```
    Find the `root_path` field value and store as `project_root`.
 
-3. **Check xml-sources exist.** Use Glob to verify `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` contains `.xml` files. If not, abort with:
+3. **Parse audit source.** Check user input for an audit source name (e.g., `auditv2`). Default: `audit`.
+   - `audit` → findings dir is `{MG_INSTALL_WORKSPACE_DIR}/audit/`
+   - `auditv2` → findings dir is `{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/`
+   Store as `{findings_dir}`.
+
+4. **Check xml-sources exist.** Use Glob to verify `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` contains `.xml` files. If not, abort with:
    ```
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
-4. **Check audit findings exist.** Verify that the audit directory `{MG_INSTALL_WORKSPACE_DIR}/audit/` exists and contains at least one of:
+5. **Check audit findings exist.** Verify that `{findings_dir}` exists and contains at least one of:
    - `findings-refs.json`
    - Any `findings-prose-*.json` file
 
    If the directory doesn't exist or neither file type exists, abort with:
    ```
-   Error: No audit findings found. Run /mg:auto-doc-audit first.
+   Error: No audit findings found in {findings_dir}. Run /mg:auto-doc-audit or /mg:auto-doc-auditv2 first.
    ```
 
 ### Step 2: Load and Merge Findings
 
 ```bash
 uv run {MG_INSTALL_SCRIPTS_DIR}/load-audit-findings.py \
-    --audit-dir {MG_INSTALL_WORKSPACE_DIR}/audit \
-    --output {MG_INSTALL_WORKSPACE_DIR}/audit/merged-findings.json
+    --audit-dir {findings_dir} \
+    --output {findings_dir}/merged-findings.json
 ```
 
 Read the output file. If the merged array is empty, print:
@@ -77,16 +82,16 @@ Agent(
 
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/group-findings.md
 
-findings_file: {MG_INSTALL_WORKSPACE_DIR}/audit/merged-findings.json
-output_file: {MG_INSTALL_WORKSPACE_DIR}/audit/grouping.json"
+findings_file: {findings_dir}/merged-findings.json
+output_file: {findings_dir}/grouping.json"
 )
 ```
 
-After the agent completes, read `{MG_INSTALL_WORKSPACE_DIR}/audit/grouping.json` to verify it was written.
+After the agent completes, read `{findings_dir}/grouping.json` to verify it was written.
 
 ### Step 4: Present Summary and Get Approval
 
-Read `{MG_INSTALL_WORKSPACE_DIR}/audit/grouping.json` and `{MG_INSTALL_WORKSPACE_DIR}/audit/merged-findings.json`. Present a table:
+Read `{findings_dir}/grouping.json` and `{findings_dir}/merged-findings.json`. Present a table:
 
 ```
 Audit Fix Plan:
@@ -119,8 +124,8 @@ Handle user response:
 3. Initialize the fix queue:
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/fix-queue.py init \
-       --grouping-file {MG_INSTALL_WORKSPACE_DIR}/audit/grouping.json \
-       --findings-file {MG_INSTALL_WORKSPACE_DIR}/audit/merged-findings.json \
+       --grouping-file {findings_dir}/grouping.json \
+       --findings-file {findings_dir}/merged-findings.json \
        --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
        --edit-dir {MG_INSTALL_WORKSPACE_DIR}/fix \
        --approved {comma_separated_indices} \
@@ -187,7 +192,7 @@ Groups processed: {N}
 Modified XML files: {list}
 Markdown files reassembled: {list}
 
-Next step: Run /mg:auto-doc-audit to confirm fixes are clean.
+Next step: Re-run the audit to confirm fixes are clean.
 ```
 
 If there were errors from any merge step, show them:

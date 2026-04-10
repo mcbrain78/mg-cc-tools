@@ -66,6 +66,15 @@ def _emit_finding(findings_file, document, audience, section_path, display):
     )
 
 
+def _expand_dotted(entity_set):
+    """Expand dotted entity names into component segments for matching."""
+    expanded = set(entity_set)
+    for name in entity_set:
+        if "." in name:
+            expanded.update(name.split("."))
+    return expanded
+
+
 def _resolve_entities(section_entities, ref_entries):
     """Conservative path resolution for multi-component clearing.
 
@@ -79,6 +88,7 @@ def _resolve_entities(section_entities, ref_entries):
     """
     paths = [tuple(e["path"]) for e in ref_entries if e.get("path")]
     entity_set = set(section_entities)
+    entity_set = _expand_dotted(entity_set)
 
     # Inverted index: component name → list of paths containing it
     by_name = defaultdict(list)
@@ -166,6 +176,8 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
         section_has_uncleared = False
         for name in section_entities:
             if name in cleared:
+                total_cleared += 1
+            elif "." in name and all(seg in cleared for seg in name.split(".")):
                 total_cleared += 1
             else:
                 uncleared.append({"name": name, "section": section_path})

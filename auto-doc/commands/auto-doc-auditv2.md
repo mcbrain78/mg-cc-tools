@@ -48,24 +48,15 @@ Store the wave count as `num_waves` (integer, minimum 1, default 2).
    Error: No XML sources found. Run /mg:auto-doc-generate first.
    ```
 
-4. **Create auditv2 directory** (preserve not-entities and protected-entities across runs):
+4. **Create auditv2 directory** (persistent files at top level, per-run data in `run/`):
    ```bash
+   rm -rf {MG_INSTALL_WORKSPACE_DIR}/auditv2/run
+   mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2/run
+   # Initialize persistent files if they don't exist
    for f in not-entities.json protected-entities.json; do
-     if [ -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f ]; then
-       cp {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f /tmp/_mg_${f%.json}_backup.json
-     fi
+     [ -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f ] || echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f
    done
-   rm -rf {MG_INSTALL_WORKSPACE_DIR}/auditv2
-   mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2
-   for f in not-entities.json protected-entities.json; do
-     backup="/tmp/_mg_${f%.json}_backup.json"
-     if [ -f "$backup" ]; then
-       mv "$backup" {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f
-     else
-       echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f
-     fi
-   done
-   echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/dismissed-this-run.json
+   echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json
    ```
 
 ### Step 2: Deterministic Reference Checks
@@ -76,14 +67,14 @@ Run verify-xml-refs.py once across all XML sources. **Do NOT run this in the bac
 uv run {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
     --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
     --project-root {project_root} \
-    --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-refs.json \
+    --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-refs.json \
     --database-model {MG_INSTALL_WORKSPACE_DIR}/generate/database-model.json \
     [--audience AUDIENCE]
 ```
 
 Add `--audience` only if the user specified audience names.
 
-Read `{MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-refs.json` to get the deterministic findings list.
+Read `{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-refs.json` to get the deterministic findings list.
 
 ### Step 3: Prepare Prose Verification Data
 
@@ -93,7 +84,7 @@ Read `{MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-refs.json` to get the determin
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/prepare-prose-verify.py \
        --xml-file {xml_file_path} \
-       --output-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}
+       --output-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}
    ```
 
 ### Step 4: Wave 1 — Entity Extraction
@@ -108,8 +99,8 @@ Agent(
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/extract-prose-entities.md
 
 Project root: {project_root}
-Prose verify dir: {MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}
-Entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/entities-{audience}-{DOCUMENT}.json
+Prose verify dir: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}
+Entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/entities-{audience}-{DOCUMENT}.json
 Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
 )
 ```
@@ -120,10 +111,10 @@ After all extraction agents complete, run the clearing script once per document:
 
 ```bash
 uv run {MG_INSTALL_SCRIPTS_DIR}/clear-matched-entities.py \
-    --entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/entities-{audience}-{DOCUMENT}.json \
-    --prose-verify-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT} \
-    --uncleared-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/uncleared-{audience}-{DOCUMENT}.json \
-    --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-prose-{audience}-{DOCUMENT}.json \
+    --entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/entities-{audience}-{DOCUMENT}.json \
+    --prose-verify-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT} \
+    --uncleared-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
+    --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
     --document {DOCUMENT} \
     --audience {audience} \
     --not-entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
@@ -139,7 +130,7 @@ Read the uncleared file to check if there are any uncleared entities. If the unc
 
 a. **Clean up state files** so the next wave's agents start fresh:
 ```bash
-rm -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/*.sectionctl
+rm -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/*.sectionctl
 ```
 
 b. **Recompute affected sections.** Propagation within the previous wave pruned the uncleared file, so some sections may now have zero entities. Recompute the affected-sections filter for each document:
@@ -149,8 +140,8 @@ import json, sys
 with open(sys.argv[1]) as f: u = json.load(f)
 s = sorted(set(e['section'] for e in u))
 with open(sys.argv[2], 'w') as f: json.dump(s, f, indent=2)
-" {MG_INSTALL_WORKSPACE_DIR}/auditv2/uncleared-{audience}-{DOCUMENT}.json \
-  {MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}/affected-sections.json
+" {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
+  {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}/affected-sections.json
 ```
 If the uncleared file is empty (`[]`) for a document, skip that document for the remaining waves.
 
@@ -163,15 +154,15 @@ session = {
     'document': '{DOCUMENT}',
     'audience': '{audience}',
     'wave': {N},
-    'prose_verify_dir': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}',
-    'uncleared_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/uncleared-{audience}-{DOCUMENT}.json',
-    'findings_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-prose-{audience}-{DOCUMENT}.json',
-    'sections_filter': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/prose-verify-{audience}-{DOCUMENT}/affected-sections.json',
+    'prose_verify_dir': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}',
+    'uncleared_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json',
+    'findings_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json',
+    'sections_filter': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}/affected-sections.json',
     'not_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json',
-    'dismissed_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/dismissed-this-run.json',
+    'dismissed_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json',
     'protected_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json',
 }
-path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'session-{audience}-{DOCUMENT}.json')
+path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'run', 'session-{audience}-{DOCUMENT}.json')
 with open(path, 'w') as f:
     json.dump(session, f, indent=2)
 "
@@ -189,7 +180,7 @@ Agent(
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/resolve-prose-entities.md
 
 Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
-Session: {MG_INSTALL_WORKSPACE_DIR}/auditv2/session-{audience}-{DOCUMENT}.json
+Session: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/session-{audience}-{DOCUMENT}.json
 Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md
 Wave: {N}
 Num waves: {num_waves}"
@@ -205,7 +196,7 @@ python3 -c "
 import json, sys
 with open(sys.argv[1]) as f: d = json.load(f)
 print(len(d))
-" {MG_INSTALL_WORKSPACE_DIR}/auditv2/dismissed-this-run.json
+" {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json
 ```
 
 If the count is greater than 0, spawn a classification agent (**model: sonnet**, foreground):
@@ -218,10 +209,10 @@ Agent(
 Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/classify-dismissed-entities.md
 
 Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
-Dismissed this run file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/dismissed-this-run.json
+Dismissed this run file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json
 Not entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
 Protected entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json
-Workspace: {MG_INSTALL_WORKSPACE_DIR}/auditv2
+Workspace: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run
 Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md"
 )
 ```
@@ -244,7 +235,7 @@ Audit v2 Results:
 Total: {N} issues across {M} documents
 ```
 
-Collect prose findings from each document's findings file (`{MG_INSTALL_WORKSPACE_DIR}/auditv2/findings-prose-*.json`).
+Collect prose findings from each document's findings file (`{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-*.json`).
 
 For documents with issues, show per-document details:
 - Findings grouped by category (ref integrity, prose consistency)
@@ -266,9 +257,9 @@ When clean, run /mg:auto-doc-verify for full editorial review.
 
 ### Step 8: Persist Summary
 
-Write the full summary text from Step 7 to `{MG_INSTALL_WORKSPACE_DIR}/auditv2/summary.md` so it survives beyond the conversation. Then tell the user:
+Write the full summary text from Step 7 to `{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/summary.md` so it survives beyond the conversation. Then tell the user:
 ```
-Summary written to .mg/docs/auditv2/summary.md
+Summary written to .mg/docs/auditv2/run/summary.md
 ```
 
 ## Important Principles

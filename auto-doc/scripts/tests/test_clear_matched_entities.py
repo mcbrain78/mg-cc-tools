@@ -704,3 +704,162 @@ class TestNotEntitiesFilter:
             with open(uf) as f:
                 uncleared = json.load(f)
             assert len(uncleared) == 1
+
+
+class TestDotSplitClearing:
+    """Dot-split preprocessing: compound dotted entities clear via segments."""
+
+    def test_schema_qualified_clears(self):
+        """raw_fmp.income_statements with path (raw_fmp, income_statements) → cleared."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "data-sources",
+                    "body": "## Data Sources\n\nThe income_statements table in raw_fmp.",
+                    "ref_entries": [
+                        {
+                            "display": "[db] raw_fmp.income_statements",
+                            "identifier": "income_statements",
+                            "path": ["raw_fmp", "income_statements"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "raw_fmp.income_statements", "section": "data-sources"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+    def test_dotted_dep_clears(self):
+        """httpx.TimeoutException with dep path (httpx, TimeoutException) → compound clears."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "dependencies",
+                    "body": "## Dependencies\n\nUses httpx for HTTP calls.",
+                    "ref_entries": [
+                        {
+                            "display": "[dep] httpx",
+                            "identifier": "httpx",
+                            "path": ["httpx", "TimeoutException"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "httpx.TimeoutException", "section": "dependencies"},
+                {"name": "TimeoutException", "section": "dependencies"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            # httpx.TimeoutException clears (both segments match the path)
+            # TimeoutException alone also clears (it's a path component)
+            assert uncleared == []
+
+    def test_dotted_no_ref_stays_uncleared(self):
+        """foo.bar with no matching refs → stays uncleared."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nSome prose.",
+                    "ref_entries": [],
+                },
+            ], [
+                {"name": "foo.bar", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "foo.bar"
+
+    def test_short_dotted_no_false_clear(self):
+        """os.path with no refs → stays uncleared (no false positives)."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nSome prose.",
+                    "ref_entries": [
+                        {
+                            "display": "[env] PORT",
+                            "identifier": "PORT",
+                            "path": ["PORT"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "os.path", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "os.path"
+
+    def test_mixed_dotted_and_plain(self):
+        """Dotted entity clears + plain entity stays → correct mix."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "data-sources",
+                    "body": "## Data Sources\n\nThe income_statements in raw_fmp.",
+                    "ref_entries": [
+                        {
+                            "display": "[db] raw_fmp.income_statements",
+                            "identifier": "income_statements",
+                            "path": ["raw_fmp", "income_statements"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "raw_fmp.income_statements", "section": "data-sources"},
+                {"name": "unknown_thing", "section": "data-sources"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "unknown_thing"
+            assert "Cleared: 1" in result.stderr
+
+    def test_dot_split_segments_not_in_uncleared(self):
+        """Synthetic segments from dot-split do NOT appear in uncleared output."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "data-sources",
+                    "body": "## Data Sources\n\nSome prose.",
+                    "ref_entries": [],
+                },
+            ], [
+                {"name": "foo.bar", "section": "data-sources"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            # Only the original dotted entity in output, not "foo" or "bar"
+            names = [e["name"] for e in uncleared]
+            assert names == ["foo.bar"]
