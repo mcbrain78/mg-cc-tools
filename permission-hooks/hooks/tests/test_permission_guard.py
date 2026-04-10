@@ -1882,158 +1882,132 @@ class TestEmitterFollowsCommand:
             os.unlink(path)
 
 
+_session_id = guard._session_id
+_write_context_sidecar = guard._write_context_sidecar
+_update_context_timestamp = guard._update_context_timestamp
+
+
+class TestSessionId:
+    """_session_id extracts session from transcript path."""
+
+    def test_extracts_from_jsonl_path(self):
+        assert _session_id("/tmp/sessions/abc-123.jsonl") == "abc-123"
+
+    def test_strips_only_jsonl_suffix(self):
+        assert _session_id("/tmp/sessions/abc-123.json") == "abc-123.json"
+
+    def test_bare_filename(self):
+        assert _session_id("my-session.jsonl") == "my-session"
+
+    def test_empty_string_returns_none(self):
+        assert _session_id("") is None
+
+    def test_only_jsonl_returns_none(self):
+        assert _session_id(".jsonl") is None
+
+
+class TestWriteContextSidecar:
+    """_write_context_sidecar creates a sidecar file."""
+
+    SESSION_PREFIX = "test-ctx-sidecar"
+
+    def _session_dir(self, session_id):
+        return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
+
+    def _sidecar_path(self, session_id):
+        return os.path.join(self._session_dir(session_id), "context.json")
+
+    def teardown_method(self):
+        for d in _glob.glob(f"/tmp/claude-code/mg-session-{self.SESSION_PREFIX}-*"):
+            _shutil.rmtree(d, ignore_errors=True)
+
+    def test_creates_sidecar_file(self):
+        sid = f"{self.SESSION_PREFIX}-create"
+        transcript = f"/tmp/{sid}.jsonl"
+        _write_context_sidecar(transcript, "AUTO-DOC")
+        data = json.loads(open(self._sidecar_path(sid)).read())
+        assert data["command"] == "AUTO-DOC"
+        assert isinstance(data["timestamp_ms"], int)
+        assert abs(time.time() - data["timestamp_ms"] / 1000) < 5
+
+    def test_empty_transcript_no_crash(self):
+        _write_context_sidecar("", "AUTO-DOC")  # should not raise
+
+
 class TestSessionContext:
-    """check_session_context reads transcript and validates marker."""
+    """check_session_context reads sidecar file and validates TTL."""
 
-    def _write_transcript(self, lines):
-        """Write lines to a temp file and return its path."""
-        f = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jsonl", delete=False
-        )
-        f.write("\n".join(lines))
-        f.close()
-        return f.name
+    SESSION_PREFIX = "test-session-ctx"
 
-    def _tool_result_line(self, content, tool_use_id="toolu_test"):
-        """Build a JSONL line containing a tool_result with given content."""
-        entry = {
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": content,
-                    }
-                ],
-            },
-        }
-        return json.dumps(entry)
+    def _session_dir(self, session_id):
+        return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
 
-    def _assistant_text_line(self, text):
-        """Build a JSONL line containing assistant text."""
-        entry = {
-            "type": "assistant",
-            "message": {
-                "role": "assistant",
-                "content": [{"type": "text", "text": text}],
-            },
-        }
-        return json.dumps(entry)
+    def _write_sidecar(self, session_id, command, timestamp_ms):
+        """Write a context sidecar and return the transcript path."""
+        sdir = self._session_dir(session_id)
+        os.makedirs(sdir, exist_ok=True)
+        with open(os.path.join(sdir, "context.json"), "w") as f:
+            json.dump({"command": command, "timestamp_ms": timestamp_ms}, f)
+        return f"/tmp/{session_id}.jsonl"
+
+    def teardown_method(self):
+        for d in _glob.glob(f"/tmp/claude-code/mg-session-{self.SESSION_PREFIX}-*"):
+            _shutil.rmtree(d, ignore_errors=True)
 
     def test_no_transcript_returns_none(self):
         assert check_session_context("") is None
         assert check_session_context(None) is None
 
-    def test_missing_file_returns_none(self):
+    def test_missing_sidecar_returns_none(self):
         assert check_session_context("/nonexistent/transcript.jsonl") is None
 
-    def test_empty_file_returns_none(self):
-        path = self._write_transcript([""])
-        try:
-            assert check_session_context(path) is None
-        finally:
-            os.unlink(path)
-
-    def test_no_marker_returns_none(self):
-        path = self._write_transcript([
-            self._assistant_text_line("Let me read that file."),
-            self._tool_result_line("file contents here"),
-        ])
-        try:
-            assert check_session_context(path) is None
-        finally:
-            os.unlink(path)
-
-    def test_valid_marker_returns_command_name(self):
+    def test_valid_sidecar_returns_command_name(self):
+        sid = f"{self.SESSION_PREFIX}-valid"
         now_ms = int(time.time() * 1000)
-        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{now_ms}"
-        path = self._write_transcript([
-            self._tool_result_line(marker),
-        ])
-        try:
-            result = check_session_context(path)
-            assert result == "AUTO-DOC"
-        finally:
-            os.unlink(path)
+        path = self._write_sidecar(sid, "AUTO-DOC", now_ms)
+        assert check_session_context(path) == "AUTO-DOC"
 
-    def test_expired_marker_returns_none(self):
+    def test_expired_sidecar_returns_none(self):
+        sid = f"{self.SESSION_PREFIX}-expired"
         old_ms = int((time.time() - CONTEXT_TTL_S - 60) * 1000)
-        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{old_ms}"
-        path = self._write_transcript([
-            self._tool_result_line(marker),
-        ])
-        try:
-            assert check_session_context(path) is None
-        finally:
-            os.unlink(path)
+        path = self._write_sidecar(sid, "AUTO-DOC", old_ms)
+        assert check_session_context(path) is None
 
     def test_future_timestamp_returns_none(self):
+        sid = f"{self.SESSION_PREFIX}-future"
         future_ms = int((time.time() + 3600) * 1000)
-        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{future_ms}"
-        path = self._write_transcript([
-            self._tool_result_line(marker),
-        ])
-        try:
-            assert check_session_context(path) is None
-        finally:
-            os.unlink(path)
+        path = self._write_sidecar(sid, "AUTO-DOC", future_ms)
+        assert check_session_context(path) is None
 
-    def test_uses_most_recent_marker(self):
-        old_ms = int((time.time() - CONTEXT_TTL_S - 60) * 1000)
-        now_ms = int(time.time() * 1000)
-        path = self._write_transcript([
-            self._tool_result_line(
-                f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{old_ms}"
-            ),
-            self._tool_result_line(
-                f"SESSION_CONTEXT_ID: MG:CODEBASE-HEALTH_{now_ms}"
-            ),
-        ])
-        try:
-            result = check_session_context(path)
-            assert result == "CODEBASE-HEALTH"
-        finally:
-            os.unlink(path)
-
-    def test_marker_in_assistant_text_still_matches(self):
-        """The marker regex doesn't distinguish source — stage 0 gate is
-        the trust anchor, not transcript position."""
-        now_ms = int(time.time() * 1000)
-        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{now_ms}"
-        path = self._write_transcript([
-            self._assistant_text_line(marker),
-        ])
-        try:
-            # This WOULD match — security relies on stage 0, not parsing
-            result = check_session_context(path)
-            assert result == "AUTO-DOC"
-        finally:
-            os.unlink(path)
-
-    def test_hyphenated_command_name(self):
-        now_ms = int(time.time() * 1000)
-        marker = f"SESSION_CONTEXT_ID: MG:AUTO-DOC_{now_ms}"
-        path = self._write_transcript([
-            self._tool_result_line(marker),
-        ])
-        try:
-            assert check_session_context(path) == "AUTO-DOC"
-        finally:
-            os.unlink(path)
+    def test_corrupt_sidecar_returns_none(self):
+        sid = f"{self.SESSION_PREFIX}-corrupt"
+        sdir = self._session_dir(sid)
+        os.makedirs(sdir, exist_ok=True)
+        with open(os.path.join(sdir, "context.json"), "w") as f:
+            f.write("not-json{{{")
+        path = f"/tmp/{sid}.jsonl"
+        assert check_session_context(path) is None
 
     def test_various_command_names(self):
-        now_ms = int(time.time() * 1000)
-        for cmd in ("AUTO-DOC", "CODEBASE-HEALTH", "DEBUG-TRIAGE", "AUTODOC"):
-            marker = f"SESSION_CONTEXT_ID: MG:{cmd}_{now_ms}"
-            path = self._write_transcript([
-                self._tool_result_line(marker),
-            ])
-            try:
-                assert check_session_context(path) == cmd, f"Failed for {cmd}"
-            finally:
-                os.unlink(path)
+        for i, cmd in enumerate(("AUTO-DOC", "CODEBASE-HEALTH", "DEBUG-TRIAGE", "AUTODOC")):
+            sid = f"{self.SESSION_PREFIX}-cmd{i}"
+            now_ms = int(time.time() * 1000)
+            path = self._write_sidecar(sid, cmd, now_ms)
+            assert check_session_context(path) == cmd, f"Failed for {cmd}"
+
+    def test_rolling_ttl_updates_timestamp(self):
+        sid = f"{self.SESSION_PREFIX}-rolling"
+        old_ms = int((time.time() - 25 * 60) * 1000)  # 25 min old
+        path = self._write_sidecar(sid, "AUTO-DOC", old_ms)
+        # Still within TTL
+        assert check_session_context(path) == "AUTO-DOC"
+        # Bump timestamp
+        _update_context_timestamp(path)
+        # Read back — timestamp should now be current
+        with open(os.path.join(self._session_dir(sid), "context.json")) as f:
+            data = json.load(f)
+        assert abs(time.time() - data["timestamp_ms"] / 1000) < 5
+        assert data["command"] == "AUTO-DOC"
 
 
 # ── Edit guard toggle tests ─────────────────────────────────────────────────
@@ -2293,3 +2267,76 @@ class TestEditGuardBridge:
             assert json.loads(open(self._bridge_path(sid)).read())["state"] == "ON"
         finally:
             _shutil.rmtree(tdir, ignore_errors=True)
+
+
+# ── Stage 0 sidecar integration ─────────────────────────────────────────────
+
+class TestStage0WritesSidecar:
+    """Stage 0 auto-approve path writes context sidecar."""
+
+    SESSION_PREFIX = "test-stage0-sidecar"
+
+    def _session_dir(self, session_id):
+        return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
+
+    def _sidecar_path(self, session_id):
+        return os.path.join(self._session_dir(session_id), "context.json")
+
+    def teardown_method(self):
+        for d in _glob.glob(f"/tmp/claude-code/mg-session-{self.SESSION_PREFIX}-*"):
+            _shutil.rmtree(d, ignore_errors=True)
+
+    def test_stage0_writes_sidecar_on_approve(self, monkeypatch):
+        """When _emitter_follows_command is True, stage 0 writes a sidecar."""
+        sid = f"{self.SESSION_PREFIX}-approve"
+        transcript_path = f"/tmp/{sid}.jsonl"
+
+        # Stub _emitter_follows_command to return True
+        monkeypatch.setattr(guard, "_emitter_follows_command", lambda tp: True)
+
+        # Capture _decide output instead of printing
+        decisions = []
+        monkeypatch.setattr(guard, "_decide", lambda reason, decision="ask": decisions.append((reason, decision)))
+        # Prevent _write_edit_guard_bridge from needing a real transcript
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+
+        event = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "uv run /path/to/emit-context.py AUTO-DOC"},
+            "transcript_path": transcript_path,
+        }
+        guard.main.__wrapped__(event) if hasattr(guard.main, '__wrapped__') else None
+
+        # Call main() by feeding the event via stdin
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+        guard.main()
+
+        # Sidecar should exist
+        assert os.path.exists(self._sidecar_path(sid))
+        data = json.loads(open(self._sidecar_path(sid)).read())
+        assert data["command"] == "AUTO-DOC"
+        assert abs(time.time() - data["timestamp_ms"] / 1000) < 5
+
+    def test_stage0_no_sidecar_on_reject(self, monkeypatch):
+        """When _emitter_follows_command is False, no sidecar is written."""
+        sid = f"{self.SESSION_PREFIX}-reject"
+        transcript_path = f"/tmp/{sid}.jsonl"
+
+        monkeypatch.setattr(guard, "_emitter_follows_command", lambda tp: False)
+
+        decisions = []
+        monkeypatch.setattr(guard, "_decide", lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+
+        import io
+        event = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "uv run /path/to/emit-context.py AUTO-DOC"},
+            "transcript_path": transcript_path,
+        }
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+        guard.main()
+
+        assert not os.path.exists(self._sidecar_path(sid))
