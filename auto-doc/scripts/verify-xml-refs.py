@@ -132,14 +132,19 @@ class SourceCache:
         return os.path.exists(abs_path)
 
     def walk_py_files(self):
-        """Yield relative paths of all .py files in the project."""
+        """Return relative paths of all .py files, source before tests."""
+        paths = []
         for dirpath, dirnames, filenames in os.walk(self.project_root):
-            # Prune skipped directories in-place
             dirnames[:] = [d for d in dirnames if d not in self._SKIP_DIRS]
             for fname in filenames:
                 if fname.endswith(".py"):
                     abs_path = os.path.join(dirpath, fname)
-                    yield os.path.relpath(abs_path, self.project_root)
+                    paths.append(os.path.relpath(abs_path, self.project_root))
+        paths.sort(key=lambda p: (
+            p.startswith("tests/") or "/tests/" in p or os.path.basename(p).startswith("test_"),
+            p,
+        ))
+        return paths
 
     _WALK_EXTENSIONS = {
         ".py", ".yaml", ".yml", ".toml", ".ini", ".service",

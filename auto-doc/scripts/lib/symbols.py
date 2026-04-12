@@ -170,6 +170,7 @@ def extract_class_attributes(source, class_name):
     - Class-level assignments: x = ...
     - Annotated assignments: x: type = ...
     - Annotated declarations: x: type (no value)
+    - Method definitions: def name(self): / async def name(self):
 
     Returns a set of attribute names. Returns empty set on SyntaxError
     or if class not found.
@@ -190,6 +191,8 @@ def extract_class_attributes(source, class_name):
                 elif isinstance(item, ast.AnnAssign):
                     if isinstance(item.target, ast.Name):
                         attrs.add(item.target.id)
+                elif isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    attrs.add(item.name)
             return attrs
 
     return set()

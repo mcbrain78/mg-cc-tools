@@ -231,6 +231,24 @@ class TestCodeRefs:
             assert len(findings) == 1
             assert "bogus_attr" in findings[0]["description"]
 
+    def test_class_method_attr(self):
+        """Code ref with attr pointing to a class method resolves."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # Add a method to the EtlRun class created by _make_project
+            models_path = os.path.join(project_root, "src", "app", "models.py")
+            with open(models_path, "a") as f:
+                f.write("\n    def mark_complete(self): pass\n")
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "models",
+                "<!-- section: models -->\n## Models\n\nContent",
+                [{"type": "code", "kind": "class", "name": "EtlRun", "attr": "mark_complete"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
     def test_function_without_module_found_by_scan(self):
         """Function ref without module is found by scanning all .py files."""
         with tempfile.TemporaryDirectory() as td:

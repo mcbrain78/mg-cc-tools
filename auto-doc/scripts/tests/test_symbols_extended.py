@@ -127,6 +127,19 @@ class TestExtractClassAttributes:
         attrs = extract_class_attributes(source, "Missing")
         assert attrs == set()
 
+    def test_methods_included(self):
+        """Method definitions are included alongside class attributes."""
+        source = (
+            "class MyClient:\n"
+            "    timeout: int = 30\n"
+            "    def get(self, url):\n"
+            "        pass\n"
+            "    async def post(self, url, data):\n"
+            "        pass\n"
+        )
+        attrs = extract_class_attributes(source, "MyClient")
+        assert attrs == {"timeout", "get", "post"}
+
     def test_syntax_error(self):
         assert extract_class_attributes("class Bad(:", "Bad") == set()
 
