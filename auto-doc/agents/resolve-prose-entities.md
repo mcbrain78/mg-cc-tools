@@ -36,21 +36,15 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
    c. **Read the section JSON** at the `file` path returned by next-section.
       Read `body`, `refs_as_text`, and `malformed_refs`.
 
-   d. **Entity resolution.** For each entity name from the entity list:
+   d. **Entity resolution.** For each entity, decide using ONLY the section context.
+      Apply these checks in order — stop at the first match:
 
-      1. **Assess ref-worthiness.** For each entity, decide using ONLY the section context:
-         - Read `refs_as_text` — does any declared ref seem to cover this entity? If yes, it may be a clearing false negative; dismiss it.
-         - Otherwise, use these categories to decide:
+      1. **Ref covers it → dismiss.** Read `refs_as_text`. If a declared ref
+         clearly covers this entity (same name, same concept), dismiss it.
+         The deterministic clearing missed it; that is a tooling gap, not
+         a documentation gap. Do not file a finding.
 
-         <always-findings>
-         These entity categories are ALWAYS ref-worthy — file a finding:
-         - File paths and file names (.py, .yaml, .json, .sh, .ini, .toml, .env files)
-         - Database references (tables, schemas, qualified names like schema.table)
-         - Function, class, or method names from the project
-         - Environment variables and config keys
-         - Service names and deployment artifacts (systemd units, worker names)
-         - Project dependencies when used in project-specific context
-         </always-findings>
+      2. **Universal / non-project → dismiss.**
 
          <dismiss-only>
          Only dismiss entities that are clearly universal — not specific to ANY project:
@@ -62,39 +56,48 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
          - Markdown/formatting artifacts
          </dismiss-only>
 
-         - Unsure? → File finding (prefer false positives over lost refs). **In final wave** — must decide for every entity.
+      3. **Project-specific with no matching ref → finding + propagate.**
 
-      **Three outcomes per entity:**
+         <always-findings>
+         These entity categories are ALWAYS ref-worthy — file a finding:
+         - File paths and file names (.py, .yaml, .json, .sh, .ini, .toml, .env files)
+         - Database references (tables, schemas, qualified names like schema.table)
+         - Function, class, or method names from the project
+         - Environment variables and config keys
+         - Service names and deployment artifacts (systemd units, worker names)
+         - Project dependencies when used in project-specific context
+         </always-findings>
 
-      2. **Ref-worthy → file finding + propagate:**
-         ```bash
-         uv run {scripts_dir}/audit-cmd.py --session {session} file-finding \
-             --section "{section_path}" \
-             --check "dangling-prose-reference" \
-             --description "Prose mentions `{entity_name}` which is not covered by any declared ref" \
-             --suggestion "{suggestion}"
-         ```
-         Where `{suggestion}` describes what type of ref it likely is (e.g., "Likely a database table", "Appears to be a config file", "Looks like a function name"). The fix agent will do its own codebase research to determine the precise ref.
+      4. **Cannot decide → skip.** Entity stays in uncleared for the next wave.
+         In the final wave (`{wave}` = `{num_waves}`), you must decide — dismiss or finding. Do not leave entities unresolved.
 
-         **Immediately after filing**, propagate the finding to all other sections with the same entity:
-         ```bash
-         uv run {scripts_dir}/audit-cmd.py --session {session} propagate \
-             --entity "{entity_name}" \
-             --section "{section_path}" \
-             --suggestion "{suggestion}"
-         ```
+      **Commands per outcome:**
 
-      3. **Not ref-worthy → dismiss:**
-         ```bash
-         uv run {scripts_dir}/audit-cmd.py --session {session} dismiss \
-             --entity "{entity_name}" \
-             --section "{section_path}"
-         ```
-         This removes the entity from uncleared across all sections and records it in the per-run dismissals list. A post-wave classification agent will later decide whether the entity is permanently non-ref-worthy or should be protected from future dismissal.
+      **Finding + propagate:**
+      ```bash
+      uv run {scripts_dir}/audit-cmd.py --session {session} file-finding \
+          --section "{section_path}" \
+          --check "dangling-prose-reference" \
+          --description "Prose mentions `{entity_name}` which is not covered by any declared ref" \
+          --suggestion "{suggestion}"
+      ```
+      Where `{suggestion}` describes what type of ref it likely is (e.g., "Likely a database table", "Appears to be a config file", "Looks like a function name"). The fix agent will do its own codebase research to determine the precise ref.
 
-      4. **Unsure → skip.** Entity stays in uncleared for the next wave.
+      **Immediately after filing**, propagate the finding to all other sections with the same entity:
+      ```bash
+      uv run {scripts_dir}/audit-cmd.py --session {session} propagate \
+          --entity "{entity_name}" \
+          --section "{section_path}" \
+          --suggestion "{suggestion}"
+      ```
 
-   **Final wave rule:** If `{wave}` equals `{num_waves}`, you MUST decide for every entity — either file a finding or dismiss. Do not leave entities unresolved.
+      **Dismiss:**
+      ```bash
+      uv run {scripts_dir}/audit-cmd.py --session {session} dismiss \
+          --entity "{entity_name}" \
+          --section "{section_path}"
+      ```
+      This removes the entity from uncleared across all sections and records it in the per-run dismissals list. A post-wave classification agent will later decide whether the entity is permanently non-ref-worthy or should be protected from future dismissal.
 
    e. **Judgment checks.** After resolving entities, perform these checks on the section:
 
@@ -145,9 +148,6 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 
 - **Be precise.** Only flag clear issues, not stylistic preferences.
 - **Quote the evidence.** In descriptions, quote the specific prose text and the conflicting ref.
-- **Prefer false negatives over false positives.** A noisy report trains users to ignore it.
 - **One finding per issue.** Don't bundle multiple problems into one finding.
 - **Additive only.** Never remove or second-guess findings from prior passes. Only add new ones.
-- **Use section context for disambiguation.** When an entity name is ambiguous (e.g., `status`), use the section topic and refs_as_text to determine the most likely interpretation.
-- **Trust the entity list.** If an entity appears in the list from get-section-entities, it needs investigation. If it doesn't appear, it's already been handled by propagation from an earlier section — don't look for it.
-- **Default is finding.** If an entity doesn't clearly fit in `<dismiss-only>`, file a finding. The fix agent validates findings — false positives are cheap. False dismissals lose real refs.
+- **Noisy reports get ignored.** If a ref exists for an entity but clearing missed it, dismiss — do not file a finding hedged with "this might be a tooling issue". Only file findings when you are confident the ref is missing.

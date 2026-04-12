@@ -5,8 +5,8 @@ After wave 1 (LLM entity extraction), this script performs two operations
 per section:
 
 1. **Clearing (Check A partial):** Two-pass resolution per section.
-   *First pass:* clear entities whose name exactly matches a unique ref
-   identifier (one that appears only once in the section's refs).
+   *First pass:* clear entities whose name exactly matches any ref
+   identifier declared in the section's refs.
    *Second pass:* conservative path resolution for remaining entities —
    an entity clears when exactly one ref path is consistent with the
    entity set.  Uncleared entities go to the LLM for judgment.
@@ -188,18 +188,16 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
         if not section_entities:
             continue
 
-        # First pass: clear by unique identifier match
-        ident_counts = {}
+        # First pass: clear by identifier match
+        all_idents = set()
         for entry in ref_entries:
             ident = entry.get("identifier")
             if ident:
-                ident_counts[ident] = ident_counts.get(ident, 0) + 1
-        unique_idents = {ident for ident, count in ident_counts.items()
-                         if count == 1}
+                all_idents.add(ident)
 
         ident_cleared = set()
         for name in section_entities:
-            if name in unique_idents:
+            if name in all_idents:
                 ident_cleared.add(name)
 
         # Second pass: path resolution for remaining entities

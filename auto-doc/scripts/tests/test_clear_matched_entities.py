@@ -159,11 +159,11 @@ class TestClearing:
             assert uncleared[0]["name"] == "unknown_thing"
             assert "Cleared: 1" in result.stderr
 
-    def test_multi_match_does_not_clear(self):
-        """Entity matching 2 fully-present ref paths stays uncleared (ambiguity).
+    def test_multi_match_clears_via_identifier(self):
+        """Entity matching 2 ref paths clears in identifier pass.
 
-        When two paths share components and all components are present,
-        none can uniquely resolve — everything stays uncleared.
+        Even though path resolution would be ambiguous, the identifier
+        match fires first and clears the entity.
         """
         with tempfile.TemporaryDirectory() as td:
             prose_dir, ef, uf, ff = _setup(td, [
@@ -186,10 +186,8 @@ class TestClearing:
 
             with open(uf) as f:
                 uncleared = json.load(f)
-            # alpha appears in both paths, neither fully present (beta, gamma missing)
-            # → no candidates → stays uncleared
-            assert len(uncleared) == 1
-            assert uncleared[0]["name"] == "alpha"
+            # Any identifier match clears — duplicate identifiers no longer block
+            assert len(uncleared) == 0
 
     def test_empty_entities_file(self):
         """Empty entities list → empty uncleared file."""
@@ -381,8 +379,8 @@ class TestMultiComponentClearing:
             assert uncleared == []
             assert "Cleared: 3" in result.stderr
 
-    def test_ambiguous_component_stays_uncleared(self):
-        """Entity matching 2 paths stays uncleared."""
+    def test_ambiguous_component_clears_via_identifier(self):
+        """Entity matching 2 paths clears in identifier pass."""
         with tempfile.TemporaryDirectory() as td:
             prose_dir, ef, uf, ff = _setup(td, [
                 {
@@ -410,8 +408,8 @@ class TestMultiComponentClearing:
 
             with open(uf) as f:
                 uncleared = json.load(f)
-            assert len(uncleared) == 1
-            assert uncleared[0]["name"] == "status"
+            # Any identifier match clears — duplicate identifiers no longer block
+            assert len(uncleared) == 0
 
     def test_disambiguation_via_context(self):
         """Sibling entity disambiguates which path status belongs to."""
@@ -895,8 +893,8 @@ class TestIdentifierClearing:
             assert uncleared == []
             assert "Cleared: 1" in result.stderr
 
-    def test_duplicate_identifier_no_clear(self):
-        """Entity matches an identifier that appears in 2 refs → falls through to path resolution."""
+    def test_duplicate_identifier_still_clears(self):
+        """Entity matches an identifier that appears in 2 refs → clears anyway."""
         with tempfile.TemporaryDirectory() as td:
             prose_dir, ef, uf, ff = _setup(td, [
                 {
@@ -924,10 +922,8 @@ class TestIdentifierClearing:
 
             with open(uf) as f:
                 uncleared = json.load(f)
-            # Duplicate identifier → no identifier clear; path resolution also
-            # fails (neither etl_runs nor jobs in entity set) → stays uncleared
-            assert len(uncleared) == 1
-            assert uncleared[0]["name"] == "status"
+            # Any identifier match clears — duplicate identifiers no longer block
+            assert len(uncleared) == 0
 
     def test_identifier_clear_plus_path_clear(self):
         """Mix of identifier-cleared and path-cleared entities in same section."""
