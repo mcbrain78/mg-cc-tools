@@ -72,6 +72,10 @@ def cmd_file_finding(session, args):
     ]
     if session.get("wave") is not None:
         cmd_args.extend(["--wave", str(session["wave"])])
+    if getattr(args, "entity", None):
+        cmd_args.extend(["--entity", args.entity])
+    if session.get("suppress_file"):
+        cmd_args.extend(["--suppress-file", session["suppress_file"]])
     return _delegate("add-verify-finding.py", cmd_args)
 
 
@@ -135,6 +139,7 @@ def main():
     p_finding.add_argument("--check", required=True)
     p_finding.add_argument("--description", required=True)
     p_finding.add_argument("--suggestion", required=True)
+    p_finding.add_argument("--entity", help="Entity name (for suppress matching)")
 
     # propagate
     p_propagate = subparsers.add_parser(

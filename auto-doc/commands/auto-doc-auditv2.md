@@ -53,7 +53,7 @@ Store the wave count as `num_waves` (integer, minimum 1, default 2).
    rm -rf {MG_INSTALL_WORKSPACE_DIR}/auditv2/run
    mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2/run
    # Initialize persistent files if they don't exist
-   for f in not-entities.json protected-entities.json; do
+   for f in not-entities.json protected-entities.json suppressed-findings.json; do
      [ -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f ] || echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f
    done
    echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json
@@ -87,9 +87,30 @@ Read `{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-refs.json` to get the dete
        --output-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}
    ```
 
+### Step 3.5: Delta Extraction Check
+
+For each document, check whether sections have changed since the last audit run. This avoids re-extracting entities from unchanged sections.
+
+For each XML file processed in Step 3:
+```bash
+uv run {MG_INSTALL_SCRIPTS_DIR}/delta-extract.py \
+    --prose-verify-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT} \
+    --prev-entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/entities-{audience}-{DOCUMENT}.json \
+    --entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/entities-{audience}-{DOCUMENT}.json
+```
+
+Parse the JSON output. If `changed` is empty (all sections reused), skip extraction for that document entirely. If `changed` has entries, write the changed sections list to a filter file:
+```bash
+python3 -c "
+import json, sys
+with open(sys.argv[1], 'w') as f: json.dump(json.loads(sys.argv[2]), f, indent=2)
+" {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/changed-sections-{audience}-{DOCUMENT}.json '{changed_json}'
+```
+
 ### Step 4: Wave 1 — Entity Extraction
 
-Spawn extraction agents (one per document, parallel foreground, **model: sonnet**):
+Spawn extraction agents (one per document that has changed sections, parallel foreground, **model: sonnet**). If delta check found changed sections, pass `--sections-filter`. If all sections were reused for a document, skip its extraction agent.
+
 ```
 Agent(
   model="sonnet",
@@ -101,8 +122,18 @@ Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/extract-prose-entit
 Project root: {project_root}
 Prose verify dir: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}
 Entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/entities-{audience}-{DOCUMENT}.json
-Scripts dir: {MG_INSTALL_SCRIPTS_DIR}"
+Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
+Sections filter: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/changed-sections-{audience}-{DOCUMENT}.json"
 )
+```
+
+Omit `Sections filter:` line if all sections need extraction (no previous run data).
+
+After extraction completes, copy the current entities file to the persistent location for next run's delta comparison:
+```bash
+cp {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/entities-{audience}-{DOCUMENT}.json \
+   {MG_INSTALL_WORKSPACE_DIR}/auditv2/entities-{audience}-{DOCUMENT}.json
+```
 ```
 
 ### Step 5: Deterministic Clearing + Check B
@@ -161,6 +192,7 @@ session = {
     'not_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json',
     'dismissed_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json',
     'protected_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json',
+    'suppress_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/suppressed-findings.json',
 }
 path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'run', 'session-{audience}-{DOCUMENT}.json')
 with open(path, 'w') as f:
@@ -186,6 +218,46 @@ Wave: {N}
 Num waves: {num_waves}"
 )
 ```
+
+e. **Snapshot findings for diff.** Before running wave summary, copy the current findings to a snapshot so the next wave can compute the delta:
+```bash
+cp {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
+   {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}-prev-w{N}.json 2>/dev/null || true
+```
+
+f. **Assess convergence.** Run `wave-summary.py` for the completed wave, then `append-trajectory.py`:
+```bash
+uv run {MG_INSTALL_SCRIPTS_DIR}/wave-summary.py \
+    --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
+    --prev-findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}-prev-w{N}.json \
+    --uncleared-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
+    --dismissed-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json \
+    --wave {N} \
+    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-{N}.json
+```
+
+```bash
+uv run {MG_INSTALL_SCRIPTS_DIR}/append-trajectory.py \
+    --trajectory-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/trajectory.json \
+    --wave-summary {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-{N}.json
+```
+
+If this is not the final wave (`{N}` < `{num_waves}`), spawn a convergence assessment agent:
+```
+Agent(
+  model="sonnet",
+  description="Convergence assessment W{N}",
+  prompt="You are a convergence assessment agent.
+
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/assess-convergence.md
+
+Trajectory file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/trajectory.json
+Wave: {N}
+Num waves: {num_waves}"
+)
+```
+
+Present the agent's recommendation to the user. If the recommendation is RECOMMEND STOP, ask the user whether to continue or stop. If CONTINUE, proceed to the next wave. The user always has the final say.
 
 ### Step 6.5: Classify Dismissed Entities
 

@@ -739,3 +739,124 @@ class TestAddVerifyFindingWave:
                 data = json.load(f)
 
             assert data[0]["wave"] == 0
+
+
+class TestAddVerifyFindingSuppression:
+    """Suppress-file integration."""
+
+    def _inline_args(self, finding=None, **overrides):
+        f = finding or _valid_finding()
+        f.update(overrides)
+        args = []
+        for key in ["document", "section", "audience", "check",
+                     "description", "suggestion"]:
+            if key in f:
+                args.extend([f"--{key}", f[key]])
+        return args
+
+    def test_suppressed_finding_skipped(self):
+        """Finding matching suppress entry is not written."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            suppress_file = os.path.join(tmp, "suppressed.json")
+
+            with open(suppress_file, "w") as f:
+                json.dump([{
+                    "section": "deployment-pipeline",
+                    "check": "dangling-prose-reference",
+                    "entity": "Failed",
+                }], f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--suppress-file", suppress_file,
+                 "--entity", "Failed",
+                 *self._inline_args(
+                     check="dangling-prose-reference",
+                     description="Prose mentions `Failed` without ref",
+                 )],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "Suppressed:" in result.stderr
+
+            # No findings written
+            assert not os.path.exists(findings_file) or (
+                json.load(open(findings_file)) == []
+            )
+
+    def test_non_matching_suppress_still_writes(self):
+        """Finding not matching suppress entry is written normally."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            suppress_file = os.path.join(tmp, "suppressed.json")
+
+            with open(suppress_file, "w") as f:
+                json.dump([{
+                    "section": "other-section",
+                    "check": "dangling-prose-reference",
+                    "entity": "Failed",
+                }], f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--suppress-file", suppress_file,
+                 "--entity", "Failed",
+                 *self._inline_args(
+                     check="dangling-prose-reference",
+                     description="Prose mentions `Failed` without ref",
+                 )],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "Suppressed:" not in result.stderr
+
+            with open(findings_file) as f:
+                data = json.load(f)
+            assert len(data) == 1
+
+    def test_no_suppress_file_writes_normally(self):
+        """Without --suppress-file, finding is written normally."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--entity", "etl_runs",
+                 *self._inline_args()],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+            assert len(data) == 1
+
+    def test_suppress_without_entity_writes_normally(self):
+        """With --suppress-file but no --entity, finding is written."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            suppress_file = os.path.join(tmp, "suppressed.json")
+
+            with open(suppress_file, "w") as f:
+                json.dump([{
+                    "section": "deployment-pipeline",
+                    "check": "dangling-prose-reference",
+                    "entity": "Failed",
+                }], f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--suppress-file", suppress_file,
+                 *self._inline_args()],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            with open(findings_file) as f:
+                data = json.load(f)
+            assert len(data) == 1

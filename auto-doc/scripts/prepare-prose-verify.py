@@ -20,6 +20,7 @@ section paths.
 """
 
 import argparse
+import hashlib
 import os
 import sys
 
@@ -169,6 +170,10 @@ def prepare(xml_path, output_dir):
                     entry["path"] = list(ref_path)
                 ref_entries.append(entry)
 
+        content_hash = hashlib.sha256(
+            (body + refs_text).encode("utf-8"),
+        ).hexdigest()
+
         section_data = {
             "path": path,
             "slug": slug,
@@ -176,6 +181,7 @@ def prepare(xml_path, output_dir):
             "audience": doc["audience"],
             "body": body,
             "refs_as_text": refs_text,
+            "content_hash": content_hash,
             "malformed_refs": malformed,
             "ref_entries": ref_entries,
         }

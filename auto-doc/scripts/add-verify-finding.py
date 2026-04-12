@@ -145,6 +145,8 @@ def main():
     parser.add_argument("--description", help="Finding description")
     parser.add_argument("--suggestion", help="Suggested fix")
     parser.add_argument("--wave", type=int, help="Wave number (resolution wave that produced this finding)")
+    parser.add_argument("--entity", help="Entity name (for suppress-file matching)")
+    parser.add_argument("--suppress-file", help="Path to suppressed-findings.json (skip matching findings)")
 
     args = parser.parse_args()
     findings_path = os.path.abspath(args.findings_file)
@@ -202,6 +204,23 @@ def main():
     # Store wave metadata if provided (via CLI or already in file-mode JSON)
     if has_inline and args.wave is not None:
         input_data["wave"] = args.wave
+
+    # Check suppress list before writing
+    if args.suppress_file and os.path.isfile(args.suppress_file):
+        entity = args.entity or input_data.get("entity")
+        if entity:
+            suppressions = load_json(args.suppress_file, default=[])
+            section = input_data.get("section", "")
+            check = input_data.get("check", "")
+            for s in suppressions:
+                if (s.get("section") == section
+                        and s.get("check") == check
+                        and s.get("entity") == entity):
+                    print(
+                        f"Suppressed: {section} / {check} / {entity}",
+                        file=sys.stderr,
+                    )
+                    sys.exit(0)
 
     # Load existing, append, save atomically
     findings = load_json(findings_path, default=[])

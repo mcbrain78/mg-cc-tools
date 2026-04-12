@@ -25,8 +25,14 @@ from lib.json_io import load_json, save_json
 VALID_TARGETS = ("not-entities", "protected-entities")
 
 
-def classify(entity, target, reason, not_entities_file, protected_entities_file):
+def classify(entity, target, reason, not_entities_file, protected_entities_file,
+             contextual=False):
     """Classify entity into target list (deduped). Warn if in other list.
+
+    Args:
+        contextual: If True and target is not-entities, mark the entry with
+            "contextual": true. Contextual entities are words that can be
+            ref-worthy as identifiers but were used as plain prose.
 
     Returns:
         True if entity was added, False if already present (dedup).
@@ -63,7 +69,10 @@ def classify(entity, target, reason, not_entities_file, protected_entities_file)
         )
         return False
 
-    target_list.append({"name": entity, "reason": reason})
+    entry = {"name": entity, "reason": reason}
+    if contextual and target == "not-entities":
+        entry["contextual"] = True
+    target_list.append(entry)
     save_json(target_file, target_list)
     print(
         f"Classified: {entity} → {target} ({reason})",
@@ -96,6 +105,10 @@ def main():
         "--protected-entities-file", required=True,
         help="Path to protected-entities JSON file",
     )
+    parser.add_argument(
+        "--contextual", action="store_true", default=False,
+        help="Mark as contextual non-ref (word is ref-worthy as identifier but used as plain prose)",
+    )
 
     args = parser.parse_args()
     classify(
@@ -104,6 +117,7 @@ def main():
         reason=args.reason,
         not_entities_file=args.not_entities_file,
         protected_entities_file=args.protected_entities_file,
+        contextual=args.contextual,
     )
 
 

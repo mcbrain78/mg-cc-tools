@@ -42,7 +42,15 @@ You are a classification agent. After resolution waves dismissed entities into a
         - Generic programming terms (`API`, `HTTP`, `URL`, `JSON`, `SQL`, `CLI`, `SSH`, `REST`, `CRUD`)
         - Generic tool names when used generically (`bash`, `python`, `git`, `docker`)
         - Markdown/formatting artifacts
-        - Common English words that happen to look code-like
+
+      - **Contextual non-ref** → classify to `not-entities` with `--contextual`. These are common
+        English words that CAN be ref-worthy when used as identifiers but were used as plain prose in this
+        context. They should not be extracted as entities when used as natural language:
+        - Common verbs/nouns that double as identifiers: `get`, `set`, `run`, `start`, `stop`, `status`,
+          `type`, `name`, `key`, `value`, `data`, `result`, `error`, `state`, `flow`, `task`
+        - The entity appeared in regular prose (not backtick-quoted, not in code blocks, not in SQL)
+        - Context clue: if the same word appears both backtick-quoted AND in regular prose in the section,
+          only the backtick-quoted usage should be an entity — the prose usage is contextual
 
       - **Project-specific ref** → classify to `protected-entities`. These are entities that look like they could be real references in this project:
         - Function/method names (snake_case, camelCase patterns): `compute_content_hash`, `recompute_stale`
@@ -58,10 +66,11 @@ You are a classification agent. After resolution waves dismissed entities into a
           --entity "{entity_name}" \
           --target "{not-entities|protected-entities}" \
           --reason "{reason}" \
+          [--contextual] \
           --not-entities-file {not_entities_file} \
           --protected-entities-file {protected_entities_file}
       ```
-      Where `{reason}` briefly explains WHY (e.g., "Python builtin function", "Looks like a project config file path", "Generic SQL keyword").
+      Where `{reason}` briefly explains WHY (e.g., "Python builtin function", "Looks like a project config file path", "Generic SQL keyword"). Add `--contextual` when classifying a contextual non-ref to `not-entities` (e.g., `--reason "Contextual: used as plain English, not as identifier" --contextual`).
 
 4. **Report.** Summarize classifications:
    ```
@@ -81,4 +90,4 @@ You are a classification agent. After resolution waves dismissed entities into a
 
 - **Do NOT search the codebase.** Classification is based on the entity name pattern and section context only.
 - **Do NOT modify dismissed-this-run.json.** Only write to the permanent lists via classify-entity.py.
-- **Do NOT skip entities.** Every dismissed entity must be classified into one of the two lists.
+- **Do NOT skip entities.** Every dismissed entity must be classified into one of the three categories (universal, contextual, or project-specific).

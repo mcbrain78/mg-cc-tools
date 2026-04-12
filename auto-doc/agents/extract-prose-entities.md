@@ -12,6 +12,7 @@ You are a focused extraction agent. For each section, you read the prose body an
 - **prose_verify_dir**: Path to directory containing per-section JSON files prepared by `prepare-prose-verify.py`.
 - **entities_file**: Path to the entities JSON file (created/appended by this agent).
 - **scripts_dir**: Path to the scripts directory.
+- **sections_filter** (optional): Path to a JSON file listing section paths to extract. If provided, only extract those sections. If absent, extract all sections.
 
 ## Process
 
@@ -19,8 +20,10 @@ You are a focused extraction agent. For each section, you read the prose body an
    ```bash
    uv run {scripts_dir}/next-section.py \
        --state-file {entities_file}.sectionctl \
-       --prose-verify-dir {prose_verify_dir}
+       --prose-verify-dir {prose_verify_dir} \
+       --sections-filter {sections_filter}
    ```
+   If `{sections_filter}` was not provided, omit the `--sections-filter` flag.
    If `done` is `true`, there are no sections with refs — report this and stop.
 
 2. **Process sections one at a time.** For each section returned by next-section:

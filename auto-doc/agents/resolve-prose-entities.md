@@ -56,7 +56,22 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
          - Markdown/formatting artifacts
          </dismiss-only>
 
-      3. **Project-specific with no matching ref → finding + propagate.**
+      3. **No constructible ref type → dismiss.**
+         Consult the ref type table you read from `{ref_types_reference}`.
+         Could a valid typed ref be constructed for this entity using any of
+         the 9 ref types (`db`, `code`, `flow`, `env`, `config`, `enum`,
+         `dep`, `literal`, `ext`)? If the entity does not fit any type,
+         dismiss it — it cannot have a ref regardless of project relevance.
+
+         Common dismissals at this tier:
+         - External URLs and domain names (no ref type for URLs)
+         - Third-party framework states, status codes, or constants
+           (e.g., Prefect `Failed`/`Crashed`, HTTP `200`/`404`)
+         - Third-party enum values or work pool states not defined
+           in the project's own source code
+         - Output format strings, log messages, or display text
+
+      4. **Project-specific with no matching ref → finding + propagate.**
 
          <always-findings>
          These entity categories are ALWAYS ref-worthy — file a finding:
@@ -68,7 +83,7 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
          - Project dependencies when used in project-specific context
          </always-findings>
 
-      4. **Cannot decide → skip.** Entity stays in uncleared for the next wave.
+      5. **Cannot decide → skip.** Entity stays in uncleared for the next wave.
          In the final wave (`{wave}` = `{num_waves}`), you must decide — dismiss or finding. Do not leave entities unresolved.
 
       **Commands per outcome:**
@@ -79,7 +94,8 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
           --section "{section_path}" \
           --check "dangling-prose-reference" \
           --description "Prose mentions `{entity_name}` which is not covered by any declared ref" \
-          --suggestion "{suggestion}"
+          --suggestion "{suggestion}" \
+          --entity "{entity_name}"
       ```
       Where `{suggestion}` describes what type of ref it likely is (e.g., "Likely a database table", "Appears to be a config file", "Looks like a function name"). The fix agent will do its own codebase research to determine the precise ref.
 

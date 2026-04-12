@@ -140,6 +140,68 @@ class TestConflictWarning:
             assert protected[0]["name"] == "bash"
 
 
+class TestContextualFlag:
+    """Contextual non-ref classification."""
+
+    def test_contextual_flag_sets_field(self):
+        """--contextual adds contextual: true to the not-entities entry."""
+        with tempfile.TemporaryDirectory() as td:
+            nf = _write_json(td, "not-entities.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "status",
+                 "--target", "not-entities",
+                 "--reason", "Contextual: used as plain English",
+                 "--contextual",
+                 "--not-entities-file", nf,
+                 "--protected-entities-file", pf],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            not_entities = _read_json(nf)
+            assert len(not_entities) == 1
+            assert not_entities[0]["name"] == "status"
+            assert not_entities[0]["contextual"] is True
+            assert not_entities[0]["reason"] == "Contextual: used as plain English"
+
+    def test_no_contextual_flag_no_field(self):
+        """Without --contextual, entry has no contextual field."""
+        with tempfile.TemporaryDirectory() as td:
+            nf = _write_json(td, "not-entities.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+
+            result = _run("bash", "not-entities", "Generic shell", nf, pf)
+            assert result.returncode == 0
+
+            not_entities = _read_json(nf)
+            assert "contextual" not in not_entities[0]
+
+    def test_contextual_on_protected_ignored(self):
+        """--contextual with protected-entities target → no contextual field."""
+        with tempfile.TemporaryDirectory() as td:
+            nf = _write_json(td, "not-entities.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "compute_hash",
+                 "--target", "protected-entities",
+                 "--reason", "Project function",
+                 "--contextual",
+                 "--not-entities-file", nf,
+                 "--protected-entities-file", pf],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            protected = _read_json(pf)
+            assert len(protected) == 1
+            assert "contextual" not in protected[0]
+
+
 class TestMissingFiles:
     """Missing file handling."""
 

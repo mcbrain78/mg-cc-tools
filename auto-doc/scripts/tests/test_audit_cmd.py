@@ -153,6 +153,34 @@ class TestFileFinding:
             assert f["check"] == "dangling-prose-reference"
             assert f["wave"] == 1
 
+    def test_files_finding_with_entity_and_suppress(self):
+        """file-finding passes --entity and --suppress-file through."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(
+                td,
+                suppress_file=os.path.join(td, "suppressed.json"),
+            )
+            _write_json(td, "findings.json", [])
+            _write_json(td, "suppressed.json", [{
+                "section": "monitoring",
+                "check": "dangling-prose-reference",
+                "entity": "Failed",
+            }])
+
+            # This finding matches the suppress entry → should be suppressed
+            result = _run(session_path, "file-finding", [
+                "--section", "monitoring",
+                "--check", "dangling-prose-reference",
+                "--description", "Prose mentions `Failed` without ref",
+                "--suggestion", "Third-party state",
+                "--entity", "Failed",
+            ])
+            assert result.returncode == 0
+            assert "Suppressed:" in result.stderr
+
+            findings = _read_json(sess["findings_file"])
+            assert len(findings) == 0
+
     def test_files_finding_without_wave(self):
         with tempfile.TemporaryDirectory() as td:
             session_path, sess = _make_session(td, wave=None)
