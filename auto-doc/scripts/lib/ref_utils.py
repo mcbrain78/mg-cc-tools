@@ -90,11 +90,10 @@ def path_for_ref(ref):
 
     Component selection per type:
 
-    * **db** → ``(schema, table)`` or ``(schema, table, column)``
-      — db name is skipped (rarely mentioned in prose)
-    * **code** → ``(module_basename, name)`` plus ``attr`` or ``param``
+    * **db** → ``(db, schema, table)`` or ``(db, schema, table, column)``
+    * **code** → ``(module, name)`` plus ``attr`` or ``param``
       if present; bare ``(name,)`` when module is absent
-    * **config** → ``(basename,)``
+    * **config** → ``(path,)`` (full path, not basename)
     * **flow / dep / ext / literal / env** → ``(name,)``
     * **enum** → ``(class, field, value)``
     """
@@ -105,9 +104,12 @@ def path_for_ref(ref):
 
     if ref_type == "db":
         parts = []
+        db = ref.get("db", "")
         schema = ref.get("schema", "")
         table = ref.get("table", "")
         column = ref.get("column", "")
+        if db:
+            parts.append(db)
         if schema:
             parts.append(schema)
         if table:
@@ -124,12 +126,7 @@ def path_for_ref(ref):
         parts = []
         module = ref.get("module", "")
         if module:
-            # Module can be dotted (src.pipeline) or path (src/pipeline.py)
-            # Use the file basename for paths, last dotted segment for modules
-            if os.sep in module or "/" in module:
-                parts.append(os.path.basename(module))
-            else:
-                parts.append(module.rsplit(".", 1)[-1])
+            parts.append(module)
         parts.append(name)
         attr = ref.get("attr", "")
         if attr:
@@ -144,7 +141,7 @@ def path_for_ref(ref):
         path = ref.get("path", "")
         if not path:
             return ()
-        return (os.path.basename(path),)
+        return (path,)
 
     if ref_type in ("flow", "dep", "ext", "literal", "env"):
         name = ref.get("name", "")

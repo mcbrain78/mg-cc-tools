@@ -4,9 +4,12 @@
 After wave 1 (LLM entity extraction), this script performs two operations
 per section:
 
-1. **Clearing (Check A partial):** Match each extracted entity name against
-   pre-computed ref identifiers.  An entity clears if it exactly matches
-   one identifier.  Zero or multiple matches → uncleared (goes to LLM).
+1. **Clearing (Check A partial):** Two-pass resolution per section.
+   *First pass:* clear entities whose name exactly matches a unique ref
+   identifier (one that appears only once in the section's refs).
+   *Second pass:* conservative path resolution for remaining entities —
+   an entity clears when exactly one ref path is consistent with the
+   entity set.  Uncleared entities go to the LLM for judgment.
 
 2. **Check B (ref → body):** For each ref identifier, check whether it
    appears as a substring in the section body.  Missing identifiers are
@@ -75,7 +78,7 @@ def _expand_dotted(entity_set):
     return expanded
 
 
-def _resolve_entities(section_entities, ref_entries):
+def _resolve_entities(section_entities, ref_entries, context_names=None):
     """Conservative path resolution for multi-component clearing.
 
     An entity clears only when there is exactly one ref path consistent
@@ -83,11 +86,19 @@ def _resolve_entities(section_entities, ref_entries):
     a path is uniquely resolved, its newly-cleared components may
     disambiguate remaining entities.
 
+    Args:
+        section_entities: Entity names to attempt to clear.
+        ref_entries: Ref entries with path arrays.
+        context_names: Additional names considered present for path
+            component checks (e.g. identifier-cleared entities).
+
     Returns:
         Tuple of (cleared_set, uncleared_set).
     """
     paths = [tuple(e["path"]) for e in ref_entries if e.get("path")]
     entity_set = set(section_entities)
+    if context_names:
+        entity_set |= set(context_names)
     entity_set = _expand_dotted(entity_set)
 
     # Inverted index: component name → list of paths containing it
@@ -131,6 +142,12 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
             e["name"] if isinstance(e, dict) else e for e in raw
         }
         entities = [e for e in entities if e["name"] not in not_entity_names]
+
+    # Normalize: strip trailing () from function-call notation
+    for ent in entities:
+        if ent["name"].endswith("()"):
+            ent["name"] = ent["name"][:-2]
+
     manifest = load_json(os.path.join(prose_verify_dir, "manifest.json"))
     if manifest is None:
         print("Error: manifest.json not found", file=sys.stderr)
@@ -166,12 +183,34 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
                     section_path, entry.get("display", ident),
                 )
 
-        # -- Clearing: conservative path resolution ---------------
+        # -- Clearing: identifier match + path resolution -----------
         section_entities = entities_by_section.get(section_path, [])
         if not section_entities:
             continue
 
-        cleared, _ = _resolve_entities(section_entities, ref_entries)
+        # First pass: clear by unique identifier match
+        ident_counts = {}
+        for entry in ref_entries:
+            ident = entry.get("identifier")
+            if ident:
+                ident_counts[ident] = ident_counts.get(ident, 0) + 1
+        unique_idents = {ident for ident, count in ident_counts.items()
+                         if count == 1}
+
+        ident_cleared = set()
+        for name in section_entities:
+            if name in unique_idents:
+                ident_cleared.add(name)
+
+        # Second pass: path resolution for remaining entities
+        remaining = [n for n in section_entities if n not in ident_cleared]
+        if remaining:
+            path_cleared, _ = _resolve_entities(
+                remaining, ref_entries, context_names=ident_cleared)
+        else:
+            path_cleared = set()
+
+        cleared = ident_cleared | path_cleared
 
         section_has_uncleared = False
         for name in section_entities:

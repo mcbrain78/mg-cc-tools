@@ -176,7 +176,7 @@ def test_missing_type():
 
 def test_path_db_full_chain():
     ref = {"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}
-    assert path_for_ref(ref) == ("road_runner", "etl_runs", "flow_name")
+    assert path_for_ref(ref) == ("mydb", "road_runner", "etl_runs", "flow_name")
 
 
 def test_path_db_table_level():
@@ -194,10 +194,10 @@ def test_path_db_empty():
     assert path_for_ref(ref) == ()
 
 
-def test_path_db_skips_db_name():
-    """db name is not included — only schema, table, column."""
+def test_path_db_includes_db_name():
+    """db name is included as first component."""
     ref = {"type": "db", "db": "mydb", "schema": "s", "table": "t"}
-    assert path_for_ref(ref) == ("s", "t")
+    assert path_for_ref(ref) == ("mydb", "s", "t")
 
 
 # -- path_for_ref: code refs -------------------------------------------------
@@ -209,7 +209,7 @@ def test_path_code_plain():
 
 def test_path_code_with_module():
     ref = {"type": "code", "kind": "function", "name": "run", "module": "src.pipeline"}
-    assert path_for_ref(ref) == ("pipeline", "run")
+    assert path_for_ref(ref) == ("src.pipeline", "run")
 
 
 def test_path_code_with_attr():
@@ -219,7 +219,7 @@ def test_path_code_with_attr():
 
 def test_path_code_with_module_and_attr():
     ref = {"type": "code", "kind": "class", "name": "Settings", "module": "src/config.py", "attr": "timeout"}
-    assert path_for_ref(ref) == ("config.py", "Settings", "timeout")
+    assert path_for_ref(ref) == ("src/config.py", "Settings", "timeout")
 
 
 def test_path_code_with_param():
@@ -273,7 +273,7 @@ def test_path_name_based_empty():
 
 def test_path_config():
     ref = {"type": "config", "path": "config/field-mapping.yaml"}
-    assert path_for_ref(ref) == ("field-mapping.yaml",)
+    assert path_for_ref(ref) == ("config/field-mapping.yaml",)
 
 
 def test_path_config_empty():

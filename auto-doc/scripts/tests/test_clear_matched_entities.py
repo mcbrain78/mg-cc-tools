@@ -863,3 +863,223 @@ class TestDotSplitClearing:
             # Only the original dotted entity in output, not "foo" or "bar"
             names = [e["name"] for e in uncleared]
             assert names == ["foo.bar"]
+
+
+class TestIdentifierClearing:
+    """Identifier-based clearing: first pass before path resolution."""
+
+    def test_unique_identifier_clears(self):
+        """Entity matches a unique identifier in section → clears without path resolution."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nempty_str_to_none handles nulls.",
+                    "ref_entries": [
+                        {
+                            "display": "[code] config.empty_str_to_none",
+                            "identifier": "empty_str_to_none",
+                            "path": ["src/road_runner/config.py", "empty_str_to_none"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "empty_str_to_none", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+    def test_duplicate_identifier_no_clear(self):
+        """Entity matches an identifier that appears in 2 refs → falls through to path resolution."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nstatus column used in multiple tables.",
+                    "ref_entries": [
+                        {
+                            "display": "[db] rr.etl_runs.status",
+                            "identifier": "status",
+                            "path": ["etl_runs", "status"],
+                        },
+                        {
+                            "display": "[db] rr.jobs.status",
+                            "identifier": "status",
+                            "path": ["jobs", "status"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "status", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            # Duplicate identifier → no identifier clear; path resolution also
+            # fails (neither etl_runs nor jobs in entity set) → stays uncleared
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "status"
+
+    def test_identifier_clear_plus_path_clear(self):
+        """Mix of identifier-cleared and path-cleared entities in same section."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nempty_str_to_none and etl_runs.flow_name.",
+                    "ref_entries": [
+                        {
+                            "display": "[code] config.empty_str_to_none",
+                            "identifier": "empty_str_to_none",
+                            "path": ["src/road_runner/config.py", "empty_str_to_none"],
+                        },
+                        {
+                            "display": "[db] rr.etl_runs.flow_name",
+                            "identifier": "flow_name",
+                            "path": ["etl_runs", "flow_name"],
+                        },
+                    ],
+                },
+            ], [
+                # empty_str_to_none: clears via identifier (unique)
+                {"name": "empty_str_to_none", "section": "monitoring"},
+                # etl_runs + flow_name: clear via path resolution
+                {"name": "etl_runs", "section": "monitoring"},
+                {"name": "flow_name", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 3" in result.stderr
+
+    def test_no_path_ref_clears_by_identifier(self):
+        """Ref with identifier but no path (like bare db name) → clears via identifier."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nroad_runner_db is the main database.",
+                    "ref_entries": [
+                        {
+                            "display": "[db] road_runner_db",
+                            "identifier": "road_runner_db",
+                        },
+                    ],
+                },
+            ], [
+                {"name": "road_runner_db", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+    def test_identifier_clearing_before_path(self):
+        """Entity that would fail path resolution clears via identifier.
+
+        The entity matches the identifier but the path contains a component
+        (the full module path) that is not in the entity set — path resolution
+        alone would fail.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "config",
+                    "body": "## Config\n\nempty_str_to_none normalizes empty strings.",
+                    "ref_entries": [
+                        {
+                            "display": "[code] config.py:empty_str_to_none",
+                            "identifier": "empty_str_to_none",
+                            "path": ["src/road_runner/config.py", "empty_str_to_none"],
+                        },
+                    ],
+                },
+            ], [
+                # Only the function name — not the full module path
+                {"name": "empty_str_to_none", "section": "config"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            # Would fail path resolution (src/road_runner/config.py not in entity set)
+            # but clears via unique identifier match
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+
+class TestParenthesisNormalization:
+    """Parenthesis stripping: trailing () removed before matching."""
+
+    def test_parenthesized_entity_clears(self):
+        """Entity compute_price_cagrs() with ref identifier compute_price_cagrs → clears."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "calculations",
+                    "body": "## Calculations\n\ncompute_price_cagrs computes growth rates.",
+                    "ref_entries": [
+                        {
+                            "display": "[code] compute_price_cagrs",
+                            "identifier": "compute_price_cagrs",
+                            "path": ["compute_price_cagrs"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "compute_price_cagrs()", "section": "calculations"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+    def test_non_parenthesized_unchanged(self):
+        """Entity compute_price_cagrs without parens → still clears normally."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "calculations",
+                    "body": "## Calculations\n\ncompute_price_cagrs computes growth rates.",
+                    "ref_entries": [
+                        {
+                            "display": "[code] compute_price_cagrs",
+                            "identifier": "compute_price_cagrs",
+                            "path": ["compute_price_cagrs"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "compute_price_cagrs", "section": "calculations"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
