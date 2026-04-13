@@ -1905,6 +1905,18 @@ class TestSessionId:
     def test_only_jsonl_returns_none(self):
         assert _session_id(".jsonl") is None
 
+    def test_subagent_path_returns_parent_id(self):
+        path = "/tmp/sessions/abc-def-123/subagents/agent-adb2f4c2f0b616d7d.jsonl"
+        assert _session_id(path) == "abc-def-123"
+
+    def test_subagent_nested_path(self):
+        path = "/home/user/.claude/projects/-home-user-myproj/1d295c03-aaaa-bbbb-cccc-dddddddddddd/subagents/agent-adb2f4c2f0b616d7d.jsonl"
+        assert _session_id(path) == "1d295c03-aaaa-bbbb-cccc-dddddddddddd"
+
+    def test_subagent_windows_backslashes(self):
+        path = "C:\\Users\\me\\.claude\\projects\\proj\\sess-id\\subagents\\agent-x.jsonl"
+        assert _session_id(path) == "sess-id"
+
 
 class TestWriteContextSidecar:
     """_write_context_sidecar creates a sidecar file."""
@@ -2008,6 +2020,25 @@ class TestSessionContext:
             data = json.load(f)
         assert abs(time.time() - data["timestamp_ms"] / 1000) < 5
         assert data["command"] == "AUTO-DOC"
+
+    def test_subagent_resolves_parent_sidecar(self):
+        """Subagent transcript path finds sidecar written under parent UUID."""
+        sid = f"{self.SESSION_PREFIX}-subagent"
+        now_ms = int(time.time() * 1000)
+        self._write_sidecar(sid, "AUTO-DOC", now_ms)
+        subagent_path = f"/tmp/{sid}/subagents/agent-adb2f4c2f0b616d7d.jsonl"
+        assert check_session_context(subagent_path) == "AUTO-DOC"
+
+    def test_subagent_update_bumps_parent(self):
+        """_update_context_timestamp with subagent path updates parent sidecar."""
+        sid = f"{self.SESSION_PREFIX}-subbump"
+        old_ms = int((time.time() - 25 * 60) * 1000)
+        self._write_sidecar(sid, "AUTO-DOC", old_ms)
+        subagent_path = f"/tmp/{sid}/subagents/agent-xyz.jsonl"
+        _update_context_timestamp(subagent_path)
+        with open(os.path.join(self._session_dir(sid), "context.json")) as f:
+            data = json.load(f)
+        assert abs(time.time() - data["timestamp_ms"] / 1000) < 5
 
 
 # ── Edit guard toggle tests ─────────────────────────────────────────────────

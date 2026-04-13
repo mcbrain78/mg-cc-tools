@@ -114,7 +114,20 @@ _RECENT_LINES = 5
 
 
 def _session_id(transcript_path):
-    """Derive session ID from transcript path."""
+    """Derive session ID from transcript path.
+
+    Subagent transcripts live at .../SESSION_UUID/subagents/agent-xxx.jsonl.
+    For these, return the parent session UUID so sidecar files are shared.
+    """
+    if not transcript_path:
+        return None
+    parts = transcript_path.replace("\\", "/").split("/")
+    try:
+        sub_idx = parts.index("subagents")
+        if sub_idx > 0:
+            return parts[sub_idx - 1] or None
+    except ValueError:
+        pass
     session = os.path.basename(transcript_path)
     if session.endswith(".jsonl"):
         session = session[:-6]
