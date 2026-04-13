@@ -33,6 +33,27 @@ Parse the user's input text for optional parameters:
 
 Store the wave count as `num_waves` (integer, minimum 1, default 2).
 
+**Convergence check.** Before any other setup, check if a prior audit run's trajectory exists:
+```bash
+test -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/trajectory.json && echo "EXISTS" || echo "NONE"
+```
+If EXISTS, spawn a convergence assessment agent (**model: sonnet**, foreground):
+```
+Agent(
+  model="sonnet",
+  description="Convergence assessment (pre-audit)",
+  prompt="You are a convergence assessment agent.
+
+Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/assess-convergence.md
+
+Trajectory file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/trajectory.json"
+)
+```
+Present the agent's recommendation to the user:
+- If **RECOMMEND STOP**, ask the user whether to proceed with the audit or stop. The user always has the final say.
+- If **CONTINUE** or if the user chooses to proceed, continue with setup below.
+- If no trajectory exists (first run), skip this check entirely.
+
 1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{MG_INSTALL_GLOBAL_CONFIG}`. Extract:
    - `docs_dir` (default: `docs/auto-doc`)
    - `audiences` (which are enabled and their document lists)
@@ -202,7 +223,13 @@ with open(path, 'w') as f:
 
 Where `{N}` is the current wave number (1, 2, 3, ...).
 
-d. **Spawn resolution agents** (one per document that still has uncleared entities, parallel foreground, **model: sonnet**):
+d. **Snapshot findings for diff.** Before spawning resolution agents, copy the current findings to a snapshot so the aggregate summary can compute the delta for this wave:
+```bash
+cp {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
+   {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}-prev-w{N}.json 2>/dev/null || true
+```
+
+e. **Spawn resolution agents** (one per document that still has uncleared entities, parallel foreground, **model: sonnet**):
 ```
 Agent(
   model="sonnet",
@@ -218,46 +245,6 @@ Wave: {N}
 Num waves: {num_waves}"
 )
 ```
-
-e. **Snapshot findings for diff.** Before running wave summary, copy the current findings to a snapshot so the next wave can compute the delta:
-```bash
-cp {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
-   {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}-prev-w{N}.json 2>/dev/null || true
-```
-
-f. **Assess convergence.** Run `wave-summary.py` for the completed wave, then `append-trajectory.py`:
-```bash
-uv run {MG_INSTALL_SCRIPTS_DIR}/wave-summary.py \
-    --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
-    --prev-findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}-prev-w{N}.json \
-    --uncleared-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
-    --dismissed-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json \
-    --wave {N} \
-    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-{N}.json
-```
-
-```bash
-uv run {MG_INSTALL_SCRIPTS_DIR}/append-trajectory.py \
-    --trajectory-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/trajectory.json \
-    --wave-summary {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-{N}.json
-```
-
-If this is not the final wave (`{N}` < `{num_waves}`), spawn a convergence assessment agent:
-```
-Agent(
-  model="sonnet",
-  description="Convergence assessment W{N}",
-  prompt="You are a convergence assessment agent.
-
-Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/assess-convergence.md
-
-Trajectory file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/trajectory.json
-Wave: {N}
-Num waves: {num_waves}"
-)
-```
-
-Present the agent's recommendation to the user. If the recommendation is RECOMMEND STOP, ask the user whether to continue or stop. If CONTINUE, proceed to the next wave. The user always has the final say.
 
 ### Step 6.5: Classify Dismissed Entities
 
@@ -290,6 +277,37 @@ Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md"
 ```
 
 If the count is 0, skip classification (no dismissed entities to classify).
+
+### Step 6.7: Aggregate Summary + Trajectory
+
+Run `wave-summary.py` once per document (using the pre-wave snapshot as prev), then aggregate all per-document summaries and append to the persistent trajectory.
+
+For each document that had resolution agents:
+```bash
+uv run {MG_INSTALL_SCRIPTS_DIR}/wave-summary.py \
+    --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
+    --prev-findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}-prev-w1.json \
+    --uncleared-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
+    --dismissed-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json \
+    --wave {num_waves} \
+    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-{audience}-{DOCUMENT}.json
+```
+
+Note: `--prev-findings-file` uses the **wave 1** snapshot (`-prev-w1.json`) — this captures the full delta across all waves for this audit run.
+
+Then aggregate all per-document summaries into one:
+```bash
+uv run {MG_INSTALL_SCRIPTS_DIR}/aggregate-wave-summaries.py \
+    --summaries {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-*.json \
+    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-aggregate.json
+```
+
+Append to the persistent trajectory:
+```bash
+uv run {MG_INSTALL_SCRIPTS_DIR}/append-trajectory.py \
+    --trajectory-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/trajectory.json \
+    --wave-summary {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-aggregate.json
+```
 
 ### Step 7: Report
 

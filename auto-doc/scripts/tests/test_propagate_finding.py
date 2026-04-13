@@ -26,7 +26,8 @@ def _read_json(path):
 
 def _run(entity, section, findings_file, uncleared_file,
          document="OPERATIONS", audience="devops",
-         suggestion="Add ref: [dep] example", wave=None):
+         suggestion="Add ref: [dep] example", wave=None,
+         suppress_file=None):
     """Run propagate-finding.py and return result."""
     cmd = [
         sys.executable, SCRIPT,
@@ -40,6 +41,8 @@ def _run(entity, section, findings_file, uncleared_file,
     ]
     if wave is not None:
         cmd.extend(["--wave", str(wave)])
+    if suppress_file is not None:
+        cmd.extend(["--suppress-file", suppress_file])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -291,3 +294,57 @@ class TestPropagationWave:
             findings = _read_json(ff)
             assert len(findings) == 1
             assert "wave" not in findings[0]
+
+
+class TestPropagationSuppress:
+    """Suppress file prevents propagated findings from being written."""
+
+    def test_suppressed_entity_skipped(self):
+        """Propagated findings matching suppress list are not written."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "prefect", "section": "monitoring"},
+                {"name": "prefect", "section": "deployment"},
+                {"name": "prefect", "section": "orchestration"},
+            ])
+            ff = _write_json(td, "findings.json", [])
+            sf = _write_json(td, "suppressed.json", [
+                {
+                    "section": "deployment",
+                    "check": "dangling-prose-reference",
+                    "entity": "prefect",
+                },
+            ])
+
+            result = _run(
+                "prefect", "monitoring", ff, uf,
+                suppress_file=sf,
+            )
+            assert result.returncode == 0
+
+            # deployment suppressed, only orchestration gets a finding
+            findings = _read_json(ff)
+            assert len(findings) == 1
+            assert findings[0]["section"] == "orchestration"
+
+            # Entity still removed from uncleared
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 0
+
+    def test_no_suppress_file_all_propagated(self):
+        """Without suppress file, all propagations go through."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "prefect", "section": "monitoring"},
+                {"name": "prefect", "section": "deployment"},
+                {"name": "prefect", "section": "orchestration"},
+            ])
+            ff = _write_json(td, "findings.json", [])
+
+            result = _run("prefect", "monitoring", ff, uf)
+            assert result.returncode == 0
+
+            findings = _read_json(ff)
+            assert len(findings) == 2
+            sections = {f["section"] for f in findings}
+            assert sections == {"deployment", "orchestration"}

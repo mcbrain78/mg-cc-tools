@@ -61,6 +61,15 @@ def cmd_get_entities(session, args):
 
 
 def cmd_file_finding(session, args):
+    # --entity is required for dangling-prose-reference so suppress matching works
+    if args.check == "dangling-prose-reference" and not getattr(args, "entity", None):
+        print(
+            'Error: --entity is required for dangling-prose-reference findings.\n'
+            'Pass --entity "{entity_name}" so suppress matching can work.',
+            file=sys.stderr,
+        )
+        return 1
+
     cmd_args = [
         "--findings-file", session["findings_file"],
         "--document", session["document"],
@@ -91,6 +100,8 @@ def cmd_propagate(session, args):
     ]
     if session.get("wave") is not None:
         cmd_args.extend(["--wave", str(session["wave"])])
+    if session.get("suppress_file"):
+        cmd_args.extend(["--suppress-file", session["suppress_file"]])
     return _delegate("propagate-finding.py", cmd_args)
 
 

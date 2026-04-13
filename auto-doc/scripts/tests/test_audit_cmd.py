@@ -141,6 +141,7 @@ class TestFileFinding:
                 "--check", "dangling-prose-reference",
                 "--description", "Prose mentions `prefect` without ref",
                 "--suggestion", "Add ref: [dep] prefect",
+                "--entity", "prefect",
             ])
             assert result.returncode == 0
 
@@ -180,6 +181,62 @@ class TestFileFinding:
 
             findings = _read_json(sess["findings_file"])
             assert len(findings) == 0
+
+    def test_dangling_prose_reference_without_entity_errors(self):
+        """dangling-prose-reference without --entity exits non-zero."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "findings.json", [])
+
+            result = _run(session_path, "file-finding", [
+                "--section", "monitoring",
+                "--check", "dangling-prose-reference",
+                "--description", "Prose mentions `prefect` without ref",
+                "--suggestion", "Add ref: [dep] prefect",
+            ])
+            assert result.returncode != 0
+            assert "--entity" in result.stderr
+            assert "dangling-prose-reference" in result.stderr
+
+            # No finding was written
+            findings = _read_json(sess["findings_file"])
+            assert len(findings) == 0
+
+    def test_dangling_prose_reference_with_entity_succeeds(self):
+        """dangling-prose-reference WITH --entity succeeds normally."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "findings.json", [])
+
+            result = _run(session_path, "file-finding", [
+                "--section", "monitoring",
+                "--check", "dangling-prose-reference",
+                "--description", "Prose mentions `prefect` without ref",
+                "--suggestion", "Add ref: [dep] prefect",
+                "--entity", "prefect",
+            ])
+            assert result.returncode == 0
+
+            findings = _read_json(sess["findings_file"])
+            assert len(findings) == 1
+            assert findings[0]["check"] == "dangling-prose-reference"
+
+    def test_non_dangling_check_without_entity_succeeds(self):
+        """Non-dangling checks don't require --entity."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "findings.json", [])
+
+            result = _run(session_path, "file-finding", [
+                "--section", "monitoring",
+                "--check", "internal-contradiction",
+                "--description", "Contradiction found",
+                "--suggestion", "Fix it",
+            ])
+            assert result.returncode == 0
+
+            findings = _read_json(sess["findings_file"])
+            assert len(findings) == 1
 
     def test_files_finding_without_wave(self):
         with tempfile.TemporaryDirectory() as td:

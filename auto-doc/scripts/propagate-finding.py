@@ -35,7 +35,8 @@ ADD_FINDING_SCRIPT = os.path.join(
 
 
 def propagate(entity, section, findings_file, uncleared_file,
-              document, audience, suggestion, wave=None):
+              document, audience, suggestion, wave=None,
+              suppress_file=None):
     """Propagate finding to other sections and remove entity from uncleared.
 
     Returns:
@@ -63,9 +64,12 @@ def propagate(entity, section, findings_file, uncleared_file,
             f"Prose mentions `{entity}` which is not covered by any "
             f"declared ref (propagated from {section})",
             "--suggestion", suggestion,
+            "--entity", entity,
         ]
         if wave is not None:
             cmd.extend(["--wave", str(wave)])
+        if suppress_file:
+            cmd.extend(["--suppress-file", suppress_file])
         subprocess.run(cmd, capture_output=True, text=True)
 
     # Remove ALL entries for this entity from uncleared
@@ -118,6 +122,10 @@ def main():
         "--wave", type=int, default=None,
         help="Wave number to tag propagated findings with",
     )
+    parser.add_argument(
+        "--suppress-file", default=None,
+        help="Path to suppressed-findings.json (skip matching findings)",
+    )
 
     args = parser.parse_args()
     propagate(
@@ -129,6 +137,7 @@ def main():
         audience=args.audience,
         suggestion=args.suggestion,
         wave=args.wave,
+        suppress_file=args.suppress_file,
     )
 
 
