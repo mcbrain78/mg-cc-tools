@@ -1,7 +1,7 @@
 ---
 name: mg:auto-doc-auditv2
 description: "Audit docs v2 (extract → clear → resolve). Args: [audience] [waves=2]"
-allowed-tools: Bash, Read, Glob, Grep, Agent
+allowed-tools: Bash, Read, Glob, Grep, Agent, Skill
 ---
 
 # Documentation Audit v2
@@ -373,29 +373,11 @@ Write the full summary text from Step 7 to `{MG_INSTALL_WORKSPACE_DIR}/auditv2/r
 Summary written to .mg/docs/auditv2/run/summary.md
 ```
 
-### Step 8.5: Archive Session Transcript (optional)
+### Step 8.5: Archive Session Transcript
 
-```bash
-EXPORTER=$(python3 -c "
-import os
-for p in ['.claude/transcript/cc_transcript_exporter.py',
-          os.path.expanduser('~/.claude/transcript/cc_transcript_exporter.py')]:
-    if os.path.isfile(p):
-        print(os.path.abspath(p)); break
-else:
-    print('')
-")
-echo "${EXPORTER:-NOT_FOUND}"
-```
+**IMPORTANT: This step MUST run after Step 8 (Persist Summary). The transcript captures everything up to the point of export — if you export before the summary, it will be missing from the transcript.**
 
-If NOT_FOUND, skip this step silently.
-
-If found, export the transcript into the current run directory (it will be archived with the rest of the run data when the next audit starts):
-```bash
-SESSION_FILE=$(python3 "$EXPORTER" --print-transcript-path 2>/dev/null | grep -v '<' | head -1)
-python3 "$EXPORTER" --transcript "$SESSION_FILE" --format md-subagent \
-    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/transcript.md
-```
+Run `/mg:transcript-export md-subagent {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/transcript.md`
 
 ## Important Principles
 

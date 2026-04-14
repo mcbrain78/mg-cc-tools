@@ -1,7 +1,7 @@
 ---
 name: mg:auto-doc-fix
 description: "Fix audit findings by correcting XML refs and prose. Args: [audit-source]"
-allowed-tools: Bash, Read, Write, Glob, Grep, Agent, AskUserQuestion
+allowed-tools: Bash, Read, Write, Glob, Grep, Agent, AskUserQuestion, Skill
 ---
 
 # Documentation Audit Fixer
@@ -216,29 +216,11 @@ Errors (manual review needed):
   - {error description}
 ```
 
-### Step 8: Archive Session Transcript (optional)
+### Step 8: Archive Session Transcript
 
-```bash
-EXPORTER=$(python3 -c "
-import os
-for p in ['.claude/transcript/cc_transcript_exporter.py',
-          os.path.expanduser('~/.claude/transcript/cc_transcript_exporter.py')]:
-    if os.path.isfile(p):
-        print(os.path.abspath(p)); break
-else:
-    print('')
-")
-echo "${EXPORTER:-NOT_FOUND}"
-```
+**IMPORTANT: This step MUST run after Step 7 (Report). The transcript captures everything up to the point of export — if you export before the summary, it will be missing from the transcript.**
 
-If NOT_FOUND, skip this step silently.
-
-If found, export the transcript into the fix directory (it will be archived with the rest of the fix data when the next fix starts):
-```bash
-SESSION_FILE=$(python3 "$EXPORTER" --print-transcript-path 2>/dev/null | grep -v '<' | head -1)
-python3 "$EXPORTER" --transcript "$SESSION_FILE" --format md-subagent \
-    --output {MG_INSTALL_WORKSPACE_DIR}/fix/transcript.md
-```
+Run `/mg:transcript-export md-subagent {MG_INSTALL_WORKSPACE_DIR}/fix/transcript.md`
 
 ## Important Principles
 
