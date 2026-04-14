@@ -390,23 +390,11 @@ echo "${EXPORTER:-NOT_FOUND}"
 
 If NOT_FOUND, skip this step silently.
 
-If found, determine the most recent archive directory and export:
+If found, export the transcript into the current run directory (it will be archived with the rest of the run data when the next audit starts):
 ```bash
-HISTORY_DIR=$(python3 -c "
-import os, re
-hist = '{MG_INSTALL_WORKSPACE_DIR}/auditv2/history'
-if not os.path.isdir(hist):
-    print('')
-else:
-    entries = [(int(m.group(1)), d) for d in os.listdir(hist)
-               if (m := re.match(r'audit-(\d+)', d))]
-    print(os.path.join(hist, max(entries)[1]) if entries else '')
-")
-if [ -n "$HISTORY_DIR" ] && [ -d "$HISTORY_DIR" ]; then
-  SESSION_FILE=$(python3 "$EXPORTER" --print-transcript-path 2>/dev/null | grep -v '<' | head -1)
-  python3 "$EXPORTER" --transcript "$SESSION_FILE" --format md-subagent \
-      --output "$HISTORY_DIR/session.md"
-fi
+SESSION_FILE=$(python3 "$EXPORTER" --print-transcript-path 2>/dev/null | grep -v '<' | head -1)
+python3 "$EXPORTER" --transcript "$SESSION_FILE" --format md-subagent \
+    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/transcript.md
 ```
 
 ## Important Principles
