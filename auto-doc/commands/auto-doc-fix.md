@@ -114,8 +114,23 @@ Handle user response:
 
 ### Step 5: Initialize Fix Queue and Process Groups
 
-1. Create the fix directory (separate from audit so diffs survive audit re-runs):
+1. Archive the previous fix run if it exists (has `fix-state.json`), then create a fresh fix directory:
    ```bash
+   if [ -f {MG_INSTALL_WORKSPACE_DIR}/fix/fix-state.json ]; then
+     NEXT_NUM=$(python3 -c "
+   import os, re
+   hist = '{MG_INSTALL_WORKSPACE_DIR}/auditv2/history'
+   if not os.path.isdir(hist):
+       print(1)
+   else:
+       nums = [int(m.group(1)) for d in os.listdir(hist)
+               if (m := re.match(r'fix-(\d+)', d))]
+       print(max(nums) + 1 if nums else 1)
+   ")
+     mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2/history
+     mv {MG_INSTALL_WORKSPACE_DIR}/fix \
+        {MG_INSTALL_WORKSPACE_DIR}/auditv2/history/fix-${NEXT_NUM}
+   fi
    mkdir -p {MG_INSTALL_WORKSPACE_DIR}/fix
    ```
 
@@ -199,6 +214,42 @@ If there were errors from any merge step, show them:
 ```
 Errors (manual review needed):
   - {error description}
+```
+
+### Step 8: Archive Session Transcript (optional)
+
+```bash
+EXPORTER=$(python3 -c "
+import os
+for p in ['.claude/transcript/cc_transcript_exporter.py',
+          os.path.expanduser('~/.claude/transcript/cc_transcript_exporter.py')]:
+    if os.path.isfile(p):
+        print(os.path.abspath(p)); break
+else:
+    print('')
+")
+echo "${EXPORTER:-NOT_FOUND}"
+```
+
+If NOT_FOUND, skip this step silently.
+
+If found, determine the most recent fix archive directory and export:
+```bash
+HISTORY_DIR=$(python3 -c "
+import os, re
+hist = '{MG_INSTALL_WORKSPACE_DIR}/auditv2/history'
+if not os.path.isdir(hist):
+    print('')
+else:
+    entries = [(int(m.group(1)), d) for d in os.listdir(hist)
+               if (m := re.match(r'fix-(\d+)', d))]
+    print(os.path.join(hist, max(entries)[1]) if entries else '')
+")
+if [ -n "$HISTORY_DIR" ] && [ -d "$HISTORY_DIR" ]; then
+  SESSION_FILE=$(python3 "$EXPORTER" --print-transcript-path 2>/dev/null | grep -v '<' | head -1)
+  python3 "$EXPORTER" --transcript "$SESSION_FILE" --format md-subagent \
+      --output "$HISTORY_DIR/session.md"
+fi
 ```
 
 ## Important Principles

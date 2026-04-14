@@ -171,7 +171,7 @@ def prepare(xml_path, output_dir):
                 ref_entries.append(entry)
 
         content_hash = hashlib.sha256(
-            (body + refs_text).encode("utf-8"),
+            body.encode("utf-8"),
         ).hexdigest()
 
         section_data = {

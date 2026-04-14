@@ -677,3 +677,74 @@ class TestRefEntries:
             table_entries = [e for e in data["ref_entries"]
                             if e.get("identifier") == "etl_runs"]
             assert len(table_entries) == 1
+
+
+class TestContentHashIgnoresRefs:
+    """content_hash is derived from body only, not body+refs."""
+
+    def test_same_body_different_refs_same_hash(self):
+        """Two sections with identical body but different refs produce same hash."""
+        body = "<!-- section: sec -->\n## Section\n\nThe `etl_runs` table tracks jobs."
+
+        with tempfile.TemporaryDirectory() as td:
+            # Build XML with refs
+            xml_with_refs = _build_xml(td, [
+                ("sec", body, [
+                    {"type": "db", "db": "mydb", "schema": "rr", "table": "etl_runs"},
+                ]),
+            ])
+            out_with = os.path.join(td, "out_with")
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_with_refs, "--output-dir", out_with],
+                capture_output=True, text=True,
+            )
+            with open(os.path.join(out_with, "sec.json")) as f:
+                hash_with_refs = json.load(f)["content_hash"]
+
+            # Build XML without refs (same body)
+            xml_no_refs = _build_xml(td, [
+                ("sec", body, []),
+            ])
+            out_without = os.path.join(td, "out_without")
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_no_refs, "--output-dir", out_without],
+                capture_output=True, text=True,
+            )
+            with open(os.path.join(out_without, "sec.json")) as f:
+                hash_no_refs = json.load(f)["content_hash"]
+
+            assert hash_with_refs == hash_no_refs, (
+                f"Hash should depend on body only: "
+                f"with_refs={hash_with_refs}, no_refs={hash_no_refs}"
+            )
+
+    def test_different_body_different_hash(self):
+        """Changing the body text produces a different hash (sanity check)."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_a = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## A\n\nBody A.", []),
+            ])
+            out_a = os.path.join(td, "out_a")
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_a, "--output-dir", out_a],
+                capture_output=True, text=True,
+            )
+            with open(os.path.join(out_a, "sec.json")) as f:
+                hash_a = json.load(f)["content_hash"]
+
+            xml_b = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## B\n\nBody B.", []),
+            ])
+            out_b = os.path.join(td, "out_b")
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_b, "--output-dir", out_b],
+                capture_output=True, text=True,
+            )
+            with open(os.path.join(out_b, "sec.json")) as f:
+                hash_b = json.load(f)["content_hash"]
+
+            assert hash_a != hash_b
