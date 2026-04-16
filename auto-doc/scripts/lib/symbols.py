@@ -231,6 +231,46 @@ def extract_enum_values(source, enum_class):
     return {}
 
 
+def extract_literal_values(source, name):
+    """Extract string values from a Literal type alias assignment.
+
+    Matches: Name = Literal["a", "b", "c"]  and  Name = typing.Literal["a", "b"]
+    Returns set of string values, or empty set if not found.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == name:
+                if isinstance(node.value, ast.Subscript):
+                    func = node.value.value
+                    # Match Literal or typing.Literal
+                    is_literal = (
+                        (isinstance(func, ast.Name) and func.id == "Literal")
+                        or (isinstance(func, ast.Attribute) and func.attr == "Literal")
+                    )
+                    if is_literal:
+                        return _extract_literal_strings(node.value.slice)
+    return set()
+
+
+def _extract_literal_strings(node):
+    """Extract string constants from a Literal subscript slice."""
+    values = set()
+    if isinstance(node, ast.Tuple):
+        for elt in node.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                values.add(elt.value)
+    elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+        values.add(node.value)
+    return values
+
+
 def _extract_constant_value(node):
     """Extract constant value from an AST node, or None."""
     if isinstance(node, ast.Constant):

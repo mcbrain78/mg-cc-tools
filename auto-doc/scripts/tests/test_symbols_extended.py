@@ -8,6 +8,7 @@ from lib.symbols import (
     extract_class_attributes,
     extract_decorated_functions,
     extract_enum_values,
+    extract_literal_values,
     extract_sqlalchemy_models,
 )
 
@@ -246,3 +247,33 @@ class TestExtractDecoratedFunctions:
 
     def test_syntax_error(self):
         assert extract_decorated_functions("def broken(:", "flow") == []
+
+
+class TestExtractLiteralValues:
+    """extract_literal_values() finds Literal type alias string values."""
+
+    def test_basic_multi_value(self):
+        source = (
+            "from typing import Literal\n\n"
+            "DriftSeverity = Literal['critical', 'warning', 'info']\n"
+        )
+        assert extract_literal_values(source, "DriftSeverity") == {"critical", "warning", "info"}
+
+    def test_single_value(self):
+        source = "from typing import Literal\n\nMode = Literal['fast']\n"
+        assert extract_literal_values(source, "Mode") == {"fast"}
+
+    def test_qualified_typing_literal(self):
+        source = "import typing\n\nAction = typing.Literal['retry', 'skip']\n"
+        assert extract_literal_values(source, "Action") == {"retry", "skip"}
+
+    def test_non_string_constants_skipped(self):
+        source = "from typing import Literal\n\nCodes = Literal[1, 2]\n"
+        assert extract_literal_values(source, "Codes") == set()
+
+    def test_name_not_found(self):
+        source = "from typing import Literal\n\nFoo = Literal['a']\n"
+        assert extract_literal_values(source, "Bar") == set()
+
+    def test_syntax_error(self):
+        assert extract_literal_values("def broken(:", "X") == set()

@@ -32,6 +32,7 @@ from lib.symbols import (
     extract_class_attributes,
     extract_decorated_functions,
     extract_enum_values,
+    extract_literal_values,
     extract_function_signatures,
     extract_python_symbols,
     extract_sqlalchemy_models,
@@ -70,6 +71,7 @@ class SourceCache:
         self._sqla_models = {}  # rel_path -> dict from extract_sqlalchemy_models
         self._class_attrs = {}  # (rel_path, class_name) -> set
         self._enum_values = {}  # (rel_path, class_name) -> dict
+        self._literal_values = {}  # (rel_path, name) -> set
         self._decorators = {}   # (rel_path, decorator) -> list
 
     def _read_source(self, rel_path):
@@ -119,6 +121,13 @@ class SourceCache:
             src = self._read_source(rel_path)
             self._enum_values[key] = extract_enum_values(src, class_name) if src else {}
         return self._enum_values[key]
+
+    def get_literal_values(self, rel_path, name):
+        key = (rel_path, name)
+        if key not in self._literal_values:
+            src = self._read_source(rel_path)
+            self._literal_values[key] = extract_literal_values(src, name) if src else set()
+        return self._literal_values[key]
 
     def get_decorated_functions(self, rel_path, decorator):
         key = (rel_path, decorator)
@@ -467,6 +476,14 @@ def check_enum_ref(ref, cache):
             # Also check class attributes for non-enum constant patterns
             attrs = cache.get_class_attrs(py_path, cls)
             if value in attrs or value.upper() in attrs:
+                return None
+
+    # Fallback: check Literal type aliases
+    for py_path in cache.walk_py_files():
+        symbols = cache.get_symbols(py_path)
+        if cls in symbols:
+            lit_values = cache.get_literal_values(py_path, cls)
+            if value in lit_values:
                 return None
 
     return f"Enum value `{value}` not found on class `{cls}`"

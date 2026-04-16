@@ -69,6 +69,13 @@ def _make_project(td):
             "    running = 'running'\n"
         )
 
+    # Literal type alias
+    with open(os.path.join(src_dir, "types.py"), "w") as f:
+        f.write(
+            "from typing import Literal\n\n"
+            "DriftSeverity = Literal['critical', 'warning', 'info']\n"
+        )
+
     # Settings
     with open(os.path.join(src_dir, "settings.py"), "w") as f:
         f.write(
@@ -457,6 +464,37 @@ class TestEnumRefs:
             findings = json.loads(open(findings_file).read())
             assert len(findings) == 1
             assert "bogus_value" in findings[0]["description"]
+
+
+class TestLiteralEnumRefs:
+    """Literal type alias values pass enum ref validation."""
+
+    def test_literal_value_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "severity",
+                "<!-- section: severity -->\n## Severity\n\nContent",
+                [{"type": "enum", "class": "DriftSeverity", "value": "critical"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_literal_wrong_value_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "severity",
+                "<!-- section: severity -->\n## Severity\n\nContent",
+                [{"type": "enum", "class": "DriftSeverity", "value": "bogus"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "bogus" in findings[0]["description"]
 
 
 class TestDepRefs:
