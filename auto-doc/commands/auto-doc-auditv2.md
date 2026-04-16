@@ -235,6 +235,7 @@ session = {
     'dismissed_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json',
     'protected_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json',
     'suppress_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/suppressed-findings.json',
+    'covered_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/covered-this-run.json',
 }
 path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'run', 'session-{audience}-{DOCUMENT}.json')
 with open(path, 'w') as f:

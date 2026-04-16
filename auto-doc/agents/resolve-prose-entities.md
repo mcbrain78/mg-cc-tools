@@ -39,10 +39,26 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
    d. **Entity resolution.** For each entity, decide using ONLY the section context.
       Apply these checks in order — stop at the first match:
 
-      1. **Ref covers it → dismiss.** Read `refs_as_text`. If a declared ref
-         clearly covers this entity (same name, same concept), dismiss it.
-         The deterministic clearing missed it; that is a tooling gap, not
-         a documentation gap. Do not file a finding.
+      1. **Ref covers it → dismiss with --covered-by.** Read `refs_as_text`. If a declared ref
+         clearly covers this entity (same concept, parent type, or containing module/class),
+         dismiss it naming the specific covering ref identifier:
+         ```bash
+         uv run {scripts_dir}/audit-cmd.py --session {session} dismiss \
+             --entity "{entity_name}" \
+             --section "{section_path}" \
+             --covered-by "{ref_identifier}"
+         ```
+         The script validates that `{ref_identifier}` exists in the section's declared refs.
+         If valid, the entity is removed from uncleared even if protected. If invalid, the
+         dismiss is refused — check the identifier and retry.
+
+         Examples of covered entities:
+         - `accept_new` covered by `ResolutionAction` (enum value of that class)
+         - `httpx.TimeoutException` covered by `httpx` (exception from that dependency)
+         - `uv sync` covered by `uv` (subcommand of that tool)
+         - `Requires=prefect-server.service` covered by `Requires` (instance of that directive)
+
+         For non-protected entities, a plain dismiss (without --covered-by) still works.
 
       2. **Universal / non-project → dismiss.**
 

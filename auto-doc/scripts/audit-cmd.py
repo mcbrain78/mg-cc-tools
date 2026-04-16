@@ -118,6 +118,13 @@ def cmd_dismiss(session, args):
         cmd_args.extend([
             "--protected-entities-file", session["protected_entities_file"],
         ])
+    if getattr(args, "covered_by", None):
+        cmd_args.extend(["--covered-by", args.covered_by])
+        cmd_args.extend(["--prose-verify-dir", session["prose_verify_dir"]])
+        if session.get("covered_this_run_file"):
+            cmd_args.extend([
+                "--covered-this-run-file", session["covered_this_run_file"],
+            ])
     return _delegate("dismiss-entity.py", cmd_args)
 
 
@@ -166,6 +173,7 @@ def main():
     )
     p_dismiss.add_argument("--entity", required=True)
     p_dismiss.add_argument("--section", required=True)
+    p_dismiss.add_argument("--covered-by", help="Ref identifier covering this entity")
 
     args = parser.parse_args()
 

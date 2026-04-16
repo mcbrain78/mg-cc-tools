@@ -25,7 +25,8 @@ def _read_json(path):
 
 def _run(entity, section, uncleared_file, dismissed_this_run_file,
          audience="devops", document="OPERATIONS",
-         protected_entities_file=None):
+         protected_entities_file=None, covered_by=None,
+         prose_verify_dir=None, covered_this_run_file=None):
     cmd = [
         sys.executable, SCRIPT,
         "--entity", entity,
@@ -37,6 +38,12 @@ def _run(entity, section, uncleared_file, dismissed_this_run_file,
     ]
     if protected_entities_file:
         cmd.extend(["--protected-entities-file", protected_entities_file])
+    if covered_by:
+        cmd.extend(["--covered-by", covered_by])
+    if prose_verify_dir:
+        cmd.extend(["--prose-verify-dir", prose_verify_dir])
+    if covered_this_run_file:
+        cmd.extend(["--covered-this-run-file", covered_this_run_file])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -315,3 +322,187 @@ class TestPatternBlocked:
             result = _run("public.stocks", "data", uf, df)
             assert "Cannot dismiss public.stocks" in result.stderr
             assert "File a finding instead" in result.stderr
+
+
+def _make_section_json(td, section_path, ref_identifiers):
+    """Create a section JSON file with ref_entries under prose-verify dir."""
+    prose_dir = os.path.join(td, "prose-verify")
+    slug = os.path.basename(section_path)
+    parent = os.path.dirname(section_path)
+    if parent:
+        section_file = os.path.join(prose_dir, parent, f"{slug}.json")
+    else:
+        section_file = os.path.join(prose_dir, f"{slug}.json")
+    os.makedirs(os.path.dirname(section_file), exist_ok=True)
+    data = {
+        "body": "some body text",
+        "refs_as_text": "some refs",
+        "ref_entries": [
+            {"identifier": ident, "display": ident}
+            for ident in ref_identifiers
+        ],
+    }
+    with open(section_file, "w") as f:
+        json.dump(data, f)
+    return prose_dir
+
+
+class TestCoveredBy:
+    """--covered-by bypasses protected check when identifier is valid."""
+
+    def test_covered_by_bypasses_protected(self):
+        """Valid covered-by + protected entity → removed from uncleared,
+        recorded in covered-this-run, NOT in dismissed-this-run."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "accept_new", "section": "monitoring"},
+                {"name": "PORT", "section": "deployment"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            cf = os.path.join(td, "covered-this-run.json")
+            pf = _write_json(td, "protected-entities.json", [
+                {"name": "accept_new", "reason": "Enum value"},
+            ])
+            prose_dir = _make_section_json(
+                td, "monitoring", ["ResolutionAction", "PORT"],
+            )
+
+            result = _run(
+                "accept_new", "monitoring", uf, df,
+                protected_entities_file=pf,
+                covered_by="ResolutionAction",
+                prose_verify_dir=prose_dir,
+                covered_this_run_file=cf,
+            )
+            assert result.returncode == 0
+            assert "Covered: accept_new (by ResolutionAction)" in result.stderr
+
+            # Removed from uncleared
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "PORT"
+
+            # NOT in dismissed-this-run
+            dismissed = _read_json(df)
+            assert len(dismissed) == 0
+
+            # Recorded in covered-this-run
+            covered = _read_json(cf)
+            assert len(covered) == 1
+            assert covered[0]["name"] == "accept_new"
+            assert covered[0]["covered_by"] == "ResolutionAction"
+
+    def test_covered_by_invalid_identifier_refused(self):
+        """Invalid identifier → refused, uncleared unchanged."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "accept_new", "section": "monitoring"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            pf = _write_json(td, "protected-entities.json", [
+                {"name": "accept_new", "reason": "Enum value"},
+            ])
+            prose_dir = _make_section_json(
+                td, "monitoring", ["SomeOtherRef"],
+            )
+
+            result = _run(
+                "accept_new", "monitoring", uf, df,
+                protected_entities_file=pf,
+                covered_by="ResolutionAction",
+                prose_verify_dir=prose_dir,
+            )
+            assert result.returncode == 0
+            assert "PROTECTED: accept_new" in result.stderr
+            assert "--covered-by failed" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 1
+
+    def test_covered_by_missing_section_json_refused(self):
+        """Section file doesn't exist → refused."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "accept_new", "section": "nonexistent"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            pf = _write_json(td, "protected-entities.json", [
+                {"name": "accept_new", "reason": "Enum value"},
+            ])
+            prose_dir = os.path.join(td, "prose-verify")
+            os.makedirs(prose_dir, exist_ok=True)
+
+            result = _run(
+                "accept_new", "nonexistent", uf, df,
+                protected_entities_file=pf,
+                covered_by="ResolutionAction",
+                prose_verify_dir=prose_dir,
+            )
+            assert result.returncode == 0
+            assert "PROTECTED: accept_new" in result.stderr
+            assert "--covered-by failed" in result.stderr
+            assert "section JSON not found" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 1
+
+    def test_covered_by_non_protected_normal_dismiss(self):
+        """Non-protected entity with covered-by → normal dismiss path.
+        covered-by only matters for protected entities."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "bash", "section": "monitoring"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+            prose_dir = _make_section_json(
+                td, "monitoring", ["SomeRef"],
+            )
+
+            result = _run(
+                "bash", "monitoring", uf, df,
+                protected_entities_file=pf,
+                covered_by="SomeRef",
+                prose_verify_dir=prose_dir,
+            )
+            assert result.returncode == 0
+            assert "Dismissed: bash" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 0
+
+            dismissed = _read_json(df)
+            assert len(dismissed) == 1
+
+    def test_covered_by_dedup(self):
+        """Same entity covered twice → one entry in covered-this-run."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "accept_new", "section": "monitoring"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            cf = _write_json(td, "covered-this-run.json", [
+                {"name": "accept_new", "covered_in": "deployment",
+                 "audience": "devops", "document": "OPERATIONS",
+                 "covered_by": "ResolutionAction"},
+            ])
+            pf = _write_json(td, "protected-entities.json", [
+                {"name": "accept_new", "reason": "Enum value"},
+            ])
+            prose_dir = _make_section_json(
+                td, "monitoring", ["ResolutionAction"],
+            )
+
+            result = _run(
+                "accept_new", "monitoring", uf, df,
+                protected_entities_file=pf,
+                covered_by="ResolutionAction",
+                prose_verify_dir=prose_dir,
+                covered_this_run_file=cf,
+            )
+            assert result.returncode == 0
+
+            covered = _read_json(cf)
+            assert len(covered) == 1
+            # Original entry preserved
+            assert covered[0]["covered_in"] == "deployment"

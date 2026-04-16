@@ -4,7 +4,10 @@
 When the resolution agent determines an entity is not ref-worthy (e.g.,
 a generic tool name, formatting artifact, or system username), this script:
 1. Checks if the entity is in the protected-entities list (if provided).
-   If protected: refuses silently and leaves uncleared unchanged.
+   If protected and --covered-by is given: validates the covering ref exists
+   in the section's declared refs, then records in covered-this-run (not
+   dismissed-this-run) and removes from uncleared.
+   If protected without --covered-by: refuses and leaves uncleared unchanged.
 2. Removes ALL entries with that entity name from the uncleared file.
 3. Appends the entity to the per-run dismissed-this-run file (deduped).
 
@@ -19,7 +22,8 @@ Usage:
         --dismissed-this-run-file FILE \
         --audience AUDIENCE \
         --document DOCUMENT \
-        [--protected-entities-file FILE]
+        [--protected-entities-file FILE] \
+        [--covered-by IDENTIFIER --prose-verify-dir DIR --covered-this-run-file FILE]
 """
 
 import argparse
@@ -62,6 +66,50 @@ def is_pattern_blocked(entity):
     return False, ""
 
 
+def _section_json_path(prose_verify_dir, section_path):
+    """Resolve section path to its JSON file location."""
+    slug = os.path.basename(section_path)
+    parent = os.path.dirname(section_path)
+    if parent:
+        return os.path.join(prose_verify_dir, parent, f"{slug}.json")
+    return os.path.join(prose_verify_dir, f"{slug}.json")
+
+
+def _validate_covered_by(covered_by, section, prose_verify_dir):
+    """Check if covered_by identifier exists in the section's ref_entries.
+
+    Returns:
+        (valid, reason) — valid is True if the identifier was found.
+    """
+    section_file = _section_json_path(prose_verify_dir, section)
+    section_data = load_json(section_file)
+    if section_data is None:
+        return False, f"section JSON not found: {section_file}"
+
+    ref_entries = section_data.get("ref_entries", [])
+    ref_identifiers = {e.get("identifier") for e in ref_entries if e.get("identifier")}
+
+    if covered_by in ref_identifiers:
+        return True, ""
+    return False, f"identifier '{covered_by}' not found in section refs"
+
+
+def _record_covered(entity, section, audience, document, covered_by,
+                    covered_this_run_file):
+    """Append to covered-this-run JSON (deduped by name)."""
+    covered = load_json(covered_this_run_file, default=[])
+    existing_names = {e["name"] for e in covered}
+    if entity not in existing_names:
+        covered.append({
+            "name": entity,
+            "covered_in": section,
+            "audience": audience,
+            "document": document,
+            "covered_by": covered_by,
+        })
+        save_json(covered_this_run_file, covered)
+
+
 def dismiss(
     entity,
     section,
@@ -70,6 +118,9 @@ def dismiss(
     audience,
     document,
     protected_entities_file=None,
+    covered_by=None,
+    prose_verify_dir=None,
+    covered_this_run_file=None,
 ):
     """Dismiss entity from uncleared and add to dismissed-this-run.
 
@@ -84,6 +135,34 @@ def dismiss(
             e["name"] if isinstance(e, dict) else e for e in protected
         }
         if entity in protected_names:
+            if covered_by and prose_verify_dir:
+                valid, reason = _validate_covered_by(
+                    covered_by, section, prose_verify_dir,
+                )
+                if valid:
+                    if covered_this_run_file:
+                        _record_covered(
+                            entity, section, audience, document,
+                            covered_by, covered_this_run_file,
+                        )
+                    # Remove from uncleared (same as normal dismiss)
+                    uncleared = load_json(uncleared_file, default=[])
+                    before = len(uncleared)
+                    updated = [e for e in uncleared if e["name"] != entity]
+                    save_json(uncleared_file, updated)
+                    after = len(updated)
+                    print(
+                        f"Covered: {entity} (by {covered_by}). "
+                        f"Uncleared: {before} → {after}",
+                        file=sys.stderr,
+                    )
+                    return before, after
+                else:
+                    print(
+                        f"PROTECTED: {entity} — --covered-by failed: {reason}",
+                        file=sys.stderr,
+                    )
+                    return None
             print(
                 f"PROTECTED: {entity} — this entity was previously confirmed "
                 "as ref-worthy. File a finding instead.",
@@ -160,6 +239,18 @@ def main():
         "--protected-entities-file",
         help="Path to protected-entities JSON file (optional)",
     )
+    parser.add_argument(
+        "--covered-by",
+        help="Ref identifier that covers this entity (bypasses protected check)",
+    )
+    parser.add_argument(
+        "--prose-verify-dir",
+        help="Path to prose-verify dir (required with --covered-by)",
+    )
+    parser.add_argument(
+        "--covered-this-run-file",
+        help="Path to covered-this-run JSON file (optional with --covered-by)",
+    )
 
     args = parser.parse_args()
     dismiss(
@@ -170,6 +261,9 @@ def main():
         audience=args.audience,
         document=args.document,
         protected_entities_file=args.protected_entities_file,
+        covered_by=args.covered_by,
+        prose_verify_dir=args.prose_verify_dir,
+        covered_this_run_file=args.covered_this_run_file,
     )
 
 

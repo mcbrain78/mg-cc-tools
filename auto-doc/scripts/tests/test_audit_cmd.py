@@ -343,6 +343,91 @@ class TestDismiss:
             assert len(dismissed) == 0
 
 
+    def test_dismiss_covered_by_passes_through(self):
+        """--covered-by passes through audit-cmd to dismiss-entity."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(
+                td,
+                covered_this_run_file=os.path.join(td, "covered-this-run.json"),
+            )
+            _write_json(td, "uncleared.json", [
+                {"name": "accept_new", "section": "monitoring"},
+                {"name": "PORT", "section": "deployment"},
+            ])
+            _write_json(td, "dismissed-this-run.json", [])
+            _write_json(td, "protected-entities.json", [
+                {"name": "accept_new", "reason": "Enum value"},
+            ])
+            # Create section JSON with the covering ref
+            prose_dir = sess["prose_verify_dir"]
+            _write_json(
+                td, "prose-verify/monitoring.json",
+                {
+                    "body": "some body",
+                    "refs_as_text": "some refs",
+                    "ref_entries": [
+                        {"identifier": "ResolutionAction", "display": "ResolutionAction"},
+                    ],
+                },
+            )
+
+            result = _run(session_path, "dismiss", [
+                "--entity", "accept_new",
+                "--section", "monitoring",
+                "--covered-by", "ResolutionAction",
+            ])
+            assert result.returncode == 0
+            assert "Covered: accept_new" in result.stderr
+
+            uncleared = _read_json(sess["uncleared_file"])
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "PORT"
+
+            # Not in dismissed-this-run
+            dismissed = _read_json(sess["dismissed_this_run_file"])
+            assert len(dismissed) == 0
+
+            # Recorded in covered-this-run
+            covered = _read_json(sess["covered_this_run_file"])
+            assert len(covered) == 1
+            assert covered[0]["covered_by"] == "ResolutionAction"
+
+    def test_dismiss_covered_by_invalid_refused(self):
+        """Invalid identifier through audit-cmd → refused."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "uncleared.json", [
+                {"name": "accept_new", "section": "monitoring"},
+            ])
+            _write_json(td, "dismissed-this-run.json", [])
+            _write_json(td, "protected-entities.json", [
+                {"name": "accept_new", "reason": "Enum value"},
+            ])
+            # Section has different refs — ResolutionAction not present
+            _write_json(
+                td, "prose-verify/monitoring.json",
+                {
+                    "body": "some body",
+                    "refs_as_text": "some refs",
+                    "ref_entries": [
+                        {"identifier": "SomeOtherRef", "display": "SomeOtherRef"},
+                    ],
+                },
+            )
+
+            result = _run(session_path, "dismiss", [
+                "--entity", "accept_new",
+                "--section", "monitoring",
+                "--covered-by", "ResolutionAction",
+            ])
+            assert result.returncode == 0
+            assert "PROTECTED: accept_new" in result.stderr
+            assert "--covered-by failed" in result.stderr
+
+            uncleared = _read_json(sess["uncleared_file"])
+            assert len(uncleared) == 1
+
+
 class TestErrors:
     """Error handling for missing session and args."""
 
