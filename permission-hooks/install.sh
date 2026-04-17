@@ -134,7 +134,8 @@ echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
 mkdir -p "${COMMANDS_DIR}"
 cp "${SCRIPT_DIR}/commands/edit-on.md" "${COMMANDS_DIR}/"
 cp "${SCRIPT_DIR}/commands/edit-off.md" "${COMMANDS_DIR}/"
-echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md)"
+cp "${SCRIPT_DIR}/commands/auto-approve.md" "${COMMANDS_DIR}/"
+echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md, auto-approve.md)"
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 
@@ -151,6 +152,10 @@ for cmd_file in "${COMMANDS_DIR}/edit-on.md" "${COMMANDS_DIR}/edit-off.md"; do
     sed -i "s|{MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}|${EMIT_EDIT_GUARD_ABS}|g" "$cmd_file"
   fi
 done
+
+# Command file: {MG_INSTALL_EMIT_CONTEXT_SCRIPT}
+EMIT_CONTEXT_ABS="${SUPPORT_DIR}/scripts/emit-context.py"
+sed -i "s|{MG_INSTALL_EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_ABS}|g" "${COMMANDS_DIR}/auto-approve.md"
 
 # ── Clean up stale files ───────────────────────────────────────────────────
 
