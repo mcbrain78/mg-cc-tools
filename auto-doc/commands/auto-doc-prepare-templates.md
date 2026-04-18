@@ -131,6 +131,7 @@ Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/template-refiner.md
 
 Project root: {project_root}
 Generic template: {MG_INSTALL_TEMPLATES_DIR}/{audience}/{document}.template.md
+Parsed template path: {project_root}/.mg/docs/scan/templates/template-{document}.json
 Scan view path: ${MG_INSTALL_WORKSPACE_DIR}/generate/scan-views/scan-view-${audience}.json
 Project model path: ${MG_INSTALL_WORKSPACE_DIR}/generate/project-model.json
 Output path: {project_root}/.mg/docs/templates/{audience}/{document}.template.md
@@ -146,6 +147,7 @@ Validate script: {MG_INSTALL_SCRIPTS_DIR}/validate-refined-template.py"
 - `{MG_INSTALL_TEMPLATES_DIR}` resolves to the installed generic templates directory (e.g., `.claude/auto-doc/references/templates/`)
 - Output goes to `.mg/docs/templates/` (project-local, not inside `.claude/`)
 - Each Agent call passes `{MG_INSTALL_SCRIPTS_DIR}` so the refiner can invoke `get-section-sources.py` and `list-optional-sections.py`
+- The **parsed template JSON** at `.mg/docs/scan/templates/template-{document}.json` is produced deterministically by `parse-template.py` during scan Step 4b. The refiner consumes this as its structured source of truth for section slugs and directives (`synthesized_from`, `boundary`, `optional`, `purpose`) — no need to re-parse the generic template
 - Agents read the lightweight `scan-view-{audience}.json` instead of the full `docs-scan.json` -- avoids context limit failures
 - `get-section-sources.py` uses `--project-root` to derive the full scan path by convention
 - Parallel execution is safe: all shared resources (view files, project model, generic templates, scripts) are read-only; each agent writes to a unique output path

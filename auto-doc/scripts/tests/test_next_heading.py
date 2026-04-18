@@ -1105,7 +1105,8 @@ DB_MODEL = {
 
 
 def _write_init_fixtures(td, template_text=SIMPLE_TEMPLATE, scan=None,
-                         document="OPERATIONS", db_table_map=None, db_model=None):
+                         document="OPERATIONS", db_table_map=None, db_model=None,
+                         parsed_template=None, project_model=None):
     """Write fixtures for init mode tests. Returns dict of paths."""
     template_path = os.path.join(td, "template.md")
     with open(template_path, "w") as f:
@@ -1137,6 +1138,18 @@ def _write_init_fixtures(td, template_text=SIMPLE_TEMPLATE, scan=None,
             json.dump(db_model, f)
         result["db_model"] = model_path
 
+    if parsed_template is not None:
+        parsed_path = os.path.join(td, f"template-{document}.json")
+        with open(parsed_path, "w") as f:
+            json.dump(parsed_template, f)
+        result["parsed_template"] = parsed_path
+
+    if project_model is not None:
+        pm_path = os.path.join(td, "project-model.json")
+        with open(pm_path, "w") as f:
+            json.dump(project_model, f)
+        result["project_model"] = pm_path
+
     return result
 
 
@@ -1153,6 +1166,10 @@ def _run_init(fixtures):
         cmd.extend(["--db-table-map", fixtures["db_table_map"]])
     if "db_model" in fixtures:
         cmd.extend(["--db-model", fixtures["db_model"]])
+    if "parsed_template" in fixtures:
+        cmd.extend(["--parsed-template", fixtures["parsed_template"]])
+    if "project_model" in fixtures:
+        cmd.extend(["--project-model", fixtures["project_model"]])
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.returncode, result.stdout, result.stderr
@@ -1402,3 +1419,248 @@ class TestRuntimeMode:
             capture_output=True, text=True,
         )
         assert result.returncode == 2
+
+
+# ---------------------------------------------------------------------------
+# Synth / boundary / product_name injection tests
+# ---------------------------------------------------------------------------
+
+SYNTH_BOUNDARY_TEMPLATE = """\
+<!-- DIATAXIS: how-to -->
+<!-- AUDIENCE: end-users -->
+
+# User Guide
+
+## Overview
+<purpose>Introduce the product with elevated vocabulary.</purpose>
+<evidence>README, components</evidence>
+
+### Features
+<purpose>Features overview</purpose>
+<evidence>3 features</evidence>
+<example>- ...</example>
+
+## Getting Started
+<purpose>First use of the running system. Infrastructure setup belongs in devops/OPERATIONS.md</purpose>
+<evidence>first-use flow</evidence>
+
+### First Steps
+<purpose>Steps</purpose>
+<evidence>3 steps</evidence>
+<example>1. ...</example>
+
+## Common Tasks
+<purpose>Cover the most frequent tasks.</purpose>
+<evidence>task list</evidence>
+
+### Task A
+<purpose>Task description</purpose>
+<evidence>example task</evidence>
+<example>1. ...</example>
+"""
+
+SYNTH_BOUNDARY_SCAN = {
+    "source_material_index": {
+        "USER_GUIDE/overview": {
+            "source_files": ["README.md", "src/__init__.py"],
+            "synthesized_from": ["project_model.components"],
+            "has_user_facing_narrative": True,
+        },
+        "USER_GUIDE/getting-started": {
+            "source_files": ["src/cli/start.py"],
+        },
+        "USER_GUIDE/common-tasks": {
+            "source_files": ["src/tasks.py"],
+        },
+    }
+}
+
+SYNTH_BOUNDARY_PARSED = {
+    "document": "USER_GUIDE",
+    "sections": [
+        {
+            "slug": "overview",
+            "level": 2,
+            "title": "Overview",
+            "synthesized_from": ["project_model.components"],
+            "boundary": None,
+            "optional": False,
+            "purpose": "Introduce the product",
+        },
+        {
+            "slug": "getting-started",
+            "level": 2,
+            "title": "Getting Started",
+            "synthesized_from": None,
+            "boundary": "Infrastructure setup belongs in devops/OPERATIONS.md",
+            "optional": False,
+            "purpose": "First use",
+        },
+        {
+            "slug": "common-tasks",
+            "level": 2,
+            "title": "Common Tasks",
+            "synthesized_from": None,
+            "boundary": None,
+            "optional": False,
+            "purpose": "Frequent tasks",
+        },
+    ],
+    "valid_slugs": ["overview", "getting-started", "common-tasks"],
+}
+
+SYNTH_BOUNDARY_PROJECT_MODEL = {
+    "product_name": "MyApp",
+    "components": [
+        {"name": "core", "purpose": "business logic"},
+        {"name": "api", "purpose": "REST endpoints"},
+    ],
+    "entry_points": [
+        {"path": "src/cli/start.py", "type": "cli", "description": "Main CLI"},
+    ],
+}
+
+
+class TestSynthBoundaryProductInjection:
+    """Injection of synth_context, boundary_text, and product_name."""
+
+    def _load_orients(self, fixtures):
+        with open(fixtures["state"]) as f:
+            state = json.load(f)
+        return [e for e in state["queue"] if e.get("type") == "orient"]
+
+    def test_product_name_injected_in_all_orients(self):
+        """product_name lands on every orient response when project_model provides it."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td,
+                template_text=SYNTH_BOUNDARY_TEMPLATE,
+                scan=SYNTH_BOUNDARY_SCAN,
+                document="USER_GUIDE",
+                parsed_template=SYNTH_BOUNDARY_PARSED,
+                project_model=SYNTH_BOUNDARY_PROJECT_MODEL,
+            )
+            rc, _, stderr = _run_init(fixtures)
+            assert rc == 0, f"stderr: {stderr}"
+
+            orients = self._load_orients(fixtures)
+            assert len(orients) == 3
+            for orient in orients:
+                assert orient["product_name"] == "MyApp"
+
+    def test_synth_section_gets_synth_context_and_hint(self):
+        """Synthesized section's orient carries synth_context + synthesized_from."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td,
+                template_text=SYNTH_BOUNDARY_TEMPLATE,
+                scan=SYNTH_BOUNDARY_SCAN,
+                document="USER_GUIDE",
+                parsed_template=SYNTH_BOUNDARY_PARSED,
+                project_model=SYNTH_BOUNDARY_PROJECT_MODEL,
+            )
+            _run_init(fixtures)
+            orients = self._load_orients(fixtures)
+            overview = next(o for o in orients if o["section"] == "overview")
+
+            assert overview["synthesized_from"] == ["project_model.components"]
+            assert "synth_context" in overview
+            assert "components" in overview["synth_context"]
+            assert overview["synth_context"]["components"][0]["name"] == "core"
+
+    def test_bounded_section_gets_boundary_text(self):
+        """Bounded section's orient carries boundary_text."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td,
+                template_text=SYNTH_BOUNDARY_TEMPLATE,
+                scan=SYNTH_BOUNDARY_SCAN,
+                document="USER_GUIDE",
+                parsed_template=SYNTH_BOUNDARY_PARSED,
+                project_model=SYNTH_BOUNDARY_PROJECT_MODEL,
+            )
+            _run_init(fixtures)
+            orients = self._load_orients(fixtures)
+            gs = next(o for o in orients if o["section"] == "getting-started")
+
+            assert gs["boundary_text"] == "Infrastructure setup belongs in devops/OPERATIONS.md"
+            assert "synthesized_from" not in gs
+
+    def test_normal_section_has_no_synth_or_boundary(self):
+        """Normal section's orient has neither synth_context nor boundary_text."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td,
+                template_text=SYNTH_BOUNDARY_TEMPLATE,
+                scan=SYNTH_BOUNDARY_SCAN,
+                document="USER_GUIDE",
+                parsed_template=SYNTH_BOUNDARY_PARSED,
+                project_model=SYNTH_BOUNDARY_PROJECT_MODEL,
+            )
+            _run_init(fixtures)
+            orients = self._load_orients(fixtures)
+            ct = next(o for o in orients if o["section"] == "common-tasks")
+
+            assert "synthesized_from" not in ct
+            assert "synth_context" not in ct
+            assert "boundary_text" not in ct
+            assert ct["product_name"] == "MyApp"
+
+    def test_no_product_name_no_injection(self):
+        """product_name field absent when project_model lacks it."""
+        pm_without_name = {k: v for k, v in SYNTH_BOUNDARY_PROJECT_MODEL.items()
+                           if k != "product_name"}
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td,
+                template_text=SYNTH_BOUNDARY_TEMPLATE,
+                scan=SYNTH_BOUNDARY_SCAN,
+                document="USER_GUIDE",
+                parsed_template=SYNTH_BOUNDARY_PARSED,
+                project_model=pm_without_name,
+            )
+            _run_init(fixtures)
+            orients = self._load_orients(fixtures)
+            for orient in orients:
+                assert "product_name" not in orient
+
+    def test_synth_without_project_model_still_passes_hint(self):
+        """Without project_model, synth_context is absent but synthesized_from hint stays."""
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td,
+                template_text=SYNTH_BOUNDARY_TEMPLATE,
+                scan=SYNTH_BOUNDARY_SCAN,
+                document="USER_GUIDE",
+                parsed_template=SYNTH_BOUNDARY_PARSED,
+            )
+            _run_init(fixtures)
+            orients = self._load_orients(fixtures)
+            overview = next(o for o in orients if o["section"] == "overview")
+
+            assert overview["synthesized_from"] == ["project_model.components"]
+            assert "synth_context" not in overview
+
+    def test_db_injection_still_works_alongside_synth(self):
+        """Regression: db_column_detail injection coexists with new injections."""
+        db_table_map = {
+            "USER_GUIDE/common-tasks": ["stocks"],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            fixtures = _write_init_fixtures(
+                td,
+                template_text=SYNTH_BOUNDARY_TEMPLATE,
+                scan=SYNTH_BOUNDARY_SCAN,
+                document="USER_GUIDE",
+                db_table_map=db_table_map,
+                db_model=DB_MODEL,
+                parsed_template=SYNTH_BOUNDARY_PARSED,
+                project_model=SYNTH_BOUNDARY_PROJECT_MODEL,
+            )
+            _run_init(fixtures)
+            orients = self._load_orients(fixtures)
+            ct = next(o for o in orients if o["section"] == "common-tasks")
+
+            assert ct["product_name"] == "MyApp"
+            assert "db_column_detail" in ct
+            assert "road_runner.stocks:" in ct["db_column_detail"]

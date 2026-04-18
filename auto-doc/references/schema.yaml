@@ -27,6 +27,15 @@ docs-scan:
       required: true
       description: "Structured project architecture, tech stack, and components. Built by scanner from source analysis."
       children:
+        product_name:
+          type: string
+          required: true
+          description: |
+            The project's user-facing display name. Deterministically extracted
+            by the Orient agent: pyproject.toml [project].name → package.json
+            "name" → README first H1 (stripped of markdown). Single source of
+            truth for product framing across all audience docs; refiner injects
+            it as the vocabulary anchor in every refined template.
         tech_stack:    {type: "array of string", required: true, description: "Detected technologies and languages"}
         entry_points:
           type: "array of object"
@@ -98,9 +107,22 @@ docs-scan:
               required: false
               description: |
                 Dotted field paths into scan data (e.g., "project_model.components").
-                When present with empty source_files, writer generates from project
-                model fields instead of source files. Enables overview/concept/workflow
-                sections not mapped to specific code files.
+                HINT (not exclusion) — writer consults these project_model fields in
+                addition to source_files when composing sections that span the whole
+                system (Overview, Key Concepts, Workflows). The scanner still maps
+                narrative source files (README, primary-UI entry docstrings) into
+                source_files for these sections so the writer has user-facing
+                narrative material alongside the field hints.
+            has_user_facing_narrative:
+              type: boolean
+              required: false
+              description: |
+                Readiness signal for synthesized sections. True when mapped narrative
+                sources contain non-install/non-dev prose (heuristic: README has H2
+                sections beyond Installation/Development, or primary-UI entry points
+                have user-directed docstrings). Refiner emits a TODO marker in the
+                refined template when false so operators know a section needs manual
+                input before generate produces quality output.
     staleness_report:
       type: "array of object"
       required: true

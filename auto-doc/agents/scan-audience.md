@@ -54,10 +54,16 @@ When `audience` is `"end-users"`, apply these source material filtering rules:
       - Use `section.slug` directly as the section slug. **Never derive your own slug** from the heading.
       - Use `section.purpose` and `section.boundary` to guide your source file search.
       - If `section.synthesized_from` is non-null:
-        1. **Skip source-file search entirely** -- do NOT run Glob or Grep for this section
-        2. Write the source_material_index entry with `"source_files": []` and `"synthesized_from"` copied exactly from the parsed JSON
-        3. You MUST always produce the entry -- its presence triggers the writer's synthesis path. Do not skip it.
-        4. Continue to the next section (do not run the normal source file search below)
+        1. **Map narrative files** into `source_files` instead of skipping source-file search. For synth sections, prefer (in priority order):
+           - `README.md` at project root, if it contains user-facing narrative (H2 sections beyond Installation/Development/Contributing)
+           - Primary-UI entry-point docstrings: for web/API primary UI, the main route or app handler with a module docstring; for CLI primary UI, the main CLI entrypoint with its `--help` description
+           - Top-level `__init__.py` / `index.{js,ts}` with a module docstring
+        2. Copy `"synthesized_from"` exactly from the parsed JSON. This is a HINT to the writer that certain `project_model` fields are also worth consulting, NOT an exclusion signal.
+        3. Emit `"has_user_facing_narrative"` boolean on the entry:
+           - `true` if at least one of the mapped narrative files contains user-facing prose (README has H2 sections beyond install/dev, or primary-UI entry has a user-directed docstring)
+           - `false` otherwise — the refiner will emit a TODO marker downstream
+        4. You MUST always produce the entry — its presence triggers the writer's synthesis path. Do not skip it.
+        5. Continue to the next section (skip the normal source-file search below; the narrative mapping above replaces it).
       - If `section.boundary` is non-null:
         1. Use the boundary text as exclusion guidance when searching for source files
         2. The section still gets a source_material_index entry -- BOUNDARY restricts what goes INTO the entry, it does not skip the entry
@@ -154,9 +160,10 @@ The temp file written in step 5 must match this structure:
       "source": "incremental"
     },
     "DOCUMENT/synthesized-section": {
-      "source_files": [],
+      "source_files": ["README.md", "src/cli/__init__.py"],
       "staleness": "unknown",
-      "synthesized_from": ["project_model.components", "project_model.entry_points"]
+      "synthesized_from": ["project_model.components", "project_model.entry_points"],
+      "has_user_facing_narrative": true
     }
   },
   "gap_analysis": {
@@ -168,7 +175,7 @@ The temp file written in step 5 must match this structure:
 }
 ```
 
-The `synthesized_from` field is only present for sections with `<!-- SYNTHESIZED: ... -->` template comments. Normal sections omit this field.
+The `synthesized_from` field is only present for sections with `<!-- SYNTHESIZED: ... -->` template comments. Normal sections omit this field. Synthesized sections now carry narrative `source_files` (not empty) and a `has_user_facing_narrative` boolean readiness signal.
 
 The `"source"` field is optional. Only present on entries added during incremental scan for new file classification. Omit for carried-forward entries and normal scan entries.
 
@@ -186,7 +193,8 @@ The `"source"` field is optional. Only present on entries added during increment
 - **Read-only.** Only write to the output_path. Never modify any project files.
 - **Use Glob, not Bash ls.** For file discovery, use `Glob("src/**/*.py")` instead of individual `Bash(ls ...)` calls per directory. One Glob replaces many ls calls.
 - **Use parsed template JSON for slugs and directives.** Never derive slugs from headings or parse template comments yourself. The parsed JSON is the single source of truth for section slugs, `synthesized_from`, `boundary`, `optional`, and `purpose`.
-- **SYNTHESIZED sections MUST produce entries.** Even though they have no source files, the entry with `"source_files": []` and `"synthesized_from"` (copied exactly from parsed JSON) must exist. Missing entries cause the writer to skip the section.
+- **SYNTHESIZED sections MUST produce entries.** Map narrative source files (README, primary-UI entry docstrings, top-level `__init__.py`) into `source_files` and copy `synthesized_from` exactly from parsed JSON. Emit `has_user_facing_narrative` boolean. Missing entries cause the writer to skip the section.
+- **`synthesized_from` is a writer hint, not an exclusion signal.** It tells the writer which `project_model` fields to consult in addition to source files. It does NOT mean "no source files" — synthesized sections still carry narrative material.
 - **Never invent synthesized_from.** Only include `synthesized_from` if the parsed template JSON has it for that section. Adding it where the template doesn't specify it causes validation failure.
 - **BOUNDARY is not OPTIONAL.** BOUNDARY means "this content belongs elsewhere" -- the section still exists and still gets an index entry. Only OPTIONAL means a section can be skipped entirely.
 - **In incremental mode, completeness is critical.** Your output must contain ALL section entries (changed + unchanged). Missing entries cause merge-scan.py to lose data for those sections.

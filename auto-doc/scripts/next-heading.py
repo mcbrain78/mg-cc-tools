@@ -303,6 +303,87 @@ def _inject_db_column_detail(queue, db_model_data, db_table_map):
             entry["database_name"] = db_name
 
 
+def _build_parsed_section_map(parsed_template_data):
+    """Build {slug: parsed_section_dict} from parse-template.py JSON output.
+
+    Returns empty dict if parsed_template_data is falsy or missing sections.
+    """
+    if not parsed_template_data:
+        return {}
+    return {
+        s["slug"]: s
+        for s in parsed_template_data.get("sections", [])
+        if s.get("slug")
+    }
+
+
+def _resolve_synth_context(project_model, synthesized_from):
+    """Resolve dotted-path synth hints against project_model to concrete values.
+
+    Each path in synthesized_from is of form "project_model.<field>". Only
+    paths whose field exists in project_model resolve. Returns a dict mapping
+    field name -> value. Empty dict if nothing resolves.
+    """
+    result = {}
+    if not project_model or not synthesized_from:
+        return result
+    for path in synthesized_from:
+        parts = path.split(".")
+        if len(parts) != 2 or parts[0] != "project_model":
+            continue
+        field = parts[1]
+        if field in project_model:
+            result[field] = project_model[field]
+    return result
+
+
+def _inject_synth_and_boundary(queue, parsed_section_map, project_model):
+    """Inject synth_context, synthesized_from, and boundary_text.
+
+    For each orient response, looks up the section in parsed_section_map.
+    If synthesized_from is present, resolves the field list against
+    project_model into a compact synth_context slice. If boundary is
+    present, passes the raw boundary text through as boundary_text.
+
+    Modifies queue in-place.
+    """
+    if not parsed_section_map:
+        return
+    for entry in queue:
+        if entry.get("type") != "orient":
+            continue
+        slug = entry.get("section")
+        if not slug:
+            continue
+        section = parsed_section_map.get(slug)
+        if not section:
+            continue
+
+        synth = section.get("synthesized_from")
+        if synth:
+            entry["synthesized_from"] = synth
+            resolved = _resolve_synth_context(project_model, synth)
+            if resolved:
+                entry["synth_context"] = resolved
+
+        boundary = section.get("boundary")
+        if boundary:
+            entry["boundary_text"] = boundary
+
+
+def _inject_product_name(queue, product_name):
+    """Inject product_name into every orient response.
+
+    Writers use this as the vocabulary anchor for consistent product
+    framing across sections. Skips injection when product_name is empty.
+    """
+    if not product_name:
+        return
+    for entry in queue:
+        if entry.get("type") == "orient":
+            entry["product_name"] = product_name
+
+
 def _derive_state_path(generate_dir, audience, document):
     """Derive convention-based state file path.
 
@@ -343,6 +424,18 @@ def main():
     parser.add_argument(
         "--db-model",
         help="Path to database-model.json (optional, --init only, inlines column detail)",
+    )
+    parser.add_argument(
+        "--parsed-template",
+        help="Path to parse-template.py JSON for this document (optional). When "
+             "provided, orient responses gain synthesized_from + synth_context "
+             "for synth sections and boundary_text for bounded sections.",
+    )
+    parser.add_argument(
+        "--project-model",
+        help="Path to slimmed project-model.json (optional). When provided, "
+             "synth fields resolve against it and product_name is injected "
+             "into every orient response.",
     )
 
     # Runtime mode args (called by writer agents)
@@ -396,6 +489,24 @@ def main():
             db_model_data = load_json(args.db_model, default={})
             _inject_db_column_detail(queue, db_model_data, db_table_map)
 
+        # Load parsed-template metadata (synth/boundary signals per section)
+        parsed_section_map = {}
+        if args.parsed_template and os.path.isfile(args.parsed_template):
+            parsed_data = load_json(args.parsed_template, default={})
+            parsed_section_map = _build_parsed_section_map(parsed_data)
+
+        # Load project_model (for synth resolution + product_name injection)
+        project_model = {}
+        if args.project_model and os.path.isfile(args.project_model):
+            project_model = load_json(args.project_model, default={})
+
+        # Inject synth_context + boundary_text from parsed template + project_model
+        if parsed_section_map:
+            _inject_synth_and_boundary(queue, parsed_section_map, project_model)
+
+        # Inject product_name into every orient response
+        _inject_product_name(queue, project_model.get("product_name", ""))
+
         state = {"queue": queue, "index": 0}
         save_json(args.state_file, state)
         return  # No stdout output in init mode
@@ -446,6 +557,19 @@ def main():
         queue = build_emission_queue(
             sections, args.document, source_material_index, db_table_map,
         )
+
+        # Legacy-mode synth/boundary/product_name injection
+        parsed_section_map = {}
+        if args.parsed_template and os.path.isfile(args.parsed_template):
+            parsed_data = load_json(args.parsed_template, default={})
+            parsed_section_map = _build_parsed_section_map(parsed_data)
+        project_model = {}
+        if args.project_model and os.path.isfile(args.project_model):
+            project_model = load_json(args.project_model, default={})
+        if parsed_section_map:
+            _inject_synth_and_boundary(queue, parsed_section_map, project_model)
+        _inject_product_name(queue, project_model.get("product_name", ""))
+
         state = {"queue": queue, "index": 0}
 
     queue = state["queue"]

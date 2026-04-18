@@ -88,6 +88,11 @@ GSD integration: {true|false}
 ## Instructions
 
 1. **Analyze the project.** Use Glob to find files by pattern (not Bash ls). Use `get_symbols_overview` (with `depth: 1`) on source files to understand their structure (classes, functions, methods). Use `find_symbol` with `include_info: true` for signatures/docstrings when needed. Use `find_referencing_symbols` to understand component relationships. Never read an entire source file — only use `Read` for non-code files (yaml, toml, config). Identify:
+   - **Product name** — deterministic extraction, in priority order:
+     1. `pyproject.toml` `[project].name` (Python projects)
+     2. `package.json` top-level `name` field (JS/TS projects)
+     3. README first H1 heading, stripped of markdown syntax (fallback)
+     Use the first source that yields a non-empty value. Emit as `project_model.product_name` (string). This is the single source of truth for the product's user-facing display name across all audience docs.
    - Languages, frameworks, package managers (package.json, pyproject.toml, Cargo.toml, go.mod, etc.)
    - Entry points: main files, route definitions, CLI scripts, event handlers, exported modules
    - Components: major directories/modules, their purpose, public API, dependencies, database tables
@@ -132,6 +137,7 @@ GSD integration: {true|false}
    Format:
    {
      'project_model': {
+       'product_name': '...',  // from step 1 (pyproject.toml → package.json → README H1)
        'tech_stack': [...],
        'entry_points': [{'path': '...', 'type': '...', 'description': '...'}],
        'components': [{'name': '...', 'path': '...', 'purpose': '...', 'public_api': [...], 'dependencies': [...], 'database_tables': [...]}],
@@ -145,6 +151,7 @@ GSD integration: {true|false}
 
 8. **Return a brief summary** (this is what the orchestrator sees):
    ORIENT COMPLETE
+   product_name: <name>
    tech_stack_count: N
    component_count: N
    entry_point_count: N

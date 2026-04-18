@@ -135,49 +135,57 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    - `agents` -> `agents/agent-writer.md`
    - `devops` -> `agents/devops-writer.md`
 
-2. **Spawn one Agent call per audience** in `audiences` (from setup output) in a SINGLE message (parallel foreground -- do NOT set `run_in_background`). Each subagent reads its own instructions.
+2. **Spawn one Agent call per (audience, document) pair** in `audiences` (from setup output) in a SINGLE message (parallel foreground -- do NOT set `run_in_background`). Each subagent reads its own instructions.
 
-   **For devops audience with orient-write routing:** Check `refined_templates["devops"]` for each document. If a document has a non-null refined template entry, spawn a dedicated orient-write Agent for that document. If a document has a null entry, use the standard prompt for that document.
+   **Orient-write routing (all audiences).** For each `(audience, document)` pair, check `refined_templates[audience][DOCUMENT]`. If the entry is non-null, spawn a dedicated orient-write Agent for that document. If the entry is null, use the standard prompt for that document.
 
-   When using orient-write, each devops document gets its OWN Agent call (not a single agent for all devops documents) because each document needs its own state file.
+   When using orient-write, each document gets its OWN Agent call (not a single agent for all documents in an audience) because each document needs its own pre-initialized state file.
 
-   For each devops document where `refined_templates["devops"][DOCUMENT]` is **not null**:
+   For each document where `refined_templates[audience][DOCUMENT]` is **not null** — orient-write prompt:
 
    ```
    Agent(
-     description="Generate devops {DOCUMENT} documentation ({mode} mode, orient-write)",
-     prompt="You are a devops writer agent.
+     description="Generate {audience} {DOCUMENT} documentation ({mode} mode, orient-write)",
+     prompt="You are a {audience} writer agent.
 
-   Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/devops-writer.md
+   Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/{audience_writer_file}
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
-   Scan data path: {scan_views["devops"]}
+   Scan data path: {scan_views[audience]}
    Project model path: {project_model_path}
-   Database model summary path: {database_model_summary_path}
    Style guide path: references/style-guide.md
    Glossary path: {docs_dir_abs}/GLOSSARY.md
    Documents: {DOCUMENT}
    Mode: {mode}
-   Audience: devops
+   Audience: {audience}
    Generate dir: {generate_dir}
    Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
+   {additional audience-specific lines}
 
    Standing notes (incorporate into relevant sections):
    {notes for this document, or 'None'}"
    )
    ```
 
-   For each devops document where `refined_templates["devops"][DOCUMENT]` **is null**, use the standard prompt (same as non-devops audiences, with `Templates dir`).
+   Where `{audience_writer_file}` resolves per audience:
+   - `end-users` → `end-user-writer.md`
+   - `developers` → `developer-writer.md`
+   - `agents` → `agent-writer.md`
+   - `devops` → `devops-writer.md`
 
-   **For all other audiences (end-users, developers, agents):** Always use the standard prompt (current behavior, unchanged):
+   And `{additional audience-specific lines}` are audience-specific prompt additions:
+   - `devops`: add `Database model summary path: {database_model_summary_path}` (devops references the DB model summary for high-level schema awareness).
+   - `end-users`, `developers`, `agents`: no additional lines.
+
+   For each document where `refined_templates[audience][DOCUMENT]` **is null** — standard prompt (fallback for audiences/documents without a refined template):
 
    ```
    Agent(
      description="Generate {audience} documentation ({mode} mode)",
      prompt="You are a {audience} writer agent.
 
-   Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/{audience}-writer.md
+   Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/{audience_writer_file}
 
    Project root: {project_root}
    Docs dir: {docs_dir_abs}
@@ -199,6 +207,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
    - `Scripts dir` is new -- writer needs it for next-heading.py calls
    - `Documents` is singular (one document per agent call when using orient-write)
    - No file paths for template, state, db-table-map, or db-model -- all pre-initialized by generate-setup.py
+   - Since all legacy writers have been migrated to the orient-write protocol, the standard prompt is a pure fallback path for projects that never ran `/mg:auto-doc-prepare-templates`. It will be uncommon in practice; new projects should run prepare-templates.
 
    For standing notes: format each as `- {note_id} ({document}/{section}): "{note_text}"`. If none, set to `None`. For orient-write agents, filter notes to only those matching the specific document.
 
@@ -214,7 +223,7 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
 After all writer agents complete, assemble documents from accumulated sections and generate temp manifests.
 
-**For orient-write audiences** (devops documents that used refined templates): finalize each per-document state file, all accumulating into the same audience manifest:
+**For orient-write documents** (any audience + document with a refined template): finalize each per-document state file, all accumulating into the same audience manifest.
 
 For each `write-state-{audience}-{DOCUMENT}.json` file in `{MG_INSTALL_WORKSPACE_DIR}/generate`:
 
@@ -229,7 +238,7 @@ uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
     --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
 ```
 
-**For standard audiences** (end-users, developers, agents, and devops documents without refined templates): finalize the single per-audience state file:
+**For standard-prompt documents** (audience + document pairs without a refined template — only possible when `/mg:auto-doc-prepare-templates` was never run for that pair): finalize the single per-audience state file:
 
 ```bash
 uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \

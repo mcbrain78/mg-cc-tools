@@ -84,9 +84,9 @@ class TestValidTemplate:
         """)
         result = validate(tmpl)
         assert result["valid"] is True
-        assert len(result["warnings"]) == 1
-        assert "## Overview" in result["warnings"][0]
-        assert "recommended" in result["warnings"][0]
+        h2_warnings = [w for w in result["warnings"] if "## Overview" in w]
+        assert len(h2_warnings) == 1
+        assert "recommended" in h2_warnings[0]
 
 
 class TestMissingPurpose:
@@ -176,8 +176,8 @@ class TestMissingEvidence:
         """)
         result = validate(tmpl)
         assert result["valid"] is True
-        assert len(result["warnings"]) == 1
-        assert "## Overview" in result["warnings"][0]
+        h2_warnings = [w for w in result["warnings"] if "## Overview" in w]
+        assert len(h2_warnings) == 1
 
 
 class TestDocsMetaPlaceholder:
@@ -336,3 +336,210 @@ class TestCLI:
         data = json.loads(proc.stdout)
         assert data["valid"] is False
         assert any("not found" in e for e in data["errors"])
+
+
+class TestProductNamePreamble:
+    """PRODUCT_NAME metadata is expected in the refined preamble."""
+
+    def test_missing_product_name_is_warning(self):
+        tmpl = textwrap.dedent("""\
+            ## Deployment
+            <purpose>Deployment scope</purpose>
+            <evidence>uv sync</evidence>
+
+            ### Steps
+            <purpose>Steps</purpose>
+            <evidence>5 steps</evidence>
+            <example>- ...</example>
+        """)
+        result = validate(tmpl)
+        assert result["valid"] is True
+        assert any("PRODUCT_NAME" in w for w in result["warnings"])
+
+    def test_present_product_name_no_warning(self):
+        tmpl = textwrap.dedent("""\
+            <!-- PRODUCT_NAME: MyProject -->
+
+            ## Deployment
+            <purpose>Deployment scope</purpose>
+            <evidence>uv sync</evidence>
+
+            ### Steps
+            <purpose>Steps</purpose>
+            <evidence>5 steps</evidence>
+            <example>- ...</example>
+        """)
+        result = validate(tmpl)
+        assert result["valid"] is True
+        assert not any("PRODUCT_NAME" in w for w in result["warnings"])
+
+
+class TestParsedTemplateCrossValidation:
+    """Cross-validation against parsed-template JSON (--parsed-template arg)."""
+
+    def _parsed(self, sections):
+        return sections
+
+    def test_missing_non_optional_section_is_error(self):
+        tmpl = textwrap.dedent("""\
+            <!-- PRODUCT_NAME: MyApp -->
+
+            ## Deployment
+            <purpose>Covers deployment</purpose>
+            <evidence>stuff</evidence>
+
+            ### Steps
+            <purpose>Steps</purpose>
+            <evidence>5 steps</evidence>
+            <example>- ...</example>
+        """)
+        parsed = [
+            {"slug": "deployment", "level": 2, "title": "Deployment", "optional": False},
+            {"slug": "monitoring", "level": 2, "title": "Monitoring", "optional": False},
+        ]
+        result = validate(tmpl, parsed_sections=parsed)
+        assert result["valid"] is False
+        assert any("monitoring" in e and "missing" in e for e in result["errors"])
+
+    def test_missing_optional_section_is_ok(self):
+        tmpl = textwrap.dedent("""\
+            <!-- PRODUCT_NAME: MyApp -->
+
+            ## Deployment
+            <purpose>Covers deployment</purpose>
+            <evidence>stuff</evidence>
+
+            ### Steps
+            <purpose>Steps</purpose>
+            <evidence>5 steps</evidence>
+            <example>- ...</example>
+        """)
+        parsed = [
+            {"slug": "deployment", "level": 2, "title": "Deployment", "optional": False},
+            {"slug": "monitoring", "level": 2, "title": "Monitoring", "optional": True},
+        ]
+        result = validate(tmpl, parsed_sections=parsed)
+        assert result["valid"] is True
+
+    def test_synth_section_without_subheading_is_error(self):
+        tmpl = textwrap.dedent("""\
+            <!-- PRODUCT_NAME: MyApp -->
+
+            ## Overview
+            <purpose>Introduces MyApp and elevates vocab.</purpose>
+            <evidence>README, components</evidence>
+        """)
+        parsed = [
+            {
+                "slug": "overview",
+                "level": 2,
+                "title": "Overview",
+                "optional": False,
+                "synthesized_from": ["project_model.components"],
+            },
+        ]
+        result = validate(tmpl, parsed_sections=parsed)
+        assert result["valid"] is False
+        assert any("no ### subheadings" in e for e in result["errors"])
+
+    def test_synth_section_without_product_name_is_error(self):
+        tmpl = textwrap.dedent("""\
+            <!-- PRODUCT_NAME: MyApp -->
+
+            ## Overview
+            <purpose>General introduction without the product name.</purpose>
+            <evidence>README</evidence>
+
+            ### Features
+            <purpose>Feature list</purpose>
+            <evidence>3 features</evidence>
+            <example>- ...</example>
+        """)
+        parsed = [
+            {
+                "slug": "overview",
+                "level": 2,
+                "title": "Overview",
+                "optional": False,
+                "synthesized_from": ["project_model.components"],
+            },
+        ]
+        result = validate(tmpl, parsed_sections=parsed)
+        assert result["valid"] is False
+        assert any("product_name" in e for e in result["errors"])
+
+    def test_synth_section_valid(self):
+        tmpl = textwrap.dedent("""\
+            <!-- PRODUCT_NAME: MyApp -->
+
+            ## Overview
+            <purpose>Introduces MyApp and elevates module names into user-facing terms.</purpose>
+            <evidence>README, components</evidence>
+
+            ### Features
+            <purpose>Feature list</purpose>
+            <evidence>3 features</evidence>
+            <example>- ...</example>
+        """)
+        parsed = [
+            {
+                "slug": "overview",
+                "level": 2,
+                "title": "Overview",
+                "optional": False,
+                "synthesized_from": ["project_model.components"],
+            },
+        ]
+        result = validate(tmpl, parsed_sections=parsed)
+        assert result["valid"] is True
+
+    def test_bounded_section_missing_boundary_text_is_error(self):
+        tmpl = textwrap.dedent("""\
+            <!-- PRODUCT_NAME: MyApp -->
+
+            ## Getting Started
+            <purpose>First use of the running system.</purpose>
+            <evidence>stuff</evidence>
+
+            ### First Steps
+            <purpose>Steps</purpose>
+            <evidence>3 steps</evidence>
+            <example>- ...</example>
+        """)
+        parsed = [
+            {
+                "slug": "getting-started",
+                "level": 2,
+                "title": "Getting Started",
+                "optional": False,
+                "boundary": "Infrastructure setup belongs in OPERATIONS.md",
+            },
+        ]
+        result = validate(tmpl, parsed_sections=parsed)
+        assert result["valid"] is False
+        assert any("boundary text verbatim" in e for e in result["errors"])
+
+    def test_bounded_section_with_boundary_text_is_valid(self):
+        tmpl = textwrap.dedent("""\
+            <!-- PRODUCT_NAME: MyApp -->
+
+            ## Getting Started
+            <purpose>First use of the running system. Infrastructure setup belongs in OPERATIONS.md — add a callout at the top of the section.</purpose>
+            <evidence>stuff</evidence>
+
+            ### First Steps
+            <purpose>Steps</purpose>
+            <evidence>3 steps</evidence>
+            <example>- ...</example>
+        """)
+        parsed = [
+            {
+                "slug": "getting-started",
+                "level": 2,
+                "title": "Getting Started",
+                "optional": False,
+                "boundary": "Infrastructure setup belongs in OPERATIONS.md",
+            },
+        ]
+        result = validate(tmpl, parsed_sections=parsed)
+        assert result["valid"] is True

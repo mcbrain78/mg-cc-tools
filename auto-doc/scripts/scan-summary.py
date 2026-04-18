@@ -35,12 +35,14 @@ def main():
     undoc = len(gap.get("undocumented_components", []))
     missing = {k: len(v) for k, v in gap.get("missing_for_audience", {}).items()}
     pm = d.get("project_model", {})
+    product_name = pm.get("product_name", "")
     tech = len(pm.get("tech_stack", []))
     comps = len(pm.get("components", []))
     eps = len(pm.get("entry_points", []))
     gsd = d.get("gsd_context")
 
     print(f"mode={d.get('mode')}")
+    print(f"product_name={product_name}")
     print(f"tech_stack={tech}")
     print(f"components={comps}")
     print(f"entry_points={eps}")

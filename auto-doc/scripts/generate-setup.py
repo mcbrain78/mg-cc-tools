@@ -529,6 +529,7 @@ def _build_db_table_map(project_model_path, scan_path, generate_dir,
 def _pre_init_heading_states(
     refined_templates, audiences, scan_file, generate_dir,
     db_table_map_path, database_model_path, scripts_dir,
+    scan_dir, project_model_path,
 ):
     """Pre-initialize next-heading.py state files for orient-write documents.
 
@@ -536,10 +537,18 @@ def _pre_init_heading_states(
     ``next-heading.py --init`` to build the emission queue and save state.
     This removes the need for agents to pass file paths at runtime.
 
+    When the parsed-template JSON exists at ``scan_dir/templates/template-{DOC}.json``,
+    it is passed through so ``next-heading.py`` can inject ``synth_context``
+    and ``boundary_text`` per section. ``project_model_path`` is passed so
+    synth fields resolve against project_model and ``product_name`` is
+    injected into every orient response.
+
     Returns list of {"audience": str, "document": str} dicts that were
     pre-initialized.
     """
     pre_init = []
+    parsed_templates_dir = os.path.join(scan_dir, "templates")
+    pm_available = bool(project_model_path) and os.path.isfile(project_model_path)
     for aud_name, aud_conf in audiences.items():
         aud_templates = refined_templates.get(aud_name, {})
         for doc in aud_conf.get("documents", []):
@@ -563,6 +572,14 @@ def _pre_init_heading_states(
                 cmd.extend(["--db-table-map", db_table_map_path])
             if database_model_path:
                 cmd.extend(["--db-model", database_model_path])
+
+            parsed_template_path = os.path.join(
+                parsed_templates_dir, f"template-{doc}.json",
+            )
+            if os.path.isfile(parsed_template_path):
+                cmd.extend(["--parsed-template", parsed_template_path])
+            if pm_available:
+                cmd.extend(["--project-model", project_model_path])
 
             _run_script(cmd, f"pre-init heading-state {aud_name}/{doc}", critical=False)
             if os.path.isfile(state_path):
@@ -667,6 +684,7 @@ def main():
     pre_init_documents = _pre_init_heading_states(
         refined_templates, audiences, scan_file, paths["generate_dir"],
         db_table_map_path, database_model_path, scripts_dir,
+        paths["scan_dir"], paths["project_model_path"],
     )
 
     # Output everything the orchestrator needs
