@@ -71,6 +71,18 @@ Audiences: {comma-separated audience names}
 
 ### Stage 1: Build Glossary (initial pass)
 
+**Skip this stage entirely if** `mode == "update"` **AND** `{docs_dir_abs}/GLOSSARY.md` already exists. In that case the glossary baseline is already established from a prior run and may carry audit/fix refinements that Stage 1 would overwrite (Stage 1 uses `write-section.py --finalize` without `--merge`, which rebuilds `xml-sources/GLOSSARY.xml` from scratch).
+
+If skipping, print:
+
+```
+Stage 1/4: Skipping glossary initial pass (update mode — existing GLOSSARY.md preserved for audit/fix refinements)
+```
+
+Stage 3 (reconciliation) still runs unconditionally and merges any writer-proposed terms into the preserved glossary via its existing `--merge` path.
+
+Otherwise (mode is `"initial"`, or `GLOSSARY.md` is absent in update mode — e.g., first filtered run on a project that has other audience docs but no glossary yet):
+
 Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
 
 1. **Spawn a single Agent call** with the glossary-writer agent:
