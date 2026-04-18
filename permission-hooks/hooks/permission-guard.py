@@ -110,7 +110,12 @@ _EMIT_SCRIPT_RE = re.compile(r"\bemit-(context|edit-guard)\.py\b")
 CONTEXT_TTL_S = 30 * 60  # 30 minutes
 
 # Number of trailing JSONL lines to inspect for recent command invocation.
-_RECENT_LINES = 5
+# Needs to be large enough to span the full slash-command load: <command-name>
+# tag + body + attachments (one line each) + last-prompt + assistant thinking/
+# tool_use. A /mg: command with many referenced attachments can push the tag
+# ~20–40 lines back, so we use a generous window that still excludes ancient
+# invocations.
+_RECENT_LINES = 200
 
 
 def _session_id(transcript_path):
@@ -166,12 +171,15 @@ def _update_context_timestamp(transcript_path):
 
 
 def _emitter_follows_command(transcript_path):
-    """Return True if a slash command was loaded in the last few transcript entries.
+    """Return True if a /mg: slash command was loaded in the recent transcript tail.
 
     When a user invokes a /mg: command, Claude Code injects a
-    ``<command-name>/mg:...`` tag in the transcript 1-3 entries before the
-    emit-context.py Bash call.  Checking the tail of the transcript avoids
-    false-positives from old command content.
+    ``<command-name>/mg:...`` tag into the transcript. The emit-context.py
+    call happens some entries later — typically after the command body,
+    referenced attachments, last-prompt marker, and any assistant thinking.
+    With attachments, that gap can be 20–40 lines, so we scan a wide tail
+    (``_RECENT_LINES``) to still catch the tag while excluding ancient
+    invocations.
 
     Note: CC strips YAML frontmatter (including ``allowed-tools:``) before
     writing command content to the transcript, so we match on the

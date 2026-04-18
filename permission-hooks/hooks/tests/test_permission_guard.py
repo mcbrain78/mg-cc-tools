@@ -1869,7 +1869,7 @@ class TestEmitterFollowsCommand:
 
     def test_old_command_not_in_tail(self):
         """Command far back in transcript (beyond tail window) → gated."""
-        filler = [self._tool_result_line(f"output {i}") for i in range(10)]
+        filler = [self._tool_result_line(f"output {i}") for i in range(guard._RECENT_LINES + 10)]
         path = self._write_transcript([
             self._command_tag_line(),
             self._command_body_line(),
@@ -1878,6 +1878,20 @@ class TestEmitterFollowsCommand:
         ])
         try:
             assert _emitter_follows_command(path) is False
+        finally:
+            os.unlink(path)
+
+    def test_command_with_many_attachments(self):
+        """Command tag buried under ~30 attachment/body lines still detected."""
+        filler = [self._tool_result_line(f"attachment {i}") for i in range(30)]
+        path = self._write_transcript([
+            self._command_tag_line(),
+            self._command_body_line(),
+            *filler,
+            self._assistant_line("Now running emit-context."),
+        ])
+        try:
+            assert _emitter_follows_command(path) is True
         finally:
             os.unlink(path)
 
