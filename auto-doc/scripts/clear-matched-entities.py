@@ -177,6 +177,8 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
             ident = entry.get("identifier")
             if not ident:
                 continue
+            if not entry.get("display"):
+                continue  # db-hierarchy ancestor entry (parse-side fan-out artefact)
             if ident not in body:
                 _emit_finding(
                     findings_file, document, audience,

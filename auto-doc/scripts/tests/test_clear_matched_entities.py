@@ -286,6 +286,73 @@ class TestCheckB:
             assert result.returncode == 0
             assert not os.path.exists(ff)
 
+    def test_db_ancestor_entries_skipped(self):
+        """Ancestor-only db entries (display=None) do not emit findings.
+
+        parse_xml_doc._parse_db_refs fans out a nested <db><schema><table>
+        element into one ref per hierarchy level. Ancestor entries (db-only,
+        db+schema) have display=None per prepare-prose-verify's
+        _format_single_ref. Check B must skip them so intermediate hierarchy
+        names do not generate spurious "Declared ref None" findings.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": (
+                        "## Monitoring\n\n"
+                        "The `data_drift_warnings` table tracks incidents."
+                    ),
+                    "ref_entries": [
+                        {"display": None, "identifier": "finance",
+                         "path": ["finance"]},
+                        {"display": None, "identifier": "public",
+                         "path": ["finance", "public"]},
+                        {"display": "[db] public.data_drift_warnings",
+                         "identifier": "data_drift_warnings",
+                         "path": ["finance", "public", "data_drift_warnings"]},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            # Leaf identifier IS in body, ancestors are skipped — no findings.
+            assert not os.path.exists(ff), (
+                "Ancestor ref entries with display=None must not trigger "
+                "Check B findings"
+            )
+
+    def test_db_ancestor_skipped_when_leaf_missing_from_body(self):
+        """Ancestor entries stay skipped; only the leaf is checked against body."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nSome unrelated prose.",
+                    "ref_entries": [
+                        {"display": None, "identifier": "finance",
+                         "path": ["finance"]},
+                        {"display": None, "identifier": "public",
+                         "path": ["finance", "public"]},
+                        {"display": "[db] public.data_drift_warnings",
+                         "identifier": "data_drift_warnings",
+                         "path": ["finance", "public", "data_drift_warnings"]},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert os.path.exists(ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            # Exactly one finding — for the leaf; not three.
+            assert len(findings) == 1
+            assert findings[0]["description"].startswith(
+                "Declared ref [db] public.data_drift_warnings"
+            )
+
 
 class TestAffectedSections:
     """affected-sections.json tracks sections with uncleared entities."""
