@@ -1095,3 +1095,82 @@ class TestNestedSections:
             result = _run_verify(xml_dir, project_root, findings_file)
             # Should report 3 refs total (1 parent + 2 child), not just 1 top-level
             assert "3 refs checked" in result.stderr
+
+
+class TestSharedDocInclusion:
+    """Shared docs (GLOSSARY, OVERVIEW) must be verified regardless of audience filter.
+
+    They live at xml_dir root with audience="" — empty string signals shared.
+    Without the fix, --audience end-users would skip them entirely and their
+    ref-integrity findings would never be surfaced.
+    """
+
+    def test_shared_doc_included_under_audience_filter(self):
+        """GLOSSARY.xml at xml_dir root processed when --audience end-users."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # Audience-scoped doc — valid ref (no findings)
+            _build_xml_with_refs(xml_dir, "end-users", "USER_GUIDE", [
+                ("overview", "## Overview\n\nTest.", [
+                    {"type": "code", "kind": "function",
+                     "name": "compute_finance_metrics"},
+                ]),
+            ])
+            # Shared doc at xml_dir root with bad ref → generates a finding.
+            # `NoSuchClass` doesn't exist anywhere in _make_project fixtures.
+            _build_xml_with_refs(xml_dir, "", "GLOSSARY", [
+                ("system-concepts", "## Concepts\n\nTerms.", [
+                    {"type": "code", "kind": "class", "name": "NoSuchClass"},
+                ]),
+            ])
+
+            result = _run_verify(
+                xml_dir, project_root, findings_file, audience="end-users",
+            )
+            assert result.returncode == 0, result.stderr
+
+            # Both docs processed — transcript mentions both
+            assert "USER_GUIDE" in result.stderr
+            assert "GLOSSARY" in result.stderr
+            assert "(shared)" in result.stderr  # shared marker rendered
+
+            # Finding from GLOSSARY surfaces in output JSON
+            findings = json.loads(open(findings_file).read())
+            shared_findings = [
+                f for f in findings if f["document"] == "GLOSSARY"
+            ]
+            assert len(shared_findings) == 1
+            assert "NoSuchClass" in shared_findings[0]["description"]
+
+    def test_shared_doc_no_audience_filter_still_processed(self):
+        """GLOSSARY.xml at xml_dir root processed when no --audience filter (baseline)."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "", "GLOSSARY", [
+                ("system-concepts", "## Concepts\n\nTerms.", [
+                    {"type": "code", "kind": "class", "name": "NoSuchClass"},
+                ]),
+            ])
+
+            result = _run_verify(xml_dir, project_root, findings_file)
+            assert result.returncode == 0, result.stderr
+            assert "GLOSSARY" in result.stderr
+            assert "(shared)" in result.stderr
+
+    def test_audience_scoped_doc_still_filtered_correctly(self):
+        """Non-shared audience doc still filtered out when audience doesn't match."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # devops doc — should be filtered out under --audience end-users
+            _build_xml_with_refs(xml_dir, "devops", "OPERATIONS", [
+                ("section-a", "## A\n\nTest.", [
+                    {"type": "code", "kind": "class", "name": "NoSuchClass"},
+                ]),
+            ])
+
+            result = _run_verify(
+                xml_dir, project_root, findings_file, audience="end-users",
+            )
+            assert result.returncode == 0, result.stderr
+            # devops doc filtered out — no OPERATIONS line in transcript
+            assert "OPERATIONS" not in result.stderr

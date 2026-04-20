@@ -714,7 +714,14 @@ def main():
     total_refs = 0
     for xml_path in sorted(xml_files):
         doc = parse_xml_doc(xml_path)
-        if filter_audiences and doc["audience"] not in filter_audiences and doc["audience"] != "all":
+        # Shared docs (GLOSSARY, OVERVIEW) live at xml_dir root and carry
+        # audience="" — they must be verified regardless of --audience filter
+        # because they apply to all audiences. Mirrors the documented intent
+        # at auto-doc-auditv2.md "include root-level XML files (GLOSSARY, OVERVIEW)".
+        is_shared = os.path.dirname(xml_path) == xml_dir or not doc["audience"]
+        if (filter_audiences and not is_shared
+                and doc["audience"] not in filter_audiences
+                and doc["audience"] != "all"):
             continue
 
         doc_findings = verify_xml_file(xml_path, cache, doc=doc)
@@ -724,7 +731,8 @@ def main():
 
         doc_name = _doc_name_from_path(xml_path)
         n = len(doc_findings)
-        print(f"  {doc_name}: {doc_refs} refs checked, {n} findings", file=sys.stderr)
+        shared_marker = " (shared)" if is_shared else ""
+        print(f"  {doc_name}{shared_marker}: {doc_refs} refs checked, {n} findings", file=sys.stderr)
 
     # Load existing findings, extend, save atomically
     existing = load_json(findings_file, default=[])
