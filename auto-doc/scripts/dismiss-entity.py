@@ -45,8 +45,21 @@ _FILE_EXTENSIONS = (
 _SCHEMA_QUALIFIED_RE = re.compile(r"^[a-z_][a-z0-9_]{2,}\.[a-z_][a-z0-9_]{2,}$")
 
 
-def is_pattern_blocked(entity):
+def is_pattern_blocked(entity, ref_entries=None):
     """Check if entity matches a structurally ref-like pattern.
+
+    For schema-qualified names (two dotted segments ≥3 chars each), the block
+    is context-aware: if any declared ref path tail matches the dotted form,
+    block dismissal (the entity IS covered by a real ref and should file a
+    finding or use --covered-by). If no path matches, allow dismissal — the
+    entity is likely a stdlib dotted name like ``json.loads`` and classifying
+    it as not-entity is correct.
+
+    Args:
+        entity: The entity name considered for dismissal.
+        ref_entries: Optional list of section ref_entries (each with a
+            ``path`` array). When ``None``, schema-qualified names are
+            blocked unconditionally (legacy behavior).
 
     Returns:
         (blocked, pattern) — blocked is True if the entity should not be
@@ -61,7 +74,15 @@ def is_pattern_blocked(entity):
 
     # Schema-qualified name: word.word with ≥3-char segments
     if _SCHEMA_QUALIFIED_RE.match(entity):
-        return True, "schema-qualified name"
+        if ref_entries is None:
+            return True, "schema-qualified name"
+        segments = tuple(entity.split("."))
+        for entry in ref_entries:
+            path = tuple(entry.get("path") or ())
+            if len(path) >= len(segments) and path[-len(segments):] == segments:
+                return True, "schema-qualified name matching declared ref"
+        # No declared ref path tail matches → allow dismissal
+        return False, ""
 
     return False, ""
 
@@ -170,8 +191,18 @@ def dismiss(
             )
             return None
 
-    # Pattern guard: refuse to dismiss structurally ref-like entities
-    blocked, pattern = is_pattern_blocked(entity)
+    # Pattern guard: refuse to dismiss structurally ref-like entities.
+    # Pull section ref context when available so schema-qualified names are
+    # only blocked if a declared ref path tail matches (avoids blocking
+    # dismissal of stdlib dotted names like json.loads).
+    ref_entries = None
+    if prose_verify_dir:
+        section_file = _section_json_path(prose_verify_dir, section)
+        section_data = load_json(section_file)
+        if section_data is not None:
+            ref_entries = section_data.get("ref_entries", [])
+
+    blocked, pattern = is_pattern_blocked(entity, ref_entries=ref_entries)
     if blocked:
         print(
             f"Cannot dismiss {entity} — looks like a {pattern}. "

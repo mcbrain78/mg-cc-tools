@@ -118,9 +118,12 @@ def cmd_dismiss(session, args):
         cmd_args.extend([
             "--protected-entities-file", session["protected_entities_file"],
         ])
+    # Always pass prose-verify-dir so the pattern check can consult ref context
+    # (e.g., to avoid blocking dismissal of stdlib dotted names with no matching ref).
+    if session.get("prose_verify_dir"):
+        cmd_args.extend(["--prose-verify-dir", session["prose_verify_dir"]])
     if getattr(args, "covered_by", None):
         cmd_args.extend(["--covered-by", args.covered_by])
-        cmd_args.extend(["--prose-verify-dir", session["prose_verify_dir"]])
         if session.get("covered_this_run_file"):
             cmd_args.extend([
                 "--covered-this-run-file", session["covered_this_run_file"],

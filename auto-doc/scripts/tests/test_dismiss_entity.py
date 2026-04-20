@@ -506,3 +506,128 @@ class TestCoveredBy:
             assert len(covered) == 1
             # Original entry preserved
             assert covered[0]["covered_in"] == "deployment"
+
+
+def _make_section_json_with_paths(td, section_path, ref_entries):
+    """Create a section JSON with full ref_entries including path arrays.
+
+    Each entry in ``ref_entries`` should be a dict with at least an
+    ``identifier`` and a ``path`` list.
+    """
+    prose_dir = os.path.join(td, "prose-verify")
+    slug = os.path.basename(section_path)
+    parent = os.path.dirname(section_path)
+    if parent:
+        section_file = os.path.join(prose_dir, parent, f"{slug}.json")
+    else:
+        section_file = os.path.join(prose_dir, f"{slug}.json")
+    os.makedirs(os.path.dirname(section_file), exist_ok=True)
+    data = {
+        "body": "some body text",
+        "refs_as_text": "some refs",
+        "ref_entries": ref_entries,
+    }
+    with open(section_file, "w") as f:
+        json.dump(data, f)
+    return prose_dir
+
+
+class TestSchemaQualifiedContextAware:
+    """Schema-qualified pattern block is context-aware when prose-verify-dir is passed."""
+
+    def test_dismiss_stdlib_dotted_name_allowed(self):
+        """json.loads with no matching ref path → dismissal allowed.
+
+        Without a declared ref whose path ends in (json, loads), the pattern
+        block falls through and the agent can classify the entity as
+        not-entity (the stdlib case).
+        """
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "json.loads", "section": "technical-terms"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            prose_dir = _make_section_json_with_paths(
+                td, "technical-terms",
+                [
+                    {
+                        "display": "[dep] prefect",
+                        "identifier": "prefect",
+                        "path": ["prefect"],
+                    },
+                ],
+            )
+
+            result = _run(
+                "json.loads", "technical-terms", uf, df,
+                prose_verify_dir=prose_dir,
+            )
+            assert result.returncode == 0
+            assert "Cannot dismiss" not in result.stderr
+            assert "Dismissed: json.loads" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert uncleared == []
+
+    def test_dismiss_schema_qualified_with_matching_ref_blocked(self):
+        """finance_metrics.finance_metrics with matching path → block (file finding instead)."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "finance_metrics.finance_metrics", "section": "domain-terms"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            prose_dir = _make_section_json_with_paths(
+                td, "domain-terms",
+                [
+                    {
+                        "display": "[db] finance_metrics.finance_metrics",
+                        "identifier": "finance_metrics",
+                        "path": ["finance", "finance_metrics", "finance_metrics"],
+                    },
+                ],
+            )
+
+            result = _run(
+                "finance_metrics.finance_metrics", "domain-terms", uf, df,
+                prose_verify_dir=prose_dir,
+            )
+            assert result.returncode == 0
+            assert "Cannot dismiss" in result.stderr
+            assert "schema-qualified name matching declared ref" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 1
+
+    def test_dismiss_schema_qualified_without_matching_ref_allowed(self):
+        """public.stocks with only unrelated refs → dismissal allowed.
+
+        Section declares an unrelated db ref for (finance, raw_fmp, income_statements).
+        Entity public.stocks does not tail-match that path, so the pattern
+        block does not apply.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "public.stocks", "section": "data-sources"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            prose_dir = _make_section_json_with_paths(
+                td, "data-sources",
+                [
+                    {
+                        "display": "[db] finance.raw_fmp.income_statements",
+                        "identifier": "income_statements",
+                        "path": ["finance", "raw_fmp", "income_statements"],
+                    },
+                ],
+            )
+
+            result = _run(
+                "public.stocks", "data-sources", uf, df,
+                prose_verify_dir=prose_dir,
+            )
+            assert result.returncode == 0
+            assert "Cannot dismiss" not in result.stderr
+            assert "Dismissed: public.stocks" in result.stderr
+
+            uncleared = _read_json(uf)
+            assert uncleared == []

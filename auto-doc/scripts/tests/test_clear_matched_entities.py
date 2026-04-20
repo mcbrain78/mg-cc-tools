@@ -930,6 +930,162 @@ class TestDotSplitClearing:
             assert names == ["foo.bar"]
 
 
+class TestDotSplitClearingTail:
+    """Dotted entity → tail of ref path: handles 3-component db paths etc."""
+
+    def test_schema_qualified_clears_3_component_path(self):
+        """finance_metrics.finance_metrics clears against (finance, finance_metrics, finance_metrics).
+
+        The db component (finance) never appears in prose, so the existing
+        path resolver cannot match. Tail-match fixes this.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "domain-terms",
+                    "body": (
+                        "## Domain Terms\n\n"
+                        "Metrics persisted in the `finance_metrics.finance_metrics` table."
+                    ),
+                    "ref_entries": [
+                        {
+                            "display": "[db] finance_metrics.finance_metrics",
+                            "identifier": "finance_metrics",
+                            "path": ["finance", "finance_metrics", "finance_metrics"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "finance_metrics.finance_metrics", "section": "domain-terms"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+    def test_3_component_code_ref_tail_clears(self):
+        """User.save clears against (src/models.py, User, save) code path."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "data-model",
+                    "body": (
+                        "## Data Model\n\n"
+                        "Persist via `User.save` method."
+                    ),
+                    "ref_entries": [
+                        {
+                            "display": "[code:function] User.save",
+                            "identifier": "save",
+                            "path": ["src/models.py", "User", "save"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "User.save", "section": "data-model"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+    def test_head_match_does_not_clear(self):
+        """foo.bar does NOT clear against (foo, bar, baz) — tail-anchored only.
+
+        Prose `foo.bar` refers to a 2-segment entity. A ref path ending in `baz`
+        is a different entity (baz is the leaf); head-matching would be wrong.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nReferences `foo.bar`.",
+                    "ref_entries": [
+                        {
+                            "display": "[code:function] foo.bar.baz",
+                            "identifier": "baz",
+                            "path": ["foo", "bar", "baz"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "foo.bar", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "foo.bar"
+
+    def test_mismatched_middle_does_not_clear(self):
+        """bar.qux does NOT clear against (foo, bar, baz) — segments must contiguously match tail."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nReferences `bar.qux`.",
+                    "ref_entries": [
+                        {
+                            "display": "[code:function] foo.bar.baz",
+                            "identifier": "baz",
+                            "path": ["foo", "bar", "baz"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "bar.qux", "section": "monitoring"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "bar.qux"
+
+    def test_no_matching_ref_stays_uncleared(self):
+        """json.loads with no matching ref path stays uncleared (no over-clearing)."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "technical-terms",
+                    "body": (
+                        "## Technical Terms\n\n"
+                        "Parses with `json.loads`."
+                    ),
+                    "ref_entries": [
+                        {
+                            "display": "[dep] prefect",
+                            "identifier": "prefect",
+                            "path": ["prefect"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "json.loads", "section": "technical-terms"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "json.loads"
+
+
 class TestIdentifierClearing:
     """Identifier-based clearing: first pass before path resolution."""
 

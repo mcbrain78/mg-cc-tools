@@ -202,6 +202,24 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
             if name in all_idents:
                 ident_cleared.add(name)
 
+        # Additional first-pass: dotted entity → tail of any ref path.
+        # Handles cases like prose `schema.table` against a db ref path
+        # (db, schema, table) where the top-level `db` component isn't in prose.
+        all_paths = [
+            tuple(entry["path"])
+            for entry in ref_entries
+            if entry.get("path")
+        ]
+        for name in section_entities:
+            if name in ident_cleared or "." not in name:
+                continue
+            segments = tuple(name.split("."))
+            if any(
+                len(p) >= len(segments) and p[-len(segments):] == segments
+                for p in all_paths
+            ):
+                ident_cleared.add(name)
+
         # Second pass: path resolution for remaining entities
         remaining = [n for n in section_entities if n not in ident_cleared]
         if remaining:
