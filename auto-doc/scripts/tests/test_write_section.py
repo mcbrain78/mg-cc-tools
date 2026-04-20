@@ -772,9 +772,9 @@ class TestMergeMode:
 
             # State has 1 replacement (overview) + 1 new section (testing)
             sections = [
-                ("overview", "## Overview\n<!-- docs-meta: ... -->\n\nUpdated overview text",
+                ("overview", "## Overview\n\nUpdated overview text",
                  ["Sym1"], ["a.py"]),
-                ("testing", "## Testing\n<!-- docs-meta: ... -->\n\nBrand new testing section",
+                ("testing", "## Testing\n\nBrand new testing section",
                  ["Sym2"], ["b.py"]),
             ]
             state_file = self._build_state(tmp, sections)
@@ -1870,7 +1870,7 @@ class TestPerHeadingEmission:
         # Write parent (## level) with its own refs
         result = _run_section(
             tmp, state_file, doc_name, "monitoring-alerting",
-            "## Monitoring & Alerting\n<!-- docs-meta: ... -->\n\nParent intro text\n",
+            "## Monitoring & Alerting\n\nParent intro text\n",
             header_text="<!-- DIATAXIS: how-to -->\n# Ops\n",
             typed_refs=self.PARENT_REFS,
         )
@@ -1879,7 +1879,7 @@ class TestPerHeadingEmission:
         # Write child (### level)
         result = _run_section(
             tmp, state_file, doc_name, "etl-logging",
-            "### ETL Logging\n<!-- docs-meta: ... -->\n\nChild content about ETL\n",
+            "### ETL Logging\n\nChild content about ETL\n",
             typed_refs=self.CHILD_REFS,
             parent="monitoring-alerting",
         )
@@ -1889,7 +1889,7 @@ class TestPerHeadingEmission:
             # Write grandchild (#### level)
             result = _run_section(
                 tmp, state_file, doc_name, "alert-config",
-                "#### Alert Config\n<!-- docs-meta: ... -->\n\nGrandchild config details\n",
+                "#### Alert Config\n\nGrandchild config details\n",
                 typed_refs=self.GRANDCHILD_REFS,
                 parent="monitoring-alerting/etl-logging",
             )
@@ -1971,25 +1971,25 @@ class TestPerHeadingEmission:
             # Build: parent with 2 children, one child with a grandchild
             _run_section(
                 tmp, state_file, doc_name, "monitoring-alerting",
-                "## Monitoring & Alerting\n<!-- docs-meta: ... -->\n\nIntro\n",
+                "## Monitoring & Alerting\n\nIntro\n",
                 header_text="<!-- DIATAXIS: how-to -->\n# Ops\n",
                 typed_refs=self.PARENT_REFS,
             )
             _run_section(
                 tmp, state_file, doc_name, "etl-logging",
-                "### ETL Logging\n<!-- docs-meta: ... -->\n\nETL details\n",
+                "### ETL Logging\n\nETL details\n",
                 typed_refs=self.CHILD_REFS,
                 parent="monitoring-alerting",
             )
             _run_section(
                 tmp, state_file, doc_name, "alert-config",
-                "#### Alert Config\n<!-- docs-meta: ... -->\n\nAlert config\n",
+                "#### Alert Config\n\nAlert config\n",
                 typed_refs=self.GRANDCHILD_REFS,
                 parent="monitoring-alerting/etl-logging",
             )
             _run_section(
                 tmp, state_file, doc_name, "health-checks",
-                "### Health Checks\n<!-- docs-meta: ... -->\n\nHealth check info\n",
+                "### Health Checks\n\nHealth check info\n",
                 typed_refs=[],
                 parent="monitoring-alerting",
             )
@@ -2038,19 +2038,19 @@ class TestPerHeadingEmission:
             # Build nested state
             _run_section(
                 tmp, state_file, doc_name, "monitoring-alerting",
-                "## Monitoring & Alerting\n<!-- docs-meta: ... -->\n\nIntro\n",
+                "## Monitoring & Alerting\n\nIntro\n",
                 header_text="<!-- DIATAXIS: how-to -->\n# Ops\n",
                 typed_refs=self.PARENT_REFS,
             )
             _run_section(
                 tmp, state_file, doc_name, "etl-logging",
-                "### ETL Logging\n<!-- docs-meta: ... -->\n\nETL details\n",
+                "### ETL Logging\n\nETL details\n",
                 typed_refs=self.CHILD_REFS,
                 parent="monitoring-alerting",
             )
             _run_section(
                 tmp, state_file, doc_name, "alert-config",
-                "#### Alert Config\n<!-- docs-meta: ... -->\n\nAlert config\n",
+                "#### Alert Config\n\nAlert config\n",
                 typed_refs=self.GRANDCHILD_REFS,
                 parent="monitoring-alerting/etl-logging",
             )
@@ -2093,10 +2093,10 @@ class TestPerHeadingEmission:
             state_file = os.path.join(tmp, "state.json")
             doc_name = "OPS"
 
-            # Parent with minimal intro (heading + docs-meta only)
+            # Parent with minimal intro (heading only)
             _run_section(
                 tmp, state_file, doc_name, "monitoring-alerting",
-                "## Monitoring & Alerting\n<!-- docs-meta: ... -->\n",
+                "## Monitoring & Alerting\n",
                 header_text="<!-- DIATAXIS: how-to -->\n# Ops\n",
                 typed_refs=[],
             )
@@ -2104,7 +2104,7 @@ class TestPerHeadingEmission:
             # Child with substantial content
             _run_section(
                 tmp, state_file, doc_name, "etl-logging",
-                "### ETL Logging\n<!-- docs-meta: ... -->\n\nDetailed ETL logging content here.\n\nThis section covers log formats, rotation, and retention policies.\n",
+                "### ETL Logging\n\nDetailed ETL logging content here.\n\nThis section covers log formats, rotation, and retention policies.\n",
                 typed_refs=self.CHILD_REFS,
                 parent="monitoring-alerting",
             )
@@ -2112,7 +2112,7 @@ class TestPerHeadingEmission:
             # Another child with substantial content
             _run_section(
                 tmp, state_file, doc_name, "health-checks",
-                "### Health Checks\n<!-- docs-meta: ... -->\n\nComprehensive health check documentation.\n\nCovers endpoint monitoring, database checks, and alerting thresholds.\n",
+                "### Health Checks\n\nComprehensive health check documentation.\n\nCovers endpoint monitoring, database checks, and alerting thresholds.\n",
                 typed_refs=[],
                 parent="monitoring-alerting",
             )

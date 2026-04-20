@@ -451,6 +451,79 @@ class TestUpdateSectionBody:
 
 
 # ===================================================================
+# last-updated stamping
+# ===================================================================
+
+class TestLastUpdatedStamping:
+    """Every section-mutating helper must stamp today's date into the
+    `last-updated` attribute, so staleness-check has an accurate anchor."""
+
+    def _reparse(self, tree):
+        """Serialize then re-parse to ensure attributes round-trip via XML."""
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            return parse_xml_doc(path)
+        finally:
+            os.unlink(path)
+
+    def _today(self):
+        from datetime import date
+        return date.today().isoformat()
+
+    def test_build_stamps_each_section(self):
+        tree = build_xml_doc("devops", "how-to", SAMPLE_HEADER, FLAT_SECTIONS)
+        doc = self._reparse(tree)
+        today = self._today()
+        for section in doc["sections"]:
+            assert section["last_updated"] == today
+
+    def test_update_body_stamps_today(self):
+        tree = build_xml_doc("devops", "how-to", SAMPLE_HEADER, FLAT_SECTIONS)
+        # Pre-seed an older date to prove the stamp overwrites
+        from lib.xml_doc import stamp_section_updated
+        stamp_section_updated(tree, "monitoring-alerting", "2020-01-01")
+        update_section_body(tree, "monitoring-alerting", "fresh body")
+
+        doc = self._reparse(tree)
+        assert doc["sections"][0]["last_updated"] == self._today()
+
+    def test_update_refs_stamps_today(self):
+        tree = build_xml_doc("devops", "how-to", SAMPLE_HEADER, FLAT_SECTIONS)
+        from lib.xml_doc import stamp_section_updated
+        stamp_section_updated(tree, "monitoring-alerting", "2020-01-01")
+        update_section_refs(
+            tree,
+            "monitoring-alerting",
+            [{"type": "flow", "name": "ingest-data"}],
+        )
+
+        doc = self._reparse(tree)
+        assert doc["sections"][0]["last_updated"] == self._today()
+
+    def test_add_section_stamps_today(self):
+        tree = build_xml_doc("devops", "how-to", SAMPLE_HEADER, FLAT_SECTIONS)
+        add_section(tree, "brand-new", "## Brand New\nFresh section")
+
+        doc = self._reparse(tree)
+        new_section = next(
+            s for s in doc["sections"] if s["slug"] == "brand-new"
+        )
+        assert new_section["last_updated"] == self._today()
+
+    def test_explicit_date_preserved(self):
+        """Passing date_str to stamp_section_updated uses it verbatim
+        (needed for test fixtures reproducing known dates)."""
+        from lib.xml_doc import stamp_section_updated
+        tree = build_xml_doc("devops", "how-to", SAMPLE_HEADER, FLAT_SECTIONS)
+        stamp_section_updated(tree, "monitoring-alerting", "2025-06-15")
+
+        doc = self._reparse(tree)
+        assert doc["sections"][0]["last_updated"] == "2025-06-15"
+
+
+# ===================================================================
 # update_section_refs with paths
 # ===================================================================
 

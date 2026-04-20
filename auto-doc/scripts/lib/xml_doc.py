@@ -25,7 +25,7 @@ for backward compatibility with top-level sections.
 """
 
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from lxml import etree
 
@@ -74,11 +74,17 @@ def _build_section(parent_el, section):
     Adds refs and body BEFORE recursing into children so element order
     is always: <refs>, <body>, then child <section> elements.
 
+    Sets the `last-updated` attribute from section["last_updated"] if
+    provided; otherwise stamps with today's date so every built section
+    carries a freshness anchor for staleness-check.
+
     Args:
         parent_el: Parent XML element to append the section to.
-        section: Section dict with slug, body, and optional children.
+        section: Section dict with slug, body, and optional children /
+            last_updated.
     """
     section_el = etree.SubElement(parent_el, "section", slug=section["slug"])
+    section_el.set("last-updated", section.get("last_updated") or date.today().isoformat())
     etree.SubElement(section_el, "refs")
     body_el = etree.SubElement(section_el, "body")
     body_el.text = etree.CDATA(section["body"])
@@ -146,13 +152,20 @@ def _parse_section(section_el):
         section_el: lxml Element with tag "section".
 
     Returns:
-        Dict with slug, body, refs, and children keys.
+        Dict with slug, last_updated, body, refs, and children keys.
     """
     slug = section_el.get("slug")
+    last_updated = section_el.get("last-updated", "")
     body = _text(section_el.find("body"))
     refs = _parse_refs(section_el.find("refs"))
     children = [_parse_section(child) for child in section_el.findall("section")]
-    return {"slug": slug, "body": body, "refs": refs, "children": children}
+    return {
+        "slug": slug,
+        "last_updated": last_updated,
+        "body": body,
+        "refs": refs,
+        "children": children,
+    }
 
 
 def _text(el):
@@ -435,6 +448,32 @@ def get_section_slugs(tree):
 # Mutation helpers
 # ---------------------------------------------------------------------------
 
+def stamp_section_updated(tree, path, date_str=None):
+    """Set the `last-updated` attribute on a section element.
+
+    Called internally by every section-mutating helper so a section's
+    freshness anchor always matches its most recent write. Exposed
+    publicly so external callers can stamp explicitly with a fixed
+    date (e.g. test fixtures reproducing a known date).
+
+    Args:
+        tree: lxml.etree._ElementTree
+        path: Slash-separated section path.
+        date_str: ISO date string (YYYY-MM-DD). If None, uses today.
+
+    Returns:
+        The tree (mutated in place).
+
+    Raises:
+        ValueError: If path not found.
+    """
+    if date_str is None:
+        date_str = date.today().isoformat()
+    section_el = _find_section(tree, path)
+    section_el.set("last-updated", date_str)
+    return tree
+
+
 def update_section_refs(tree, path, flat_refs):
     """Replace the <refs> element for a section with structured refs.
 
@@ -463,6 +502,7 @@ def update_section_refs(tree, path, flat_refs):
         section_el.remove(refs_el)
         section_el.insert(list(section_el).index(body_el), refs_el)
 
+    stamp_section_updated(tree, path)
     return tree
 
 
@@ -485,6 +525,7 @@ def update_section_body(tree, path, new_body):
     if body_el is None:
         body_el = etree.SubElement(section_el, "body")
     body_el.text = etree.CDATA(new_body)
+    stamp_section_updated(tree, path)
     return tree
 
 
@@ -522,6 +563,7 @@ def add_section(tree, slug, body, parent_path=None):
             )
 
     section_el = etree.SubElement(parent_el, "section", slug=slug)
+    section_el.set("last-updated", date.today().isoformat())
     etree.SubElement(section_el, "refs")
     body_el = etree.SubElement(section_el, "body")
     body_el.text = etree.CDATA(body)

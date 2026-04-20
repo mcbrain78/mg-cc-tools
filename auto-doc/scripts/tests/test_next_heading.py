@@ -24,8 +24,6 @@ SIMPLE_TEMPLATE = """\
 
 # Operations Guide
 
-<!-- docs-meta: last-updated: 2026-01-01 -->
-
 ## Infrastructure Overview
 <purpose>Mental model of deployment topology.</purpose>
 <example>
@@ -58,8 +56,6 @@ NESTED_TEMPLATE = """\
 <!-- AUDIENCE: devops -->
 
 # Operations Guide
-
-<!-- docs-meta: last-updated: 2026-01-01 -->
 
 ## Infrastructure Overview
 <purpose>System topology overview.</purpose>
@@ -161,8 +157,6 @@ EMPTY_TEMPLATE = """\
 <!-- AUDIENCE: glossary -->
 
 # Glossary
-
-<!-- docs-meta: last-updated: 2026-01-01 -->
 """
 
 SCAN_DATA = {

@@ -234,19 +234,19 @@ GSD integration: {true|false}
 
 **If mode is "incremental", skip this step.** In incremental mode, diff-scan.py replaces staleness check's scoping role. Staleness check continues as post-generate validation only.
 
-**Only run this step if** mode is `"update"` AND the docs directory contains `.md` files.
+**Only run this step if** mode is `"update"` AND the XML sources directory (`<docs_dir>/generate/xml-sources/`) exists with `.xml` files.
 
 If mode is `"initial"`, skip this step entirely.
 
-1. **Run staleness-check.py** to detect sections whose source files have changed since last generation:
+1. **Run staleness-check.py** to detect sections whose source files have changed since last generation. The check reads the XML source documents produced by `generate`, walks each section's typed refs (`config.path` and `code.module`), and compares each referenced source file's git history against the section's `last-updated` attribute:
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/staleness-check.py \
-       --docs-dir <docs_dir> \
+       --xml-dir <docs_dir>/generate/xml-sources \
        --project-root <project_root> \
        --output <project_root>/.mg/docs/scan/staleness-results.json
    ```
 
-2. **Note:** The staleness-check script uses `--docs-dir` (directory-level), NOT `--doc-file` (per-file). It iterates the directory internally. **(Pitfall 1)**
+2. **Note:** The staleness-check script uses `--xml-dir` (directory-level), pointing at the top of the XML source tree. It recurses to find root-level shared docs (GLOSSARY.xml, OVERVIEW.xml) alongside per-audience subdirectories. **(Pitfall 1)**
 
 4. Review script output for errors. If a script fails, log the error and continue -- partial staleness data is better than none.
 
