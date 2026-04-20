@@ -14,7 +14,7 @@ This is the canonical specification for typed code references emitted by writer 
   {"type": "flow", "name": "ingest-quarterly-finance-data"},
   {"type": "env", "name": "WORKER_CONCURRENCY"},
   {"type": "config", "path": "config/field-mapping.yaml"},
-  {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"},
+  {"type": "enum", "class": "EtlRunStatus", "field": "status", "value": "completed"},
   {"type": "dep", "name": "tenacity"},
   {"type": "literal", "name": "fmp-api"},
   {"type": "ext", "name": "pg_dump"}
@@ -34,6 +34,28 @@ This is the canonical specification for typed code references emitted by writer 
 | `dep` | `name` -- PyPI package name from pyproject.toml |
 | `literal` | `name` -- named string literal found anywhere in project files (concurrency tags, worker pools, artifact keys) |
 | `ext` | `name` -- external tool/command with no codebase footprint (pg_dump, VACUUM, systemctl) |
+
+## Enum ref targets
+
+`enum` refs validate against one of:
+
+- **Python `enum.Enum` subclasses** -- `class` is the Enum class name; `value` matches a member name or its string value.
+- **`Literal[...]` type aliases** (the modern Python pattern for constrained string sets) -- `class` is the alias name; `value` is one of the Literal values.
+- **Classes with constant attrs** -- a plain class with `CONST_A = "a"` style attributes. `value` matches an attr name (case-insensitive).
+
+**Do NOT use a SQLAlchemy model class as the enum target.** A `Mapped[str]` column with enumerated valid values does not declare those values on the model -- the authoritative set typically lives in a separate `Literal[...]` alias (often in a `types.py` module). Point the ref at the alias, not the table model.
+
+Wrong vs. right (`field` is retained as a traceability anchor in both, identifying which typed column the value belongs to):
+
+```json
+// WRONG: DataDriftWarning is a SQLAlchemy model; the Text column's valid values are not declared on the class.
+{"type": "enum", "class": "DataDriftWarning", "field": "status", "value": "new"}
+
+// RIGHT: DriftWarningStatus = Literal["new", "investigated", "acknowledged"] (in types.py)
+{"type": "enum", "class": "DriftWarningStatus", "field": "status", "value": "new"}
+```
+
+`field` is not used by `check_enum_ref` for validation, but it participates in audit clearing path resolution (`lib/ref_utils.py::path_for_ref`) and disambiguates which member of the class the value applies to. Keep it populated.
 
 ## Derivation
 

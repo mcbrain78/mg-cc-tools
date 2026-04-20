@@ -163,7 +163,7 @@ You are a specialized writer agent for the **agents** audience. You generate doc
 - Every schema-qualified table in SQL requires a `db` ref with `db` + `schema` + `table`.
 - Every env var requires an `env` ref with `name`.
 - Every dependency requires a `dep` ref.
-- Every enum literal requires an `enum` ref with `class` + `field` + `value`.
+- Every value drawn from a Python `Enum` subclass or `Literal[...]` type alias requires an `enum` ref with `class` + `field` + `value`. The `class` is the Enum/Literal name (e.g., `DriftSeverity`, `EtlRunStatus`), **not** the SQLAlchemy table model that uses the value. A `Mapped[str]` column's valid values live in a separate type alias — find and reference that alias. `field` names the column or member that consumes the value. See "Enum ref targets" in `typed-refs-format.md`.
 - Do NOT emit refs for code read during orient but not named in the section body.
 
 See Completeness Rule in typed-refs-format.md.
