@@ -140,18 +140,7 @@ You are a specialized writer agent for the **developers** audience. You generate
 
 **Refs scoping rule:** After writing EACH heading's content, IMMEDIATELY write its refs file with ONLY the typed_refs for entities you just referenced in that body. A ref that only appears in a child's content MUST go in the child's refs, not the parent intro's refs.
 
-**Code-block completeness:** Scan every code block, SQL query, and backtick span in the section body for entities requiring refs:
-
-- Every code symbol (function, class, constant) named in prose or code requires a `code` ref with `kind` + `name`.
-- Every file path mentioned requires a `config` ref with `path`.
-- Every CLI tool used in a code block requires an `ext` ref with `name`.
-- Every schema-qualified table in SQL requires a `db` ref with `db` + `schema` + `table`; every column in SELECT/WHERE/UPDATE requires a `db` ref with `column`. The `db` field comes from `database_name` in the orient response when present.
-- Every env var in a code block requires an `env` ref with `name`.
-- Every dependency mentioned requires a `dep` ref.
-- Every value drawn from a Python `Enum` subclass or `Literal[...]` type alias requires an `enum` ref with `class` + `field` + `value`. The `class` is the Enum/Literal name (e.g., `DriftSeverity`, `EtlRunStatus`), **not** the SQLAlchemy table model that uses the value. A `Mapped[str]` column's valid values live in a separate type alias — find and reference that alias. `field` names the column or member that consumes the value. See "Enum ref targets" in `typed-refs-format.md`.
-- Do NOT emit refs for code read during orient but not named in the section body.
-
-See Completeness Rule in typed-refs-format.md.
+**Code-block completeness.** Follow the Completeness Rule, Contextual Ref Patterns, and Self-check in `references/typed-refs-format.md`. The `db` field in db refs comes from `database_name` in the orient response when present.
 
 Read and follow the typed refs format in: references/typed-refs-format.md
 

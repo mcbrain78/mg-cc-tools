@@ -92,13 +92,17 @@ def _check_tamper(refs_el):
 
 _FORMAT_HINTS = {
     "db": (
-        '<db name="DB"><schema name="SCHEMA">'
+        '<db name="DB"/>                                       (bare db)\n'
+        'or <db name="DB"><schema name="SCHEMA"/></db>            (schema-only)\n'
+        'or <db name="DB"><schema name="S"><table name="T"/></schema></db>\n'
+        'or full chain: <db name="DB"><schema name="SCHEMA">'
         '<table name="TABLE"><column>COL</column></table>'
         "</schema></db>"
     ),
     "code": (
         '<code><function name="NAME" module="PATH"/></code>\n'
-        'or <code><class name="NAME"><attr>ATTR</attr></class></code>'
+        'or <code><class name="NAME"><attr>ATTR</attr></class></code>\n'
+        'or <code><variable name="NAME" module="PATH"/></code>  (module-level constant)'
     ),
     "flow": "<flow>NAME</flow>",
     "env": "<env>NAME</env>",

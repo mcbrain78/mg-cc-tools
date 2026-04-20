@@ -26,7 +26,7 @@ This is the canonical specification for typed code references emitted by writer 
 | type | required fields |
 |------|----------------|
 | `db` | `db` (database name), then contiguous chain: `schema`, `table`, optionally `column` |
-| `code` | `kind` (function/class), `name`, optionally `module`, `param` |
+| `code` | `kind` (function/class/variable), `name`, optionally `module`, `param` |
 | `flow` | `name` |
 | `env` | `name` |
 | `config` | `path` |
@@ -75,6 +75,16 @@ read that symbol from, add the correct `module` to the code ref, and re-run.
 
 **Ref → Name rule:** Every typed ref emitted MUST have its identifier appear somewhere in the section body. If you read a function during orient but described its behavior without naming it, do NOT emit a ref for it.
 
+**Self-check before finalizing refs:** list every backticked identifier in the body and confirm each has a ref. Common misses:
+
+- One item in a sibling set (3 base classes listed, refs for 2).
+- Schema names when prose discusses them as concepts.
+- Source filenames used as location markers ("defined in `X`").
+- Type aliases alongside their enum values.
+- Bare db names when prose names a database alone.
+- Column names mentioned in prose — especially in glossary metric definitions — need db refs with the `column` field, not just table-level refs.
+- Framework decorators and base classes (`@flow`, `DeclarativeBase`, `Mapped`, `Column`) — one `dep` ref per package.
+
 ### Example
 
 Given a code block:
@@ -90,3 +100,62 @@ Required refs:
   {"type": "db", "db": "road_runner_db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"}
 ]}
 ```
+
+## Contextual Ref Patterns
+
+These cases are easy to miss. Emit refs for them when the situation matches.
+
+### Partial db refs (schema-as-concept, bare db)
+
+The chain validator (`ref_validation.py::_db_ref_valid`) accepts any contiguous prefix of (db → schema → table → column). Use partial forms when prose discusses these as concepts, not just when SQL appears:
+
+- "writes to the `raw_fmp` schema" → `{"type": "db", "db": "finance", "schema": "raw_fmp"}` — schema-only.
+- "connects to the `finance` database" → `{"type": "db", "db": "finance"}` — bare db.
+- "the `public` tables" → `{"type": "db", "db": "finance", "schema": "public"}`.
+
+### Source file paths (`config` type, not just configs)
+
+The `config` ref type covers **any file path in backticks**, not only configuration files. Emit a `config` ref for:
+
+- Source files: `src/**/*.py`, `tests/conftest.py`
+- Build/packaging: `pyproject.toml`, `uv.lock`
+- Scripts: `bin/*.sh`
+- Traditional config: `alembic.ini`, `.env.example`, `prefect.yaml`
+
+A `code` ref's `module` field does NOT cover a prose mention of the filename itself. If prose says "defined in `src/X/Y.py`", emit a separate `config` ref for that path.
+
+### Type aliases and constants
+
+- Module-level constants (`MAX_RETRIES`, `TIMEOUT_MS`) → `{"type": "code", "kind": "variable", "name": "MAX_RETRIES", "module": "src/..."}`.
+- `Literal[...]` type aliases named as types (e.g., `DriftSeverity`) → `{"type": "code", "kind": "class", "name": "DriftSeverity", "module": "src/types.py"}` for the alias itself. Separately, each value mentioned gets an `enum` ref.
+- If prose says "a `DriftSeverity` of `critical`", emit **two refs**: one code ref for the alias, one enum ref for the value.
+
+### Named string literals
+
+Use `literal` for a string value that appears verbatim in code but isn't covered by class/function/file/env/dep:
+
+- Test database names (`test_finance`)
+- Worker pool / concurrency tags (`fmp-api`, `finra-api`)
+- Artifact keys (`pipeline-health-summary`)
+- API provider identifiers
+- PostgreSQL role names (`stock_ranker`), server hostnames (`mcbrain-server2`)
+
+### Column-level db refs for named columns
+
+Column refs are not only for SQL queries. Any prose mention of a specific column name needs a `db` ref with the `column` field populated:
+
+- Glossary metric definitions: "compute `peg_fwd`" → `{"type": "db", "db": "...", "schema": "...", "table": "finance_metrics", "column": "peg_fwd"}`.
+- Composite keys in explanation: "the `(ticker, period_end_date)` composite key" → two column refs.
+- Attribute references: "the `flow_name` column on EtlRun" → `{"type": "db", "...", "table": "etl_runs", "column": "flow_name"}`.
+
+When a glossary section defines many metrics (e.g., ~40 `finance_metrics` column entries in one `domain-terms` block), emitting ~40 individual column refs is the expected shape — volume tracks the number of concepts defined.
+
+### Framework decorators, types, and base classes as `dep` refs
+
+Framework-provided decorators, type annotations, and base classes are **dependency mentions**, not project code. Emit one `dep` ref per package, not a `code` ref per usage:
+
+- `@flow`, `@task` → `{"type": "dep", "name": "prefect"}`
+- `Mapped`, `Mapped[str]`, `Mapped[Decimal | None]`, `Column`, `DeclarativeBase` → `{"type": "dep", "name": "sqlalchemy"}`
+- `Completed()` (Prefect return type) → covered by the prefect dep; use `covered-by prefect` at dismissal time if the symbol stands alone.
+
+One dep ref per framework per section — don't emit a separate dep ref for each decorator or type instance.
