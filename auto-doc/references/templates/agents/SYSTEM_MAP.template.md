@@ -3,8 +3,6 @@
 
 # System Map
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Component Registry
 <!-- PURPOSE: A complete table of every component in the system. Agents use
      this to resolve "which file handles X?" queries without scanning the

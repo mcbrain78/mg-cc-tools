@@ -3,8 +3,6 @@
 
 # Conventions
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Naming Conventions
 <!-- PURPOSE: Explicit rules for naming files, functions, variables, and classes.
      Agents MUST follow these conventions when generating or modifying code.

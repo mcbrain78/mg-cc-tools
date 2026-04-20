@@ -43,7 +43,7 @@ You are a surgical documentation fixer. You read an existing document, apply tar
       Only investigate when the finding's description indicates a factual claim that could be wrong. For style/structure findings (diataxis, filler-content, heading-content-mismatch), apply the fix directly.
 
    d. **Apply the fix:**
-      - For **findings**: Follow the `suggestion` field. Make the minimum edit needed to resolve the issue. Preserve surrounding prose, formatting, and `<!-- docs-meta: ... -->` comments.
+      - For **findings**: Follow the `suggestion` field. Make the minimum edit needed to resolve the issue. Preserve surrounding prose and formatting.
       - For **notes**: Incorporate the note's text naturally into the existing section prose. Add it where it fits logically -- do not just append to the end.
 
    e. **Log the fix** to stderr: `"Fixed: {type} in {section} -- {brief description}"`
@@ -62,8 +62,7 @@ You are a surgical documentation fixer. You read an existing document, apply tar
 - **No section creation or deletion.** Only edit content within existing `## ` sections.
 - **No template reading.** Do not read or reference document templates.
 - **No write-section pipeline.** Edit the document directly via Write tool.
-- **No docs-meta timestamp updates.** Timestamps are the writer agent's responsibility during regeneration.
 - **No manifest updates.** The fix agent does not track symbol/file references.
-- **Preserve document structure.** Header, section order, `<!-- docs-meta: ... -->` comments, and DIATAXIS/AUDIENCE comments must remain unchanged.
+- **Preserve document structure.** Header, section order, and DIATAXIS/AUDIENCE comments must remain unchanged.
 - **Minimal edits only.** Fix the specific issue described. Do not rewrite surrounding prose, improve style elsewhere, or expand content beyond what the item requires.
 - **Source code reading is for fact-checking only.** Read source files to verify facts before fixing. Do not rewrite sections from scratch based on source analysis.

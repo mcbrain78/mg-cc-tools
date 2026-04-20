@@ -3,8 +3,6 @@
 
 # Developer Guide
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Development Setup
 <!-- PURPOSE: Get a new contributor from zero to a working development
      environment with all dependencies installed and verified. Every command

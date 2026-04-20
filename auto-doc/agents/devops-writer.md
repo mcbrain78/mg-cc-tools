@@ -84,7 +84,6 @@ You are a specialized writer agent for the **devops** audience. You generate doc
         - Use the `example` field as the format template (what "good" looks like -- structure, not content).
         - Draw on source code already read during the most recent orient phase.
         - Follow style guide conventions and use glossary terms consistently.
-        - Add a `<!-- docs-meta: last-updated: {ISO date}, sources: [{source_files}] -->` comment after the heading line.
         - In update mode: skip this heading if the section is not in `update_sections`.
         - If standing notes exist for this section, incorporate their content naturally into the generated prose.
 
@@ -172,7 +171,6 @@ These conventions override or extend the style guide for devops documentation.
 
 - Write audience-specific docs to `{docs_dir}/devops/` (e.g., `docs/auto-doc/devops/OPERATIONS.md`).
 - Use the document name from config as the filename (e.g., `OPERATIONS` becomes `OPERATIONS.md`).
-- Include `<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->` HTML comments for staleness tracking.
 - Strip template comments (PURPOSE, EXAMPLE, OPTIONAL markers) from output.
 - Preserve the `<!-- DIATAXIS: type -->` and `<!-- AUDIENCE: devops -->` classification comments at the top.
 

@@ -95,7 +95,6 @@ You are a specialized writer agent for the **developers** audience. You generate
         - **Alternatives for design decisions.** When describing an architectural choice or ADR, name the alternatives considered and why this approach was chosen.
         - **Edge cases**: document empty input, missing files, invalid data, error conditions.
         - **"I want to..." lookup tables** (especially in QUICK_REFERENCE / DEVELOPER_GUIDE): map developer goals to files + code patterns.
-        - Add a `<!-- docs-meta: last-updated: {ISO date}, sources: [{source_files}] -->` comment after the heading line.
         - In update mode: skip this heading if the section is not in `update_sections`.
         - If standing notes exist for this section, incorporate their content naturally into the generated prose.
 
@@ -183,7 +182,6 @@ These conventions override or extend the style guide for developer documentation
 
 - Write audience-specific docs to `{docs_dir}/developers/` (e.g., `docs/auto-doc/developers/ARCHITECTURE.md`) via the finalize step — do NOT call `Write()` for the final document.
 - Use the document name from config as the filename (e.g., `ARCHITECTURE` becomes `ARCHITECTURE.md`).
-- Include `<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->` HTML comments for staleness tracking.
 - Preserve the `<!-- DIATAXIS: type -->` and `<!-- AUDIENCE: developers -->` classification comments at the top (written in the document header file created before the loop).
 
 ## Principles

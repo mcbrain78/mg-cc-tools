@@ -3,8 +3,6 @@
 
 # Architecture
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## System Overview
 <!-- PURPOSE: Provide developers with a high-level mental model of the system's
      architecture. This is the first section a new contributor reads to understand

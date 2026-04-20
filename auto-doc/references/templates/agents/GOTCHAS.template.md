@@ -3,8 +3,6 @@
 
 # Gotchas
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Edge Cases
 <!-- PURPOSE: Specific behaviors that are non-obvious or counter-intuitive.
      Agents MUST be aware of these when generating or modifying code that

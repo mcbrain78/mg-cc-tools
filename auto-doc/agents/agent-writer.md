@@ -109,7 +109,6 @@ You are a specialized writer agent for the **agents** audience. You generate doc
         - **Consequences for constraints.** Every MUST / MUST NOT rule explains what breaks if violated: "MUST write atomically — otherwise race conditions cause duplicate entries."
         - **Action-oriented prose.** Write "Run `command`" not "You might want to run...". Direct instructions, no hedging.
         - **Absolute path references** for file paths. Replace relative paths with absolute paths rooted at `project_root`.
-        - Add a `<!-- docs-meta: last-updated: {ISO date}, sources: [{source_files}] -->` comment after the heading line.
         - In update mode: skip if the section is not in `update_sections`.
         - If standing notes exist for this section, incorporate their content naturally.
 
@@ -192,7 +191,6 @@ These conventions override or extend the style guide for agent-audience document
 
 - Write audience-specific docs to `{docs_dir}/agents/` (e.g., `docs/auto-doc/agents/SYSTEM_MAP.md`) via the finalize step — do NOT call `Write()` for the final document.
 - Use the document name from config as the filename (e.g., `SYSTEM_MAP` becomes `SYSTEM_MAP.md`).
-- Include `<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->` HTML comments for staleness tracking.
 - Preserve the YAML frontmatter, `<!-- DIATAXIS: type -->`, and `<!-- AUDIENCE: agents -->` comments at the top (written in the document header file created before the loop).
 
 ## Principles

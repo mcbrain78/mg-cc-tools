@@ -3,8 +3,6 @@
 
 # User Guide
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Overview
 <!-- SYNTHESIZED: project_model.components, project_model.user_interfaces -->
 <!-- PURPOSE: Introduce what this guide covers and what the reader will gain from it. This is a guide-level introduction -- NOT a product overview (that's OVERVIEW.md) and NOT audience routing (that's also OVERVIEW.md). Orient the reader within the end-user guide itself. -->

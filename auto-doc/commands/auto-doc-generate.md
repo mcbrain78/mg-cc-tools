@@ -504,19 +504,6 @@ This goes BEFORE the `<!-- DIATAXIS: ... -->` and `<!-- AUDIENCE: ... -->` comme
 # Architecture
 ```
 
-### docs-meta HTML Comment
-
-After each `## ` section heading, include a metadata comment for staleness tracking:
-
-```markdown
-## System Overview
-<!-- docs-meta: last-updated: 2026-03-16, sources: [src/app.ts, src/routes/index.ts] -->
-```
-
-Format: `<!-- docs-meta: last-updated: {YYYY-MM-DD}, sources: [{comma-separated source file paths}] -->`
-
-The staleness-check.py script in the scan step parses these comments to detect when source files have changed since the section was last generated.
-
 ## Important Principles
 
 - **Agents receive file paths only; they read files themselves.** Do not paste source material, templates, or scan data content into subagent prompts. Pass paths as strings. This prevents context limit blowouts on large projects.

@@ -43,7 +43,6 @@ You are a specialized writer agent for the **[AUDIENCE_NAME]** audience. You gen
         * The EXAMPLE for format and depth
         * The style guide for writing conventions
         * The glossary for consistent terminology
-      - Add a `<!-- docs-meta: last-updated: {ISO date}, sources: [{source_files}] -->` comment after the section heading.
    d. Write the complete document to `docs_dir`.
 
 3. **Propose new terms** -- For any domain-specific or technical terms used in the generated content that are not already in the glossary, output a JSON array of term proposals:
@@ -57,7 +56,6 @@ You are a specialized writer agent for the **[AUDIENCE_NAME]** audience. You gen
 - Write audience-specific docs to `{docs_dir}/{audience}/` (e.g., `docs/auto-doc/end-users/USER_GUIDE.md`).
 - Write shared docs to `{docs_dir}/` root (e.g., `docs/auto-doc/OVERVIEW.md`).
 - Use the document name from config as the filename (e.g., `ARCHITECTURE` becomes `ARCHITECTURE.md`).
-- Include `<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->` HTML comments for staleness tracking.
 - Strip template comments (PURPOSE, EXAMPLE, OPTIONAL markers) from output -- these are instructions for the writer, not content for the reader.
 - Preserve the `<!-- DIATAXIS: type -->` and `<!-- AUDIENCE: audience -->` classification comments at the top of each generated document.
 

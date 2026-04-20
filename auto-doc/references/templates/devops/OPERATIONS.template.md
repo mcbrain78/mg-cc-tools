@@ -3,8 +3,6 @@
 
 # Operations Guide
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Infrastructure Overview
 <!-- PURPOSE: Operators need a single-page mental model of the system's
      deployment topology. What runs where, how components connect, and

@@ -117,7 +117,6 @@ You are a specialized writer agent for the **end-users** audience. You generate 
           4. **Secondary interface tip** (if applicable): `> **Power user tip:** ...`.
           5. **Expected results** — what the user sees when done.
         - **Plain language** — no jargon. If a technical term is unavoidable, define it inline on first use.
-        - Add a `<!-- docs-meta: last-updated: {ISO date}, sources: [{source_files}] -->` comment after the heading line.
         - In update mode: skip this heading if the section is not in `update_sections`.
         - If standing notes exist for this section, incorporate their content naturally into the generated prose.
 
@@ -203,7 +202,6 @@ These conventions override or extend the style guide for end-user documentation.
 
 - Write audience-specific docs to `{docs_dir}/end-users/` (e.g., `docs/auto-doc/end-users/USER_GUIDE.md`) via the finalize step — do NOT call `Write()` for the final document.
 - Use the document name from config as the filename (e.g., `USER_GUIDE` becomes `USER_GUIDE.md`).
-- Include `<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->` HTML comments for staleness tracking.
 - Preserve the `<!-- DIATAXIS: type -->` and `<!-- AUDIENCE: end-users -->` classification comments at the top (written in the document header file you create before the loop).
 
 ## Principles

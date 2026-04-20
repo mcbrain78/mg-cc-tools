@@ -3,8 +3,6 @@
 
 # Quick Reference
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Commands
 <!-- PURPOSE: A scannable lookup of every CLI command or slash command the
      project provides. Developers come here to find the exact syntax for a

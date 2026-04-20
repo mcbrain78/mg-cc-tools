@@ -96,10 +96,6 @@ def validate_structural(template_text):
                 "end": m.end(),
             })
 
-    for m in re.finditer(r"<!--\s*docs-meta:", template_text):
-        line = _line_number(template_text, m.start())
-        errors.append(f"Line {line}: docs-meta placeholder from generic template not removed")
-
     for m in re.finditer(r"<!--\s*OPTIONAL", template_text):
         line = _line_number(template_text, m.start())
         line_start = template_text.rfind("\n", 0, m.start()) + 1

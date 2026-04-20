@@ -3,8 +3,6 @@
 
 # Troubleshooting Guide
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Quick Diagnosis
 <!-- PURPOSE: A fast triage path for operators who need to identify the
      problem category before diving into specific runbook entries. This

@@ -3,8 +3,6 @@
 
 # {Project Name} Documentation
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## System Purpose
 <!-- PURPOSE: Explain what this project does and why it exists in 2-4 sentences.
      This is the first thing any reader sees. It must answer "what is this?" and

@@ -4,8 +4,6 @@
 
 # Glossary
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## System Concepts
 <!-- PURPOSE: Define project-specific abstractions that the codebase invented or
      adopted as core vocabulary. These are terms a new team member would not

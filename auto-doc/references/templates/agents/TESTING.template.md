@@ -3,8 +3,6 @@
 
 # Testing
 
-<!-- docs-meta: last-updated: {date}, sources: [{source_files}] -->
-
 ## Test Structure
 <!-- PURPOSE: Where tests live, how they are named, and how test discovery
      works. Agents MUST follow these conventions when creating or modifying

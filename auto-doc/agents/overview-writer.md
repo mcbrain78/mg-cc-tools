@@ -53,11 +53,11 @@ You generate the project OVERVIEW.md by reading the documents that writer agents
    ```bash
    Write({MG_INSTALL_WORKSPACE_DIR}/generate/header-overview-OVERVIEW.md)
    ```
-   The header contains the ownership comment, DIATAXIS/AUDIENCE comments, the `# {Project Name} Documentation` heading, and the top-level `<!-- docs-meta: ... -->` comment (everything before the first `## `).
+   The header contains the ownership comment, DIATAXIS/AUDIENCE comments, and the `# {Project Name} Documentation` heading (everything before the first `## `).
 
    Then, **for each `##` section** (System Purpose, Key Concepts, Architecture at a Glance, Audience Guide), follow this 3-step pattern:
 
-   **Step 1: Emit the `##` intro.** Write the `## ` heading line + `<!-- docs-meta: ... -->` comment + body content up to the first `###` heading (or end of section if no `###` exists).
+   **Step 1: Emit the `##` intro.** Write the `## ` heading line + body content up to the first `###` heading (or end of section if no `###` exists).
 
    a. Write intro content to `{MG_INSTALL_WORKSPACE_DIR}/generate/section-overview-OVERVIEW-{slug}.md`.
    b. Write refs to `{MG_INSTALL_WORKSPACE_DIR}/generate/refs-overview-OVERVIEW-{slug}.json` (OVERVIEW is pure prose, typically `{"typed_refs": []}`).
