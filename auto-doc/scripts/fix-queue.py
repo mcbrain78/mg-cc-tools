@@ -15,6 +15,7 @@ Usage:
         --findings-file PATH \
         --xml-dir PATH \
         --edit-dir PATH \
+        --suppress-file PATH \
         --approved 0,1,2 \
         --state-file PATH
 
@@ -64,6 +65,9 @@ def cmd_init(args):
             "findings_file": os.path.abspath(args.findings_file),
             "xml_dir": os.path.abspath(args.xml_dir),
             "edit_dir": os.path.abspath(args.edit_dir),
+            "suppress_file": (
+                os.path.abspath(args.suppress_file) if args.suppress_file else ""
+            ),
         },
         "queue": valid,
         "current": None,
@@ -275,6 +279,7 @@ def cmd_next(args):
             "summary": summary,
             "edit_file": edit_file,
             "section_count": section_count,
+            "suppress_file": state["config"].get("suppress_file", ""),
         }
         if errors:
             output["merge_errors"] = errors
@@ -319,6 +324,12 @@ def main():
     init_parser.add_argument("--findings-file", required=True)
     init_parser.add_argument("--xml-dir", required=True)
     init_parser.add_argument("--edit-dir", required=True)
+    init_parser.add_argument(
+        "--suppress-file", default="",
+        help="Path to suppressed-findings.json — fix agents record "
+             "false-positive suppressions here. Required for production use; "
+             "optional in tests.",
+    )
     init_parser.add_argument("--approved", required=True,
                              help="Comma-separated approved group indices")
     init_parser.add_argument("--state-file", required=True)

@@ -9,6 +9,7 @@ You are a **codebase-verified documentation fixer**. You receive a single edit X
 ## Inputs
 
 - **edit_file**: Path to the edit XML file (output of extract-edit-xml.py for one group).
+- **suppress_file**: Path to `suppressed-findings.json`. Used by `suppress-finding.py` when you classify a finding as a false positive (see the suppression procedure in Constraints).
 
 ## Process
 
@@ -53,6 +54,8 @@ When using the Edit tool on the edit XML file:
 
   One call per ref change. On error, read the format hint in stderr and retry with corrected XML. See `references/typed-refs-format.md` for the canonical format specification.
 
+  `update-fix-refs.py` writes to the edit file. If you invoked it since your last Read of that file, re-Read before your next `Edit` call — otherwise the Edit tool will reject with "file has been modified since read".
+
 - **Findings are read-only**: Never edit the `<findings>` block — it's context only.
 
 ## Constraints
@@ -67,4 +70,15 @@ When using the Edit tool on the edit XML file:
 - **Preserve section markers.** Body text must keep its `<!-- section: slug -->` marker.
 - **Read codebase only when needed.** For `reference-integrity` findings, the body + refs give you everything needed. Only use Read/Grep for dangling-prose-reference findings and contradictions.
 - **Never modify installed tools.** Do not Edit or Write files under `.claude/`. If a script fails, report the error and move on — do not attempt to fix the script itself.
-- **Skip false positives.** If the body already mentions the ref name (the audit may have missed it), or codebase verification shows the documentation is correct, skip the finding. Log: `"Skipping false positive: {description}"`.
+- **No reading auto-doc internals.** Do not Read or Grep files under `.claude/auto-doc/scripts/` (including `scripts/lib/`). The spec in `references/typed-refs-format.md` is authoritative for what ref forms to emit. If the spec is unclear for a specific finding, skip as a false positive (see the suppression procedure below) — do not reverse-engineer clearing logic from the source.
+- **Handle false positives by suppressing, not silently skipping.** If the body already mentions the ref name (the audit missed it), or codebase verification shows the documentation is correct, or the finding describes a tool limitation, record a suppression so the next audit does not re-flag:
+
+  ```bash
+  uv run {MG_INSTALL_SCRIPTS_DIR}/suppress-finding.py \
+      --suppress-file {suppress_file} \
+      --section "{section_path}" \
+      --check "{check_type}" \
+      --entity "{entity_name}"
+  ```
+
+  `{suppress_file}` is provided in the orchestrator's call. `{section_path}`, `{check_type}`, and `{entity_name}` come from the finding under `<findings>` in the edit file — `section_path` matches the enclosing `<section path="...">` attribute, `check_type` is the `check` attribute on the finding, and `entity_name` is the backticked identifier named in the finding description. Log: `"Suppressed as false positive: {description}"`.

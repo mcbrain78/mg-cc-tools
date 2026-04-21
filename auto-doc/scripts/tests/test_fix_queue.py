@@ -186,6 +186,43 @@ class TestInit:
     def test_config_has_absolute_paths(self):
         with tempfile.TemporaryDirectory() as td:
             gf, ff, xd, ed, sf, _ = _setup_scenario(td)
+            sup = os.path.join(td, "suppressed.json")
+
+            _run(["init",
+                  "--grouping-file", gf,
+                  "--findings-file", ff,
+                  "--xml-dir", xd,
+                  "--edit-dir", ed,
+                  "--suppress-file", sup,
+                  "--approved", "0",
+                  "--state-file", sf])
+
+            state = load_json(sf)
+            for key, val in state["config"].items():
+                assert os.path.isabs(val), f"{key} should be absolute: {val}"
+
+    def test_suppress_file_stored_in_config(self):
+        """--suppress-file flag stores absolute path in state config."""
+        with tempfile.TemporaryDirectory() as td:
+            gf, ff, xd, ed, sf, _ = _setup_scenario(td)
+            sup = os.path.join(td, "auditv2", "suppressed-findings.json")
+
+            _run(["init",
+                  "--grouping-file", gf,
+                  "--findings-file", ff,
+                  "--xml-dir", xd,
+                  "--edit-dir", ed,
+                  "--suppress-file", sup,
+                  "--approved", "0",
+                  "--state-file", sf])
+
+            state = load_json(sf)
+            assert state["config"]["suppress_file"] == os.path.abspath(sup)
+
+    def test_suppress_file_optional_defaults_empty(self):
+        """Tests may omit --suppress-file; stored value is empty string."""
+        with tempfile.TemporaryDirectory() as td:
+            gf, ff, xd, ed, sf, _ = _setup_scenario(td)
 
             _run(["init",
                   "--grouping-file", gf,
@@ -196,8 +233,27 @@ class TestInit:
                   "--state-file", sf])
 
             state = load_json(sf)
-            for key, val in state["config"].items():
-                assert os.path.isabs(val), f"{key} should be absolute: {val}"
+            assert state["config"]["suppress_file"] == ""
+
+    def test_next_output_includes_suppress_file(self):
+        """next JSON output propagates suppress_file from state config."""
+        with tempfile.TemporaryDirectory() as td:
+            gf, ff, xd, ed, sf, _ = _setup_scenario(td, n_groups=1)
+            sup = os.path.join(td, "auditv2", "suppressed-findings.json")
+
+            _run(["init",
+                  "--grouping-file", gf,
+                  "--findings-file", ff,
+                  "--xml-dir", xd,
+                  "--edit-dir", ed,
+                  "--suppress-file", sup,
+                  "--approved", "0",
+                  "--state-file", sf])
+
+            result = _run(["next", "--state-file", sf])
+            output = json.loads(result.stdout)
+            assert output["status"] == "next"
+            assert output["suppress_file"] == os.path.abspath(sup)
 
 
 # ---------------------------------------------------------------------------

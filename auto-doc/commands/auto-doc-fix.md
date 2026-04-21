@@ -38,9 +38,9 @@ Read references/schema.yaml
    Find the `root_path` field value and store as `project_root`.
 
 3. **Parse audit source.** Check user input for an audit source name (e.g., `auditv2`). Default: `audit`.
-   - `audit` → findings dir is `{MG_INSTALL_WORKSPACE_DIR}/audit/`
-   - `auditv2` → findings dir is `{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/`
-   Store as `{findings_dir}`.
+   - `audit` → findings dir is `{MG_INSTALL_WORKSPACE_DIR}/audit/`, suppress file is `{MG_INSTALL_WORKSPACE_DIR}/audit/suppressed-findings.json`
+   - `auditv2` → findings dir is `{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/`, suppress file is `{MG_INSTALL_WORKSPACE_DIR}/auditv2/suppressed-findings.json`
+   Store as `{findings_dir}` and `{suppress_file}`.
 
 4. **Check xml-sources exist.** Use Glob to verify `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` contains `.xml` files. If not, abort with:
    ```
@@ -143,6 +143,7 @@ Handle user response:
        --findings-file {findings_dir}/merged-findings.json \
        --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
        --edit-dir {MG_INSTALL_WORKSPACE_DIR}/fix \
+       --suppress-file {suppress_file} \
        --approved {comma_separated_indices} \
        --state-file {MG_INSTALL_WORKSPACE_DIR}/fix/fix-state.json
    ```
@@ -159,7 +160,7 @@ Handle user response:
 
    c. If `status` is `"done"`: **break** the loop. Save `files_modified` from the output for Step 6.
 
-   d. If `status` is `"next"`: spawn a **single foreground** agent to edit the group's file:
+   d. If `status` is `"next"`: spawn a **single foreground** agent to edit the group's file. Pass both `edit_file` and `suppress_file` from the `next` output into the prompt:
 
       ```
       Agent(
@@ -168,7 +169,8 @@ Handle user response:
 
       Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/audit-fixer.md
 
-      edit_file: {edit_file from next output}"
+      edit_file: {edit_file from next output}
+      suppress_file: {suppress_file from next output}"
       )
       ```
 
