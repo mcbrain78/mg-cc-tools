@@ -292,6 +292,105 @@ class TestAddValidRefs:
 
 
 # ---------------------------------------------------------------------------
+# Canonical no-op detection
+# ---------------------------------------------------------------------------
+
+
+class TestCanonicalNoOpRejected:
+    """Add operations that don't change canonical form must exit non-zero.
+
+    Motivating case: bare `<function name="X" module="M"/>` alongside existing
+    `<function name="X" module="M"><param>P</param></function>` — both share
+    the same (kind, name, module) key in _build_code_xml, so the bare entry
+    is absorbed into the existing element during rebuild and lost.
+    """
+
+    def test_bare_function_with_module_collides_with_param_scoped(self, capsys):
+        with tempfile.TemporaryDirectory() as td:
+            # Pre-populate with a param-scoped function ref
+            refs_xml = _canonical_refs_xml([
+                {"type": "code", "kind": "function", "name": "X",
+                 "module": "src/mod.py", "param": "tickers"},
+            ])
+            edit_path = _build_edit_xml(td, "g1", [{
+                "slug": "monitoring",
+                "body": "content",
+                "refs_xml": refs_xml,
+            }])
+
+            # Try to add a bare function ref with the same (name, module)
+            with pytest.raises(SystemExit):
+                update_fix_refs(
+                    edit_path, "monitoring",
+                    add_snippet=(
+                        '<code><function name="X" module="src/mod.py"/>'
+                        "</code>"
+                    ),
+                )
+
+            captured = capsys.readouterr()
+            assert "no-op" in captured.err.lower()
+            assert "typed-refs-format" in captured.err
+
+            # The file on disk should be unchanged — no partial write
+            refs_after = _read_section_refs_flat(edit_path, "monitoring")
+            assert len(refs_after) == 1
+            assert refs_after[0].get("param") == "tickers"
+
+    def test_bare_function_without_module_succeeds_alongside_param_scoped(self):
+        """Bare-no-module refs differ in key (name,'') and survive canonicalization."""
+        with tempfile.TemporaryDirectory() as td:
+            refs_xml = _canonical_refs_xml([
+                {"type": "code", "kind": "function", "name": "X",
+                 "module": "src/mod.py", "param": "tickers"},
+            ])
+            edit_path = _build_edit_xml(td, "g1", [{
+                "slug": "monitoring",
+                "body": "content",
+                "refs_xml": refs_xml,
+            }])
+
+            result = update_fix_refs(
+                edit_path, "monitoring",
+                add_snippet='<code><function name="X"/></code>',
+            )
+            assert "Added 1 ref" in result
+
+            refs_after = _read_section_refs_flat(edit_path, "monitoring")
+            assert len(refs_after) == 2
+
+    def test_duplicate_simple_ref_succeeds(self):
+        """Adding a duplicate ext ref is NOT a canonical no-op.
+
+        _build_refs_xml does not dedupe simple types (flow/env/dep/literal/ext),
+        so the second add produces a second element — the canonical form does
+        change, and the no-op guard does not fire.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            refs_xml = _canonical_refs_xml([
+                {"type": "ext", "name": "pg_dump"},
+            ])
+            edit_path = _build_edit_xml(td, "g1", [{
+                "slug": "monitoring",
+                "body": "content",
+                "refs_xml": refs_xml,
+            }])
+
+            # Adding the same ext ref produces two <ext>pg_dump</ext> elements
+            # (no dedup in _build_refs_xml for simple types), so this actually
+            # does change the canonical form — refs_after has 2 entries.
+            # Sanity check: confirm this is NOT rejected, to distinguish from
+            # the code-ref case above.
+            result = update_fix_refs(
+                edit_path, "monitoring",
+                add_snippet="<ext>pg_dump</ext>",
+            )
+            assert "Added 1 ref" in result
+            refs_after = _read_section_refs_flat(edit_path, "monitoring")
+            assert len(refs_after) == 2
+
+
+# ---------------------------------------------------------------------------
 # Add malformed refs -- errors with hints
 # ---------------------------------------------------------------------------
 

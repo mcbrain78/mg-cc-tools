@@ -453,6 +453,14 @@ def check_env_ref(ref, cache):
 def check_config_ref(ref, cache):
     """Check a config ref against filesystem existence."""
     config_path = ref.get("path", "")
+    # config refs must be project-relative. Tilde-prefixed user-home paths
+    # (e.g. `~/.pgpass`) are a different kind of configuration — not
+    # addressable from project_root and not portable across machines.
+    if config_path.startswith("~"):
+        return (
+            f"config refs must be project-relative paths; got "
+            f"`{config_path}` — use a different ref type for user-home files"
+        )
     if cache.file_exists(config_path):
         return None
     return f"Config file `{config_path}` does not exist"

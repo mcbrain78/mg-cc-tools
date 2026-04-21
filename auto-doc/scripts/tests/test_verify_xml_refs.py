@@ -434,6 +434,29 @@ class TestConfigRefs:
             assert len(findings) == 1
             assert "nonexistent.yaml" in findings[0]["description"]
 
+    def test_tilde_home_path_rejected(self):
+        """Tilde-prefixed paths (e.g. ~/.pgpass) are not valid config refs.
+
+        Regression: the existence check did `os.path.join(project_root, ~/...)`
+        which never resolves, producing a misleading "does not exist" finding
+        even when the file exists at the user's home. The validator now
+        rejects such paths up front with a clearer message.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "config", "path": "~/.pgpass"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            description = findings[0]["description"]
+            assert "~/.pgpass" in description
+            assert "project-relative" in description
+
 
 class TestEnumRefs:
     """Enum value verification against enum class definitions."""

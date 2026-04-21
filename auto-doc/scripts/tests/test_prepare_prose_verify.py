@@ -679,6 +679,95 @@ class TestRefEntries:
             assert len(table_entries) == 1
 
 
+class TestImplicitNameCoverage:
+    """Param/attr-scoped code refs also produce an identifier entry for the name.
+
+    This lets clearing match prose mentions of the function/class name even
+    when no bare ref exists. The extra entry has display=None so Check B
+    skips it, and no path so the path resolver doesn't double-index.
+    """
+
+    def test_param_ref_emits_name_entry(self):
+        """Function with param produces two ref_entries: param identifier + name identifier."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\n`compute` takes `stale`.", [
+                    {"type": "code", "kind": "function", "name": "compute",
+                     "module": "src/m.py", "param": "stale"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+
+            entries = data["ref_entries"]
+            param_entries = [e for e in entries if e.get("identifier") == "stale"]
+            name_entries = [e for e in entries if e.get("identifier") == "compute"]
+
+            assert len(param_entries) == 1
+            assert param_entries[0]["display"] == "[code:function] compute in src/m.py (param: stale)"
+            assert "path" in param_entries[0]
+
+            assert len(name_entries) == 1
+            assert name_entries[0]["display"] is None
+            # No path → path resolver does not double-index
+            assert "path" not in name_entries[0]
+
+    def test_attr_ref_emits_name_entry(self):
+        """Class with attr produces two ref_entries: attr identifier + name identifier."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\n`Run.status`.", [
+                    {"type": "code", "kind": "class", "name": "Run", "attr": "status"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+
+            entries = data["ref_entries"]
+            attr_entries = [e for e in entries if e.get("identifier") == "status"]
+            name_entries = [e for e in entries if e.get("identifier") == "Run"]
+
+            assert len(attr_entries) == 1
+            assert len(name_entries) == 1
+            assert name_entries[0]["display"] is None
+
+    def test_bare_function_no_extra_entry(self):
+        """Function without param/attr produces only one ref_entry (no duplication)."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("sec", "<!-- section: sec -->\n## Sec\n\n`do_thing`.", [
+                    {"type": "code", "kind": "function", "name": "do_thing",
+                     "module": "src/m.py"},
+                ]),
+            ])
+            output_dir = os.path.join(td, "output")
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+
+            with open(os.path.join(output_dir, "sec.json")) as f:
+                data = json.load(f)
+
+            assert len(data["ref_entries"]) == 1
+            assert data["ref_entries"][0]["identifier"] == "do_thing"
+
+
 class TestContentHashIgnoresRefs:
     """content_hash is derived from body only, not body+refs."""
 

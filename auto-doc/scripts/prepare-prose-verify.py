@@ -170,6 +170,23 @@ def prepare(xml_path, output_dir):
                     entry["path"] = list(ref_path)
                 ref_entries.append(entry)
 
+            # Implicit name coverage: a code ref scoped to a param/attr has
+            # the param/attr as its clearing identifier, not the enclosing
+            # function/class name. Emit an extra entry keyed on the name so
+            # prose mentions of the function/class also clear. `display=None`
+            # tells Check B to skip this entry (existing convention for db
+            # hierarchy ancestors); omitting `path` prevents the path resolver
+            # from double-indexing the shared path.
+            if (
+                ref.get("type") == "code"
+                and (ref.get("param") or ref.get("attr"))
+                and ref.get("name")
+            ):
+                ref_entries.append({
+                    "display": None,
+                    "identifier": ref.get("name"),
+                })
+
         content_hash = hashlib.sha256(
             body.encode("utf-8"),
         ).hexdigest()

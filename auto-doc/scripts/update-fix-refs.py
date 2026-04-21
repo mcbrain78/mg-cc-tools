@@ -291,6 +291,30 @@ def update_fix_refs(edit_file, section_path, add_snippet=None, remove_snippet=No
 
         combined = existing_flat + new_flat
         _rebuild_refs(section_el, refs_el, combined)
+
+        # Canonical no-op guard. `_build_refs_xml` groups code refs by
+        # (kind, name, module), so adding `<function name="X" module="M"/>`
+        # alongside an existing `<function name="X" module="M"><param>P</param>
+        # </function>` collides on that key — the bare entry is absorbed and
+        # silently lost. Re-parse and compare to catch this class of no-op
+        # add, and duplicate adds of simple ref types, before writing.
+        new_refs_el = section_el.find("refs")
+        final_flat = _parse_refs(new_refs_el)
+        if final_flat == existing_flat:
+            added_summaries = ", ".join(_ref_summary(r) for r in new_flat)
+            print(
+                f"Error: add was a canonical no-op — the ref(s) you added "
+                f"({added_summaries}) are already implied by existing refs "
+                f"in this section.\n"
+                f"Common cause: a bare <function name=\"X\" module=\"M\"/> "
+                f"collides with an existing <function name=\"X\" "
+                f"module=\"M\"><param>P</param></function>. Param/attr-scoped "
+                f"refs implicitly cover the function/class name — no separate "
+                f"bare ref is needed. See references/typed-refs-format.md.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
         tree.write(
             edit_file, xml_declaration=True, encoding="utf-8", pretty_print=True,
         )

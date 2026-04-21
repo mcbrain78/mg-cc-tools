@@ -29,7 +29,7 @@ This is the canonical specification for typed code references emitted by writer 
 | `code` | `kind` (function/class/variable), `name`, optionally `module`, `param`, `attr` |
 | `flow` | `name` |
 | `env` | `name` |
-| `config` | `path` |
+| `config` | `path` — must be project-relative; user-home paths like `~/.pgpass` are not valid |
 | `enum` | `class`, `field`, `value` |
 | `dep` | `name` -- PyPI package name from pyproject.toml |
 | `literal` | `name` -- named string literal found anywhere in project files (concurrency tags, worker pools, artifact keys) |
@@ -84,7 +84,7 @@ read that symbol from, add the correct `module` to the code ref, and re-run.
 - Bare db names when prose names a database alone.
 - Column names mentioned in prose — especially in glossary metric definitions — need db refs with the `column` field, not just table-level refs.
 - Framework decorators and base classes (`@flow`, `DeclarativeBase`, `Mapped`, `Column`) — one `dep` ref per package.
-- Function names mentioned without a param — emit a bare `[code:function]` ref in addition to any param-specific refs. The param-ref identifier is the param name, not the function name.
+- Function/class names alone (no param or attr mentioned) — emit a bare `[code:function]` or `[code:class]` ref. When prose names the function AND a param/attr, the param/attr-scoped ref implicitly covers the name (see "Implicit name coverage" below) — no separate bare ref is needed.
 
 ### Example
 
@@ -161,13 +161,26 @@ Framework-provided decorators, type annotations, and base classes are **dependen
 
 One dep ref per framework per section — don't emit a separate dep ref for each decorator or type instance.
 
-### Bare function refs alongside param-specific refs
+### Implicit name coverage for param/attr-scoped refs
 
-When prose mentions a function BY NAME (not just by one of its parameters), emit a bare `<function name="X" module="..."/>` ref in addition to any `<function><param>` variants. The clearing identifier for a param ref is the **param name**, not the function name — so prose mentioning the function without a param can't match a declared param-scoped ref.
+A param or attr ref implicitly covers prose mentions of the enclosing function or class name. Do NOT emit a separate bare ref for the name when a param/attr variant already exists — the canonical rebuild groups code refs by `(kind, name, module)`, so the bare entry would be absorbed into the existing element and lost. `update-fix-refs.py` rejects this class of add as a no-op.
 
 Prose: "the `compute_finance_metrics` flow accepts `tickers` and `recompute_stale`"
 
-Required refs (three elements):
-- `<function name="compute_finance_metrics" module="src/.../compute.py"/>` — bare, clears prose mentions of the function name alone.
-- `<function name="compute_finance_metrics" module="src/.../compute.py"><param>tickers</param></function>` — for the `tickers` mention.
-- `<function name="compute_finance_metrics" module="src/.../compute.py"><param>recompute_stale</param></function>` — for the `recompute_stale` mention.
+Required refs (one canonical element, two params):
+
+```xml
+<function name="compute_finance_metrics" module="src/.../compute.py">
+  <param>tickers</param>
+  <param>recompute_stale</param>
+</function>
+```
+
+The single declaration covers all three prose identifiers: `compute_finance_metrics` (the name, implicitly), `tickers` (param), and `recompute_stale` (param). The same pattern applies to `<class name="C"><attr>A</attr></class>` — the attr ref covers both `C` and `A`.
+
+When prose mentions the function or class name with no param or attr, emit a bare ref:
+
+- `<function name="X" module="M"/>`
+- `<class name="C"/>`
+
+Classes with attrs or functions with params never need a separate bare ref.
