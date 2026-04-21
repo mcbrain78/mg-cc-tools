@@ -353,6 +353,153 @@ class TestCheckB:
                 "Declared ref [db] public.data_drift_warnings"
             )
 
+    def test_case_insensitive_dep_match(self):
+        """Body uses brand capitalization (`Prefect`), ref identifier is
+        lowercase package name (`prefect`) — Check B must pass.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "glossary",
+                    "body": (
+                        "## Glossary\n\nThe `Prefect` orchestrator runs flows "
+                        "atop `SQLAlchemy` models."
+                    ),
+                    "ref_entries": [
+                        {"display": "[dep] prefect", "identifier": "prefect",
+                         "path": ["prefect"]},
+                        {"display": "[dep] sqlalchemy",
+                         "identifier": "sqlalchemy", "path": ["sqlalchemy"]},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert not os.path.exists(ff), (
+                "Case-insensitive identifier match must not produce findings "
+                "when prose uses natural capitalization of package names."
+            )
+
+    def test_case_sensitive_miss_still_fires(self):
+        """Identifier genuinely absent from body at any case → finding fires."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "glossary",
+                    "body": "## Glossary\n\nUnrelated prose.",
+                    "ref_entries": [
+                        {"display": "[dep] prefect", "identifier": "prefect",
+                         "path": ["prefect"]},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert os.path.exists(ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            assert len(findings) == 1
+            assert "prefect" in findings[0]["description"]
+
+    def test_prefix_covered_by_child_ref_skipped(self):
+        """Table ref + column ref with prose naming only the column —
+        table ref is implicitly covered by the column's path extending it.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "metrics",
+                    "body": (
+                        "## Metrics\n\nThe `price_cagr_10y` column tracks "
+                        "the 10-year price growth rate."
+                    ),
+                    "ref_entries": [
+                        {"display": "[db] finance_metrics.finance_metrics",
+                         "identifier": "finance_metrics",
+                         "path": ["finance", "finance_metrics",
+                                  "finance_metrics"]},
+                        {"display":
+                         "[db] finance_metrics.finance_metrics.price_cagr_10y",
+                         "identifier": "price_cagr_10y",
+                         "path": ["finance", "finance_metrics",
+                                  "finance_metrics", "price_cagr_10y"]},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert not os.path.exists(ff), (
+                "Table ref must be prefix-covered by the column ref under "
+                "it; no finding expected."
+            )
+
+    def test_prefix_not_covered_when_standalone(self):
+        """Table ref alone with no column under it — prefix-skip must NOT
+        trigger; integrity check still fires when table name is absent from body.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "metrics",
+                    "body": "## Metrics\n\nSome unrelated prose.",
+                    "ref_entries": [
+                        {"display": "[db] finance_metrics.finance_metrics",
+                         "identifier": "finance_metrics",
+                         "path": ["finance", "finance_metrics",
+                                  "finance_metrics"]},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert os.path.exists(ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            assert len(findings) == 1
+            assert findings[0]["description"].startswith(
+                "Declared ref [db] finance_metrics.finance_metrics"
+            )
+
+    def test_prefix_skip_parent_mentioned_siblings_not_needed(self):
+        """Table + column, prose names the table only. Column fires (its
+        path doesn't extend anything declared); table stays skipped because
+        the column's path extends it.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "metrics",
+                    "body": (
+                        "## Metrics\n\nThe `finance_metrics` table holds "
+                        "per-ticker derived values."
+                    ),
+                    "ref_entries": [
+                        {"display": "[db] finance_metrics.finance_metrics",
+                         "identifier": "finance_metrics",
+                         "path": ["finance", "finance_metrics",
+                                  "finance_metrics"]},
+                        {"display":
+                         "[db] finance_metrics.finance_metrics.price_cagr_10y",
+                         "identifier": "price_cagr_10y",
+                         "path": ["finance", "finance_metrics",
+                                  "finance_metrics", "price_cagr_10y"]},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert os.path.exists(ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            # Only the column finding; the table is prefix-covered.
+            assert len(findings) == 1
+            assert "price_cagr_10y" in findings[0]["description"]
+
 
 class TestAffectedSections:
     """affected-sections.json tracks sections with uncleared entities."""

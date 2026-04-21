@@ -26,7 +26,7 @@ This is the canonical specification for typed code references emitted by writer 
 | type | required fields |
 |------|----------------|
 | `db` | `db` (database name), then contiguous chain: `schema`, `table`, optionally `column` |
-| `code` | `kind` (function/class/variable), `name`, optionally `module`, `param` |
+| `code` | `kind` (function/class/variable), `name`, optionally `module`, `param`, `attr` |
 | `flow` | `name` |
 | `env` | `name` |
 | `config` | `path` |
@@ -84,6 +84,7 @@ read that symbol from, add the correct `module` to the code ref, and re-run.
 - Bare db names when prose names a database alone.
 - Column names mentioned in prose — especially in glossary metric definitions — need db refs with the `column` field, not just table-level refs.
 - Framework decorators and base classes (`@flow`, `DeclarativeBase`, `Mapped`, `Column`) — one `dep` ref per package.
+- Function names mentioned without a param — emit a bare `[code:function]` ref in addition to any param-specific refs. The param-ref identifier is the param name, not the function name.
 
 ### Example
 
@@ -159,3 +160,14 @@ Framework-provided decorators, type annotations, and base classes are **dependen
 - `Completed()` (Prefect return type) → covered by the prefect dep; use `covered-by prefect` at dismissal time if the symbol stands alone.
 
 One dep ref per framework per section — don't emit a separate dep ref for each decorator or type instance.
+
+### Bare function refs alongside param-specific refs
+
+When prose mentions a function BY NAME (not just by one of its parameters), emit a bare `<function name="X" module="..."/>` ref in addition to any `<function><param>` variants. The clearing identifier for a param ref is the **param name**, not the function name — so prose mentioning the function without a param can't match a declared param-scoped ref.
+
+Prose: "the `compute_finance_metrics` flow accepts `tickers` and `recompute_stale`"
+
+Required refs (three elements):
+- `<function name="compute_finance_metrics" module="src/.../compute.py"/>` — bare, clears prose mentions of the function name alone.
+- `<function name="compute_finance_metrics" module="src/.../compute.py"><param>tickers</param></function>` — for the `tickers` mention.
+- `<function name="compute_finance_metrics" module="src/.../compute.py"><param>recompute_stale</param></function>` — for the `recompute_stale` mention.

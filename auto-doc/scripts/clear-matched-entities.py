@@ -173,13 +173,26 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
         body = section.get("body", "")
 
         # -- Check B: ref identifier → body ---------------------
+        all_declared_paths = [
+            tuple(e["path"]) for e in ref_entries if e.get("path")
+        ]
+        body_lower = body.lower()
         for entry in ref_entries:
             ident = entry.get("identifier")
             if not ident:
                 continue
             if not entry.get("display"):
                 continue  # db-hierarchy ancestor entry (parse-side fan-out artefact)
-            if ident not in body:
+            # Skip when this ref's path is a proper prefix of another declared ref's
+            # path (e.g. a table ref auto-emitted by fan-out is implicitly covered
+            # by any column ref under it).
+            entry_path = tuple(entry.get("path") or ())
+            if entry_path and any(
+                len(p) > len(entry_path) and p[:len(entry_path)] == entry_path
+                for p in all_declared_paths
+            ):
+                continue
+            if ident.lower() not in body_lower:
                 _emit_finding(
                     findings_file, document, audience,
                     section_path, entry.get("display", ident),

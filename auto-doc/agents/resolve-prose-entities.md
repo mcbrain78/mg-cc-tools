@@ -57,6 +57,12 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
          - `httpx.TimeoutException` covered by `httpx` (exception from that dependency)
          - `uv sync` covered by `uv` (subcommand of that tool)
          - `Requires=prefect-server.service` covered by `Requires` (instance of that directive)
+         - `@flow` covered by `prefect` (framework decorator from that dependency)
+         - `@task` covered by `prefect` (framework decorator from that dependency)
+         - `DeclarativeBase` covered by `sqlalchemy` (base class from that dependency)
+         - `Mapped[str]` covered by `sqlalchemy` (type annotation from that dependency)
+         - `Completed()` covered by `prefect` (return state class from that dependency)
+         - `prefect worker start` covered by `prefect` (CLI subcommand of that tool)
 
          For non-protected entities, a plain dismiss (without --covered-by) still works.
 
@@ -78,6 +84,24 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
          the 9 ref types (`db`, `code`, `flow`, `env`, `config`, `enum`,
          `dep`, `literal`, `ext`)? If the entity does not fit any type,
          dismiss it — it cannot have a ref regardless of project relevance.
+
+         **Before dismissing under this tier**, one more check: the section's
+         `refs_as_text` likely lists `dep` and `ext` refs (frameworks, CLI
+         tools, libraries). For any entity that looks like it originates from
+         a framework or tool named by a declared `dep` or `ext` ref, return
+         to step 1 and use `--covered-by <name>` instead of plain dismiss:
+
+         - Framework decorators (`@flow`, `@task`), base classes
+           (`DeclarativeBase`, `Column`, `Mapped`), return types
+           (`Completed()`), runtime classes (`ConcurrentTaskRunner`),
+           framework methods (`task.fn`) → covered by their `[dep]` ref.
+         - CLI subcommands (`uv sync`, `prefect worker start`) → covered
+           by their `[ext]` ref.
+         - Third-party exceptions/types used in project context
+           (`httpx.TimeoutException`) → covered by their `[dep]` ref.
+
+         Only fall through to plain dismiss if no dep/ext ref in the section
+         could reasonably name the entity's source.
 
          Common dismissals at this tier:
          - External URLs and domain names (no ref type for URLs)
