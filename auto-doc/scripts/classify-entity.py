@@ -6,17 +6,26 @@ from the per-run dismissals list into one of two permanent lists:
 - not-entities: universally non-ref-worthy (generic terms, builtins, etc.)
 - protected-entities: actually a project-specific ref that should not be dismissed
 
+When classifying to protected-entities AND finding-emission args are supplied,
+also emits one `dangling-prose-reference` finding per section where the entity
+was dismissed. This surfaces writer-side misses in the current audit rather
+than deferring them to the next one.
+
 Usage:
     python3 classify-entity.py \
         --entity NAME \
         --target {not-entities|protected-entities} \
         --reason TEXT \
         --not-entities-file FILE \
-        --protected-entities-file FILE
+        --protected-entities-file FILE \
+        [--findings-file FILE --sections S1 S2 ... \
+         --audience AUD --document DOC \
+         --suppress-file FILE]
 """
 
 import argparse
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -24,15 +33,61 @@ from lib.json_io import load_json, save_json
 
 VALID_TARGETS = ("not-entities", "protected-entities")
 
+ADD_FINDING_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "add-verify-finding.py",
+)
+
+
+def _emit_protected_finding(entity, reason, findings_file, section,
+                            audience, document, suppress_file=None):
+    """Emit a dangling-prose-reference finding for a newly-protected entity.
+
+    Called after successful classify-to-protected so the writer-side miss
+    surfaces in the current audit instead of the next one.
+    """
+    description = (
+        f"Prose mentions `{entity}` which was classified as project-specific: "
+        f"{reason}. No declared ref covers it in this section."
+    )
+    suggestion = (
+        f"{reason}. If an existing dep/ext ref in the section covers this "
+        "entity, dismiss with --covered-by when the fix agent processes this "
+        "finding. Otherwise declare a matching ref (see typed-refs-format.md)."
+    )
+    cmd = [
+        sys.executable, ADD_FINDING_SCRIPT,
+        "--findings-file", findings_file,
+        "--document", document,
+        "--section", section,
+        "--audience", audience,
+        "--check", "dangling-prose-reference",
+        "--description", description,
+        "--suggestion", suggestion,
+        "--entity", entity,
+        "--wave", "0",
+    ]
+    if suppress_file:
+        cmd.extend(["--suppress-file", suppress_file])
+    subprocess.run(cmd, capture_output=True, text=True)
+
 
 def classify(entity, target, reason, not_entities_file, protected_entities_file,
-             contextual=False):
+             contextual=False, findings_file=None, sections=None,
+             audience=None, document=None, suppress_file=None):
     """Classify entity into target list (deduped). Warn if in other list.
 
     Args:
         contextual: If True and target is not-entities, mark the entry with
             "contextual": true. Contextual entities are words that can be
             ref-worthy as identifiers but were used as plain prose.
+        findings_file: When target is protected-entities, path to a
+            findings-prose-*.json to append a dangling-prose-reference finding
+            per section. Requires sections, audience, document.
+        sections: List of section paths where the entity was dismissed.
+        audience: Audience string for finding attribution.
+        document: Document string for finding attribution.
+        suppress_file: Optional path to suppressed-findings.json — suppressed
+            findings are silently skipped at add-verify-finding.py.
 
     Returns:
         True if entity was added, False if already present (dedup).
@@ -78,6 +133,22 @@ def classify(entity, target, reason, not_entities_file, protected_entities_file,
         f"Classified: {entity} → {target} ({reason})",
         file=sys.stderr,
     )
+
+    # Auto-emit findings when newly protected — surfaces writer misses
+    # in the current audit rather than deferring to the next.
+    if (target == "protected-entities" and findings_file
+            and sections and audience and document):
+        for section in sections:
+            _emit_protected_finding(
+                entity, reason, findings_file, section,
+                audience, document, suppress_file,
+            )
+        print(
+            f"Filed {len(sections)} dangling-prose-reference finding(s) "
+            f"for {entity}",
+            file=sys.stderr,
+        )
+
     return True
 
 
@@ -109,6 +180,21 @@ def main():
         "--contextual", action="store_true", default=False,
         help="Mark as contextual non-ref (word is ref-worthy as identifier but used as plain prose)",
     )
+    # Optional finding-emission args — active only when target=protected-entities.
+    parser.add_argument(
+        "--findings-file",
+        help="Findings JSON path; triggers auto-finding for protected target",
+    )
+    parser.add_argument(
+        "--sections", nargs="+",
+        help="Sections where the entity was dismissed (one finding per section)",
+    )
+    parser.add_argument("--audience", help="Audience name for the finding")
+    parser.add_argument("--document", help="Document name for the finding")
+    parser.add_argument(
+        "--suppress-file",
+        help="Path to suppressed-findings.json (passed through to add-verify-finding.py)",
+    )
 
     args = parser.parse_args()
     classify(
@@ -118,6 +204,11 @@ def main():
         not_entities_file=args.not_entities_file,
         protected_entities_file=args.protected_entities_file,
         contextual=args.contextual,
+        findings_file=args.findings_file,
+        sections=args.sections,
+        audience=args.audience,
+        document=args.document,
+        suppress_file=args.suppress_file,
     )
 
 

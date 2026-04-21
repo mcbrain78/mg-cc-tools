@@ -81,9 +81,43 @@ class TestDismiss:
             dismissed = _read_json(df)
             assert len(dismissed) == 1
             assert dismissed[0]["name"] == "bash"
-            assert dismissed[0]["dismissed_in"] == "monitoring"
+            assert dismissed[0]["sections"] == ["monitoring"]
             assert dismissed[0]["audience"] == "devops"
             assert dismissed[0]["document"] == "OPERATIONS"
+
+    def test_dismiss_captures_all_sections(self):
+        """Entity uncleared in multiple sections → sections list contains all."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "bash", "section": "monitoring"},
+                {"name": "bash", "section": "deployment"},
+                {"name": "bash", "section": "orchestration"},
+                {"name": "PORT", "section": "deployment"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+
+            _run("bash", "monitoring", uf, df)
+
+            dismissed = _read_json(df)
+            assert len(dismissed) == 1
+            assert dismissed[0]["name"] == "bash"
+            # sorted set of sections where the entity was uncleared
+            assert dismissed[0]["sections"] == [
+                "deployment", "monitoring", "orchestration"
+            ]
+
+    def test_dismiss_single_section_one_element_list(self):
+        """Entity uncleared in one section → sections is a one-element list."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "bash", "section": "monitoring"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+
+            _run("bash", "monitoring", uf, df)
+
+            dismissed = _read_json(df)
+            assert dismissed[0]["sections"] == ["monitoring"]
 
     def test_dedup_dismissed_this_run(self):
         """Dismissing same entity twice does not duplicate in dismissed-this-run."""
@@ -92,7 +126,7 @@ class TestDismiss:
                 {"name": "bash", "section": "monitoring"},
             ])
             df = _write_json(td, "dismissed-this-run.json", [
-                {"name": "bash", "dismissed_in": "deployment",
+                {"name": "bash", "sections": ["deployment"],
                  "audience": "devops", "document": "OPERATIONS"},
             ])
 
@@ -100,7 +134,7 @@ class TestDismiss:
 
             dismissed = _read_json(df)
             assert len(dismissed) == 1
-            assert dismissed[0]["dismissed_in"] == "deployment"  # original preserved
+            assert dismissed[0]["sections"] == ["deployment"]  # original preserved
 
     def test_entity_not_in_uncleared(self):
         """Entity not in uncleared → no-op on uncleared, still added to dismissed."""

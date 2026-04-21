@@ -214,6 +214,12 @@ def dismiss(
     uncleared = load_json(uncleared_file, default=[])
     before_count = len(uncleared)
 
+    # Capture all sections where this entity was uncleared (for the classifier
+    # to emit per-section findings). Must happen before the removal below.
+    entity_sections = sorted({
+        e["section"] for e in uncleared if e["name"] == entity
+    })
+
     # Remove ALL entries with this entity name (across all sections)
     updated = [e for e in uncleared if e["name"] != entity]
     save_json(uncleared_file, updated)
@@ -225,7 +231,7 @@ def dismiss(
     if entity not in existing_names:
         dismissed.append({
             "name": entity,
-            "dismissed_in": section,
+            "sections": entity_sections,
             "audience": audience,
             "document": document,
         })

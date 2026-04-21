@@ -19,7 +19,7 @@ You are a classification agent. After resolution waves dismissed entities into a
 
 1. **Read dismissed-this-run.json.** Parse the JSON array. Each entry has:
    - `name`: the entity name
-   - `dismissed_in`: section path where it was dismissed
+   - `sections`: list of section paths where it was uncleared when dismissed
    - `audience`: audience name
    - `document`: document name
 
@@ -29,9 +29,9 @@ You are a classification agent. After resolution waves dismissed entities into a
 
 3. **For each dismissed entity:**
 
-   a. **Read section context.** Read the section JSON at:
+   a. **Read section context.** Use the first section path from the entry's `sections` list. Read the section JSON at:
       ```
-      {workspace}/prose-verify-{audience}-{document}/{dismissed_in}.json
+      {workspace}/prose-verify-{audience}-{document}/{sections[0]}.json
       ```
       Examine the `body` and `refs_as_text` fields to understand the context in which the entity appeared.
 
@@ -61,16 +61,34 @@ You are a classification agent. After resolution waves dismissed entities into a
         - Named constants or enum values that are project-specific
 
    c. **Call classify-entity.py:**
+
+      For `not-entities` (universal or contextual):
       ```bash
       uv run {scripts_dir}/classify-entity.py \
           --entity "{entity_name}" \
-          --target "{not-entities|protected-entities}" \
+          --target "not-entities" \
           --reason "{reason}" \
           [--contextual] \
           --not-entities-file {not_entities_file} \
           --protected-entities-file {protected_entities_file}
       ```
-      Where `{reason}` briefly explains WHY (e.g., "Python builtin function", "Looks like a project config file path", "Generic SQL keyword"). Add `--contextual` when classifying a contextual non-ref to `not-entities` (e.g., `--reason "Contextual: used as plain English, not as identifier" --contextual`).
+
+      For `protected-entities` (project-specific ref), also pass the finding-emission args — the script auto-files one `dangling-prose-reference` finding per section, so the writer-side miss surfaces in THIS audit instead of waiting for the next one:
+      ```bash
+      uv run {scripts_dir}/classify-entity.py \
+          --entity "{entity_name}" \
+          --target "protected-entities" \
+          --reason "{reason}" \
+          --not-entities-file {not_entities_file} \
+          --protected-entities-file {protected_entities_file} \
+          --findings-file {workspace}/findings-prose-{audience}-{document}.json \
+          --sections {sections[0]} {sections[1]} ... \
+          --audience "{audience}" \
+          --document "{document}" \
+          --suppress-file {workspace}/../suppressed-findings.json
+      ```
+
+      Where `{reason}` briefly explains WHY (e.g., "Python builtin function", "Looks like a project config file path", "Generic SQL keyword"). Add `--contextual` when classifying a contextual non-ref to `not-entities` (e.g., `--reason "Contextual: used as plain English, not as identifier" --contextual`). For protected classifications, `{sections[0]} {sections[1]} ...` expands the entry's `sections` list — one finding per section is filed.
 
 4. **Report.** Summarize classifications:
    ```

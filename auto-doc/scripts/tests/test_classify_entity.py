@@ -217,3 +217,159 @@ class TestMissingFiles:
             not_entities = _read_json(nf)
             assert len(not_entities) == 1
             assert not_entities[0]["name"] == "bash"
+
+
+class TestProtectedFindingEmission:
+    """Auto-emit a dangling-prose-reference finding when newly protected."""
+
+    def test_protected_no_finding_args_no_findings(self):
+        """Without finding args, protected classification leaves findings alone."""
+        with tempfile.TemporaryDirectory() as td:
+            nf = _write_json(td, "not-entities.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+            ff = os.path.join(td, "findings.json")
+
+            result = _run(
+                "compute_hash", "protected-entities",
+                "Project function", nf, pf,
+            )
+            assert result.returncode == 0
+            # findings file should not be created since no --findings-file passed
+            assert not os.path.exists(ff)
+
+    def test_protected_with_findings_writes_one_per_section(self):
+        """Full finding args → one dangling-prose-reference per section."""
+        with tempfile.TemporaryDirectory() as td:
+            nf = _write_json(td, "not-entities.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+            ff = _write_json(td, "findings.json", [])
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "compute_hash",
+                 "--target", "protected-entities",
+                 "--reason", "Project function name",
+                 "--not-entities-file", nf,
+                 "--protected-entities-file", pf,
+                 "--findings-file", ff,
+                 "--sections", "system-concepts", "technical-terms",
+                 "--audience", "end-users",
+                 "--document", "GLOSSARY"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            findings = _read_json(ff)
+            assert len(findings) == 2
+            for finding in findings:
+                assert finding["check"] == "dangling-prose-reference"
+                assert finding["audience"] == "end-users"
+                assert finding["document"] == "GLOSSARY"
+                assert finding["wave"] == 0
+                assert "compute_hash" in finding["description"]
+                assert "Project function name" in finding["description"]
+            # One finding per section
+            sections_in_findings = sorted(f["section"] for f in findings)
+            assert sections_in_findings == ["system-concepts", "technical-terms"]
+
+    def test_not_entities_ignores_finding_args(self):
+        """--target not-entities + finding args → no findings file."""
+        with tempfile.TemporaryDirectory() as td:
+            nf = _write_json(td, "not-entities.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+            ff = _write_json(td, "findings.json", [])
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "bash",
+                 "--target", "not-entities",
+                 "--reason", "Generic shell",
+                 "--not-entities-file", nf,
+                 "--protected-entities-file", pf,
+                 "--findings-file", ff,
+                 "--sections", "section-a",
+                 "--audience", "end-users",
+                 "--document", "GLOSSARY"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            findings = _read_json(ff)
+            assert findings == []  # untouched
+
+    def test_finding_suppressed_when_in_suppress_file(self):
+        """Suppressed entity for one section is skipped; others still file."""
+        with tempfile.TemporaryDirectory() as td:
+            nf = _write_json(td, "not-entities.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+            ff = _write_json(td, "findings.json", [])
+            sf = _write_json(td, "suppressed.json", [
+                {
+                    "section": "system-concepts",
+                    "check": "dangling-prose-reference",
+                    "entity": "compute_hash",
+                },
+            ])
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "compute_hash",
+                 "--target", "protected-entities",
+                 "--reason", "Project function",
+                 "--not-entities-file", nf,
+                 "--protected-entities-file", pf,
+                 "--findings-file", ff,
+                 "--sections", "system-concepts", "technical-terms",
+                 "--audience", "end-users",
+                 "--document", "GLOSSARY",
+                 "--suppress-file", sf],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+
+            findings = _read_json(ff)
+            # system-concepts is suppressed; technical-terms still fires
+            assert len(findings) == 1
+            assert findings[0]["section"] == "technical-terms"
+
+    def test_duplicate_classify_does_not_duplicate_findings(self):
+        """Second classify call dedups classification AND skips finding emission."""
+        with tempfile.TemporaryDirectory() as td:
+            nf = _write_json(td, "not-entities.json", [])
+            pf = _write_json(td, "protected-entities.json", [])
+            ff = _write_json(td, "findings.json", [])
+
+            # First classify → 1 finding
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "compute_hash",
+                 "--target", "protected-entities",
+                 "--reason", "Project function",
+                 "--not-entities-file", nf,
+                 "--protected-entities-file", pf,
+                 "--findings-file", ff,
+                 "--sections", "system-concepts",
+                 "--audience", "end-users",
+                 "--document", "GLOSSARY"],
+                capture_output=True, text=True,
+            )
+            assert len(_read_json(ff)) == 1
+
+            # Second classify with same entity → dedup, no additional finding
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "compute_hash",
+                 "--target", "protected-entities",
+                 "--reason", "Project function",
+                 "--not-entities-file", nf,
+                 "--protected-entities-file", pf,
+                 "--findings-file", ff,
+                 "--sections", "system-concepts",
+                 "--audience", "end-users",
+                 "--document", "GLOSSARY"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "Already classified" in result.stderr
+            # Still 1 finding — second call hit the dedup path
+            assert len(_read_json(ff)) == 1
