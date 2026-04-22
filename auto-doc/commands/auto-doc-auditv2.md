@@ -295,7 +295,9 @@ Scripts dir: {MG_INSTALL_SCRIPTS_DIR}
 Dismissed this run file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json
 Not entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
 Protected entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json
+Covered entities file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/covered-entities.json
 Workspace: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run
+Prose verify dir pattern: {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{document}
 Ref types reference: {MG_INSTALL_AGENTS_DIR}/../references/typed-refs-format.md"
 )
 ```

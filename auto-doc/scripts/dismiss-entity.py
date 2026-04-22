@@ -30,7 +30,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib.coverage_validator import validate_covered_by
+from lib.coverage_validator import record_covered, validate_covered_by
 from lib.json_io import load_json, save_json
 
 # File extensions that indicate a file reference
@@ -95,26 +95,6 @@ def _section_json_path(prose_verify_dir, section_path):
     return os.path.join(prose_verify_dir, f"{slug}.json")
 
 
-def _record_covered(entity, section, audience, document, covered_by,
-                    covered_entities_file):
-    """Append to covered-entities JSON (deduped by (name, section, doc, aud))."""
-    covered = load_json(covered_entities_file, default=[])
-    key = (entity, section, document, audience)
-    existing_keys = {
-        (e.get("name"), e.get("section"), e.get("document"), e.get("audience"))
-        for e in covered
-    }
-    if key not in existing_keys:
-        covered.append({
-            "name": entity,
-            "section": section,
-            "audience": audience,
-            "document": document,
-            "covered_by": covered_by,
-        })
-        save_json(covered_entities_file, covered)
-
-
 def dismiss(
     entity,
     section,
@@ -152,7 +132,7 @@ def dismiss(
             )
             return None
         if covered_entities_file:
-            _record_covered(
+            record_covered(
                 entity, section, audience, document,
                 covered_by, covered_entities_file,
             )

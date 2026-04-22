@@ -373,3 +373,158 @@ class TestProtectedFindingEmission:
             assert "Already classified" in result.stderr
             # Still 1 finding — second call hit the dedup path
             assert len(_read_json(ff)) == 1
+
+
+def _make_section_json(td, section, ref_identifiers):
+    """Create a minimal prose-verify section JSON for covered-by validation."""
+    prose_dir = os.path.join(td, "prose-verify")
+    os.makedirs(prose_dir, exist_ok=True)
+    slug = os.path.basename(section)
+    parent = os.path.dirname(section)
+    if parent:
+        os.makedirs(os.path.join(prose_dir, parent), exist_ok=True)
+        out_path = os.path.join(prose_dir, parent, f"{slug}.json")
+    else:
+        out_path = os.path.join(prose_dir, f"{slug}.json")
+    with open(out_path, "w") as f:
+        json.dump({
+            "body": "",
+            "refs_as_text": "",
+            "ref_entries": [
+                {"identifier": ident, "display": ident}
+                for ident in ref_identifiers
+            ],
+        }, f)
+    return prose_dir
+
+
+class TestClassifyToCovered:
+    """--target covered records a durable coverage entry."""
+
+    def test_happy_path_records_coverage(self):
+        """Valid --covered-by + declared ref → entry lands in
+        covered-entities with full scope; not-entities and protected
+        lists are untouched."""
+        with tempfile.TemporaryDirectory() as td:
+            cef = os.path.join(td, "covered-entities.json")
+            prose_dir = _make_section_json(
+                td, "technical-terms", ["prefect", "sqlalchemy"],
+            )
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "@flow",
+                 "--target", "covered",
+                 "--reason", "Prefect decorator",
+                 "--section", "technical-terms",
+                 "--document", "GLOSSARY",
+                 "--audience", "shared",
+                 "--covered-by", "prefect",
+                 "--covered-entities-file", cef,
+                 "--prose-verify-dir", prose_dir],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert "covered (by prefect)" in result.stderr
+
+            covered = _read_json(cef)
+            assert len(covered) == 1
+            assert covered[0] == {
+                "name": "@flow",
+                "section": "technical-terms",
+                "document": "GLOSSARY",
+                "audience": "shared",
+                "covered_by": "prefect",
+            }
+
+    def test_invalid_covered_by_refused(self):
+        """Covered-by identifier not in section's refs → non-zero exit,
+        no write to covered-entities."""
+        with tempfile.TemporaryDirectory() as td:
+            cef = os.path.join(td, "covered-entities.json")
+            prose_dir = _make_section_json(
+                td, "technical-terms", ["sqlalchemy"],
+            )
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "@flow",
+                 "--target", "covered",
+                 "--reason", "Prefect decorator",
+                 "--section", "technical-terms",
+                 "--document", "GLOSSARY",
+                 "--audience", "shared",
+                 "--covered-by", "prefect",
+                 "--covered-entities-file", cef,
+                 "--prose-verify-dir", prose_dir],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 1
+            assert "Cannot classify" in result.stderr
+
+            assert not os.path.exists(cef) or _read_json(cef) == []
+
+    def test_missing_required_flags_errors(self):
+        """--target covered without --covered-by exits with argparse error."""
+        with tempfile.TemporaryDirectory() as td:
+            cef = os.path.join(td, "covered-entities.json")
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--entity", "@flow",
+                 "--target", "covered",
+                 "--reason", "Prefect decorator",
+                 "--section", "technical-terms",
+                 "--document", "GLOSSARY",
+                 "--audience", "shared",
+                 "--covered-entities-file", cef],
+                # intentionally omit --covered-by and --prose-verify-dir
+                capture_output=True, text=True,
+            )
+            assert result.returncode != 0
+            assert "--covered-by" in result.stderr
+            assert "--prose-verify-dir" in result.stderr
+
+    def test_dedup_same_scope(self):
+        """Same (name, section, document, audience) → second call is a no-op."""
+        with tempfile.TemporaryDirectory() as td:
+            cef = os.path.join(td, "covered-entities.json")
+            prose_dir = _make_section_json(
+                td, "technical-terms", ["prefect"],
+            )
+
+            def run_once():
+                return subprocess.run(
+                    [sys.executable, SCRIPT,
+                     "--entity", "@flow",
+                     "--target", "covered",
+                     "--reason", "Prefect decorator",
+                     "--section", "technical-terms",
+                     "--document", "GLOSSARY",
+                     "--audience", "shared",
+                     "--covered-by", "prefect",
+                     "--covered-entities-file", cef,
+                     "--prose-verify-dir", prose_dir],
+                    capture_output=True, text=True,
+                )
+
+            r1 = run_once()
+            assert r1.returncode == 0
+            r2 = run_once()
+            assert r2.returncode == 0
+            assert "Already classified" in r2.stderr
+
+            covered = _read_json(cef)
+            assert len(covered) == 1
+
+    def test_not_entities_target_still_requires_legacy_files(self):
+        """--target not-entities without --not-entities-file errors clearly."""
+        result = subprocess.run(
+            [sys.executable, SCRIPT,
+             "--entity", "bash",
+             "--target", "not-entities",
+             "--reason", "Generic tool"],
+            # intentionally omit --not-entities-file
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0
+        assert "--not-entities-file" in result.stderr
