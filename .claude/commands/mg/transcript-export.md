@@ -23,7 +23,7 @@ If arguments are missing or unclear, ask the user.
 
 ## Exporter Tool
 
-The exporter is at: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/transcript/cc_transcript_exporter.py`
+The exporter is at: `.claude/transcript/cc_transcript_exporter.py`
 
 ## Display Rule
 
@@ -37,7 +37,7 @@ Run the exporter with `--format` and `--output`. A PreToolUse hook automatically
 
 When **transcript-file** is provided, include `--transcript <transcript-file>` explicitly (the hook detects `--transcript` is already present and skips injection):
 ```
-python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/transcript/cc_transcript_exporter.py \
+python3 .claude/transcript/cc_transcript_exporter.py \
   --format <format> \
   --output <file-path> \
   [--transcript <transcript-file>]
@@ -49,7 +49,7 @@ Echo the exporter's stdout per the Display Rule above.
 
 ## JSON Schema Reference
 
-The JSON output format is documented in: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/transcript/references/transcript-json-schema.md`
+The JSON output format is documented in: `.claude/transcript/references/transcript-json-schema.md`
 
 The JSON output is compatible with `/mg:transcript-analyze` — you can analyze the exported JSON:
 ```

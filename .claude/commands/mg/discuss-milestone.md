@@ -25,7 +25,7 @@ Arguments: $ARGUMENTS
 
 Expected format: `[milestone-name]` (optional — defaults to current milestone from STATE.md)
 
-Methodology snapshot: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/mg-gsd-wrappers/references/discuss-methodology.snapshot.md`
+Methodology snapshot: `.claude/mg-gsd-wrappers/references/discuss-methodology.snapshot.md`
 </context>
 
 <process>
@@ -34,7 +34,7 @@ Methodology snapshot: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/mg-gsd-wrap
 
 Before proceeding, verify that the GSD discuss-phase methodology hasn't changed since this command was designed.
 
-1. Read the stored methodology snapshot at `/home/mcbrain/mg_projects/mg-cc-tools/.claude/mg-gsd-wrappers/references/discuss-methodology.snapshot.md`
+1. Read the stored methodology snapshot at `.claude/mg-gsd-wrappers/references/discuss-methodology.snapshot.md`
 2. Read the live GSD discuss-phase workflow at `.claude/get-shit-done/workflows/discuss-phase.md`
 3. Extract these sections from the live file:
    - `<philosophy>` section
@@ -415,7 +415,7 @@ After all phases have been discussed:
 </process>
 
 <important_notes>
-- The methodology snapshot at `/home/mcbrain/mg_projects/mg-cc-tools/.claude/mg-gsd-wrappers/references/discuss-methodology.snapshot.md` is the baseline this command was designed for. If drift is detected, the snapshot is NOT updated at runtime.
+- The methodology snapshot at `.claude/mg-gsd-wrappers/references/discuss-methodology.snapshot.md` is the baseline this command was designed for. If drift is detected, the snapshot is NOT updated at runtime.
 - Cross-cutting decisions use the SAME decision format as `gsd:discuss-phase` — downstream agents (researcher, planner) treat them identically.
 - Bootstrap CONTEXT.md files are intentionally minimal — they contain only cross-cutting decisions and mark everything else as "Claude's Discretion" until the per-phase pass enriches them.
 - The per-phase pass uses `--check-remaining` so `gsd:discuss-phase` doesn't re-ask about cross-cutting decisions that are already locked.

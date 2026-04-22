@@ -25,12 +25,12 @@ Arguments: $ARGUMENTS
 If a file path is provided, it is the source material to formalize.
 If no arguments, work from the current conversation context.
 
-Concept spec template: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/references/concept-spec-template.md`
+Concept spec template: `.claude/spec/references/concept-spec-template.md`
 </context>
 
 <required_reading>
 Read the concept spec template to understand the target structure:
-/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/references/concept-spec-template.md
+.claude/spec/references/concept-spec-template.md
 </required_reading>
 
 <process>
@@ -182,7 +182,7 @@ Ask how the user would know the implementation is correct. If the source materia
 
 ## 6. Draft Generation
 
-Write the concept spec using the template structure from `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/references/concept-spec-template.md`.
+Write the concept spec using the template structure from `.claude/spec/references/concept-spec-template.md`.
 
 - Fill every section based on the discussion outcomes
 - **Decided** items and resolved **Leaning/Contradicted/Dangling** items become firm content in their respective sections
@@ -276,6 +276,6 @@ Design Decisions: {count} D-blocks captured
 - This command formalizes — it does NOT invent. Every decision in the output must trace back to user input during Phase 5. Research context informs questions but never writes decisions.
 - The five extraction categories (Decided, Leaning, Contradicted, Dangling, Assumed) are a tool for the command to prioritize what to ask. They don't need to be visible in the final spec — they organize the discussion, not the document.
 - When working from conversation context (no source file), extraction quality depends on conversation length and topic coverage. If the conversation is thin, Phase 5 will need to do more heavy lifting.
-- The concept spec template is at `/home/mcbrain/mg_projects/mg-cc-tools/.claude/spec/references/concept-spec-template.md`. All sections must be present in the output. The LLM judges appropriate depth per section.
+- The concept spec template is at `.claude/spec/references/concept-spec-template.md`. All sections must be present in the output. The LLM judges appropriate depth per section.
 - Open Items are genuinely unresolved — they represent decisions the user could not or chose not to make during this session. They are NOT a parking lot for things the command didn't get to.
 </important_notes>

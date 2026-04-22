@@ -21,7 +21,7 @@ import sys
 import time
 from collections import namedtuple
 
-PROJECT_ROOT = "/home/mcbrain/mg_projects/mg-cc-tools"
+PROJECT_ROOT = "{MG_INSTALL_PROJECT_ROOT}"
 
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
@@ -874,7 +874,7 @@ def main():
                 _ask(f"[permission-guard] Secrets & Credentials: {result[0]} ({file_path})")
                 return
             # 2. Out-of-project path guard
-            root = PROJECT_ROOT or event.get("cwd", "")
+            root = _resolve_project_root(event)
             if root:
                 desc = check_file_outside_project(file_path, root)
                 if desc:
@@ -927,7 +927,7 @@ def main():
         return
 
     # 3. Out-of-project path guard
-    root = PROJECT_ROOT or event.get("cwd", "")
+    root = _resolve_project_root(event)
     if root:
         result = check_outside_project(command, root)
         if result:

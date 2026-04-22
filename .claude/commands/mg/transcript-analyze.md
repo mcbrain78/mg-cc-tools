@@ -19,11 +19,11 @@ If no session_file provided, ask the user for the path.
 
 ## Analyzer Tool
 
-The session analyzer is at: `/home/mcbrain/mg_projects/mg-cc-tools/.claude/transcript/cc_transcript_analyzer.py`
+The session analyzer is at: `.claude/transcript/cc_transcript_analyzer.py`
 
 All commands follow this pattern:
 ```
-python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/transcript/cc_transcript_analyzer.py <session_file> <command> [options]
+python3 .claude/transcript/cc_transcript_analyzer.py <session_file> <command> [options]
 ```
 
 Available commands:
@@ -42,7 +42,7 @@ Available commands:
 
 Always start by running the overview command:
 ```
-python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/transcript/cc_transcript_analyzer.py <session_file>
+python3 .claude/transcript/cc_transcript_analyzer.py <session_file>
 ```
 
 Read the output carefully. Note:

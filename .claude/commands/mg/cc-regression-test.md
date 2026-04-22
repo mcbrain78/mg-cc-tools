@@ -17,9 +17,9 @@ Tests hook interception (PreToolUse hooks fire and prompt the user) and AskUserQ
 </objective>
 
 <context>
-Scripts directory: /home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/scripts
-Hooks directory: /home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/hooks
-Source directory: /home/mcbrain/mg_projects/mg-cc-tools/cc-regression-test
+Scripts directory: .claude/cc-regression-test/scripts
+Hooks directory: .claude/cc-regression-test/hooks
+Source directory: /home/mcbrain/mg_projects/mg-cc-tools/cc-regression-test (dev-only sync check against source repo; not portable to clones)
 </context>
 
 <process>
@@ -30,9 +30,9 @@ Before running tests, verify that installed files are in sync with the source re
 
 ```bash
 # Compare installed vs source for hooks and scripts
-INSTALLED_HOOKS_MD5=$(cd "/home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/hooks" && md5sum *.py 2>/dev/null | sort)
+INSTALLED_HOOKS_MD5=$(cd ".claude/cc-regression-test/hooks" && md5sum *.py 2>/dev/null | sort)
 SOURCE_HOOKS_MD5=$(cd "/home/mcbrain/mg_projects/mg-cc-tools/cc-regression-test/hooks" && md5sum *.py 2>/dev/null | sort)
-INSTALLED_SCRIPTS_MD5=$(cd "/home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/scripts" && md5sum *.py 2>/dev/null | sort)
+INSTALLED_SCRIPTS_MD5=$(cd ".claude/cc-regression-test/scripts" && md5sum *.py 2>/dev/null | sort)
 SOURCE_SCRIPTS_MD5=$(cd "/home/mcbrain/mg_projects/mg-cc-tools/cc-regression-test/scripts" && md5sum *.py 2>/dev/null | sort)
 ```
 
@@ -70,19 +70,19 @@ Ask via AskUserQuestion:
 
 1. Copy all source files:
 ```bash
-cp "/home/mcbrain/mg_projects/mg-cc-tools/cc-regression-test/hooks/"*.py "/home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/hooks/"
-cp "/home/mcbrain/mg_projects/mg-cc-tools/cc-regression-test/scripts/"*.py "/home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/scripts/"
-chmod +x "/home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/hooks/"*.py "/home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/scripts/"*.py
+cp "/home/mcbrain/mg_projects/mg-cc-tools/cc-regression-test/hooks/"*.py ".claude/cc-regression-test/hooks/"
+cp "/home/mcbrain/mg_projects/mg-cc-tools/cc-regression-test/scripts/"*.py ".claude/cc-regression-test/scripts/"
+chmod +x ".claude/cc-regression-test/hooks/"*.py ".claude/cc-regression-test/scripts/"*.py
 ```
 
-2. Re-merge hook config into settings.json. Determine the settings.json path: look at where /home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/hooks is installed — if it's under `~/.claude/`, use `~/.claude/settings.json`. If it's under a project `.claude/`, use that project's `.claude/settings.json`.
+2. Re-merge hook config into settings.json. Determine the settings.json path: look at where .claude/cc-regression-test/hooks is installed — if it's under `~/.claude/`, use `~/.claude/settings.json`. If it's under a project `.claude/`, use that project's `.claude/settings.json`.
 
 Run:
 ```bash
 python3 -c "
 import json, os, sys
 
-hooks_dir = '/home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/hooks'
+hooks_dir = '.claude/cc-regression-test/hooks'
 # Derive settings.json location from hooks dir
 # hooks_dir is like /path/to/.claude/cc-regression-test/hooks
 claude_dir = os.path.dirname(os.path.dirname(hooks_dir))
@@ -151,7 +151,7 @@ This test validates that PreToolUse hooks fire correctly and the user sees an ap
 
 2. Run this command:
 ```bash
-python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/cc-regression-test/scripts/trigger.py
+python3 .claude/cc-regression-test/scripts/trigger.py
 ```
 
 3. **What should happen:** The installed PreToolUse hook (`intercept-trigger.py`) detects this command, sleeps 10 seconds, then returns `permissionDecision: "ask"`. This means:

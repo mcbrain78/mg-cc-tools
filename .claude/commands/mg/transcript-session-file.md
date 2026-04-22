@@ -18,7 +18,7 @@ The exporter wraps its output in `<verbatim>` tags. You MUST reproduce EVERY lin
 
 Run:
 ```
-python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/transcript/cc_transcript_exporter.py --print-transcript-path
+python3 .claude/transcript/cc_transcript_exporter.py --print-transcript-path
 ```
 
 Echo the output per the Display Rule above.

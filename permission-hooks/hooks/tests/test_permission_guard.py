@@ -1441,6 +1441,53 @@ class TestResolveProjectRoot:
             assert _resolve_project_root({}) == ""
 
 
+class TestMainUsesResolvedProjectRoot:
+    """main() must resolve PROJECT_ROOT through _resolve_project_root — not the raw module attribute.
+
+    Regression test for a bug where the Bash and Read/Edit/Write guards used
+    ``PROJECT_ROOT or event.get('cwd', '')`` directly. An unresolved
+    ``{MG_INSTALL_PROJECT_ROOT}`` placeholder is truthy, so the guard would
+    use the literal placeholder as "project root" and false-flag in-project
+    paths as out-of-project.
+    """
+
+    def _run_main(self, event, monkeypatch):
+        import io as _io
+        decisions = []
+        monkeypatch.setattr(guard, "_decide", lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_deny", lambda reason: decisions.append((reason, "deny")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr("sys.stdin", _io.StringIO(json.dumps(event)))
+        guard.main()
+        return decisions
+
+    def test_bash_inproject_path_not_flagged_when_placeholder_unresolved(self, monkeypatch):
+        """Bash guard must not flag an in-cwd path as out-of-project when PROJECT_ROOT is the placeholder."""
+        with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
+            decisions = self._run_main({
+                "tool_name": "Bash",
+                "tool_input": {"command": "touch /home/user/myproject/foo.txt"},
+                "cwd": "/home/user/myproject",
+                "transcript_path": "",
+            }, monkeypatch)
+        # No out-of-project decision should fire for an in-cwd path
+        for reason, _ in decisions:
+            assert "Out-of-project" not in reason, f"Unexpected out-of-project flag: {reason}"
+
+    def test_write_inproject_path_not_flagged_when_placeholder_unresolved(self, monkeypatch):
+        """Read/Edit/Write guard must not flag an in-cwd file_path as out-of-project either."""
+        with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
+            decisions = self._run_main({
+                "tool_name": "Write",
+                "tool_input": {"file_path": "/home/user/myproject/foo.txt"},
+                "cwd": "/home/user/myproject",
+                "transcript_path": "",
+            }, monkeypatch)
+        for reason, _ in decisions:
+            assert "Out-of-project" not in reason, f"Unexpected out-of-project flag: {reason}"
+
+
 # ── Prompt content: safe directories ──────────────────────────────────────────
 
 class TestPromptSafeDirectories:
