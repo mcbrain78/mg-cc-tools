@@ -65,10 +65,11 @@ uv run {MG_INSTALL_SCRIPTS_DIR}/verify-xml-refs.py \
     --project-root {project_root} \
     --findings-file {MG_INSTALL_WORKSPACE_DIR}/audit/findings-refs.json \
     --database-model {MG_INSTALL_WORKSPACE_DIR}/generate/database-model.json \
+    --docs-dir {docs_dir} \
     [--audience AUDIENCE]
 ```
 
-Add `--audience` only if the user specified audience names (e.g., `--audience devops`).
+Add `--audience` only if the user specified audience names (e.g., `--audience devops`). `{docs_dir}` comes from the config read in Step 1.
 
 Read `{MG_INSTALL_WORKSPACE_DIR}/audit/findings-refs.json` to get the deterministic findings list.
 

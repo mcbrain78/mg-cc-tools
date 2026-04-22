@@ -119,7 +119,7 @@ def _build_xml_with_refs(xml_dir, audience, doc_name, sections_with_refs):
     return xml_path
 
 
-def _run_verify(xml_dir, project_root, findings_file, audience=None):
+def _run_verify(xml_dir, project_root, findings_file, audience=None, docs_dir=None):
     cmd = [
         sys.executable, SCRIPT,
         "--xml-dir", xml_dir,
@@ -128,6 +128,8 @@ def _run_verify(xml_dir, project_root, findings_file, audience=None):
     ]
     if audience:
         cmd.extend(["--audience", audience])
+    if docs_dir is not None:
+        cmd.extend(["--docs-dir", docs_dir])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -456,6 +458,180 @@ class TestConfigRefs:
             description = findings[0]["description"]
             assert "~/.pgpass" in description
             assert "project-relative" in description
+
+    def test_docs_dir_path_skipped_when_missing(self):
+        """Config refs to paths under --docs-dir pass even if the file is absent.
+
+        The generated-docs tree is allowed to be partial — an end-users doc
+        legitimately links to devops/OPERATIONS.md before devops is generated.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "end-users", "USER_GUIDE", [(
+                "troubleshooting",
+                "<!-- section: troubleshooting -->\n## Help\n\nContent",
+                [{"type": "config", "path": "docs/auto-doc/devops/OPERATIONS.md"}],
+            )])
+
+            _run_verify(
+                xml_dir, project_root, findings_file,
+                docs_dir="docs/auto-doc",
+            )
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_docs_dir_shared_path_skipped(self):
+        """Shared-doc-shape paths (directly under docs_dir) are also skipped."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "end-users", "USER_GUIDE", [(
+                "glossary",
+                "<!-- section: glossary -->\n## Glossary\n\nContent",
+                [{"type": "config", "path": "docs/auto-doc/GLOSSARY.md"}],
+            )])
+
+            _run_verify(
+                xml_dir, project_root, findings_file,
+                docs_dir="docs/auto-doc",
+            )
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_docs_dir_path_skipped_even_if_exists(self):
+        """Docs-dir paths short-circuit before the filesystem check — no finding either way."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            # Materialize the file so we can prove the short-circuit wins
+            docs_path = os.path.join(
+                project_root, "docs", "auto-doc", "devops", "OPERATIONS.md",
+            )
+            os.makedirs(os.path.dirname(docs_path))
+            with open(docs_path, "w") as f:
+                f.write("# Operations\n")
+            _build_xml_with_refs(xml_dir, "end-users", "USER_GUIDE", [(
+                "troubleshooting",
+                "<!-- section: troubleshooting -->\n## Help\n\nContent",
+                [{"type": "config", "path": "docs/auto-doc/devops/OPERATIONS.md"}],
+            )])
+
+            _run_verify(
+                xml_dir, project_root, findings_file,
+                docs_dir="docs/auto-doc",
+            )
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_non_docs_dir_missing_config_still_flagged(self):
+        """Missing config paths outside docs_dir still produce findings (regression guard)."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "config", "path": "config/nonexistent.yaml"}],
+            )])
+
+            _run_verify(
+                xml_dir, project_root, findings_file,
+                docs_dir="docs/auto-doc",
+            )
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "nonexistent.yaml" in findings[0]["description"]
+
+    def test_valid_non_docs_dir_config_still_passes(self):
+        """Existing config paths outside docs_dir still pass (regression guard)."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "config", "path": "config/field-mapping.yaml"}],
+            )])
+
+            _run_verify(
+                xml_dir, project_root, findings_file,
+                docs_dir="docs/auto-doc",
+            )
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_tilde_path_precedence(self):
+        """Tilde rejection must run before the docs_dir short-circuit."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "config", "path": "~/.pgpass"}],
+            )])
+
+            _run_verify(
+                xml_dir, project_root, findings_file,
+                docs_dir="docs/auto-doc",
+            )
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "~/.pgpass" in findings[0]["description"]
+            assert "project-relative" in findings[0]["description"]
+
+    def test_docs_dir_default_when_arg_omitted(self):
+        """Default --docs-dir (docs/auto-doc) covers the common case without explicit arg."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "end-users", "USER_GUIDE", [(
+                "troubleshooting",
+                "<!-- section: troubleshooting -->\n## Help\n\nContent",
+                [{"type": "config", "path": "docs/auto-doc/devops/OPERATIONS.md"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_docs_dir_prefix_is_path_boundary(self):
+        """'docs/auto-doc' must not swallow 'docs/auto-doc-something-else/...'."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "config", "path": "docs/auto-doc-something-else/thing.md"}],
+            )])
+
+            _run_verify(
+                xml_dir, project_root, findings_file,
+                docs_dir="docs/auto-doc",
+            )
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "auto-doc-something-else" in findings[0]["description"]
+
+    def test_custom_docs_dir(self):
+        """--docs-dir respects custom values; default 'docs/auto-doc' no longer covers them."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [
+                (
+                    "in-tree",
+                    "<!-- section: in-tree -->\n## In\n\nContent",
+                    [{"type": "config", "path": "docs/my-docs/devops/X.md"}],
+                ),
+                (
+                    "out-of-tree",
+                    "<!-- section: out-of-tree -->\n## Out\n\nContent",
+                    [{"type": "config", "path": "docs/auto-doc/devops/X.md"}],
+                ),
+            ])
+
+            _run_verify(
+                xml_dir, project_root, findings_file,
+                docs_dir="docs/my-docs",
+            )
+            findings = json.loads(open(findings_file).read())
+            # Only the out-of-tree path should flag
+            assert len(findings) == 1
+            assert "docs/auto-doc/devops/X.md" in findings[0]["description"]
 
 
 class TestEnumRefs:

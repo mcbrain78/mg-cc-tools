@@ -62,9 +62,14 @@ def _parse_dep_name(dep_str):
 class SourceCache:
     """Lazy-loading cache for Python source analysis results."""
 
-    def __init__(self, project_root, database_model=None):
+    def __init__(self, project_root, database_model=None, docs_dir=None):
         self.project_root = project_root
         self.database_model = database_model  # Optional pre-extracted schema data
+        # Generated-docs tree root (e.g. "docs/auto-doc"). Config refs under
+        # this path are documentation cross-references, not real config files,
+        # and are allowed to point at not-yet-generated audience docs.
+        normalized = (docs_dir or "").strip().rstrip("/")
+        self.docs_dir = normalized or None
         self._source = {}       # rel_path -> source text (or None)
         self._symbols = {}      # rel_path -> set of symbol names
         self._signatures = {}   # rel_path -> dict of func_name -> [params]
@@ -461,6 +466,14 @@ def check_config_ref(ref, cache):
             f"config refs must be project-relative paths; got "
             f"`{config_path}` — use a different ref type for user-home files"
         )
+    # Paths under the generated-docs tree are doc-to-doc cross-references
+    # (e.g. USER_GUIDE linking to devops/OPERATIONS.md). The target audience
+    # may not be generated yet in a scoped run, so skip the filesystem check.
+    if cache.docs_dir and (
+        config_path == cache.docs_dir
+        or config_path.startswith(cache.docs_dir + "/")
+    ):
+        return None
     if cache.file_exists(config_path):
         return None
     return f"Config file `{config_path}` does not exist"
@@ -680,6 +693,14 @@ def main():
         "--database-model",
         help="Path to database-model.json for authoritative db ref validation",
     )
+    parser.add_argument(
+        "--docs-dir", default="docs/auto-doc",
+        help=(
+            "Generated-docs tree root (project-relative). Config refs under "
+            "this path are doc-to-doc cross-references and skip the "
+            "filesystem-existence check. Default: docs/auto-doc."
+        ),
+    )
 
     args = parser.parse_args()
     xml_dir = os.path.abspath(args.xml_dir)
@@ -699,7 +720,11 @@ def main():
         if database_model:
             print(f"  Using database model: {args.database_model}", file=sys.stderr)
 
-    cache = SourceCache(project_root, database_model=database_model)
+    cache = SourceCache(
+        project_root,
+        database_model=database_model,
+        docs_dir=args.docs_dir,
+    )
 
     # Collect XML files
     xml_files = []
