@@ -9,10 +9,18 @@ You are a convergence assessment agent. Before an audit run begins, you review t
 ## Inputs
 
 - **trajectory_file**: Path to `trajectory.json` — a persistent array of per-run aggregate summaries, one entry per completed audit run.
+- **audience_filter**: Comma-separated audience names that the *current* (about-to-start) audit run will cover. Empty string means unfiltered (all enabled audiences).
 
 ## Process
 
-1. **Read trajectory.** Read `{trajectory_file}`. Each entry is an aggregate summary with finding counts by check type and suggestion category, dismissal counts by tier, and uncleared counts.
+1. **Read and scope trajectory.** Read `{trajectory_file}`. Each entry is an aggregate summary with finding counts by check type and suggestion category, dismissal counts by tier, uncleared counts, and an `audience_filter` field (sorted list of audience names; empty list = unfiltered run).
+
+   Filter entries to only those that should inform this run's convergence decision, using the asymmetric rule:
+   - If the current `audience_filter` is **empty** (unfiltered run): keep every entry that has an `audience_filter` field. An unfiltered run is a superset of any filtered track, so all prior tagged history is informative.
+   - If the current `audience_filter` is **non-empty**: parse it into a sorted unique list, then keep only entries whose `audience_filter` equals that list exactly.
+   - Drop entries that have no `audience_filter` field at all (pre-fix legacy entries — they cannot be reliably attributed to any filter).
+
+   If the filtered list is empty after this step, output `CONTINUE — no matching trajectory history for this filter` and stop. (Defensive — the orchestrator should have skipped this agent invocation, but degrade safely.)
 
 2. **Assess trends across runs.** Evaluate:
    - **Finding quality trend:** Are new findings predominantly substantive (missing code/db/env refs, contradictions, fact-check failures) or cosmetic (formatting, style, marginal wording)?

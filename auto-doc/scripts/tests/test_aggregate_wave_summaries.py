@@ -162,3 +162,47 @@ class TestAggregate:
                 capture_output=True, text=True,
             )
             assert "Aggregated 2 summaries" in result.stderr
+
+
+class TestAudienceFilter:
+    """The aggregate tags itself with the audience filter for trajectory scoping."""
+
+    def test_default_no_filter_yields_empty_list(self):
+        """No --audience-filter flag → audience_filter is []."""
+        with tempfile.TemporaryDirectory() as td:
+            p1 = _write_json(td, "s1.json", _make_summary())
+            out = os.path.join(td, "merged.json")
+            result = subprocess.run(
+                [sys.executable, SCRIPT, "--summaries", p1, "--output", out],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert _read_json(out)["audience_filter"] == []
+
+    def test_filter_normalized_to_sorted_unique_list(self):
+        """Whitespace + duplicate + out-of-order input is normalized."""
+        with tempfile.TemporaryDirectory() as td:
+            p1 = _write_json(td, "s1.json", _make_summary())
+            out = os.path.join(td, "merged.json")
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--summaries", p1, "--output", out,
+                 "--audience-filter", "end-users, devops, devops"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert _read_json(out)["audience_filter"] == ["devops", "end-users"]
+
+    def test_empty_summaries_still_tagged(self):
+        """Empty input list still produces a tagged aggregate."""
+        with tempfile.TemporaryDirectory() as td:
+            missing = os.path.join(td, "does-not-exist.json")
+            out = os.path.join(td, "merged.json")
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--summaries", missing, "--output", out,
+                 "--audience-filter", "devops"],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0
+            assert _read_json(out)["audience_filter"] == ["devops"]

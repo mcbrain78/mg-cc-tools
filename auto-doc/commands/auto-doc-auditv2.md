@@ -28,31 +28,37 @@ Read references/schema.yaml
 ### Step 1: Setup
 
 Parse the user's input text for optional parameters:
-- **Audience filter**: audience names (e.g., `/mg:auto-doc-auditv2 devops`). Extract as a comma-separated string for the `--audience` flag below. If not provided, omit the flag (all audiences).
+- **Audience filter**: audience names (e.g., `/mg:auto-doc-auditv2 devops`). Extract as a comma-separated string and store as `{audience_filter}` (empty string if no audience names were provided). This same string feeds both the `--audience` flag on `verify-xml-refs.py` (Step 2) and the `--audience-filter` flag on the convergence-count and aggregate scripts.
 - **Wave count**: `waves=N` (e.g., `/mg:auto-doc-auditv2 waves=3`). Controls how many resolution waves to run after extraction. Default: 2. More waves = more findings but longer runtime. Total agents per document = 1 (extraction) + N (resolution).
 
 Store the wave count as `num_waves` (integer, minimum 1, default 2).
 
-**Convergence check.** Before any other setup, check if a prior audit run's trajectory exists:
+**Convergence check.** Before any other setup, count how many trajectory entries match the current audience filter:
 ```bash
-test -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/trajectory.json && echo "EXISTS" || echo "NONE"
+uv run {MG_INSTALL_SCRIPTS_DIR}/count-trajectory-entries.py \
+    --trajectory-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/trajectory.json \
+    --audience-filter "{audience_filter}"
 ```
-If EXISTS, spawn a convergence assessment agent (**model: sonnet**, foreground):
-```
-Agent(
-  model="sonnet",
-  description="Convergence assessment (pre-audit)",
-  prompt="You are a convergence assessment agent.
+The script prints `<matching> <legacy>` to stdout (two integers, space-separated). `matching` = entries that satisfy the asymmetric scoping rule for the current filter. `legacy` = entries written before audience-filter tagging existed. Branch on these counts:
 
-Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/assess-convergence.md
+- **`matching == 0` and `legacy == 0`** (no prior runs at all): print `"No prior runs — skipping convergence check."` and continue with setup.
+- **`matching == 0` and `legacy > 0`** (legacy entries present but none attributable to this filter): print `"No prior runs for filter '{audience_filter or "all"}' (found {legacy} legacy untagged entries — not used for convergence; run unfiltered or wipe trajectory.json to reset) — skipping convergence check."` and continue with setup. The legacy count is surfaced so the user knows history exists but is invisible under the new schema.
+- **`matching >= 1`**: spawn a convergence assessment agent (**model: sonnet**, foreground):
+  ```
+  Agent(
+    model="sonnet",
+    description="Convergence assessment (pre-audit)",
+    prompt="You are a convergence assessment agent.
 
-Trajectory file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/trajectory.json"
-)
-```
-Present the agent's recommendation to the user:
-- If **RECOMMEND STOP**, ask the user whether to proceed with the audit or stop. The user always has the final say.
-- If **CONTINUE** or if the user chooses to proceed, continue with setup below.
-- If no trajectory exists (first run), skip this check entirely.
+  Read and follow the instructions in: {MG_INSTALL_AGENTS_DIR}/assess-convergence.md
+
+  Trajectory file: {MG_INSTALL_WORKSPACE_DIR}/auditv2/trajectory.json
+  Audience filter: {audience_filter}"
+  )
+  ```
+  Present the agent's recommendation to the user:
+  - If **RECOMMEND STOP**, ask the user whether to proceed with the audit or stop. The user always has the final say.
+  - If **CONTINUE** or if the user chooses to proceed, continue with setup below.
 
 1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `{MG_INSTALL_GLOBAL_CONFIG}`. Extract:
    - `docs_dir` (default: `docs/auto-doc`)
@@ -321,11 +327,12 @@ uv run {MG_INSTALL_SCRIPTS_DIR}/wave-summary.py \
 
 Note: `--prev-findings-file` uses the **wave 1** snapshot (`-prev-w1.json`) — this captures the full delta across all waves for this audit run.
 
-Then aggregate all per-document summaries into one:
+Then aggregate all per-document summaries into one (the `--audience-filter` value tags the aggregate so trajectory entries can be scoped by audience for future convergence checks):
 ```bash
 uv run {MG_INSTALL_SCRIPTS_DIR}/aggregate-wave-summaries.py \
     --summaries {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-*.json \
-    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-aggregate.json
+    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/wave-summary-aggregate.json \
+    --audience-filter "{audience_filter}"
 ```
 
 Append to the persistent trajectory:

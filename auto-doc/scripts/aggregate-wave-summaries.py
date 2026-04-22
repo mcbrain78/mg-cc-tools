@@ -7,20 +7,35 @@ the per-document summaries into one aggregate summary for the trajectory.
 Usage:
     python3 aggregate-wave-summaries.py \
         --summaries FILE [FILE ...] \
-        --output FILE
+        --output FILE \
+        [--audience-filter "name1,name2"]
 
-Output: merged JSON with combined counts across all documents.
+Output: merged JSON with combined counts across all documents. The
+audience_filter field tags the entry so convergence assessment can scope
+trajectory history to matching runs (empty list = unfiltered run).
 """
 
 import argparse
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
 
 
-def aggregate(summaries):
+def parse_audience_filter(raw):
+    """Parse a comma-separated audience filter into a sorted unique list.
+
+    Empty / whitespace-only input → empty list (unfiltered run).
+    """
+    if not raw:
+        return []
+    parts = [p.strip() for p in re.split(r"[,\s]+", raw)]
+    return sorted({p for p in parts if p})
+
+
+def aggregate(summaries, audience_filter=None):
     """Merge multiple wave summary dicts into one.
 
     Args:
@@ -36,6 +51,7 @@ def aggregate(summaries):
             "dismissals": {"total": 0, "by_tier": {}},
             "uncleared_remaining": 0,
             "entities_resolved_this_wave": 0,
+            "audience_filter": audience_filter or [],
         }
 
     merged_by_check = {}
@@ -78,6 +94,7 @@ def aggregate(summaries):
         },
         "uncleared_remaining": total_uncleared,
         "entities_resolved_this_wave": total_resolved,
+        "audience_filter": audience_filter or [],
     }
 
 
@@ -89,6 +106,9 @@ def main():
                         help="Paths to per-document wave summary JSONs")
     parser.add_argument("--output", required=True,
                         help="Output path for merged summary JSON")
+    parser.add_argument("--audience-filter", default="",
+                        help="Comma-separated audience names this run "
+                             "audited (empty = unfiltered run)")
 
     args = parser.parse_args()
 
@@ -98,7 +118,7 @@ def main():
         if s is not None:
             summaries.append(s)
 
-    merged = aggregate(summaries)
+    merged = aggregate(summaries, audience_filter=parse_audience_filter(args.audience_filter))
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     save_json(args.output, merged)
