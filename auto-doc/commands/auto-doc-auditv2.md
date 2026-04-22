@@ -95,7 +95,7 @@ Present the agent's recommendation to the user:
    rm -rf {MG_INSTALL_WORKSPACE_DIR}/auditv2/run
    mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2/run
    # Initialize persistent files if they don't exist
-   for f in not-entities.json protected-entities.json suppressed-findings.json; do
+   for f in not-entities.json protected-entities.json covered-entities.json suppressed-findings.json; do
      [ -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f ] || echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/$f
    done
    echo '[]' > {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json
@@ -191,7 +191,8 @@ uv run {MG_INSTALL_SCRIPTS_DIR}/clear-matched-entities.py \
     --findings-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
     --document {DOCUMENT} \
     --audience {audience} \
-    --not-entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json
+    --not-entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json \
+    --covered-entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/covered-entities.json
 ```
 
 Read the stderr output for the clearing summary (Extracted/Cleared/Uncleared counts).
@@ -236,7 +237,7 @@ session = {
     'dismissed_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json',
     'protected_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json',
     'suppress_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/suppressed-findings.json',
-    'covered_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/covered-this-run.json',
+    'covered_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/covered-entities.json',
 }
 path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'run', 'session-{audience}-{DOCUMENT}.json')
 with open(path, 'w') as f:

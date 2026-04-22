@@ -124,9 +124,9 @@ def cmd_dismiss(session, args):
         cmd_args.extend(["--prose-verify-dir", session["prose_verify_dir"]])
     if getattr(args, "covered_by", None):
         cmd_args.extend(["--covered-by", args.covered_by])
-        if session.get("covered_this_run_file"):
+        if session.get("covered_entities_file"):
             cmd_args.extend([
-                "--covered-this-run-file", session["covered_this_run_file"],
+                "--covered-entities-file", session["covered_entities_file"],
             ])
     return _delegate("dismiss-entity.py", cmd_args)
 

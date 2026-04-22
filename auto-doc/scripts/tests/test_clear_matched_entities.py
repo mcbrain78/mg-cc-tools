@@ -65,7 +65,8 @@ def _setup(td, sections, entities):
 
 
 def _run(prose_dir, entities_file, uncleared_file, findings_file,
-         document="OPERATIONS", audience="devops", not_entities_file=None):
+         document="OPERATIONS", audience="devops", not_entities_file=None,
+         covered_entities_file=None):
     """Run clear-matched-entities.py and return result."""
     cmd = [sys.executable, SCRIPT,
            "--entities-file", entities_file,
@@ -76,6 +77,8 @@ def _run(prose_dir, entities_file, uncleared_file, findings_file,
            "--audience", audience]
     if not_entities_file:
         cmd.extend(["--not-entities-file", not_entities_file])
+    if covered_entities_file:
+        cmd.extend(["--covered-entities-file", covered_entities_file])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -1449,3 +1452,129 @@ class TestParenthesisNormalization:
                 uncleared = json.load(f)
             assert uncleared == []
             assert "Cleared: 1" in result.stderr
+
+
+class TestCoveredEntitiesClearing:
+    """Covered-entities file: durable clearing with staleness re-validation.
+
+    When the resolve (or classify) agent asserts that an entity is covered by
+    a declared ref, a persistent entry records that. On future audits, clearing
+    treats the entity as cleared — but only if the covering ref is STILL
+    declared in the section. Stale entries fall through to normal clearing.
+    """
+
+    def test_covered_entity_cleared_when_ref_still_declared(self):
+        """@flow covered by prefect in technical-terms: the section still has
+        <dep>prefect</dep> → @flow is cleared via the coverage lookup."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "technical-terms",
+                    "body": "## Technical Terms\n\nA `@flow` runs tasks.",
+                    "ref_entries": [
+                        {
+                            "display": "[dep] prefect",
+                            "identifier": "prefect",
+                            "path": ["prefect"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "@flow", "section": "technical-terms"},
+            ])
+
+            cf = os.path.join(td, "covered-entities.json")
+            with open(cf, "w") as f:
+                json.dump([
+                    {"name": "@flow",
+                     "section": "technical-terms",
+                     "document": "OPERATIONS",
+                     "audience": "devops",
+                     "covered_by": "prefect"},
+                ], f)
+
+            result = _run(prose_dir, ef, uf, ff, covered_entities_file=cf)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+    def test_covered_entity_resurfaces_when_ref_removed(self):
+        """Coverage entry says @flow covered by prefect, but the section no
+        longer declares <dep>prefect</dep> — the entry is stale, and @flow
+        falls through to normal clearing (which won't match it either)."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "technical-terms",
+                    "body": "## Technical Terms\n\nA `@flow` runs tasks.",
+                    "ref_entries": [
+                        {
+                            "display": "[dep] sqlalchemy",
+                            "identifier": "sqlalchemy",
+                            "path": ["sqlalchemy"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "@flow", "section": "technical-terms"},
+            ])
+
+            cf = os.path.join(td, "covered-entities.json")
+            with open(cf, "w") as f:
+                json.dump([
+                    {"name": "@flow",
+                     "section": "technical-terms",
+                     "document": "OPERATIONS",
+                     "audience": "devops",
+                     "covered_by": "prefect"},
+                ], f)
+
+            result = _run(prose_dir, ef, uf, ff, covered_entities_file=cf)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "@flow"
+
+    def test_coverage_scoped_by_document_and_audience(self):
+        """A coverage entry for a different document/audience must not clear
+        entities in this run."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "technical-terms",
+                    "body": "## Technical Terms\n\nA `@flow` runs tasks.",
+                    "ref_entries": [
+                        {
+                            "display": "[dep] prefect",
+                            "identifier": "prefect",
+                            "path": ["prefect"],
+                        },
+                    ],
+                },
+            ], [
+                {"name": "@flow", "section": "technical-terms"},
+            ])
+
+            cf = os.path.join(td, "covered-entities.json")
+            with open(cf, "w") as f:
+                json.dump([
+                    {"name": "@flow",
+                     "section": "technical-terms",
+                     "document": "GLOSSARY",
+                     "audience": "shared",
+                     "covered_by": "prefect"},
+                ], f)
+
+            # Running for OPERATIONS/devops — shouldn't see the GLOSSARY entry
+            result = _run(prose_dir, ef, uf, ff, covered_entities_file=cf)
+            assert result.returncode == 0
+
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "@flow"

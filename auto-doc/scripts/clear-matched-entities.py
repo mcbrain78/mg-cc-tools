@@ -126,7 +126,8 @@ def _resolve_entities(section_entities, ref_entries, context_names=None):
 
 
 def clear(entities_file, prose_verify_dir, uncleared_file,
-          findings_file, document, audience, not_entities_file=None):
+          findings_file, document, audience, not_entities_file=None,
+          covered_entities_file=None):
     """Run clearing + Check B across all sections.
 
     Returns:
@@ -142,6 +143,19 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
             e["name"] if isinstance(e, dict) else e for e in raw
         }
         entities = [e for e in entities if e["name"] not in not_entity_names]
+
+    # Load persistent coverage entries scoped to this (document, audience).
+    # Keyed by (name, section) -> covered_by. Consulted per-section below;
+    # entries are ignored (stale) if the covered_by ref is no longer declared.
+    coverage_map = {}
+    if covered_entities_file:
+        raw = load_json(covered_entities_file, default=[])
+        for entry in raw:
+            if (entry.get("document") == document
+                    and entry.get("audience") == audience):
+                coverage_map[(entry["name"], entry["section"])] = (
+                    entry.get("covered_by", "")
+                )
 
     # Normalize: strip trailing () from function-call notation
     for ent in entities:
@@ -203,14 +217,25 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
         if not section_entities:
             continue
 
-        # First pass: clear by identifier match
+        # Build the set of identifiers declared on this section's refs once
+        # (used by both coverage validation and the identifier-match pass).
         all_idents = set()
         for entry in ref_entries:
             ident = entry.get("identifier")
             if ident:
                 all_idents.add(ident)
 
-        ident_cleared = set()
+        # Covered-clear pass: mark entities resolved via persistent coverage
+        # entries when the covered_by identifier is still declared in this
+        # section. Stale entries (covered_by no longer declared) fall through
+        # to normal clearing/escalation.
+        coverage_cleared = set()
+        for name in section_entities:
+            covered_by = coverage_map.get((name, section_path))
+            if covered_by and covered_by in all_idents:
+                coverage_cleared.add(name)
+
+        ident_cleared = set(coverage_cleared)
         for name in section_entities:
             if name in all_idents:
                 ident_cleared.add(name)
@@ -303,6 +328,11 @@ def main():
         "--not-entities-file", default=None,
         help="Path to not-entities JSON file (entities to pre-filter)",
     )
+    parser.add_argument(
+        "--covered-entities-file", default=None,
+        help="Path to persistent covered-entities JSON file "
+             "(entities to clear via durable coverage, stale-validated)",
+    )
 
     args = parser.parse_args()
     clear(
@@ -313,6 +343,7 @@ def main():
         document=args.document,
         audience=args.audience,
         not_entities_file=args.not_entities_file,
+        covered_entities_file=args.covered_entities_file,
     )
 
 

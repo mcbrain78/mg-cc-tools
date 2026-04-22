@@ -26,7 +26,7 @@ def _read_json(path):
 def _run(entity, section, uncleared_file, dismissed_this_run_file,
          audience="devops", document="OPERATIONS",
          protected_entities_file=None, covered_by=None,
-         prose_verify_dir=None, covered_this_run_file=None):
+         prose_verify_dir=None, covered_entities_file=None):
     cmd = [
         sys.executable, SCRIPT,
         "--entity", entity,
@@ -42,8 +42,8 @@ def _run(entity, section, uncleared_file, dismissed_this_run_file,
         cmd.extend(["--covered-by", covered_by])
     if prose_verify_dir:
         cmd.extend(["--prose-verify-dir", prose_verify_dir])
-    if covered_this_run_file:
-        cmd.extend(["--covered-this-run-file", covered_this_run_file])
+    if covered_entities_file:
+        cmd.extend(["--covered-entities-file", covered_entities_file])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -382,18 +382,18 @@ def _make_section_json(td, section_path, ref_identifiers):
 
 
 class TestCoveredBy:
-    """--covered-by bypasses protected check when identifier is valid."""
+    """--covered-by routes to covered-entities regardless of protection state."""
 
     def test_covered_by_bypasses_protected(self):
         """Valid covered-by + protected entity → removed from uncleared,
-        recorded in covered-this-run, NOT in dismissed-this-run."""
+        recorded in covered-entities, NOT in dismissed-this-run."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [
                 {"name": "accept_new", "section": "monitoring"},
                 {"name": "PORT", "section": "deployment"},
             ])
             df = _write_json(td, "dismissed-this-run.json", [])
-            cf = os.path.join(td, "covered-this-run.json")
+            cf = os.path.join(td, "covered-entities.json")
             pf = _write_json(td, "protected-entities.json", [
                 {"name": "accept_new", "reason": "Enum value"},
             ])
@@ -406,7 +406,7 @@ class TestCoveredBy:
                 protected_entities_file=pf,
                 covered_by="ResolutionAction",
                 prose_verify_dir=prose_dir,
-                covered_this_run_file=cf,
+                covered_entities_file=cf,
             )
             assert result.returncode == 0
             assert "Covered: accept_new (by ResolutionAction)" in result.stderr
@@ -420,14 +420,58 @@ class TestCoveredBy:
             dismissed = _read_json(df)
             assert len(dismissed) == 0
 
-            # Recorded in covered-this-run
+            # Recorded in covered-entities with full scope
             covered = _read_json(cf)
             assert len(covered) == 1
             assert covered[0]["name"] == "accept_new"
+            assert covered[0]["section"] == "monitoring"
+            assert covered[0]["document"] == "OPERATIONS"
+            assert covered[0]["audience"] == "devops"
             assert covered[0]["covered_by"] == "ResolutionAction"
 
+    def test_covered_by_non_protected_routes_to_coverage(self):
+        """Non-protected entity + valid covered-by → covered-entities,
+        NOT dismissed-this-run. This is the durability fix: coverage assertion
+        is honored regardless of whether the entity has been classified
+        protected yet."""
+        with tempfile.TemporaryDirectory() as td:
+            uf = _write_json(td, "uncleared.json", [
+                {"name": "@flow", "section": "technical-terms"},
+            ])
+            df = _write_json(td, "dismissed-this-run.json", [])
+            cf = os.path.join(td, "covered-entities.json")
+            pf = _write_json(td, "protected-entities.json", [])
+            prose_dir = _make_section_json(
+                td, "technical-terms", ["prefect"],
+            )
+
+            result = _run(
+                "@flow", "technical-terms", uf, df,
+                protected_entities_file=pf,
+                covered_by="prefect",
+                prose_verify_dir=prose_dir,
+                covered_entities_file=cf,
+            )
+            assert result.returncode == 0
+            assert "Covered: @flow (by prefect)" in result.stderr
+
+            # Removed from uncleared
+            uncleared = _read_json(uf)
+            assert len(uncleared) == 0
+
+            # NOT in dismissed-this-run
+            dismissed = _read_json(df)
+            assert len(dismissed) == 0
+
+            # Recorded in covered-entities
+            covered = _read_json(cf)
+            assert len(covered) == 1
+            assert covered[0]["name"] == "@flow"
+            assert covered[0]["covered_by"] == "prefect"
+
     def test_covered_by_invalid_identifier_refused(self):
-        """Invalid identifier → refused, uncleared unchanged."""
+        """Invalid identifier → refused, uncleared unchanged. Applies
+        regardless of protection state."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [
                 {"name": "accept_new", "section": "monitoring"},
@@ -447,7 +491,7 @@ class TestCoveredBy:
                 prose_verify_dir=prose_dir,
             )
             assert result.returncode == 0
-            assert "PROTECTED: accept_new" in result.stderr
+            assert "Cannot dismiss accept_new" in result.stderr
             assert "--covered-by failed" in result.stderr
 
             uncleared = _read_json(uf)
@@ -473,50 +517,22 @@ class TestCoveredBy:
                 prose_verify_dir=prose_dir,
             )
             assert result.returncode == 0
-            assert "PROTECTED: accept_new" in result.stderr
+            assert "Cannot dismiss accept_new" in result.stderr
             assert "--covered-by failed" in result.stderr
             assert "section JSON not found" in result.stderr
 
             uncleared = _read_json(uf)
             assert len(uncleared) == 1
 
-    def test_covered_by_non_protected_normal_dismiss(self):
-        """Non-protected entity with covered-by → normal dismiss path.
-        covered-by only matters for protected entities."""
-        with tempfile.TemporaryDirectory() as td:
-            uf = _write_json(td, "uncleared.json", [
-                {"name": "bash", "section": "monitoring"},
-            ])
-            df = _write_json(td, "dismissed-this-run.json", [])
-            pf = _write_json(td, "protected-entities.json", [])
-            prose_dir = _make_section_json(
-                td, "monitoring", ["SomeRef"],
-            )
-
-            result = _run(
-                "bash", "monitoring", uf, df,
-                protected_entities_file=pf,
-                covered_by="SomeRef",
-                prose_verify_dir=prose_dir,
-            )
-            assert result.returncode == 0
-            assert "Dismissed: bash" in result.stderr
-
-            uncleared = _read_json(uf)
-            assert len(uncleared) == 0
-
-            dismissed = _read_json(df)
-            assert len(dismissed) == 1
-
     def test_covered_by_dedup(self):
-        """Same entity covered twice → one entry in covered-this-run."""
+        """Same (name, section, doc, aud) covered twice → one entry."""
         with tempfile.TemporaryDirectory() as td:
             uf = _write_json(td, "uncleared.json", [
                 {"name": "accept_new", "section": "monitoring"},
             ])
             df = _write_json(td, "dismissed-this-run.json", [])
-            cf = _write_json(td, "covered-this-run.json", [
-                {"name": "accept_new", "covered_in": "deployment",
+            cf = _write_json(td, "covered-entities.json", [
+                {"name": "accept_new", "section": "monitoring",
                  "audience": "devops", "document": "OPERATIONS",
                  "covered_by": "ResolutionAction"},
             ])
@@ -532,14 +548,12 @@ class TestCoveredBy:
                 protected_entities_file=pf,
                 covered_by="ResolutionAction",
                 prose_verify_dir=prose_dir,
-                covered_this_run_file=cf,
+                covered_entities_file=cf,
             )
             assert result.returncode == 0
 
             covered = _read_json(cf)
             assert len(covered) == 1
-            # Original entry preserved
-            assert covered[0]["covered_in"] == "deployment"
 
 
 def _make_section_json_with_paths(td, section_path, ref_entries):

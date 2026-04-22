@@ -348,7 +348,7 @@ class TestDismiss:
         with tempfile.TemporaryDirectory() as td:
             session_path, sess = _make_session(
                 td,
-                covered_this_run_file=os.path.join(td, "covered-this-run.json"),
+                covered_entities_file=os.path.join(td, "covered-entities.json"),
             )
             _write_json(td, "uncleared.json", [
                 {"name": "accept_new", "section": "monitoring"},
@@ -387,8 +387,8 @@ class TestDismiss:
             dismissed = _read_json(sess["dismissed_this_run_file"])
             assert len(dismissed) == 0
 
-            # Recorded in covered-this-run
-            covered = _read_json(sess["covered_this_run_file"])
+            # Recorded in covered-entities
+            covered = _read_json(sess["covered_entities_file"])
             assert len(covered) == 1
             assert covered[0]["covered_by"] == "ResolutionAction"
 
@@ -421,7 +421,7 @@ class TestDismiss:
                 "--covered-by", "ResolutionAction",
             ])
             assert result.returncode == 0
-            assert "PROTECTED: accept_new" in result.stderr
+            assert "Cannot dismiss accept_new" in result.stderr
             assert "--covered-by failed" in result.stderr
 
             uncleared = _read_json(sess["uncleared_file"])

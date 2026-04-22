@@ -49,8 +49,10 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
              --covered-by "{ref_identifier}"
          ```
          The script validates that `{ref_identifier}` exists in the section's declared refs.
-         If valid, the entity is removed from uncleared even if protected. If invalid, the
-         dismiss is refused — check the identifier and retry.
+         If valid, the entity is recorded in the persistent covered-entities file and
+         **automatically cleared on all future audits** unless the `{ref_identifier}` ref
+         is removed from the section. If invalid, the dismiss is refused — check the
+         identifier and retry.
 
          Examples of covered entities:
          - `accept_new` covered by `ResolutionAction` (enum value of that class)
