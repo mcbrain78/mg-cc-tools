@@ -416,43 +416,60 @@ def check_flow_ref(ref, cache):
 
 
 def check_env_ref(ref, cache):
-    """Check an env ref against Settings classes and .env files."""
+    """Check an env ref against .env* files, project config/source files, and Settings classes."""
     env_name = ref.get("name", "")
+    if not env_name:
+        return None
 
-    # Check .env.example and .env files
-    for env_file in [".env.example", ".env", ".env.template"]:
-        abs_path = os.path.join(cache.project_root, env_file)
-        if os.path.isfile(abs_path):
-            try:
-                with open(abs_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        stripped = line.strip()
-                        if stripped.startswith("#"):
-                            continue
-                        if "=" in stripped:
-                            key = stripped.split("=", 1)[0].strip()
-                            if key == env_name:
-                                return None
-            except OSError:
-                pass
+    # Layer A: strict KEY=VALUE parse across all .env* files
+    # (.env, .env.example, .env.template, .env.prefect, .env.production, .envrc, ...).
+    # Comment-prefixed lines do NOT count as declarations.
+    for rel_path in cache.walk_project_files():
+        if not os.path.basename(rel_path).startswith(".env"):
+            continue
+        src = cache._read_source(rel_path)
+        if not src:
+            continue
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "=" in stripped:
+                key = stripped.split("=", 1)[0].strip()
+                if key == env_name:
+                    return None
 
-    # Check Python source for Settings/Config classes with the attribute
+    # Layer B: word-bounded grep across non-.env* project files
+    # (systemd units, shell scripts, yaml, toml, ini, json, python, ...).
+    # Exclusions: .env* files (handled by Layer A's strict parser),
+    # and files under cache.docs_dir (generated docs would self-reference).
+    pattern = re.compile(rf"\b{re.escape(env_name)}\b")
+    for rel_path in cache.walk_project_files():
+        if os.path.basename(rel_path).startswith(".env"):
+            continue
+        if cache.docs_dir and (
+            rel_path == cache.docs_dir
+            or rel_path.startswith(cache.docs_dir + "/")
+        ):
+            continue
+        src = cache._read_source(rel_path)
+        if src and pattern.search(src):
+            return None
+
+    # Layer C: Settings/Config class attributes (pydantic-settings, dataclasses).
+    # Env vars may be uppercase in docs but lowercase attribute.
     for py_path in cache.walk_py_files():
         symbols = cache.get_symbols(py_path)
         for sym_name in symbols:
             if "settings" in sym_name.lower() or "config" in sym_name.lower():
                 attrs = cache.get_class_attrs(py_path, sym_name)
-                # Env vars may be uppercase in docs but lowercase attribute
                 if env_name in attrs or env_name.lower() in attrs:
                     return None
 
-    # Also check os.environ.get / os.getenv patterns (loose — just grep source)
-    for py_path in cache.walk_py_files():
-        src = cache._read_source(py_path)
-        if src and env_name in src:
-            return None
-
-    return f"Environment variable `{env_name}` not found in .env files or source code"
+    return (
+        f"Environment variable `{env_name}` not found in .env files, "
+        f"systemd units, shell/yaml/toml configs, or Python source"
+    )
 
 
 def check_config_ref(ref, cache):

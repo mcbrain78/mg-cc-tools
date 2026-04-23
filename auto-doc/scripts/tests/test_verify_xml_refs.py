@@ -405,6 +405,100 @@ class TestEnvRefs:
             assert len(findings) == 1
             assert "TOTALLY_NONEXISTENT_VAR" in findings[0]["description"]
 
+    def test_valid_env_from_dotenv_variant(self):
+        """Layer A widens to arbitrary .env* filenames (e.g. .env.prefect)."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            with open(os.path.join(project_root, ".env.prefect"), "w") as f:
+                f.write("PREFECT_API_KEY=xyz\n")
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "env", "name": "PREFECT_API_KEY"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_valid_env_from_systemd_unit(self):
+        """Layer B covers systemd unit files with Environment= directives."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            systemd_dir = os.path.join(project_root, "systemd")
+            os.makedirs(systemd_dir)
+            with open(os.path.join(systemd_dir, "worker.service"), "w") as f:
+                f.write(
+                    "[Service]\n"
+                    "Environment=PREFECT_WORKER_QUERY_SECONDS=5\n"
+                    "ExecStart=/usr/bin/prefect worker start\n"
+                )
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "env", "name": "PREFECT_WORKER_QUERY_SECONDS"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_valid_env_from_shell_export(self):
+        """Layer B covers shell scripts with `export KEY=val`."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            scripts_dir = os.path.join(project_root, "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "setup.sh"), "w") as f:
+                f.write("#!/bin/bash\nexport API_TOKEN=xyz\n")
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "env", "name": "API_TOKEN"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 0
+
+    def test_missing_env_when_only_in_dotenv_comment(self):
+        """Layer A's comment strictness + Layer B's .env* exclusion combined:
+        a commented `# KEY=...` in .env.example must NOT count as declared."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            with open(os.path.join(project_root, ".env.example"), "a") as f:
+                f.write("# COMMENTED_ONLY_VAR=xyz\n")
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "env", "name": "COMMENTED_ONLY_VAR"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "COMMENTED_ONLY_VAR" in findings[0]["description"]
+
+    def test_word_boundary_rejects_substring_match(self):
+        """Layer B uses word-bounded regex: a ref to `DB_URL` must NOT pass
+        when source only contains `MYDB_URLS`. Prior substring match would
+        have spuriously passed; this test guards against regression."""
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            src_dir = os.path.join(project_root, "src", "app")
+            with open(os.path.join(src_dir, "extras.py"), "w") as f:
+                f.write("MYDB_URLS = []\n")
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "env", "name": "DB_URL"}],
+            )])
+
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert len(findings) == 1
+            assert "DB_URL" in findings[0]["description"]
+
 
 class TestConfigRefs:
     """Config file path verification against filesystem."""
