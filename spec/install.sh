@@ -168,25 +168,28 @@ done
 echo "  References → ${REFS_DIR}/"
 
 # ── Resolve placeholders ─────────────────────────────────────────────────────
+#
+# In --project mode, emit relative paths so the installed commands work in any
+# clone of the target project. In --global/--target mode the tool files live at
+# a fixed absolute location, so absolute paths are baked in.
 
-SNAPSHOT_ABSOLUTE="${REFS_DIR}/context-template.snapshot"
-TEMPLATE_ABSOLUTE="${REFS_DIR}/concept-spec-template.md"
-
-SCRIPTS_ABSOLUTE="${SCRIPTS_DIR}"
+if [[ "$MODE" == "project" ]]; then
+  SNAPSHOT_PATH=".claude/spec/references/context-template.snapshot"
+  TEMPLATE_PATH=".claude/spec/references/concept-spec-template.md"
+  SCRIPTS_PATH=".claude/spec/scripts"
+else
+  SNAPSHOT_PATH="${REFS_DIR}/context-template.snapshot"
+  TEMPLATE_PATH="${REFS_DIR}/concept-spec-template.md"
+  SCRIPTS_PATH="${SCRIPTS_DIR}"
+fi
 
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
   [[ -f "$cmd_file" ]] || continue
 
-  if grep -q '{MG_INSTALL_TEMPLATE_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_TEMPLATE_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
-  fi
-  if grep -q '{MG_INSTALL_CONCEPT_TEMPLATE}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_CONCEPT_TEMPLATE}|${TEMPLATE_ABSOLUTE}|g" "$cmd_file"
-  fi
-  if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
-  fi
+  sed -i "s|{MG_INSTALL_TEMPLATE_SNAPSHOT}|${SNAPSHOT_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_CONCEPT_TEMPLATE}|${TEMPLATE_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
 done
 echo "  Placeholders resolved"
 

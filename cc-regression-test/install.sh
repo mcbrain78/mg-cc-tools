@@ -135,16 +135,28 @@ echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
 echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
 
 # ── Resolve paths ────────────────────────────────────────────────────────────
+#
+# In --project mode, emit relative paths for the installed hooks/scripts so the
+# regression test is portable across clones.
+# {MG_INSTALL_SOURCE_DIR} intentionally stays absolute even in project mode: it
+# points to the mg-cc-tools source tree (outside .claude/) and is only read by
+# the regression test's dev-only sync-check against the source repo. The sync
+# check is not portable by design.
 
-HOOKS_ABSOLUTE="${SUPPORT_DIR}/hooks"
-SCRIPTS_ABSOLUTE="${SUPPORT_DIR}/scripts"
+if [[ "$MODE" == "project" ]]; then
+  HOOKS_PATH=".claude/cc-regression-test/hooks"
+  SCRIPTS_PATH=".claude/cc-regression-test/scripts"
+else
+  HOOKS_PATH="${SUPPORT_DIR}/hooks"
+  SCRIPTS_PATH="${SUPPORT_DIR}/scripts"
+fi
 SOURCE_ABSOLUTE="${SCRIPT_DIR}"
 
 echo "  Resolving placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  sed -i "s|{MG_INSTALL_HOOKS_DIR}|${HOOKS_ABSOLUTE}|g" "$cmd_file"
-  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_HOOKS_DIR}|${HOOKS_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_SOURCE_DIR}|${SOURCE_ABSOLUTE}|g" "$cmd_file"
 done
 

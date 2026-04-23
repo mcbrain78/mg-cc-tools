@@ -241,14 +241,16 @@ If exit code != 0: STOP.
 **copy_configure pattern** (has install.sh + post-install):
 1. Run `install_cmd` from the plan entry. If exit code != 0: STOP.
 2. Read the post-install file: `cat ./<tool>/<post_install>`
-3. Spawn Agent with prompt: `"Target project: $TARGET_PATH\nSource directory: ./\n\n<post-install.md contents>"`
+3. Spawn Agent with prompt: `"Target project: $TARGET_PATH\nSource directory: ./\nInstall mode: project\n\n<post-install.md contents>"`
+
+   (The orchestrator always uses `--project` mode — see `get-install-plan` in mg-install-lib.py. Post-install scripts that emit paths into settings.json branch on `Install mode:` to choose relative vs absolute forms. Users who need `--global` or `--target <path>` installs should run each tool's install.sh directly.)
 4. Check Agent output for markers:
    - Contains "POST-INSTALL: SUCCESS" -- continue
    - Contains "POST-INSTALL: FAILED:" -- STOP. Show reason + full Agent output.
    - Neither marker -- STOP. Show "no status marker" + full output.
 
 **execute_only pattern** (no install.sh, only post-install):
-1. Read and spawn Agent (same as copy_configure steps 2-4).
+1. Read and spawn Agent (same as copy_configure steps 2-4; prompt still includes `Install mode: project`).
 2. If successful, update manifest:
    ```bash
    python3 "$MG_INSTALL_LIB" update-manifest --target "$TARGET_PATH" --tool "<tool>" --source "./<tool>"

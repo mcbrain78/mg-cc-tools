@@ -167,44 +167,51 @@ CONFIGEOF
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 #
-# Replace relative placeholders with absolute paths so the LLM can find them
-# at runtime without knowing the command file's directory.
+# In --project mode, emit relative paths so the installed commands work in any
+# clone of the target project. In --global/--target mode, bake absolute paths.
 
-SCHEMA_ABSOLUTE="${SUPPORT_DIR}/references/schema.md"
-CONFIG_ABSOLUTE="${SUPPORT_DIR}/references/.health-scan.config.json"
-AGENTS_ABSOLUTE="${SUPPORT_DIR}/agents"
-SCRIPTS_ABSOLUTE="${SUPPORT_DIR}/scripts"
+if [[ "$MODE" == "project" ]]; then
+  SCHEMA_PATH=".claude/codebase-health/references/schema.md"
+  CONFIG_PATH=".claude/codebase-health/references/.health-scan.config.json"
+  AGENTS_PATH=".claude/codebase-health/agents"
+  SCRIPTS_PATH=".claude/codebase-health/scripts"
+else
+  SCHEMA_PATH="${SUPPORT_DIR}/references/schema.md"
+  CONFIG_PATH="${SUPPORT_DIR}/references/.health-scan.config.json"
+  AGENTS_PATH="${SUPPORT_DIR}/agents"
+  SCRIPTS_PATH="${SUPPORT_DIR}/scripts"
+fi
 
 echo "  Resolving paths in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
   # Resolve schema reference (all three commands)
   if grep -q 'references/schema.md' "$cmd_file" 2>/dev/null; then
-    sed -i "s|references/schema.md|${SCHEMA_ABSOLUTE}|g" "$cmd_file"
+    sed -i "s|references/schema.md|${SCHEMA_PATH}|g" "$cmd_file"
   fi
   # Resolve global config reference (scan, verify, implement)
   if grep -q '{MG_INSTALL_GLOBAL_CONFIG}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_GLOBAL_CONFIG}|${CONFIG_ABSOLUTE}|g" "$cmd_file"
+    sed -i "s|{MG_INSTALL_GLOBAL_CONFIG}|${CONFIG_PATH}|g" "$cmd_file"
   fi
 done
 
 # Resolve agent references in the scanner (all agents/ paths)
 SCAN_FILE="${COMMANDS_DIR}/codebase-health-scan.md"
 if grep -q 'agents/' "$SCAN_FILE" 2>/dev/null; then
-  sed -i "s|agents/|${AGENTS_ABSOLUTE}/|g" "$SCAN_FILE"
+  sed -i "s|agents/|${AGENTS_PATH}/|g" "$SCAN_FILE"
 fi
 
 # Resolve agent references in the implementor (agents/implementor.md only)
 IMPL_FILE="${COMMANDS_DIR}/codebase-health-implement.md"
 if grep -q 'agents/implementor.md' "$IMPL_FILE" 2>/dev/null; then
-  sed -i "s|agents/implementor.md|${AGENTS_ABSOLUTE}/implementor.md|g" "$IMPL_FILE"
+  sed -i "s|agents/implementor.md|${AGENTS_PATH}/implementor.md|g" "$IMPL_FILE"
 fi
 
 # Resolve {MG_INSTALL_SCRIPTS_DIR} placeholder in agent files
 echo "  Resolving {MG_INSTALL_SCRIPTS_DIR} in agent files ..."
 for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$agent_file"
+    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$agent_file"
   fi
 done
 
@@ -213,7 +220,7 @@ echo "  Resolving {MG_INSTALL_SCRIPTS_DIR} in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
   if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
+    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
   fi
 done
 

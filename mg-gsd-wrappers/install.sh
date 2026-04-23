@@ -148,17 +148,27 @@ if [[ -f "$STALE_SNAPSHOT" ]]; then
 fi
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
+#
+# In --project mode, emit relative paths. In --global/--target, bake absolute paths.
+
+if [[ "$MODE" == "project" ]]; then
+  SNAPSHOT_PATH=".claude/mg-gsd-wrappers/references/discuss-methodology.snapshot.md"
+  GENERATOR_PATH=".claude/mg-gsd-wrappers/references/requirement-generator.md"
+else
+  SNAPSHOT_PATH="${SNAPSHOT_ABSOLUTE}"
+  GENERATOR_PATH="${GENERATOR_ABSOLUTE}"
+fi
 
 echo "  Resolving {MG_INSTALL_METHODOLOGY_SNAPSHOT} in discuss-milestone.md ..."
 cmd_file="${COMMANDS_DIR}/discuss-milestone.md"
 if grep -q '{MG_INSTALL_METHODOLOGY_SNAPSHOT}' "$cmd_file" 2>/dev/null; then
-  sed -i "s|{MG_INSTALL_METHODOLOGY_SNAPSHOT}|${SNAPSHOT_ABSOLUTE}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_METHODOLOGY_SNAPSHOT}|${SNAPSHOT_PATH}|g" "$cmd_file"
 fi
 
 echo "  Resolving {MG_INSTALL_GENERATOR_PROMPT} in plan-phase.md ..."
 cmd_file="${COMMANDS_DIR}/plan-phase.md"
 if grep -q '{MG_INSTALL_GENERATOR_PROMPT}' "$cmd_file" 2>/dev/null; then
-  sed -i "s|{MG_INSTALL_GENERATOR_PROMPT}|${GENERATOR_ABSOLUTE}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_GENERATOR_PROMPT}|${GENERATOR_PATH}|g" "$cmd_file"
 fi
 
 # ── Copy patch to gsd-patches source ────────────────────────────────────────

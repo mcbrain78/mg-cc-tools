@@ -157,16 +157,22 @@ chmod +x "${SUPPORT_DIR}/hooks/inject-transcript-path.py"
 
 # ── Resolve paths ─────────────────────────────────────────────────────────
 #
-# Replace {MG_INSTALL_SCRIPTS_DIR} placeholder with absolute path so the LLM can find
-# the Python scripts at runtime.
+# In --project mode, emit relative paths so the LLM can find the Python scripts
+# at runtime regardless of clone location (CC runs its Bash tool with cwd set to
+# the project root). In --global/--target mode the scripts live at a fixed
+# absolute location while CC's cwd is a different project, so we bake absolute paths.
 
-SCRIPTS_ABSOLUTE="${SUPPORT_DIR}"
+if [[ "$MODE" == "project" ]]; then
+  SCRIPTS_PATH=".claude/transcript"
+else
+  SCRIPTS_PATH="${SUPPORT_DIR}"
+fi
 
 echo "  Resolving {MG_INSTALL_SCRIPTS_DIR} in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
   if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file"
+    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
   fi
 done
 

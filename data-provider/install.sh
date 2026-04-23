@@ -152,22 +152,29 @@ cp "${SCRIPT_DIR}/DESIGN.md" "${SUPPORT_DIR}/DESIGN.md"
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 #
-# Replace {MG_INSTALL_SCRIPTS_DIR} placeholder with absolute path so the LLM can find
-# the Python scripts at runtime.
+# In --project mode, emit relative paths. In --global/--target, bake absolute paths.
 
 SCRIPTS_ABSOLUTE="${SUPPORT_DIR}/scripts"
 REFERENCES_ABSOLUTE="${SUPPORT_DIR}/references"
 
+if [[ "$MODE" == "project" ]]; then
+  SCRIPTS_PATH=".claude/data-provider/scripts"
+  REFERENCES_PATH=".claude/data-provider/references"
+else
+  SCRIPTS_PATH="${SCRIPTS_ABSOLUTE}"
+  REFERENCES_PATH="${REFERENCES_ABSOLUTE}"
+fi
+
 echo "  Resolving placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
   cmd_file="${COMMANDS_DIR}/${cmd}.md"
-  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$cmd_file" 2>/dev/null || true
-  sed -i "s|{MG_INSTALL_REFERENCES_DIR}|${REFERENCES_ABSOLUTE}|g" "$cmd_file" 2>/dev/null || true
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file" 2>/dev/null || true
+  sed -i "s|{MG_INSTALL_REFERENCES_DIR}|${REFERENCES_PATH}|g" "$cmd_file" 2>/dev/null || true
 done
 
 echo "  Resolving placeholders in reference files ..."
 for ref_file in "${REFERENCES_ABSOLUTE}"/*.md; do
-  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABSOLUTE}|g" "$ref_file" 2>/dev/null || true
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$ref_file" 2>/dev/null || true
 done
 
 # ── Scaffold project work directory ──────────────────────────────────────────

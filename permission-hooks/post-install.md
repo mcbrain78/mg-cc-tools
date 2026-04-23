@@ -7,11 +7,15 @@ sync checking with user prompts, and smoke testing -- tasks that cannot be done 
 </objective>
 
 <context>
-The target project path and source directory path are provided at the top of this prompt.
+The target project path, source directory path, and install mode are provided at the top of this prompt.
 Use "the target project" and "the source directory" to reference these paths throughout.
 
 - Target project: The project where the tool is being installed
 - Source directory: The mg-cc-tools repository root
+- Install mode: `project` (default when invoked via the install.md orchestrator),
+  `global`, or `target`. In `project` mode, paths emitted into settings.json and
+  the hook file's PROJECT_ROOT are kept portable (relative / unresolved
+  placeholder). In `global`/`target` mode, absolute paths are baked in.
 </context>
 
 <process>
@@ -24,6 +28,8 @@ Set derived variables:
 - `TARGET_CLAUDE` = `<target project>/.claude`
 - `TARGET_HOOKS_DIR` = `<TARGET_CLAUDE>/permission-hooks/hooks`
 - `TARGET_SETTINGS` = `<TARGET_CLAUDE>/settings.json`
+- `INSTALL_MODE` = value of the `Install mode:` line from the top of the prompt
+  (default to `project` if not present)
 
 Validate that the target project directory exists:
 ```bash
@@ -51,10 +57,12 @@ cp "<source directory>/permission-hooks/hooks/permission-guard.py" "<TARGET_HOOK
 chmod +x "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
-2. Resolve the `{MG_INSTALL_PROJECT_ROOT}` placeholder -- replace with the absolute path to the target project:
-```bash
-sed -i "s|{MG_INSTALL_PROJECT_ROOT}|<target project>|g" "<TARGET_HOOKS_DIR>/permission-guard.py"
-```
+2. Resolve the `{MG_INSTALL_PROJECT_ROOT}` placeholder:
+   - **If `INSTALL_MODE == project`:** leave the placeholder in place. At runtime the hook's `_resolve_project_root()` helper detects the `{` prefix and falls back to `event.cwd`, so the hook works in any clone of the project.
+   - **Otherwise (global/target):** replace with the absolute path to the target project:
+     ```bash
+     sed -i "s|{MG_INSTALL_PROJECT_ROOT}|<target project>|g" "<TARGET_HOOKS_DIR>/permission-guard.py"
+     ```
 
 Log: `Installed permission-guard.py to <TARGET_HOOKS_DIR>/`
 
@@ -72,21 +80,24 @@ echo "source:    $SOURCE_MD5"
 
 **If identical:** Log `Hook file in sync.` Then check if PROJECT_ROOT needs resolving (see below). Then proceed to Step 3.
 
-**After sync check (both identical and synced cases):** Verify PROJECT_ROOT is resolved in the installed file:
+**After sync check (both identical and synced cases):** Verify PROJECT_ROOT state in the installed file:
 
 ```bash
 grep '^PROJECT_ROOT = ' "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
-If the value is empty (`PROJECT_ROOT = ""` or `PROJECT_ROOT = ''`) or still a placeholder (`{MG_INSTALL_PROJECT_ROOT}`), resolve it:
+- **If `INSTALL_MODE == project`:** the expected state is the unresolved placeholder `PROJECT_ROOT = "{MG_INSTALL_PROJECT_ROOT}"`. Do NOT resolve it — the runtime fallback handles it. If the value is currently an absolute path (e.g. from a prior non-project install), revert it:
+  ```bash
+  sed -i 's|^PROJECT_ROOT = .*|PROJECT_ROOT = "{MG_INSTALL_PROJECT_ROOT}"|' "<TARGET_HOOKS_DIR>/permission-guard.py"
+  ```
+  Log: `PROJECT_ROOT kept as placeholder (project mode — resolves to event.cwd at runtime)`
 
-```bash
-sed -i "s|^PROJECT_ROOT = .*|PROJECT_ROOT = \"<target project>\"|" "<TARGET_HOOKS_DIR>/permission-guard.py"
-```
-
-Log: `Resolved PROJECT_ROOT to <target project>`
-
-If already resolved to a non-empty path, no action needed.
+- **Otherwise (global/target):** if the value is empty or still the placeholder, resolve it to the absolute target path:
+  ```bash
+  sed -i "s|^PROJECT_ROOT = .*|PROJECT_ROOT = \"<target project>\"|" "<TARGET_HOOKS_DIR>/permission-guard.py"
+  ```
+  Log: `Resolved PROJECT_ROOT to <target project>`
+  If already resolved to a non-empty path, no action needed.
 
 **If different:** Ask via AskUserQuestion:
 - header: "Sync"
@@ -116,14 +127,20 @@ Check if the PreToolUse hook entries for permission-guard.py exist in the target
 
 The hook needs 4 matchers: `Bash`, `Read`, `Edit`, `Write`. The same Python script handles all tool types.
 
+In `project` mode, emit a relative hook command (`python3 .claude/permission-hooks/hooks/permission-guard.py`) so the entry is portable across clones. In `global`/`target` mode, emit an absolute path rooted at the installed `hooks_dir` (the existing behavior). Set `INSTALL_MODE` below to the value threaded through from the orchestrator.
+
 ```bash
 python3 -c "
 import json, os, sys
 
 hooks_dir = '<TARGET_HOOKS_DIR>'
 settings_path = '<TARGET_SETTINGS>'
+install_mode = '<INSTALL_MODE>'  # 'project' | 'global' | 'target'
 
-hook_cmd = 'python3 ' + os.path.join(hooks_dir, 'permission-guard.py')
+if install_mode == 'project':
+    hook_cmd = 'python3 .claude/permission-hooks/hooks/permission-guard.py'
+else:
+    hook_cmd = 'python3 ' + os.path.join(hooks_dir, 'permission-guard.py')
 
 try:
     with open(settings_path) as f:

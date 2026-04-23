@@ -250,16 +250,33 @@ chmod +x "${SUPPORT_DIR}/scripts/"*.py
 
 # -- Resolve paths -------------------------------------------------------------
 #
-# Replace relative placeholders with absolute paths so the LLM can find them
-# at runtime without knowing the command file's directory.
+# In --project mode, emit relative paths so the LLM can find resources at
+# runtime regardless of clone location (CC runs its Bash tool with cwd = project
+# root). In --global/--target mode the files live at a fixed absolute location
+# while CC's cwd is a different project, so we bake absolute paths.
+# The workspace dir (.mg/docs) is always project-relative — outside .claude/ —
+# and is project-root-relative in both modes (the only difference is that in
+# project mode the "project root" is wherever the user runs CC from).
 
-CONFIG_ABS="${SUPPORT_DIR}/references/.docs.config.json"
-AGENTS_ABS="${SUPPORT_DIR}/agents"
-SCRIPTS_ABS="${SUPPORT_DIR}/scripts"
-TEMPLATES_ABS="${SUPPORT_DIR}/references/templates"
-CHECKS_ABS="${SUPPORT_DIR}/references/verify-checks.json"
-WORKSPACE_ABS="${PROJECT_ROOT}/.mg/docs"
-EMIT_CONTEXT_ABS="${TARGET_DIR}/permission-hooks/scripts/emit-context.py"
+if [[ "$MODE" == "project" ]]; then
+  CONFIG_PATH=".claude/auto-doc/references/.docs.config.json"
+  AGENTS_PATH=".claude/auto-doc/agents"
+  SCRIPTS_PATH=".claude/auto-doc/scripts"
+  TEMPLATES_PATH=".claude/auto-doc/references/templates"
+  CHECKS_PATH=".claude/auto-doc/references/verify-checks.json"
+  WORKSPACE_PATH=".mg/docs"
+  EMIT_CONTEXT_PATH=".claude/permission-hooks/scripts/emit-context.py"
+  REFS_BASE=".claude/auto-doc"
+else
+  CONFIG_PATH="${SUPPORT_DIR}/references/.docs.config.json"
+  AGENTS_PATH="${SUPPORT_DIR}/agents"
+  SCRIPTS_PATH="${SUPPORT_DIR}/scripts"
+  TEMPLATES_PATH="${SUPPORT_DIR}/references/templates"
+  CHECKS_PATH="${SUPPORT_DIR}/references/verify-checks.json"
+  WORKSPACE_PATH="${PROJECT_ROOT}/.mg/docs"
+  EMIT_CONTEXT_PATH="${TARGET_DIR}/permission-hooks/scripts/emit-context.py"
+  REFS_BASE="${SUPPORT_DIR}"
+fi
 
 echo "  Resolving path placeholders in command files ..."
 for cmd in "${COMMANDS[@]}"; do
@@ -267,72 +284,37 @@ for cmd in "${COMMANDS[@]}"; do
   if [[ ! -f "$cmd_file" ]]; then
     continue
   fi
-  # Auto-resolve all references/<file> paths to absolute
+  # Auto-resolve all references/<file> paths
   for ref_match in $(grep -oP 'references/[a-zA-Z0-9._-]*\.(md|yaml|json)' "$cmd_file" 2>/dev/null | sort -u); do
     if [[ -f "${SUPPORT_DIR}/${ref_match}" ]]; then
-      sed -i "s|${ref_match}|${SUPPORT_DIR}/${ref_match}|g" "$cmd_file"
+      sed -i "s|${ref_match}|${REFS_BASE}/${ref_match}|g" "$cmd_file"
     fi
   done
-  # Resolve global config placeholder
-  if grep -q '{MG_INSTALL_GLOBAL_CONFIG}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_GLOBAL_CONFIG}|${CONFIG_ABS}|g" "$cmd_file"
-  fi
-  # Resolve scripts dir placeholder
-  if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABS}|g" "$cmd_file"
-  fi
-  # Resolve templates dir placeholder
-  if grep -q '{MG_INSTALL_TEMPLATES_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_TEMPLATES_DIR}|${TEMPLATES_ABS}|g" "$cmd_file"
-  fi
-  # Resolve tmp dir placeholder
-  if grep -q '{MG_INSTALL_WORKSPACE_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_WORKSPACE_DIR}|${WORKSPACE_ABS}|g" "$cmd_file"
-  fi
-  # Resolve agents dir placeholder
-  if grep -q '{MG_INSTALL_AGENTS_DIR}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_AGENTS_DIR}|${AGENTS_ABS}|g" "$cmd_file"
-  fi
-  # Resolve checks file placeholder
-  if grep -q '{MG_INSTALL_CHECKS_FILE}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_CHECKS_FILE}|${CHECKS_ABS}|g" "$cmd_file"
-  fi
-  # Resolve emit-context script placeholder (permission-hooks cross-ref)
-  if grep -q '{MG_INSTALL_EMIT_CONTEXT_SCRIPT}' "$cmd_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_ABS}|g" "$cmd_file"
-  fi
+  sed -i "s|{MG_INSTALL_GLOBAL_CONFIG}|${CONFIG_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_TEMPLATES_DIR}|${TEMPLATES_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_WORKSPACE_DIR}|${WORKSPACE_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_AGENTS_DIR}|${AGENTS_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_CHECKS_FILE}|${CHECKS_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_PATH}|g" "$cmd_file"
 done
 
-# Resolve placeholders in agent files (Phase 2 adds agents)
 echo "  Resolving path placeholders in agent files ..."
 for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   if [[ ! -f "$agent_file" ]]; then
     continue
   fi
-  # Auto-resolve all references/<file> paths to absolute
   for ref_match in $(grep -oP 'references/[a-zA-Z0-9._-]*\.(md|yaml|json)' "$agent_file" 2>/dev/null | sort -u); do
     if [[ -f "${SUPPORT_DIR}/${ref_match}" ]]; then
-      sed -i "s|${ref_match}|${SUPPORT_DIR}/${ref_match}|g" "$agent_file"
+      sed -i "s|${ref_match}|${REFS_BASE}/${ref_match}|g" "$agent_file"
     fi
   done
-  if grep -q '{MG_INSTALL_GLOBAL_CONFIG}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_GLOBAL_CONFIG}|${CONFIG_ABS}|g" "$agent_file"
-  fi
-  if grep -q '{MG_INSTALL_SCRIPTS_DIR}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_ABS}|g" "$agent_file"
-  fi
-  if grep -q '{MG_INSTALL_TEMPLATES_DIR}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_TEMPLATES_DIR}|${TEMPLATES_ABS}|g" "$agent_file"
-  fi
-  if grep -q '{MG_INSTALL_WORKSPACE_DIR}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_WORKSPACE_DIR}|${WORKSPACE_ABS}|g" "$agent_file"
-  fi
-  if grep -q '{MG_INSTALL_CHECKS_FILE}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_CHECKS_FILE}|${CHECKS_ABS}|g" "$agent_file"
-  fi
-  if grep -q '{MG_INSTALL_AGENTS_DIR}' "$agent_file" 2>/dev/null; then
-    sed -i "s|{MG_INSTALL_AGENTS_DIR}|${AGENTS_ABS}|g" "$agent_file"
-  fi
+  sed -i "s|{MG_INSTALL_GLOBAL_CONFIG}|${CONFIG_PATH}|g" "$agent_file"
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$agent_file"
+  sed -i "s|{MG_INSTALL_TEMPLATES_DIR}|${TEMPLATES_PATH}|g" "$agent_file"
+  sed -i "s|{MG_INSTALL_WORKSPACE_DIR}|${WORKSPACE_PATH}|g" "$agent_file"
+  sed -i "s|{MG_INSTALL_CHECKS_FILE}|${CHECKS_PATH}|g" "$agent_file"
+  sed -i "s|{MG_INSTALL_AGENTS_DIR}|${AGENTS_PATH}|g" "$agent_file"
 done
 
 # -- Scaffold project workspace ------------------------------------------------

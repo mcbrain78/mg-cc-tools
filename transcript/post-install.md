@@ -8,11 +8,11 @@ this step handles JSON merging into settings.json.
 </objective>
 
 <context>
-The target project path and source directory path are provided at the top of this prompt.
-Use "the target project" and "the source directory" to reference these paths throughout.
+The target project path, source directory path, and install mode are provided at the top of this prompt.
 
 - Target project: The project where the tool is being installed
 - Source directory: The mg-cc-tools repository root
+- Install mode: `project` (default), `global`, or `target`. In `project` mode the hook command emitted into settings.json uses a relative path so the entry is portable across clones. In `global`/`target` mode an absolute path is baked in.
 </context>
 
 <process>
@@ -23,6 +23,7 @@ Set derived variables:
 - `TARGET_CLAUDE` = `<target project>/.claude`
 - `TARGET_HOOK` = `<TARGET_CLAUDE>/transcript/hooks/inject-transcript-path.py`
 - `TARGET_SETTINGS` = `<TARGET_CLAUDE>/settings.json`
+- `INSTALL_MODE` = value of the `Install mode:` line from the top of the prompt (default `project`)
 
 Validate the hook file was copied by install.sh:
 ```bash
@@ -48,8 +49,12 @@ import json, sys
 
 hook_path = '<TARGET_HOOK>'
 settings_path = '<TARGET_SETTINGS>'
+install_mode = '<INSTALL_MODE>'  # 'project' | 'global' | 'target'
 
-hook_cmd = 'python3 ' + hook_path
+if install_mode == 'project':
+    hook_cmd = 'python3 .claude/transcript/hooks/inject-transcript-path.py'
+else:
+    hook_cmd = 'python3 ' + hook_path
 
 try:
     with open(settings_path) as f:

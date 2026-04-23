@@ -138,24 +138,38 @@ cp "${SCRIPT_DIR}/commands/auto-approve.md" "${COMMANDS_DIR}/"
 echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md, auto-approve.md)"
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
+#
+# In --project mode, emit relative paths (CC runs hooks and bash with cwd = project
+# root, so .claude/... resolves correctly). In --global/--target modes the hook
+# file lives at a fixed absolute location (~/.claude/... or user-specified) while
+# CC's cwd is the user's active project — the two don't overlap — so we keep
+# absolute paths.
+# The {MG_INSTALL_PROJECT_ROOT} placeholder in permission-guard.py is left
+# unresolved in project mode; the _resolve_project_root() helper falls back to
+# event.cwd at runtime.
 
 echo "  Resolving placeholders ..."
 
-# Hook file: {MG_INSTALL_PROJECT_ROOT}
 hook_file="${SUPPORT_DIR}/hooks/permission-guard.py"
-sed -i "s|{MG_INSTALL_PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
+if [[ "$MODE" == "project" ]]; then
+  EMIT_EDIT_GUARD_PATH=".claude/permission-hooks/scripts/emit-edit-guard.py"
+  EMIT_CONTEXT_PATH=".claude/permission-hooks/scripts/emit-context.py"
+else
+  # Bake absolute paths for global/custom installs
+  sed -i "s|{MG_INSTALL_PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
+  EMIT_EDIT_GUARD_PATH="${SUPPORT_DIR}/scripts/emit-edit-guard.py"
+  EMIT_CONTEXT_PATH="${SUPPORT_DIR}/scripts/emit-context.py"
+fi
 
 # Command files: {MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}
-EMIT_EDIT_GUARD_ABS="${SUPPORT_DIR}/scripts/emit-edit-guard.py"
 for cmd_file in "${COMMANDS_DIR}/edit-on.md" "${COMMANDS_DIR}/edit-off.md"; do
   if [[ -f "$cmd_file" ]]; then
-    sed -i "s|{MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}|${EMIT_EDIT_GUARD_ABS}|g" "$cmd_file"
+    sed -i "s|{MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}|${EMIT_EDIT_GUARD_PATH}|g" "$cmd_file"
   fi
 done
 
 # Command file: {MG_INSTALL_EMIT_CONTEXT_SCRIPT}
-EMIT_CONTEXT_ABS="${SUPPORT_DIR}/scripts/emit-context.py"
-sed -i "s|{MG_INSTALL_EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_ABS}|g" "${COMMANDS_DIR}/auto-approve.md"
+sed -i "s|{MG_INSTALL_EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_PATH}|g" "${COMMANDS_DIR}/auto-approve.md"
 
 # ── Clean up stale files ───────────────────────────────────────────────────
 
@@ -189,7 +203,9 @@ echo "Done. Installed:"
 echo ""
 echo "  Hook:"
 echo "    ${SUPPORT_DIR}/hooks/permission-guard.py"
-if [[ -n "$PROJECT_ROOT" ]]; then
+if [[ "$MODE" == "project" ]]; then
+  echo "    PROJECT_ROOT: {MG_INSTALL_PROJECT_ROOT} placeholder (resolves to event.cwd at runtime)"
+elif [[ -n "$PROJECT_ROOT" ]]; then
   echo "    PROJECT_ROOT: ${PROJECT_ROOT}"
 else
   echo "    PROJECT_ROOT: (empty — falls back to cwd from hook event)"

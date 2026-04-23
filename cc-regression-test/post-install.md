@@ -8,11 +8,11 @@ done by simple file copies in install.sh.
 </objective>
 
 <context>
-The target project path and source directory path are provided at the top of this prompt.
-Use "the target project" and "the source directory" to reference these paths throughout.
+The target project path, source directory path, and install mode are provided at the top of this prompt.
 
 - Target project: The project where the tool is being installed
 - Source directory: The mg-cc-tools repository root
+- Install mode: `project` (default), `global`, or `target`. In `project` mode the hook command emitted into settings.json uses a relative path so the entry is portable across clones. In `global`/`target` mode an absolute path is baked in.
 </context>
 
 <process>
@@ -20,7 +20,10 @@ Use "the target project" and "the source directory" to reference these paths thr
 ## Step 1: Determine Paths
 
 Set these paths based on the target project:
-- Hook command: `python3 <target project>/.claude/cc-regression-test/hooks/intercept-trigger.py`
+- `INSTALL_MODE` = value of the `Install mode:` line (default `project`)
+- Hook command:
+  - In `project` mode: `python3 .claude/cc-regression-test/hooks/intercept-trigger.py`
+  - Otherwise: `python3 <target project>/.claude/cc-regression-test/hooks/intercept-trigger.py`
 - Settings file: `<target project>/.claude/settings.json`
 
 Validate that the hook file was installed by install.sh:
@@ -45,7 +48,11 @@ python3 -c "
 import json, os, sys
 
 settings_path = '<target project>/.claude/settings.json'
-hook_cmd = 'python3 <target project>/.claude/cc-regression-test/hooks/intercept-trigger.py'
+install_mode = '<INSTALL_MODE>'  # 'project' | 'global' | 'target'
+if install_mode == 'project':
+    hook_cmd = 'python3 .claude/cc-regression-test/hooks/intercept-trigger.py'
+else:
+    hook_cmd = 'python3 <target project>/.claude/cc-regression-test/hooks/intercept-trigger.py'
 
 # Read or create settings
 try:
