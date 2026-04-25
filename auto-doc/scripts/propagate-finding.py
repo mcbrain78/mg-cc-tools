@@ -64,7 +64,9 @@ def propagate(entity, section, findings_file, uncleared_file,
             f"Prose mentions `{entity}` which is not covered by any "
             f"declared ref (propagated from {section})",
             "--suggestion", suggestion,
-            "--entity", entity,
+            # --entity=VALUE form so values starting with "--" (e.g. pytest
+            # flags like --run-integration) survive subprocess argparse.
+            f"--entity={entity}",
         ]
         if wave is not None:
             cmd.extend(["--wave", str(wave)])

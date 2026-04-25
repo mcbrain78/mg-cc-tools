@@ -860,3 +860,81 @@ class TestAddVerifyFindingSuppression:
             with open(findings_file) as f:
                 data = json.load(f)
             assert len(data) == 1
+
+
+class TestAddVerifyFindingEntityPersistence:
+    """Inline --entity and file-mode entity field round-trip into the record."""
+
+    def _inline_args(self, **overrides):
+        f = _valid_finding()
+        f.update(overrides)
+        args = []
+        for key in ["document", "section", "audience", "check",
+                    "description", "suggestion"]:
+            args.extend([f"--{key}", f[key]])
+        return args
+
+    def test_inline_entity_persists_in_record(self):
+        """Inline --entity is written onto the appended finding."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 "--entity", "etl_runs",
+                 *self._inline_args(
+                     check="dangling-prose-reference",
+                     description="Prose mentions `etl_runs` without ref",
+                 )],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, result.stderr
+
+            with open(findings_file) as f:
+                data = json.load(f)
+            assert len(data) == 1
+            assert data[0]["entity"] == "etl_runs"
+
+    def test_file_mode_preserves_existing_entity(self):
+        """File-mode finding with entity pre-set keeps the field."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+            input_file = os.path.join(tmp, "input.json")
+
+            payload = _valid_finding()
+            payload["check"] = "dangling-prose-reference"
+            payload["entity"] = "FMPRateLimitError"
+            with open(input_file, "w") as f:
+                json.dump(payload, f)
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--input", input_file,
+                 "--findings-file", findings_file],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, result.stderr
+
+            with open(findings_file) as f:
+                data = json.load(f)
+            assert len(data) == 1
+            assert data[0]["entity"] == "FMPRateLimitError"
+
+    def test_no_entity_omits_field(self):
+        """Without --entity and no entity in input, field is not synthesized."""
+        with tempfile.TemporaryDirectory() as tmp:
+            findings_file = os.path.join(tmp, "findings.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT_PATH,
+                 "--findings-file", findings_file,
+                 *self._inline_args()],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, result.stderr
+
+            with open(findings_file) as f:
+                data = json.load(f)
+            assert len(data) == 1
+            assert "entity" not in data[0]

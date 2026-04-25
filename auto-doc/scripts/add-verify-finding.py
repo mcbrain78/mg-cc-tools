@@ -205,6 +205,14 @@ def main():
     if has_inline and args.wave is not None:
         input_data["wave"] = args.wave
 
+    # Persist entity on the record. In inline mode it comes from --entity; in
+    # file mode it may already be present in the input JSON. The field is
+    # required for suppress matching on subsequent audits and consumed by the
+    # downstream fix agent to look up the precise ref source.
+    entity_val = args.entity if has_inline else input_data.get("entity")
+    if entity_val:
+        input_data["entity"] = entity_val
+
     # Check suppress list before writing
     if args.suppress_file and os.path.isfile(args.suppress_file):
         entity = args.entity or input_data.get("entity")

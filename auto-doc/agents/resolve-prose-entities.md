@@ -39,6 +39,12 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
    d. **Entity resolution.** For each entity, decide using ONLY the section context.
       Apply these checks in order — stop at the first match:
 
+      **Note on entities starting with `--`.** When `{entity_name}` begins with
+      `--` (e.g., a pytest flag like `--run-integration`), use the equals form
+      so argparse does not interpret the value as a flag:
+      `--entity=--run-integration`. This applies to every command below that
+      takes `--entity` (`dismiss`, `file-finding`, `propagate`).
+
       1. **Ref covers it → dismiss with --covered-by.** Read `refs_as_text`. If a declared ref
          clearly covers this entity (same concept, parent type, or containing module/class),
          dismiss it naming the specific covering ref identifier:
@@ -130,24 +136,25 @@ You are a resolution agent. After wave 1 (extraction) and deterministic clearing
 
       **Commands per outcome:**
 
-      **Finding + propagate:**
+      **Finding + propagate (single combined call):**
       ```bash
       uv run {scripts_dir}/audit-cmd.py --session {session} file-finding \
           --section "{section_path}" \
           --check "dangling-prose-reference" \
           --description "Prose mentions `{entity_name}` which is not covered by any declared ref" \
           --suggestion "{suggestion}" \
-          --entity "{entity_name}"
+          --entity "{entity_name}" \
+          --propagate
       ```
       Where `{suggestion}` describes what type of ref it likely is (e.g., "Likely a database table", "Appears to be a config file", "Looks like a function name"). The fix agent will do its own codebase research to determine the precise ref.
 
-      **Immediately after filing**, propagate the finding to all other sections with the same entity:
-      ```bash
-      uv run {scripts_dir}/audit-cmd.py --session {session} propagate \
-          --entity "{entity_name}" \
-          --section "{section_path}" \
-          --suggestion "{suggestion}"
-      ```
+      The `--propagate` flag files the originating finding, then propagates an
+      identical finding to every other section in uncleared that mentions the
+      same entity, and removes all those entries from uncleared. Use it for
+      every `dangling-prose-reference` so the resolution is consistent across
+      the document. The standalone `propagate` subcommand still exists if you
+      ever need to propagate a finding that was already filed in a previous
+      step.
 
       **Dismiss:**
       ```bash

@@ -286,6 +286,121 @@ class TestPropagate:
             assert uncleared[0]["name"] == "PORT"
 
 
+class TestFileFindingPropagateFlag:
+    """file-finding --propagate chains file-finding into propagate."""
+
+    def test_files_originating_finding_and_propagates(self):
+        """One call files the originating finding AND propagates to siblings."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "uncleared.json", [
+                {"name": "prefect", "section": "monitoring"},
+                {"name": "prefect", "section": "deployment"},
+                {"name": "prefect", "section": "alerting"},
+                {"name": "PORT", "section": "deployment"},
+            ])
+            _write_json(td, "findings.json", [])
+
+            result = _run(session_path, "file-finding", [
+                "--section", "monitoring",
+                "--check", "dangling-prose-reference",
+                "--description", "Prose mentions `prefect` without ref",
+                "--suggestion", "Add ref: [dep] prefect",
+                "--entity", "prefect",
+                "--propagate",
+            ])
+            assert result.returncode == 0, result.stderr
+
+            findings = _read_json(sess["findings_file"])
+            # 1 originating + 2 propagated = 3
+            assert len(findings) == 3
+            sections = sorted(f["section"] for f in findings)
+            assert sections == ["alerting", "deployment", "monitoring"]
+            for f in findings:
+                assert f["entity"] == "prefect"
+                assert f["check"] == "dangling-prose-reference"
+
+            # Uncleared retains only PORT — all `prefect` entries removed
+            uncleared = _read_json(sess["uncleared_file"])
+            assert len(uncleared) == 1
+            assert uncleared[0]["name"] == "PORT"
+
+    def test_propagate_flag_requires_entity(self):
+        """--propagate without --entity exits non-zero before filing."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "findings.json", [])
+
+            result = _run(session_path, "file-finding", [
+                "--section", "monitoring",
+                "--check", "internal-contradiction",
+                "--description", "Contradiction",
+                "--suggestion", "Fix it",
+                "--propagate",
+            ])
+            assert result.returncode != 0
+            assert "--propagate requires --entity" in result.stderr
+
+            # Nothing was filed
+            findings = _read_json(sess["findings_file"])
+            assert len(findings) == 0
+
+    def test_propagate_skipped_when_filing_fails(self):
+        """If file-finding fails, propagate must not run."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "uncleared.json", [
+                {"name": "prefect", "section": "monitoring"},
+                {"name": "prefect", "section": "deployment"},
+            ])
+            _write_json(td, "findings.json", [])
+
+            # Invalid check value -> add-verify-finding.py rejects it
+            result = _run(session_path, "file-finding", [
+                "--section", "monitoring",
+                "--check", "not-a-real-check",
+                "--description", "x",
+                "--suggestion", "y",
+                "--entity", "prefect",
+                "--propagate",
+            ])
+            assert result.returncode != 0
+
+            findings = _read_json(sess["findings_file"])
+            assert len(findings) == 0
+            # Uncleared is untouched — propagate did not run
+            uncleared = _read_json(sess["uncleared_file"])
+            assert len(uncleared) == 2
+
+    def test_propagate_with_dash_dash_entity_via_equals(self):
+        """Entities starting with -- are accepted via --entity=value form."""
+        with tempfile.TemporaryDirectory() as td:
+            session_path, sess = _make_session(td)
+            _write_json(td, "uncleared.json", [
+                {"name": "--run-integration", "section": "monitoring"},
+                {"name": "--run-integration", "section": "deployment"},
+            ])
+            _write_json(td, "findings.json", [])
+
+            cmd = [
+                sys.executable, SCRIPT, "--session", session_path,
+                "file-finding",
+                "--section", "monitoring",
+                "--check", "dangling-prose-reference",
+                "--description", "Prose mentions `--run-integration` flag",
+                "--suggestion", "Add ref: [config] pytest.ini",
+                "--entity=--run-integration",
+                "--propagate",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            assert result.returncode == 0, result.stderr
+
+            findings = _read_json(sess["findings_file"])
+            assert len(findings) == 2
+            for f in findings:
+                assert f["entity"] == "--run-integration"
+
+
 class TestDismiss:
     """dismiss subcommand resolves session paths and passes args."""
 

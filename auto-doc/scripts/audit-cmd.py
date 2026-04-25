@@ -70,6 +70,13 @@ def cmd_file_finding(session, args):
         )
         return 1
 
+    if getattr(args, "propagate", False) and not getattr(args, "entity", None):
+        print(
+            "Error: --propagate requires --entity (the entity to propagate).",
+            file=sys.stderr,
+        )
+        return 1
+
     cmd_args = [
         "--findings-file", session["findings_file"],
         "--document", session["document"],
@@ -82,15 +89,21 @@ def cmd_file_finding(session, args):
     if session.get("wave") is not None:
         cmd_args.extend(["--wave", str(session["wave"])])
     if getattr(args, "entity", None):
-        cmd_args.extend(["--entity", args.entity])
+        # Use --entity=VALUE so argparse in the delegated script does not
+        # mistake values starting with "--" (e.g. pytest flags) for options.
+        cmd_args.append(f"--entity={args.entity}")
     if session.get("suppress_file"):
         cmd_args.extend(["--suppress-file", session["suppress_file"]])
-    return _delegate("add-verify-finding.py", cmd_args)
+    rc = _delegate("add-verify-finding.py", cmd_args)
+    if rc == 0 and getattr(args, "propagate", False):
+        return cmd_propagate(session, args)
+    return rc
 
 
 def cmd_propagate(session, args):
+    # --entity=VALUE form so values starting with "--" survive subprocess argparse.
     cmd_args = [
-        "--entity", args.entity,
+        f"--entity={args.entity}",
         "--section", args.section,
         "--findings-file", session["findings_file"],
         "--uncleared-file", session["uncleared_file"],
@@ -106,8 +119,9 @@ def cmd_propagate(session, args):
 
 
 def cmd_dismiss(session, args):
+    # --entity=VALUE form so values starting with "--" survive subprocess argparse.
     cmd_args = [
-        "--entity", args.entity,
+        f"--entity={args.entity}",
         "--section", args.section,
         "--uncleared-file", session["uncleared_file"],
         "--dismissed-this-run-file", session["dismissed_this_run_file"],
@@ -161,6 +175,14 @@ def main():
     p_finding.add_argument("--description", required=True)
     p_finding.add_argument("--suggestion", required=True)
     p_finding.add_argument("--entity", help="Entity name (for suppress matching)")
+    p_finding.add_argument(
+        "--propagate", action="store_true",
+        help=(
+            "After successful file-finding, propagate this finding to all "
+            "other sections in uncleared with the same --entity. "
+            "Requires --entity. Use this for dangling-prose-reference."
+        ),
+    )
 
     # propagate
     p_propagate = subparsers.add_parser(
