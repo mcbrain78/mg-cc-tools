@@ -1,0 +1,13 @@
+# Render format for /mg:install user-facing output.
+#
+# Controls how render-* subcommands in scripts/mg-install-lib.py wrap their
+# output and how the "Display Rule" paragraph reads in commands/install.md.
+#
+# Changing this value requires re-running install.sh so the installed
+# command file's rule text matches what the renderer emits.
+#
+# Supported values:
+#   codeblock  — triple-backtick fenced code block (``` ... ```)
+#   verbatim   — HTML-style tags (<verbatim>...</verbatim>)
+
+fence = "codeblock"

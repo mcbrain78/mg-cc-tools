@@ -21,7 +21,7 @@ MG_INSTALL_LIB="./install/scripts/mg-install-lib.py"
 
 ## Display Rule
 
-**CRITICAL INSTRUCTION:** All `render-*` subcommands wrap their output in `<verbatim>` tags. You MUST reproduce EVERY line between `<verbatim>` and `</verbatim>` exactly as-is in your response text. Do not drop, truncate, reformat, or summarize ANY line — this includes legends, footnotes, and separators. Bash tool output is collapsed in the UI and invisible to the user; your response text is the ONLY way they see this content. All other subcommand output is machine-readable JSON — do NOT echo to the user. Parse it for the next step.
+**CRITICAL INSTRUCTION:** All `render-*` subcommands wrap their output in a fenced code block — opening ` ``` ` on its own line, content lines, closing ` ``` ` on its own line. You MUST reproduce the ENTIRE code block — both fences and every content line — exactly as-is in your response text. Do not drop, truncate, reformat, or summarize ANY line, including the first line after the opening fence. The Bash tool preview shown in the UI is truncated and NOT visible to the user; your response text is the ONLY way they see this content, so echo every line even if it appears in the preview. All other subcommand output is machine-readable JSON — do NOT echo to the user. Parse it for the next step.
 
 ## Execution Rule
 
@@ -241,14 +241,16 @@ If exit code != 0: STOP.
 **copy_configure pattern** (has install.sh + post-install):
 1. Run `install_cmd` from the plan entry. If exit code != 0: STOP.
 2. Read the post-install file: `cat ./<tool>/<post_install>`
-3. Spawn Agent with prompt: `"Target project: $TARGET_PATH\nSource directory: ./\n\n<post-install.md contents>"`
+3. Spawn Agent with prompt: `"Target project: $TARGET_PATH\nSource directory: ./\nInstall mode: project\n\n<post-install.md contents>"`
+
+   (The orchestrator always uses `--project` mode — see `get-install-plan` in mg-install-lib.py. Post-install scripts that emit paths into settings.json branch on `Install mode:` to choose relative vs absolute forms. Users who need `--global` or `--target <path>` installs should run each tool's install.sh directly.)
 4. Check Agent output for markers:
    - Contains "POST-INSTALL: SUCCESS" -- continue
    - Contains "POST-INSTALL: FAILED:" -- STOP. Show reason + full Agent output.
    - Neither marker -- STOP. Show "no status marker" + full output.
 
 **execute_only pattern** (no install.sh, only post-install):
-1. Read and spawn Agent (same as copy_configure steps 2-4).
+1. Read and spawn Agent (same as copy_configure steps 2-4; prompt still includes `Install mode: project`).
 2. If successful, update manifest:
    ```bash
    python3 "$MG_INSTALL_LIB" update-manifest --target "$TARGET_PATH" --tool "<tool>" --source "./<tool>"

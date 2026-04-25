@@ -72,6 +72,44 @@ SED_TARGET_RE = re.compile(r'sed\s+-i\s+"s\|([^|]+)\|')
 BARE_INSTALL_PLACEHOLDER_RE = re.compile(r"^\{[A-Z][A-Z_]+\}$")
 
 # ============================================================
+# Display fence (render output wrapping)
+# ============================================================
+#
+# render-* subcommands emit user-facing output that the LLM must echo back
+# in its response text. The fence markers identify the block for echoing.
+# Configured via install/display.toml; falls back to "codeblock" if the file
+# is missing or malformed. See install/display.toml for supported values.
+
+_DISPLAY_CONFIG_PATH = Path(__file__).resolve().parent.parent / "display.toml"
+
+try:
+    with open(_DISPLAY_CONFIG_PATH, "rb") as _f:
+        DISPLAY_FENCE = tomllib.load(_f).get("fence", "codeblock")
+except (FileNotFoundError, tomllib.TOMLDecodeError):
+    DISPLAY_FENCE = "codeblock"
+
+
+def emit_display_open():
+    """Print the opening fence marker for the configured display fence."""
+    if DISPLAY_FENCE == "codeblock":
+        print("```")
+    elif DISPLAY_FENCE == "verbatim":
+        print("<verbatim>")
+    else:
+        raise SystemExit(f"unsupported DISPLAY_FENCE: {DISPLAY_FENCE!r} (expected 'codeblock' or 'verbatim')")
+
+
+def emit_display_close():
+    """Print the closing fence marker for the configured display fence."""
+    if DISPLAY_FENCE == "codeblock":
+        print("```")
+    elif DISPLAY_FENCE == "verbatim":
+        print("</verbatim>")
+    else:
+        raise SystemExit(f"unsupported DISPLAY_FENCE: {DISPLAY_FENCE!r} (expected 'codeblock' or 'verbatim')")
+
+
+# ============================================================
 # Preflight checks registry
 # ============================================================
 
@@ -1135,9 +1173,9 @@ def render_status_table(scan_data):
 
     Prints a three-tier table (standard, optional, excluded) with
     aligned columns, summary counts, and status legend to stdout.
-    Wrapped in <verbatim> tags for faithful LLM reproduction.
+    Wrapped in display-fence markers for faithful LLM reproduction.
     """
-    print("<verbatim>")
+    emit_display_open()
     version = scan_data.get("mg_cc_tools_version", "?.?.?")
     target = scan_data.get("target", "?")
     tools = scan_data.get("tools", [])
@@ -1228,7 +1266,7 @@ def render_status_table(scan_data):
     print('  *     = optional tool (not included in "Install all standard")')
     print("        Edit the standard list with option [N] below")
     print("  [ext] = external tool (sourced from external-tools archive)")
-    print("</verbatim>")
+    emit_display_close()
 
 
 # ============================================================
@@ -1256,7 +1294,7 @@ def render_tool_picker(scan_data):
     # Separator width
     sep_width = num_width + 2 + max_name + 6 + 40  # generous
 
-    print("<verbatim>")
+    emit_display_open()
     print("Select tools to install:")
     print()
 
@@ -1286,7 +1324,7 @@ def render_tool_picker(scan_data):
 
     print()
     print("Type numbers, names, or 'all':")
-    print("</verbatim>")
+    emit_display_close()
 
 
 # ============================================================
@@ -1401,7 +1439,7 @@ def _determine_scenario(scan_data):
 
 def render_action_menu(scan_data):
     """Render scenario-appropriate action menu to stdout."""
-    print("<verbatim>")
+    emit_display_open()
     scenario = _determine_scenario(scan_data)
     tools = scan_data.get("tools", [])
     summary = scan_data.get("summary", {})
@@ -1443,7 +1481,7 @@ def render_action_menu(scan_data):
         print("  [5] Check capabilities only")
         print()
         print("Type a number, tool names, or 'all':")
-    print("</verbatim>")
+    emit_display_close()
 
 
 # ============================================================
@@ -1596,9 +1634,9 @@ def render_preflight(preflight_data):
 
     Prints header, per-check lines with [PASS]/[FAIL] markers,
     and summary counts with required/optional grouping.
-    Wrapped in <verbatim> tags for faithful LLM reproduction.
+    Wrapped in display-fence markers for faithful LLM reproduction.
     """
-    print("<verbatim>")
+    emit_display_open()
     checks = preflight_data.get("checks", [])
 
     print("Preflight checks:")
@@ -1624,7 +1662,7 @@ def render_preflight(preflight_data):
         opt_passed = sum(1 for c in optional_checks if c["passed"])
         opt_total = len(optional_checks)
         print(f"  Optional: {opt_passed}/{opt_total} passed")
-    print("</verbatim>")
+    emit_display_close()
 
 
 def record_result(results_file, tool_name, success, plan_file):
@@ -1671,9 +1709,9 @@ def render_summary(results_data, scan_data, preflight_data=None):
 
     Prints header, target, action counts, tool table with commands,
     and optional capabilities section from preflight data.
-    Wrapped in <verbatim> tags for faithful LLM reproduction.
+    Wrapped in display-fence markers for faithful LLM reproduction.
     """
-    print("<verbatim>")
+    emit_display_open()
     target = scan_data.get("target", "")
 
     # Compute action counts
@@ -1736,7 +1774,7 @@ def render_summary(results_data, scan_data, preflight_data=None):
         else:
             print()
             print("  Capabilities: not applicable")
-    print("</verbatim>")
+    emit_display_close()
 
 
 def render_validation(validate_data):
@@ -1744,14 +1782,14 @@ def render_validation(validate_data):
 
     For clean validation (0 issues): prints success message.
     For issues: prints WARNING lines with messages.
-    Wrapped in <verbatim> tags for faithful LLM reproduction.
+    Wrapped in display-fence markers for faithful LLM reproduction.
     """
-    print("<verbatim>")
+    emit_display_open()
     print("Post-install validation:")
 
     if validate_data.get("issue_count", 0) == 0:
         print("  All checks passed -- no unresolved placeholders or references")
-        print("</verbatim>")
+        emit_display_close()
         return
 
     for issue in validate_data.get("issues", []):
@@ -1759,7 +1797,7 @@ def render_validation(validate_data):
 
     count = validate_data["issue_count"]
     print(f"  {count} issue{'s' if count != 1 else ''} found")
-    print("</verbatim>")
+    emit_display_close()
 
 
 # ============================================================
@@ -1772,7 +1810,7 @@ def render_target_menu(source_dir):
     """Render numbered target selection menu from sibling directories.
 
     Scans ../*/ for directories, prints a numbered list, and adds a
-    manual entry option. Wrapped in <verbatim> tags.
+    manual entry option. Wrapped in display-fence markers.
     """
     parent = os.path.abspath(os.path.join(source_dir, ".."))
     siblings = []
@@ -1782,7 +1820,7 @@ def render_target_menu(source_dir):
             if os.path.isdir(full):
                 siblings.append(entry)
 
-    print("<verbatim>")
+    emit_display_open()
     print("Target project:")
     print()
     for i, name in enumerate(siblings, 1):
@@ -1791,7 +1829,7 @@ def render_target_menu(source_dir):
     print(f"  [{manual_num}] Enter path manually")
     print()
     print("Type a number or project name:")
-    print("</verbatim>")
+    emit_display_close()
 
 
 def resolve_target_selection(source_dir, selection_text):

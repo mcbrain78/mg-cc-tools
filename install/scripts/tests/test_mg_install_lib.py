@@ -3004,7 +3004,7 @@ class TestRenderActionMenu:
             result = _run(["render-action-menu", "--input", input_file])
             assert result.returncode == 0, result.stderr
             lines = result.stdout.strip().split("\n")
-            assert lines[0].strip() == "<verbatim>"
+            assert lines[0].strip() in ("<verbatim>", "```")
             assert lines[1].strip() == "What would you like to do?"
 
     def test_cli_requires_input(self):

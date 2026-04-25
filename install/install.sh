@@ -19,6 +19,35 @@ COMMANDS=(
   install
 )
 
+# ── Read display fence from config ───────────────────────────────────────────
+
+DISPLAY_CONFIG="${SCRIPT_DIR}/display.toml"
+if [[ ! -f "$DISPLAY_CONFIG" ]]; then
+  echo "Error: missing display config at ${DISPLAY_CONFIG}"
+  exit 1
+fi
+
+FENCE=$(python3 -c "
+import sys, tomllib
+with open('${DISPLAY_CONFIG}', 'rb') as f:
+    print(tomllib.load(f).get('fence', ''))
+" 2>/dev/null)
+
+case "$FENCE" in
+  codeblock|verbatim) ;;
+  *)
+    echo "Error: invalid or missing 'fence' in ${DISPLAY_CONFIG} (got: '${FENCE}')"
+    echo "       expected 'codeblock' or 'verbatim'"
+    exit 1
+    ;;
+esac
+
+RULE_FILE="${SCRIPT_DIR}/display-rules/${FENCE}.md"
+if [[ ! -f "$RULE_FILE" ]]; then
+  echo "Error: missing display rule at ${RULE_FILE}"
+  exit 1
+fi
+
 # ── Parse arguments ──────────────────────────────────────────────────────────
 
 TARGET_DIR=""
@@ -94,11 +123,28 @@ done
 COMMANDS_DIR="${TARGET_DIR}/commands/mg"
 
 echo "Installing mg:install to: ${TARGET_DIR}"
+echo "  Display fence: ${FENCE} (from $(basename "$DISPLAY_CONFIG"))"
 
 mkdir -p "$COMMANDS_DIR"
 for cmd in "${COMMANDS[@]}"; do
   cp "${SCRIPT_DIR}/commands/${cmd}.md" "${COMMANDS_DIR}/${cmd}.md"
 done
+
+# Substitute {DISPLAY_RULE} placeholder with the rule file's contents.
+# Python is cleaner than sed for multi-line file-to-string substitution.
+python3 -c "
+import sys
+with open('${RULE_FILE}') as f:
+    rule = f.read().rstrip('\n')
+out = '${COMMANDS_DIR}/install.md'
+with open(out) as f:
+    text = f.read()
+if '{DISPLAY_RULE}' not in text:
+    sys.exit('Error: {DISPLAY_RULE} placeholder missing from ' + out)
+text = text.replace('{DISPLAY_RULE}', rule)
+with open(out, 'w') as f:
+    f.write(text)
+"
 
 echo "  Commands -> ${COMMANDS_DIR}/"
 
