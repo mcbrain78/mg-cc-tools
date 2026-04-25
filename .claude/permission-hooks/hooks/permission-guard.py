@@ -101,25 +101,85 @@ for category, patterns in CATEGORIES.items():
 # Absolute paths that are always safe to reference
 SAFE_ABSOLUTE_PATHS = ["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", "/tmp"]
 
-# ── Session context (auto-approval via human-gated marker) ─────────────────
-# The emit-context.py script prints a SESSION_CONTEXT_ID marker into the
-# transcript.  The hook always forces human approval for that script (stage 0).
-# Once approved, subsequent tool calls are auto-approved for CONTEXT_TTL_S.
-_CONTEXT_RE = re.compile(r"SESSION_CONTEXT_ID: MG:([\w-]+)_(\d+)")
+# ── Session context (auto-approval via sidecar file with rolling TTL) ──────
+# Stage 0 gates the emit-context.py script (human approval required).
+# Once approved, the hook writes a sidecar file with a timestamp.
+# Subsequent auto-approved tool calls bump the timestamp (rolling TTL).
+# The context expires after CONTEXT_TTL_S of inactivity.
 _EMIT_SCRIPT_RE = re.compile(r"\bemit-(context|edit-guard)\.py\b")
 CONTEXT_TTL_S = 30 * 60  # 30 minutes
 
 # Number of trailing JSONL lines to inspect for recent command invocation.
-_RECENT_LINES = 5
+# Needs to be large enough to span the full slash-command load: <command-name>
+# tag + body + attachments (one line each) + last-prompt + assistant thinking/
+# tool_use. A /mg: command with many referenced attachments can push the tag
+# ~20–40 lines back, so we use a generous window that still excludes ancient
+# invocations.
+_RECENT_LINES = 200
+
+
+def _session_id(transcript_path):
+    """Derive session ID from transcript path.
+
+    Subagent transcripts live at .../SESSION_UUID/subagents/agent-xxx.jsonl.
+    For these, return the parent session UUID so sidecar files are shared.
+    """
+    if not transcript_path:
+        return None
+    parts = transcript_path.replace("\\", "/").split("/")
+    try:
+        sub_idx = parts.index("subagents")
+        if sub_idx > 0:
+            return parts[sub_idx - 1] or None
+    except ValueError:
+        pass
+    session = os.path.basename(transcript_path)
+    if session.endswith(".jsonl"):
+        session = session[:-6]
+    return session or None
+
+
+def _write_context_sidecar(transcript_path, command):
+    """Write/update session context sidecar file. Best-effort."""
+    try:
+        session = _session_id(transcript_path)
+        if not session:
+            return
+        session_dir = os.path.join("/tmp/claude-code", f"mg-session-{session}")
+        os.makedirs(session_dir, exist_ok=True)
+        path = os.path.join(session_dir, "context.json")
+        with open(path, "w") as f:
+            json.dump({"command": command, "timestamp_ms": int(time.time() * 1000)}, f)
+    except Exception:
+        pass
+
+
+def _update_context_timestamp(transcript_path):
+    """Bump sidecar timestamp. Best-effort."""
+    try:
+        session = _session_id(transcript_path)
+        if not session:
+            return
+        path = os.path.join("/tmp/claude-code", f"mg-session-{session}", "context.json")
+        with open(path) as f:
+            data = json.load(f)
+        data["timestamp_ms"] = int(time.time() * 1000)
+        with open(path, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
 
 
 def _emitter_follows_command(transcript_path):
-    """Return True if a slash command was loaded in the last few transcript entries.
+    """Return True if a /mg: slash command was loaded in the recent transcript tail.
 
     When a user invokes a /mg: command, Claude Code injects a
-    ``<command-name>/mg:...`` tag in the transcript 1-3 entries before the
-    emit-context.py Bash call.  Checking the tail of the transcript avoids
-    false-positives from old command content.
+    ``<command-name>/mg:...`` tag into the transcript. The emit-context.py
+    call happens some entries later — typically after the command body,
+    referenced attachments, last-prompt marker, and any assistant thinking.
+    With attachments, that gap can be 20–40 lines, so we scan a wide tail
+    (``_RECENT_LINES``) to still catch the tag while excluding ancient
+    invocations.
 
     Note: CC strips YAML frontmatter (including ``allowed-tools:``) before
     writing command content to the transcript, so we match on the
@@ -140,33 +200,30 @@ def _emitter_follows_command(transcript_path):
 def check_session_context(transcript_path):
     """Return the active context command name (e.g. 'AUTO-DOC') or None.
 
-    Scans the transcript for the most recent SESSION_CONTEXT_ID marker
-    and checks whether its timestamp is within CONTEXT_TTL_S.
+    Reads the session context sidecar file and checks whether its
+    timestamp is within CONTEXT_TTL_S.
     """
     if not transcript_path:
         return None
+    session = _session_id(transcript_path)
+    if not session:
+        return None
+    path = os.path.join("/tmp/claude-code", f"mg-session-{session}", "context.json")
     try:
-        with open(transcript_path) as f:
-            raw = f.read()
-    except (OSError, IOError):
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError, IOError):
         return None
 
-    # Find all matches — we want the most recent one
-    matches = list(_CONTEXT_RE.finditer(raw))
-    if not matches:
+    command = data.get("command")
+    timestamp_ms = data.get("timestamp_ms", 0)
+    if not command or not isinstance(timestamp_ms, (int, float)):
         return None
 
-    last = matches[-1]
-    command_name = last.group(1)
-    timestamp_ms = int(last.group(2))
     age_s = time.time() - timestamp_ms / 1000
-
-    if age_s > CONTEXT_TTL_S:
+    if age_s > CONTEXT_TTL_S or age_s < 0:
         return None
-    if age_s < 0:
-        return None  # clock skew / forged future timestamp
-
-    return command_name
+    return command
 
 
 # ── Edit guard (manual toggle for Edit/Write/NotebookEdit) ──────────────────
@@ -221,10 +278,7 @@ def _write_edit_guard_bridge(event):
         transcript_path = event.get("transcript_path", "")
         if not transcript_path:
             return
-        # Extract session ID from transcript filename (strip .jsonl)
-        session = os.path.basename(transcript_path)
-        if session.endswith(".jsonl"):
-            session = session[:-6]
+        session = _session_id(transcript_path)
         if not session:
             return
         blocked = check_edit_guard(transcript_path)
@@ -837,6 +891,10 @@ def main():
         command = tool_input.get("command", "")
         if _EMIT_SCRIPT_RE.search(command):
             if _emitter_follows_command(event.get("transcript_path", "")):
+                # Extract command name: "... emit-context.py AUTO-DOC" → "AUTO-DOC"
+                cmd_match = re.search(r'emit-context\.py\s+(\S+)', command)
+                ctx_name = cmd_match.group(1).upper() if cmd_match else "UNKNOWN"
+                _write_context_sidecar(event.get("transcript_path", ""), ctx_name)
                 _decide(
                     "[permission-guard] Session context emitter — "
                     "auto-approved (slash command active)",
@@ -849,6 +907,7 @@ def main():
     # ── Session context auto-approve ───────────────────────────────────
     ctx_cmd = check_session_context(event.get("transcript_path", ""))
     if ctx_cmd:
+        _update_context_timestamp(event.get("transcript_path", ""))
         _decide(
             f"[permission-guard] Auto-approved by session context MG:{ctx_cmd}",
             "allow",

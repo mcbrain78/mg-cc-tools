@@ -21,17 +21,19 @@
     },
     "permission-hooks": {
       "version": "0.1.0",
-      "installed_at": "2026-04-08T15:51:05.669551+00:00",
+      "installed_at": "2026-04-23T14:46:34.299396+00:00",
       "commands": [
+        "auto-approve.md",
         "edit-off.md",
         "edit-on.md"
       ],
       "source_checksums": {
+        "commands/auto-approve.md": "sha256:a83485113163fed0aa4cb117be1044c1ecbd1738cc4db0dcace6763bd75ebe4f",
         "commands/edit-off.md": "sha256:dc1c9bc98893d2fc660d4708bf15da98d8b1958cc51aa1eba3bd89a8671b89fa",
         "commands/edit-on.md": "sha256:acdec3b5eafe4b2cd92df5901a002b2f33a253afd87c04daa94b2c61cce666b2",
-        "hooks/permission-guard.py": "sha256:61e4f05cf82fba7736f1068dbb574103f7b39f94527b18ab38d9d9638e169c0a",
-        "install.sh": "sha256:60479cc54b0db7208706d90d5b3b45e4d214bea841db2fd059c329301237c2e7",
-        "post-install.md": "sha256:e03e78230ba49d9abb52072c59b5fc8ac54bce2149b4789cd4e8d0874aa78fac",
+        "hooks/permission-guard.py": "sha256:a998170c1e7ac508d90a70e20dcbcf1b4ba82e6e208732395c46a9c75c2e48e3",
+        "install.sh": "sha256:bd637e9e6c27e86b90563c9cb9c74861b1a919938b3647f9746162d59ea733a6",
+        "post-install.md": "sha256:07c74c09142ab9fe06f8b8ec69809fc6adde25fed19f892736e0177cb7d5a0d6",
         "scripts/emit-context.py": "sha256:54db2e0a0b3a3ebe850bc100a38f3690ea4f0ba480dda4c5f49ccdc2b14644ea",
         "scripts/emit-edit-guard.py": "sha256:98f50a8762a4f6e8860f40c5147f1d3e040aa233d373d809e8d31a2a0cdb1c99"
       }
@@ -109,5 +111,6 @@
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
-  "last_updated": "2026-04-08T16:10:55.481607+00:00"
+  "last_updated": "2026-04-23T14:46:34.298103+00:00",
+  "source_path": "/home/mcbrain/mg_projects/mg-cc-tools"
 }
