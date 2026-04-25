@@ -170,20 +170,34 @@ def _update_context_timestamp(transcript_path):
         pass
 
 
-def _emitter_follows_command(transcript_path):
-    """Return True if a /mg: slash command was loaded in the recent transcript tail.
+_RECENT_CMD_RE = re.compile(
+    r'<command-name>/mg:'                # slash-command invocation tag
+    r'|"skill"\s*:\s*"mg:'               # Skill tool_use input (compact or pretty JSON)
+    r'|Launching skill:\s*mg:'           # Skill tool_result body
+)
 
-    When a user invokes a /mg: command, Claude Code injects a
-    ``<command-name>/mg:...`` tag into the transcript. The emit-context.py
-    call happens some entries later — typically after the command body,
-    referenced attachments, last-prompt marker, and any assistant thinking.
-    With attachments, that gap can be 20–40 lines, so we scan a wide tail
-    (``_RECENT_LINES``) to still catch the tag while excluding ancient
-    invocations.
+
+def _emitter_follows_command(transcript_path):
+    """Return True if a /mg: command was loaded in the recent transcript tail.
+
+    A /mg: command can reach the LLM through two channels, each leaving a
+    different fingerprint in the transcript:
+
+    1. **Slash command** — CC injects a ``<command-name>/mg:...`` tag.
+    2. **Skill tool** — CC emits an assistant ``tool_use`` with
+       ``"name":"Skill"`` and ``"skill":"mg:..."``, followed by a
+       ``tool_result`` whose body is ``Launching skill: mg:...``. No
+       ``<command-name>`` tag is produced.
+
+    The emit-context.py call happens some entries later — typically after
+    the command body, referenced attachments, last-prompt marker, and any
+    assistant thinking. With attachments, that gap can be 20–40 lines, so
+    we scan a wide tail (``_RECENT_LINES``) to still catch the marker
+    while excluding ancient invocations.
 
     Note: CC strips YAML frontmatter (including ``allowed-tools:``) before
-    writing command content to the transcript, so we match on the
-    ``<command-name>`` tag instead.
+    writing command content to the transcript, so for slash commands we
+    match on the ``<command-name>`` tag rather than the body text.
     """
     if not transcript_path:
         return False
@@ -194,7 +208,7 @@ def _emitter_follows_command(transcript_path):
         return False
 
     tail = "\n".join(lines[-_RECENT_LINES:]) if lines else ""
-    return "<command-name>/mg:" in tail
+    return bool(_RECENT_CMD_RE.search(tail))
 
 
 def check_session_context(transcript_path):

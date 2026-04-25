@@ -1844,6 +1844,28 @@ class TestEmitterFollowsCommand:
         }
         return json.dumps(entry)
 
+    def _skill_tool_use_line(self, command_name="auto-doc-audit", args=""):
+        """Build the assistant Skill tool_use that CC emits when a /mg: skill is invoked."""
+        entry = {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_skill_test",
+                        "name": "Skill",
+                        "input": {"skill": f"mg:{command_name}", "args": args},
+                    }
+                ],
+            },
+        }
+        return json.dumps(entry)
+
+    def _skill_tool_result_line(self, command_name="auto-doc-audit"):
+        """Build the user tool_result CC emits to acknowledge the skill launch."""
+        return self._tool_result_line(f"Launching skill: mg:{command_name}")
+
     def test_no_transcript_returns_false(self):
         assert _emitter_follows_command("") is False
         assert _emitter_follows_command(None) is False
@@ -1939,6 +1961,64 @@ class TestEmitterFollowsCommand:
         ])
         try:
             assert _emitter_follows_command(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_skill_invocation_detected(self):
+        """/mg: command invoked via the Skill tool — no <command-name> tag, but Skill tool_use + tool_result are present."""
+        path = self._write_transcript([
+            self._skill_tool_use_line("auto-doc-auditv2", args="developers"),
+            self._skill_tool_result_line("auto-doc-auditv2"),
+            self._command_body_line("auto-doc-auditv2"),
+            self._assistant_line("Now running emit-context."),
+        ])
+        try:
+            assert _emitter_follows_command(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_skill_tool_use_alone_detected(self):
+        """Just the Skill tool_use line is sufficient (matches '\"skill\":\"mg:')."""
+        path = self._write_transcript([
+            self._skill_tool_use_line("auto-doc"),
+            self._assistant_line("Now running emit-context."),
+        ])
+        try:
+            assert _emitter_follows_command(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_skill_tool_result_alone_detected(self):
+        """Just the Skill tool_result line is sufficient (matches 'Launching skill: mg:')."""
+        path = self._write_transcript([
+            self._skill_tool_result_line("auto-doc"),
+            self._assistant_line("Now running emit-context."),
+        ])
+        try:
+            assert _emitter_follows_command(path) is True
+        finally:
+            os.unlink(path)
+
+    def test_skill_for_non_mg_namespace_not_detected(self):
+        """Skill invocations for non-/mg: skills must not auto-approve emit-context."""
+        path = self._write_transcript([
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{
+                        "type": "tool_use",
+                        "id": "toolu_other",
+                        "name": "Skill",
+                        "input": {"skill": "other:thing", "args": ""},
+                    }],
+                },
+            }),
+            self._tool_result_line("Launching skill: other:thing"),
+            self._assistant_line("Now running emit-context."),
+        ])
+        try:
+            assert _emitter_follows_command(path) is False
         finally:
             os.unlink(path)
 
