@@ -139,21 +139,28 @@ echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md, auto-approve.md)
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 #
-# In --project mode, emit relative paths (CC runs hooks and bash with cwd = project
-# root, so .claude/... resolves correctly). In --global/--target modes the hook
-# file lives at a fixed absolute location (~/.claude/... or user-specified) while
-# CC's cwd is the user's active project — the two don't overlap — so we keep
-# absolute paths.
-# The {MG_INSTALL_PROJECT_ROOT} placeholder in permission-guard.py is left
-# unresolved in project mode; the _resolve_project_root() helper falls back to
+# In --project mode, emit a path expression that resolves at command-execution
+# time, not install time, so it survives both:
+#   (a) ultraplan/ultrareview cloud workers that clone the repo into a
+#       different filesystem layout (no baked absolute path),
+#   (b) mid-session `cd` shifts that would re-anchor a plain relative path
+#       to the wrong directory.
+# `$(git rev-parse --show-toplevel)` walks up to the repo root regardless of
+# cwd, and the result is identical in cloud clones since they're still git
+# repos. The {MG_INSTALL_PROJECT_ROOT} placeholder in permission-guard.py is
+# left unresolved in project mode; _resolve_project_root() falls back to
 # event.cwd at runtime.
+#
+# In --global/--target modes the hook scripts live at a fixed absolute
+# location (~/.claude/... or user-specified) so we bake absolute paths.
 
 echo "  Resolving placeholders ..."
 
 hook_file="${SUPPORT_DIR}/hooks/permission-guard.py"
 if [[ "$MODE" == "project" ]]; then
-  EMIT_EDIT_GUARD_PATH=".claude/permission-hooks/scripts/emit-edit-guard.py"
-  EMIT_CONTEXT_PATH=".claude/permission-hooks/scripts/emit-context.py"
+  # Single-quoted so $(...) is left literal for runtime expansion.
+  EMIT_EDIT_GUARD_PATH='$(git rev-parse --show-toplevel)/.claude/permission-hooks/scripts/emit-edit-guard.py'
+  EMIT_CONTEXT_PATH='$(git rev-parse --show-toplevel)/.claude/permission-hooks/scripts/emit-context.py'
 else
   # Bake absolute paths for global/custom installs
   sed -i "s|{MG_INSTALL_PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"

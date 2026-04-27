@@ -10,7 +10,7 @@ allowed-tools: Bash
 Step 1 — Run the edit guard emitter to re-enable edits:
 
 ```
-python3 {MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT} ON
+python3 "{MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}" ON
 ```
 
 Step 2 — After step 1 completes, trigger a statusline bridge update:

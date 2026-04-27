@@ -127,7 +127,7 @@ Check if the PreToolUse hook entries for permission-guard.py exist in the target
 
 The hook needs 4 matchers: `Bash`, `Read`, `Edit`, `Write`. The same Python script handles all tool types.
 
-In `project` mode, emit a relative hook command (`python3 .claude/permission-hooks/hooks/permission-guard.py`) so the entry is portable across clones. In `global`/`target` mode, emit an absolute path rooted at the installed `hooks_dir` (the existing behavior). Set `INSTALL_MODE` below to the value threaded through from the orchestrator.
+In `project` mode, emit a `$CLAUDE_PROJECT_DIR`-rooted hook command (`python3 "$CLAUDE_PROJECT_DIR/.claude/permission-hooks/hooks/permission-guard.py"`). Claude Code sets `$CLAUDE_PROJECT_DIR` for hook commands regardless of the current working directory, so this form is portable across clones (ultraplan/ultrareview cloud workers included) AND survives mid-session `cd` shifts that would break a plain relative path. In `global`/`target` mode, emit an absolute path rooted at the installed `hooks_dir` (the existing behavior). Set `INSTALL_MODE` below to the value threaded through from the orchestrator.
 
 ```bash
 python3 -c "
@@ -138,7 +138,7 @@ settings_path = '<TARGET_SETTINGS>'
 install_mode = '<INSTALL_MODE>'  # 'project' | 'global' | 'target'
 
 if install_mode == 'project':
-    hook_cmd = 'python3 .claude/permission-hooks/hooks/permission-guard.py'
+    hook_cmd = 'python3 \"$CLAUDE_PROJECT_DIR/.claude/permission-hooks/hooks/permission-guard.py\"'
 else:
     hook_cmd = 'python3 ' + os.path.join(hooks_dir, 'permission-guard.py')
 
@@ -152,56 +152,50 @@ hooks = settings.setdefault('hooks', {})
 pre_tool = hooks.setdefault('PreToolUse', [])
 
 matchers = ['Bash', 'Read', 'Edit', 'Write']
-added = []
-ok = []
 
+# Strip ALL stale permission-guard.py entries before adding fresh ones.
+# A re-install (or migration from an older path scheme) could otherwise
+# accumulate duplicates with mixed relative/absolute paths — exactly the
+# state that masked the cwd-shift bug for so long.
+stripped = 0
+new_pre_tool = []
+for h in pre_tool:
+    if isinstance(h, dict) and h.get('matcher') in matchers:
+        kept_hooks = [
+            hk for hk in h.get('hooks', [])
+            if not (isinstance(hk, dict)
+                    and 'permission-guard.py' in hk.get('command', ''))
+        ]
+        stripped += len(h.get('hooks', [])) - len(kept_hooks)
+        if kept_hooks:
+            new_pre_tool.append({**h, 'hooks': kept_hooks})
+        # else: drop the now-empty matcher entry
+    else:
+        new_pre_tool.append(h)
+
+# Append fresh canonical entries.
 for matcher in matchers:
-    new_entry = {
+    new_pre_tool.append({
         'matcher': matcher,
         'hooks': [{'type': 'command', 'command': hook_cmd}]
-    }
+    })
 
-    # Check if already present for this matcher
-    already = any(
-        isinstance(h, dict)
-        and h.get('matcher') == matcher
-        and any(
-            isinstance(hk, dict) and hk.get('command') == hook_cmd
-            for hk in h.get('hooks', [])
-        )
-        for h in pre_tool
-    )
+hooks['PreToolUse'] = new_pre_tool
 
-    if not already:
-        pre_tool.append(new_entry)
-        added.append(matcher)
-    else:
-        ok.append(matcher)
+with open(settings_path, 'w') as f:
+    json.dump(settings, f, indent=2)
+    f.write('\n')
 
-if added:
-    with open(settings_path, 'w') as f:
-        json.dump(settings, f, indent=2)
-        f.write('\n')
-    print('ADDED: Hook entries added for matchers: ' + ', '.join(added))
-    if ok:
-        print('OK: Already present for matchers: ' + ', '.join(ok))
+if stripped:
+    print(f'REWROTE: Removed {stripped} stale permission-guard entries; added 4 fresh ones for {settings_path}')
 else:
-    print('OK: All hook entries present and correct in ' + settings_path)
+    print(f'ADDED: Wrote 4 permission-guard hook entries to {settings_path}')
 "
 ```
 
-**If ADDED:** Report that the hook was added.
+**If ADDED:** Report that the canonical hook entries were written for the first time.
 
-**If OK:** Report that the hook is correctly configured.
-
-**If MISMATCH:** Ask via AskUserQuestion:
-- header: "Fix path"
-- question: "Hook entry exists but points to wrong path. Fix it?"
-- options:
-  - "Fix" -- "Update the command path in settings.json"
-  - "Skip" -- "Leave as-is"
-
-If "Fix": Update the command path in settings.json using a similar Python snippet that removes the old entry and adds the correct one.
+**If REWROTE:** Report that stale entries were stripped and replaced with the canonical form. This typically means the target had relative-path entries from an older install scheme that would have broken on mid-session `cd` shifts.
 
 ## Step 4: Status Report
 
