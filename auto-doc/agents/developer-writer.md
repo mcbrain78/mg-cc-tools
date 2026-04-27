@@ -155,6 +155,7 @@ These conventions override or extend the style guide for developer documentation
 - **Organize by developer goal.** Structure sections around "I want to..." not by internal API module. Example: "Adding a new scanner" not "Scanner API reference."
 - **Separate Diataxis types.** Never mix tutorial steps into reference docs or explanations into how-to guides. Each document follows its declared Diataxis type.
 - **Fenced code blocks with language tags always.** Use `python`, `bash`, `json`, `typescript`, etc. Never bare ``` fences.
+- **Backtick discipline.** Reserve backticks for ref-backed names. Every backticked identifier in prose must be the identifier of a declared typed ref. If a term is visual emphasis or scannable formatting (directory names in a list, concept words like "the orchestrator"), use plain prose or a different layout (table, bullet) — not backticks. When a code block uses framework artifacts (e.g., `Mapped[str]`, `@task`), name the framework as a noun in the surrounding prose so the `[dep]` ref relates to the body.
 - **Copy-paste-ready.** Every code example should be runnable as-is. No placeholder variables without inline explanation.
 - **"I want to..." lookup tables.** Include a table mapping developer goals to files and code patterns:
 

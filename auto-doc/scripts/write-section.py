@@ -40,6 +40,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.heading_map import read_heading_map, slugify_heading  # noqa: F811
 from lib.json_io import load_json, save_json, save_text
+from lib.ref_utils import identifier_for_ref
 from lib.ref_validation import discharge_malformed_refs
 from lib.symbols import extract_python_symbols
 from lib.xml_doc import (
@@ -124,6 +125,32 @@ def check_symbols(symbols, file_paths, project_root):
                 f"Add the file that defines it.",
                 file=sys.stderr,
             )
+
+
+def check_refs_in_body(typed_refs, body):
+    """Advisory ref-in-body check -- warnings on stderr, never affects exit code.
+
+    For each declared ref, verify its identifier appears in body.lower().
+    Skips ref types 'dep' and 'flow' (declarative tags by design).
+    Mirrors clear-matched-entities.py Check B but operates on parsed
+    typed_refs rather than ref_entries.
+    """
+    if not typed_refs or not body:
+        return
+    body_lower = body.lower()
+    for ref in typed_refs:
+        if ref.get("type") in ("dep", "flow"):
+            continue
+        ident = identifier_for_ref(ref)
+        if not ident:
+            continue
+        if ident.lower() in body_lower:
+            continue
+        print(
+            f"WARNING: ref identifier '{ident}' (type={ref.get('type')}) "
+            f"not found in section body. Either name it in prose or drop the ref.",
+            file=sys.stderr,
+        )
 
 
 def _resolve_parent(doc, parent_path):
@@ -247,6 +274,7 @@ def section_write(args):
     # Derive symbols and file_paths from typed_refs
     typed_refs = refs["typed_refs"]
     typed_refs = discharge_malformed_refs(typed_refs)
+    check_refs_in_body(typed_refs, content)
     derived_symbols, derived_file_paths = _derive_symbols_and_file_paths(typed_refs)
 
     # Build the new section entry (always includes subsections keys)
