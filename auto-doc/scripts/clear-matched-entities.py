@@ -191,11 +191,22 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
             tuple(e["path"]) for e in ref_entries if e.get("path")
         ]
         body_lower = body.lower()
+        # Refs implicitly referenced via persisted covered-entities whose
+        # entity name still appears in body — agrees with the resolve stage's
+        # covered-by rule (e.g. `DeclarativeBase` in body covers
+        # `[dep] sqlalchemy`). Stale entries (entity no longer in body)
+        # do not suppress the finding.
+        covered_targets = {
+            covered_by
+            for (name, sec), covered_by in coverage_map.items()
+            if sec == section_path and name.lower() in body_lower
+        }
         for entry in ref_entries:
             ident = entry.get("identifier")
             if not ident:
                 continue
-            if not entry.get("display"):
+            display = entry.get("display")
+            if not display:
                 continue  # db-hierarchy ancestor entry (parse-side fan-out artefact)
             # Skip when this ref's path is a proper prefix of another declared ref's
             # path (e.g. a table ref auto-emitted by fan-out is implicitly covered
@@ -206,11 +217,22 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
                 for p in all_declared_paths
             ):
                 continue
-            if ident.lower() not in body_lower:
-                _emit_finding(
-                    findings_file, document, audience,
-                    section_path, entry.get("display", ident),
-                )
+            if ident.lower() in body_lower:
+                continue
+            # [flow] refs: accept the kebab/snake variant — the canonical
+            # Prefect deployment name (kebab) and the Python flow function
+            # name (snake) refer to the same flow.
+            if display.startswith("[flow]") and (
+                ident.replace("-", "_").lower() in body_lower
+                or ident.replace("_", "-").lower() in body_lower
+            ):
+                continue
+            if ident in covered_targets:
+                continue
+            _emit_finding(
+                findings_file, document, audience,
+                section_path, display,
+            )
 
         # -- Clearing: identifier match + path resolution -----------
         section_entities = entities_by_section.get(section_path, [])

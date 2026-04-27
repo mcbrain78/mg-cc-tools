@@ -1578,3 +1578,192 @@ class TestCoveredEntitiesClearing:
                 uncleared = json.load(f)
             assert len(uncleared) == 1
             assert uncleared[0]["name"] == "@flow"
+
+
+class TestCheckBFlowNormalization:
+    """Check B: [flow] refs accept kebab/snake variants of the identifier."""
+
+    def test_flow_ref_kebab_form_matches_snake_in_body(self):
+        """[flow] ingest-quarterly-finance-data ref + body uses snake_case
+        Python function name → no Check B finding."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "prerequisites",
+                    "body": (
+                        "## Prerequisites\n\nThe four flows "
+                        "(`ingest_quarterly_finance_data`, "
+                        "`ingest_daily_prices`)."
+                    ),
+                    "ref_entries": [
+                        {"display": "[flow] ingest-quarterly-finance-data",
+                         "identifier": "ingest-quarterly-finance-data"},
+                        {"display": "[flow] ingest-daily-prices",
+                         "identifier": "ingest-daily-prices"},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert not os.path.exists(ff), (
+                "[flow] refs must accept the snake_case form of the "
+                "identifier in body."
+            )
+
+    def test_flow_ref_snake_form_matches_kebab_in_body(self):
+        """[flow] my_flow ref + body uses kebab-case → no Check B finding."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "prerequisites",
+                    "body": "## Prerequisites\n\nThe `my-flow` flow runs nightly.",
+                    "ref_entries": [
+                        {"display": "[flow] my_flow",
+                         "identifier": "my_flow"},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert not os.path.exists(ff)
+
+    def test_normalization_only_applies_to_flow_refs(self):
+        """Other ref types must not get kebab/snake normalization. A
+        [config] systemd/finance-data-worker.service path must still fire
+        when the body only mentions `finance_data_worker`."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "deployment",
+                    "body": "## Deployment\n\nThe `finance_data_worker` runs.",
+                    "ref_entries": [
+                        {"display": "[config] systemd/finance-data-worker.service",
+                         "identifier": "systemd/finance-data-worker.service"},
+                    ],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert os.path.exists(ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            assert len(findings) == 1
+
+
+class TestCheckBImpliedByCoveredEntity:
+    """Check B: refs implicitly referenced via covered-entity in body."""
+
+    def test_dep_ref_covered_by_section_entity_skips_check_b(self):
+        """[dep] sqlalchemy ref, no literal 'sqlalchemy' in body, but a
+        covered-entity entry says DeclarativeBase is covered_by sqlalchemy
+        and the body contains DeclarativeBase → no Check B finding.
+
+        This makes Check B agree with the resolution stage, which already
+        treats DeclarativeBase as implicitly referencing sqlalchemy.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "models",
+                    "body": (
+                        "## Models\n\nThree `DeclarativeBase` subclasses "
+                        "define schema ownership."
+                    ),
+                    "ref_entries": [
+                        {"display": "[dep] sqlalchemy",
+                         "identifier": "sqlalchemy",
+                         "path": ["sqlalchemy"]},
+                    ],
+                },
+            ], [])
+
+            cf = os.path.join(td, "covered-entities.json")
+            with open(cf, "w") as f:
+                json.dump([
+                    {"name": "DeclarativeBase",
+                     "section": "models",
+                     "document": "OPERATIONS",
+                     "audience": "devops",
+                     "covered_by": "sqlalchemy"},
+                ], f)
+
+            result = _run(prose_dir, ef, uf, ff, covered_entities_file=cf)
+            assert result.returncode == 0
+            assert not os.path.exists(ff), (
+                "Check B must skip [dep] refs implicitly referenced via "
+                "covered-entities whose entity name is in body."
+            )
+
+    def test_stale_coverage_does_not_suppress_finding(self):
+        """Coverage says DeclarativeBase covers sqlalchemy, but the body
+        no longer contains DeclarativeBase → coverage is stale and
+        sqlalchemy must still fire as missing."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "models",
+                    "body": "## Models\n\nThe project defines several models.",
+                    "ref_entries": [
+                        {"display": "[dep] sqlalchemy",
+                         "identifier": "sqlalchemy",
+                         "path": ["sqlalchemy"]},
+                    ],
+                },
+            ], [])
+
+            cf = os.path.join(td, "covered-entities.json")
+            with open(cf, "w") as f:
+                json.dump([
+                    {"name": "DeclarativeBase",
+                     "section": "models",
+                     "document": "OPERATIONS",
+                     "audience": "devops",
+                     "covered_by": "sqlalchemy"},
+                ], f)
+
+            result = _run(prose_dir, ef, uf, ff, covered_entities_file=cf)
+            assert result.returncode == 0
+            assert os.path.exists(ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            assert len(findings) == 1
+            assert "sqlalchemy" in findings[0]["description"]
+
+    def test_coverage_scoped_to_section(self):
+        """A coverage entry for a different section must not suppress
+        Check B in this section."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "models",
+                    "body": (
+                        "## Models\n\nThree `DeclarativeBase` subclasses "
+                        "define schema ownership."
+                    ),
+                    "ref_entries": [
+                        {"display": "[dep] sqlalchemy",
+                         "identifier": "sqlalchemy",
+                         "path": ["sqlalchemy"]},
+                    ],
+                },
+            ], [])
+
+            cf = os.path.join(td, "covered-entities.json")
+            with open(cf, "w") as f:
+                json.dump([
+                    {"name": "DeclarativeBase",
+                     "section": "other-section",
+                     "document": "OPERATIONS",
+                     "audience": "devops",
+                     "covered_by": "sqlalchemy"},
+                ], f)
+
+            result = _run(prose_dir, ef, uf, ff, covered_entities_file=cf)
+            assert result.returncode == 0
+            assert os.path.exists(ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            assert len(findings) == 1
