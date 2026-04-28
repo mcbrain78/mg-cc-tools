@@ -336,8 +336,11 @@ class TestAddValidRefs:
 # ---------------------------------------------------------------------------
 
 
-class TestCanonicalNoOpRejected:
-    """Add operations that don't change canonical form must exit non-zero.
+class TestCanonicalNoOpReportedAsSkip:
+    """Add operations that don't change canonical form return a Skip: message.
+
+    No SystemExit, no stderr error — the script exits 0 with an informational
+    stdout message so the calling agent does not retry on `Error:`.
 
     Motivating case: bare `<function name="X" module="M"/>` alongside existing
     `<function name="X" module="M"><param>P</param></function>` — both share
@@ -345,7 +348,7 @@ class TestCanonicalNoOpRejected:
     is absorbed into the existing element during rebuild and lost.
     """
 
-    def test_bare_function_with_module_collides_with_param_scoped(self, capsys):
+    def test_bare_function_with_module_collides_with_param_scoped(self):
         with tempfile.TemporaryDirectory() as td:
             # Pre-populate with a param-scoped function ref
             refs_xml = _canonical_refs_xml([
@@ -359,18 +362,17 @@ class TestCanonicalNoOpRejected:
             }])
 
             # Try to add a bare function ref with the same (name, module)
-            with pytest.raises(SystemExit):
-                update_fix_refs(
-                    edit_path, "monitoring",
-                    add_snippet=(
-                        '<code><function name="X" module="src/mod.py"/>'
-                        "</code>"
-                    ),
-                )
+            result = update_fix_refs(
+                edit_path, "monitoring",
+                add_snippet=(
+                    '<code><function name="X" module="src/mod.py"/>'
+                    "</code>"
+                ),
+            )
 
-            captured = capsys.readouterr()
-            assert "no-op" in captured.err.lower()
-            assert "typed-refs-format" in captured.err
+            assert result.startswith("Skip:")
+            assert "typed-refs-format" in result
+            assert "NOT yet resolved" in result
 
             # The file on disk should be unchanged — no partial write
             refs_after = _read_section_refs_flat(edit_path, "monitoring")

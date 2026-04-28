@@ -163,7 +163,7 @@ One dep ref per framework per section — don't emit a separate dep ref for each
 
 ### Implicit name coverage for param/attr-scoped refs
 
-A param or attr ref implicitly covers prose mentions of the enclosing function or class name. Do NOT emit a separate bare ref for the name when a param/attr variant already exists — the canonical rebuild groups code refs by `(kind, name, module)`, so the bare entry would be absorbed into the existing element and lost. `update-fix-refs.py` rejects this class of add as a no-op.
+A param or attr ref implicitly covers prose mentions of the enclosing function or class name. Do NOT emit a separate bare ref for the name when a param/attr variant already exists — the canonical rebuild groups code refs by `(kind, name, module)`, so the bare entry would be absorbed into the existing element and lost. `update-fix-refs.py` reports this class of add as a `Skip:` and writes no changes — the original finding requires a different ref form or a suppression.
 
 Prose: "the `compute_finance_metrics` flow accepts `tickers` and `recompute_stale`"
 

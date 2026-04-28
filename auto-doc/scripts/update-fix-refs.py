@@ -303,18 +303,18 @@ def update_fix_refs(edit_file, section_path, add_snippet=None, remove_snippet=No
         final_flat = _parse_refs(new_refs_el)
         if final_flat == existing_flat:
             added_summaries = ", ".join(_ref_summary(r) for r in new_flat)
-            print(
-                f"Error: add was a canonical no-op — the ref(s) you added "
-                f"({added_summaries}) are already implied by existing refs "
-                f"in this section.\n"
-                f"Common cause: a bare <function name=\"X\" module=\"M\"/> "
-                f"collides with an existing <function name=\"X\" "
-                f"module=\"M\"><param>P</param></function>. Param/attr-scoped "
-                f"refs implicitly cover the function/class name — no separate "
-                f"bare ref is needed. See references/typed-refs-format.md.",
-                file=sys.stderr,
+            existing_summaries = ", ".join(_ref_summary(r) for r in existing_flat)
+            return (
+                f"Skip: no change written — the ref(s) you added "
+                f"({added_summaries}) collide on (kind, name, module) with "
+                f"existing ref(s) ({existing_summaries}) and would be absorbed "
+                f"by canonical rebuild. The original finding is NOT yet resolved "
+                f"by this call: either choose a structurally different ref form "
+                f"(e.g., add a `<param>` or `<attr>` to the existing ref), or "
+                f"call suppress-finding.py if codebase verification confirms the "
+                f"entity is already correctly declared. "
+                f"See references/typed-refs-format.md."
             )
-            sys.exit(1)
 
         tree.write(
             edit_file, xml_declaration=True, encoding="utf-8", pretty_print=True,
