@@ -2,7 +2,7 @@
   "tools": {
     "mg-gsd-wrappers": {
       "version": "0.1.0",
-      "installed_at": "2026-04-08T16:10:55.482615+00:00",
+      "installed_at": "2026-04-28T12:18:06.677231+00:00",
       "commands": [
         "discuss-milestone.md",
         "discuss-phase.md",
@@ -14,7 +14,7 @@
         "commands/discuss-phase.md": "sha256:f51de294666cd57d5eef2041c2375bba3e4df17440b6423e52bdddfe463ff5f8",
         "commands/execute-phase.md": "sha256:a975cca696ae85441901ad3f34808295467505bc45443f44b3d599e92b31e6ff",
         "commands/plan-phase.md": "sha256:6f5b53a3a635b106fd1edcd2fb4ed18d8ad1b402d6093519c3e41c079bcf689d",
-        "install.sh": "sha256:4f887d99e90466ab0266144d1b37266d7b35c3c386cbd9f8e7a8f5054459fd89",
+        "install.sh": "sha256:616dd412e05f88981d7b3521323fdb6f3c78e8c7ba42782f9c0727a6e23b13a3",
         "references/discuss-methodology.snapshot.md": "sha256:b9489288e6b7968d8725f49075594e92220d23c6c6224cb337981a3688724fc5",
         "references/requirement-generator.md": "sha256:da00751ac9dcfbd2615f9448c41538cfd627e9cf272614cbd15013d65466befe"
       }
@@ -40,7 +40,7 @@
     },
     "spec": {
       "version": "0.1.0",
-      "installed_at": "2026-04-08T16:08:57.142685+00:00",
+      "installed_at": "2026-04-28T12:17:03.905022+00:00",
       "commands": [
         "spec-create-context.md",
         "spec-draft.md",
@@ -56,7 +56,7 @@
         "commands/spec-help.md": "sha256:b96efca5a02a7fdd82de293db9975347266baf089ab05dd5acf5872ab4b2fc64",
         "commands/spec-improve.md": "sha256:d8a9ff95594f87df41feea7ac818e7dfbd94a2be7f975b249ceaca84756174a7",
         "commands/spec-prepare-context.md": "sha256:e9b67366eeb4f20b3f31ebb8f068b9c5154b53078ca2ec05964217ac5c23f355",
-        "install.sh": "sha256:458f9f7048a06d893c7d332e77ab41f037fe2e3d0ab4f0848f72d6cc73ef4c9e",
+        "install.sh": "sha256:888d025d0c94b609f22e4234154fa763e40c6d7f0997b8238873cffec6ce0eba",
         "references/concept-spec-template.md": "sha256:d2af0abd56f568d6a7370e9fe46d6d29be1240201840f36aaea6a065803411dd",
         "scripts/__init__.py": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "scripts/improve_files.py": "sha256:16ef92f5df849de8939a4d1590b89fb4e7aeeb02617bf2d6595b23a3ef10a378"
@@ -89,28 +89,28 @@
     },
     "transcript": {
       "version": "0.1.0",
-      "installed_at": "2026-04-08T12:53:20.177324+00:00",
+      "installed_at": "2026-04-28T12:17:11.096670+00:00",
       "commands": [
         "transcript-analyze.md",
         "transcript-export.md",
         "transcript-session-file.md"
       ],
       "source_checksums": {
-        "cc_transcript_analyzer.py": "sha256:d0cfa07fcbd09406d081118a29e5622f28fc474a69309e9d0ab682476669703d",
+        "cc_transcript_analyzer.py": "sha256:cadb7d4a820537f28c8672faf5e6d5668095f429a01f84a99500311744e36095",
         "cc_transcript_compactor.py": "sha256:3b8ceac80325b4e306c40e5d2829ee4b7a1cb9fbd49fa77408a8321b7d7b1080",
         "cc_transcript_exporter.py": "sha256:0f8cc234220bbdb324d05f50690c6997f589ffb40f4c8d940dc0b9128fd98fa0",
         "commands/transcript-analyze.md": "sha256:5cb9027b58ef1a0ebee6451471485aca423b2cf08ceb1a4aa74a4a91a1afff7d",
         "commands/transcript-export.md": "sha256:469791e5dd7f57a641bbf52ac37a8104861aba7a034b82da962b708c87c62238",
         "commands/transcript-session-file.md": "sha256:6f0a105dc68fb0ca0ac389781ed3c301ee5c6c1a31a5f5cb0f91e1b2faff7104",
         "hooks/inject-transcript-path.py": "sha256:f1c2799f94cb576646989d2ffb02312c2f4cf990c4a0b0eb7b8e16d0c777ba6e",
-        "install.sh": "sha256:cff975e6d99be2735b6e9a40f0a7b337a1611b85ed9ed51741d2661cfbbfd38e",
-        "post-install.md": "sha256:b7188244566cd679b1beede3b07f964391aa9ac3b9a2b8c440d08cabd179b5f2",
+        "install.sh": "sha256:255868bfc4e95cb7ef72dd48014c1428abf91932874834cdf5ee3094d1e6fa74",
+        "post-install.md": "sha256:92aac4b7ec5a2ed6437c5299ea76e7db4f9744d635af34fa6e3da756352e2211",
         "references/transcript-json-schema.md": "sha256:ec09c9e21789de533eec50366eb98a7e196fee4c3d60da0a82662541c1ebfff0"
       }
     }
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
-  "last_updated": "2026-04-27T10:56:52.342068+00:00",
+  "last_updated": "2026-04-28T12:18:06.676228+00:00",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools"
 }
