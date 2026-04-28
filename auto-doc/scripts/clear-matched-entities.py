@@ -280,6 +280,19 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
             ):
                 ident_cleared.add(name)
 
+        # Implicit-components pass: clear entities matching any path component
+        # implied by the section's refs.  Handles directory shorthand (flows/,
+        # src/) covered by a leaf-file ref's path, and module-path segments
+        # covered by code refs.  The trailing-slash strip lets prose `flows/`
+        # match the segment `flows` extracted from a config ref.
+        implicit = set(section.get("implicit_components") or [])
+        if implicit:
+            for name in section_entities:
+                if name in ident_cleared:
+                    continue
+                if name.rstrip("/") in implicit:
+                    ident_cleared.add(name)
+
         # Second pass: path resolution for remaining entities
         remaining = [n for n in section_entities if n not in ident_cleared]
         if remaining:

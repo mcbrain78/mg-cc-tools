@@ -4,7 +4,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from lib.ref_utils import identifier_for_ref, path_for_ref
+from lib.ref_utils import identifier_for_ref, path_components_for_ref, path_for_ref
 
 
 # -- code refs ---------------------------------------------------------------
@@ -308,3 +308,92 @@ def test_path_unknown_type():
 def test_path_missing_type():
     ref = {"name": "foo"}
     assert path_for_ref(ref) == ()
+
+
+# -- path_components_for_ref -------------------------------------------------
+
+def test_components_config_splits_path():
+    ref = {"type": "config", "path": "src/road_runner/flows/ingestion.py"}
+    components = set(path_components_for_ref(ref))
+    assert components == {"src", "road_runner", "flows", "ingestion.py"}
+
+
+def test_components_config_drops_unsplit_full_path():
+    """The full unsplit path string should not appear as a component."""
+    ref = {"type": "config", "path": "src/foo.py"}
+    components = set(path_components_for_ref(ref))
+    assert "src/foo.py" not in components
+    assert components == {"src", "foo.py"}
+
+
+def test_components_config_empty_path():
+    ref = {"type": "config", "path": ""}
+    assert path_components_for_ref(ref) == ()
+
+
+def test_components_code_includes_module_segments():
+    ref = {
+        "type": "code", "kind": "function", "name": "get_engine",
+        "module": "src/road_runner/db/session.py",
+    }
+    components = set(path_components_for_ref(ref))
+    assert components >= {"src", "road_runner", "db", "session.py", "get_engine"}
+
+
+def test_components_code_with_attr_and_module():
+    ref = {
+        "type": "code", "kind": "class", "name": "FMPClient",
+        "attr": "get_short_interest",
+        "module": "src/foo/client.py",
+    }
+    components = set(path_components_for_ref(ref))
+    assert components >= {
+        "src", "foo", "client.py", "FMPClient", "get_short_interest",
+    }
+
+
+def test_components_code_no_module():
+    ref = {"type": "code", "kind": "function", "name": "start_run"}
+    assert path_components_for_ref(ref) == ("start_run",)
+
+
+def test_components_db_hierarchy():
+    ref = {"type": "db", "db": "finance", "schema": "road_runner", "table": "etl_runs"}
+    assert set(path_components_for_ref(ref)) == {"finance", "road_runner", "etl_runs"}
+
+
+def test_components_dep_single_name():
+    ref = {"type": "dep", "name": "sqlalchemy"}
+    assert path_components_for_ref(ref) == ("sqlalchemy",)
+
+
+def test_components_flow_single_name():
+    ref = {"type": "flow", "name": "ingest-fmp"}
+    assert path_components_for_ref(ref) == ("ingest-fmp",)
+
+
+def test_components_env_single_name():
+    ref = {"type": "env", "name": "DATABASE_URL"}
+    assert path_components_for_ref(ref) == ("DATABASE_URL",)
+
+
+def test_components_enum_hierarchy():
+    ref = {"type": "enum", "class": "Status", "field": "state", "value": "RUNNING"}
+    assert set(path_components_for_ref(ref)) == {"Status", "state", "RUNNING"}
+
+
+def test_components_malformed():
+    ref = {"type": "malformed", "original_type": "code", "name": "foo"}
+    assert path_components_for_ref(ref) == ()
+
+
+def test_components_unknown_type():
+    ref = {"type": "unknown", "name": "foo"}
+    assert path_components_for_ref(ref) == ()
+
+
+def test_components_returns_sorted_tuple():
+    """Determinism: re-running on same ref returns identical ordering."""
+    ref = {"type": "config", "path": "src/road_runner/flows/ingestion.py"}
+    result = path_components_for_ref(ref)
+    assert result == tuple(sorted(result))

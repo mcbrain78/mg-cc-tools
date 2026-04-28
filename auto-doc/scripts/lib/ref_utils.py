@@ -156,3 +156,48 @@ def path_for_ref(ref):
         return (cls, field, value)
 
     return ()
+
+
+def path_components_for_ref(ref):
+    """Return all implicit path components a ref covers, as a sorted tuple.
+
+    Combines the semantic identity path (from ``path_for_ref``) with file-path
+    segments split on ``/`` for config and code refs.  Used to build the
+    per-section implicit-components set for clearing prose mentions of parent
+    directories, module names, and other path-prefix tokens.
+
+    Component sources per type:
+
+    * **db, enum** → semantic path components (already hierarchical)
+    * **code** → semantic path (name, attr/param) + module path segments
+    * **config** → path segments (split on ``/``); the unsplit full path is
+      not retained
+    * **flow, dep, env, ext, literal** → ``(name,)``
+    * **malformed** → ``()``
+    """
+    ref_type = ref.get("type", "")
+    if ref_type == "malformed":
+        return ()
+
+    components = set()
+
+    for c in path_for_ref(ref):
+        if c:
+            components.add(c)
+
+    if ref_type == "config":
+        path = ref.get("path", "")
+        if path:
+            components.discard(path)
+            for seg in path.split("/"):
+                if seg:
+                    components.add(seg)
+
+    if ref_type == "code":
+        module = ref.get("module", "")
+        if module:
+            for seg in module.split("/"):
+                if seg:
+                    components.add(seg)
+
+    return tuple(sorted(components))

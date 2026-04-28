@@ -26,7 +26,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import save_json
-from lib.ref_utils import identifier_for_ref, path_for_ref
+from lib.ref_utils import (
+    identifier_for_ref,
+    path_components_for_ref,
+    path_for_ref,
+)
 from lib.xml_doc import parse_xml_doc, walk_sections
 
 
@@ -187,6 +191,15 @@ def prepare(xml_path, output_dir):
                     "identifier": ref.get("name"),
                 })
 
+        # Implicit-components set: union of every path component a ref
+        # references (semantic + file-path segments).  Consumed by the
+        # implicit-components clearing pass in clear-matched-entities.py.
+        implicit_components = set()
+        for ref in section["refs"]:
+            if ref.get("type") == "malformed":
+                continue
+            implicit_components.update(path_components_for_ref(ref))
+
         content_hash = hashlib.sha256(
             body.encode("utf-8"),
         ).hexdigest()
@@ -201,6 +214,7 @@ def prepare(xml_path, output_dir):
             "content_hash": content_hash,
             "malformed_refs": malformed,
             "ref_entries": ref_entries,
+            "implicit_components": sorted(implicit_components),
         }
 
         # Nested directory structure: monitoring-alerting/etl-run-logging.json

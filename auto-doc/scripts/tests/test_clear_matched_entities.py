@@ -46,6 +46,7 @@ def _setup(td, sections, entities):
             "refs_as_text": "- refs",
             "malformed_refs": [],
             "ref_entries": sec.get("ref_entries", []),
+            "implicit_components": sec.get("implicit_components", []),
         }
         if parent:
             os.makedirs(os.path.join(prose_dir, parent), exist_ok=True)
@@ -1767,3 +1768,139 @@ class TestCheckBImpliedByCoveredEntity:
             with open(ff) as f:
                 findings = json.load(f)
             assert len(findings) == 1
+
+
+class TestImplicitComponentsClearing:
+    """Path-component clearing via per-section implicit_components."""
+
+    def test_directory_shorthand_clears(self):
+        """Prose `flows/` clears against a config ref's path segments."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "structure",
+                    "body": (
+                        "## Structure\n\nFiles under `flows/` orchestrate "
+                        "Prefect deployments. See `ingestion.py`."
+                    ),
+                    "ref_entries": [
+                        {"display": "[config] src/road_runner/flows/ingestion.py",
+                         "identifier": "ingestion.py",
+                         "path": ["src/road_runner/flows/ingestion.py"]},
+                    ],
+                    "implicit_components": [
+                        "flows", "ingestion.py", "road_runner", "src",
+                    ],
+                },
+            ], [
+                {"name": "flows/", "section": "structure"},
+                {"name": "ingestion.py", "section": "structure"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 2" in result.stderr
+
+    def test_module_segment_clears_via_code_ref(self):
+        """Prose mention of `bar.py` clears via code ref module segments."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "section",
+                    "body": "## S\n\nFunction `run` lives in `bar.py`.",
+                    "ref_entries": [
+                        {"display": "[code:function] run in src/foo/bar.py",
+                         "identifier": "run",
+                         "path": ["src/foo/bar.py", "run"]},
+                    ],
+                    "implicit_components": [
+                        "bar.py", "foo", "run", "src",
+                    ],
+                },
+            ], [
+                {"name": "bar.py", "section": "section"},
+                {"name": "foo", "section": "section"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+
+    def test_atomic_ref_unchanged(self):
+        """Single-name [dep] ref still clears its identifier (no regression)."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "section",
+                    "body": "## S\n\nWe use sqlalchemy for persistence.",
+                    "ref_entries": [
+                        {"display": "[dep] sqlalchemy",
+                         "identifier": "sqlalchemy",
+                         "path": ["sqlalchemy"]},
+                    ],
+                    "implicit_components": ["sqlalchemy"],
+                },
+            ], [
+                {"name": "sqlalchemy", "section": "section"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+
+    def test_check_b_still_emits_for_missing_leaf(self):
+        """Implicit-components clearing must not suppress Check B body-literal
+        findings.  A typo'd ref whose leaf identifier is absent from the body
+        still gets a reference-integrity finding even though the directory
+        segments would clear via implicit components."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "section",
+                    "body": "## S\n\nFiles under `bar/` matter.",
+                    "ref_entries": [
+                        {"display": "[config] fpo/bar/baz.py",
+                         "identifier": "baz.py",
+                         "path": ["fpo/bar/baz.py"]},
+                    ],
+                    "implicit_components": ["bar", "baz.py", "fpo"],
+                },
+            ], [])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            assert os.path.exists(ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            descriptions = [f.get("description", "") for f in findings]
+            assert any("baz.py" in d for d in descriptions), (
+                f"Expected reference-integrity finding for missing baz.py, "
+                f"got: {descriptions}"
+            )
+
+    def test_no_implicit_components_no_clearing(self):
+        """Empty implicit_components leaves entities uncleared."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "section",
+                    "body": "## S\n\n`flows/` is mentioned.",
+                    "ref_entries": [],
+                    "implicit_components": [],
+                },
+            ], [
+                {"name": "flows/", "section": "section"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert {"name": "flows/", "section": "section"} in uncleared

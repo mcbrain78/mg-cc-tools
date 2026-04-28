@@ -837,3 +837,61 @@ class TestContentHashIgnoresRefs:
                 hash_b = json.load(f)["content_hash"]
 
             assert hash_a != hash_b
+
+    def test_implicit_components_field_present_and_sorted(self):
+        """Section JSON includes a sorted implicit_components list spanning
+        config-path segments and code module segments."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                (
+                    "structure",
+                    "<!-- section: structure -->\n## Structure\n\nLayout.",
+                    [
+                        {"type": "config",
+                         "path": "src/road_runner/flows/ingestion.py"},
+                        {"type": "code", "kind": "function",
+                         "name": "get_engine",
+                         "module": "src/road_runner/db/session.py"},
+                        {"type": "dep", "name": "sqlalchemy"},
+                    ],
+                ),
+            ])
+            output_dir = os.path.join(td, "output")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, result.stderr
+
+            with open(os.path.join(output_dir, "structure.json")) as f:
+                data = json.load(f)
+
+            components = data["implicit_components"]
+            assert components == sorted(components), (
+                f"implicit_components must be sorted for determinism: "
+                f"{components}"
+            )
+            cset = set(components)
+            assert {"src", "road_runner", "flows", "ingestion.py"} <= cset
+            assert {"db", "session.py", "get_engine"} <= cset
+            assert "sqlalchemy" in cset
+            # Unsplit full path must not leak into the components set.
+            assert "src/road_runner/flows/ingestion.py" not in cset
+
+    def test_implicit_components_empty_for_no_refs(self):
+        """A section with no refs has an empty implicit_components list."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_path = _build_xml(td, [
+                ("intro", "<!-- section: intro -->\n## Intro\n\nText.", []),
+            ])
+            output_dir = os.path.join(td, "output")
+            subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--xml-file", xml_path, "--output-dir", output_dir],
+                capture_output=True, text=True,
+            )
+            with open(os.path.join(output_dir, "intro.json")) as f:
+                data = json.load(f)
+            assert data["implicit_components"] == []
