@@ -35,34 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/permission-hooks/hooks/permission-guard.py"
-          }
-        ]
-      },
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 .claude/permission-hooks/hooks/permission-guard.py"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 .claude/permission-hooks/hooks/permission-guard.py"
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 .claude/permission-hooks/hooks/permission-guard.py"
+            "command": "python3 .claude/transcript/hooks/inject-transcript-path.py"
           }
         ]
       },
@@ -71,7 +44,34 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/transcript/hooks/inject-transcript-path.py"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/permission-hooks/hooks/permission-guard.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/permission-hooks/hooks/permission-guard.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/permission-hooks/hooks/permission-guard.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/permission-hooks/hooks/permission-guard.py\""
           }
         ]
       }

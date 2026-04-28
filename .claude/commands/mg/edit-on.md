@@ -10,7 +10,7 @@ allowed-tools: Bash
 Step 1 — Run the edit guard emitter to re-enable edits:
 
 ```
-python3 .claude/permission-hooks/scripts/emit-edit-guard.py ON
+python3 "$(git rev-parse --show-toplevel)/.claude/permission-hooks/scripts/emit-edit-guard.py" ON
 ```
 
 Step 2 — After step 1 completes, trigger a statusline bridge update:
