@@ -101,7 +101,8 @@ _FORMAT_HINTS = {
     ),
     "code": (
         '<code><function name="NAME" module="PATH"/></code>\n'
-        'or <code><class name="NAME"><attr>ATTR</attr></class></code>\n'
+        'or <code><class name="NAME" module="PATH"/></code>\n'
+        'or <code><class name="NAME" module="PATH"><attr>ATTR</attr></class></code>\n'
         'or <code><variable name="NAME" module="PATH"/></code>  (module-level constant)'
     ),
     "flow": "<flow>NAME</flow>",

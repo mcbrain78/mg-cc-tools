@@ -213,13 +213,14 @@ class TestCodeRefs:
             assert "nonexistent_param" in findings[0]["description"]
 
     def test_class_attr(self):
-        """Class attr ref verified by scanning (module not on <class> XML element)."""
+        """Class attr ref with module resolves via the declared module path."""
         with tempfile.TemporaryDirectory() as td:
             project_root, xml_dir, findings_file = _make_project(td)
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "models",
                 "<!-- section: models -->\n## Models\n\nContent",
-                [{"type": "code", "kind": "class", "name": "EtlRun", "attr": "flow_name"}],
+                [{"type": "code", "kind": "class", "name": "EtlRun",
+                  "module": "src/app/models.py", "attr": "flow_name"}],
             )])
 
             _run_verify(xml_dir, project_root, findings_file)

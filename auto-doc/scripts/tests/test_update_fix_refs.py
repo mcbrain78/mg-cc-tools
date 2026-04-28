@@ -181,6 +181,46 @@ class TestAddValidRefs:
             refs = _read_section_refs_flat(edit_path, "monitoring")
             assert refs[0]["kind"] == "class"
             assert refs[0]["name"] == "EtlRun"
+            assert "module" not in refs[0]
+
+    def test_add_code_class_ref_with_module(self):
+        with tempfile.TemporaryDirectory() as td:
+            edit_path = _build_edit_xml(td, "g1", [{
+                "slug": "monitoring",
+                "body": "content",
+            }])
+
+            snippet = (
+                '<code><class name="Settings" '
+                'module="src/road_runner/config.py"/></code>'
+            )
+            result = update_fix_refs(edit_path, "monitoring", add_snippet=snippet)
+            assert "Added 1 ref" in result
+
+            refs = _read_section_refs_flat(edit_path, "monitoring")
+            assert refs[0]["kind"] == "class"
+            assert refs[0]["name"] == "Settings"
+            assert refs[0]["module"] == "src/road_runner/config.py"
+
+    def test_add_code_class_ref_with_module_and_attr(self):
+        with tempfile.TemporaryDirectory() as td:
+            edit_path = _build_edit_xml(td, "g1", [{
+                "slug": "monitoring",
+                "body": "content",
+            }])
+
+            snippet = (
+                '<code><class name="Settings" module="src/config.py">'
+                '<attr>fmp_api_key</attr></class></code>'
+            )
+            result = update_fix_refs(edit_path, "monitoring", add_snippet=snippet)
+            assert "Added 1 ref" in result
+
+            refs = _read_section_refs_flat(edit_path, "monitoring")
+            assert refs[0]["kind"] == "class"
+            assert refs[0]["name"] == "Settings"
+            assert refs[0]["module"] == "src/config.py"
+            assert refs[0]["attr"] == "fmp_api_key"
 
     def test_add_flow_ref(self):
         with tempfile.TemporaryDirectory() as td:

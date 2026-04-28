@@ -658,7 +658,8 @@ class TestUpdateSectionRefs:
     def test_code_refs_class_and_function(self):
         tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
         flat_refs = [
-            {"type": "code", "kind": "class", "name": "EtlRun", "attr": "status"},
+            {"type": "code", "kind": "class", "name": "EtlRun",
+             "module": "src/road_runner/db/models.py", "attr": "status"},
             {"type": "code", "kind": "function", "name": "compute_finance_metrics",
              "module": "src/road_runner/flows/compute.py", "param": "recompute_stale"},
         ]
@@ -675,6 +676,7 @@ class TestUpdateSectionRefs:
             assert class_ref["type"] == "code"
             assert class_ref["kind"] == "class"
             assert class_ref["name"] == "EtlRun"
+            assert class_ref["module"] == "src/road_runner/db/models.py"
             assert class_ref["attr"] == "status"
             func_ref = refs[1]
             assert func_ref["type"] == "code"
@@ -682,6 +684,55 @@ class TestUpdateSectionRefs:
             assert func_ref["name"] == "compute_finance_metrics"
             assert func_ref["module"] == "src/road_runner/flows/compute.py"
             assert func_ref["param"] == "recompute_stale"
+        finally:
+            os.unlink(path)
+
+    def test_code_refs_class_module_disambiguation(self):
+        """Same class name in different modules produces two distinct refs."""
+        tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
+        flat_refs = [
+            {"type": "code", "kind": "class", "name": "Settings",
+             "module": "src/road_runner/config.py"},
+            {"type": "code", "kind": "class", "name": "Settings",
+             "module": "src/other_app/config.py"},
+        ]
+        update_section_refs(tree, "monitoring-alerting", flat_refs)
+
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 2
+            modules = sorted(r["module"] for r in refs)
+            assert modules == [
+                "src/other_app/config.py",
+                "src/road_runner/config.py",
+            ]
+            assert all(r["name"] == "Settings" for r in refs)
+            assert all(r["kind"] == "class" for r in refs)
+        finally:
+            os.unlink(path)
+
+    def test_code_refs_class_without_module(self):
+        """Class refs without module continue to round-trip unchanged."""
+        tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
+        flat_refs = [
+            {"type": "code", "kind": "class", "name": "Run"},
+        ]
+        update_section_refs(tree, "monitoring-alerting", flat_refs)
+
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+            path = f.name
+        try:
+            serialize_xml_doc(tree, path)
+            doc = parse_xml_doc(path)
+            refs = doc["sections"][0]["refs"]
+            assert len(refs) == 1
+            assert refs[0]["name"] == "Run"
+            assert refs[0]["kind"] == "class"
+            assert "module" not in refs[0]
         finally:
             os.unlink(path)
 

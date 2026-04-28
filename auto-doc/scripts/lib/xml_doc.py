@@ -249,17 +249,18 @@ def _parse_code_refs(code_el):
     refs = []
     for cls_el in code_el.findall("class"):
         cls_name = cls_el.get("name", "")
+        module = cls_el.get("module", "")
         attrs = [a.text for a in cls_el.findall("attr") if a.text]
+        base = {"type": "code", "kind": "class", "name": cls_name}
+        if module:
+            base["module"] = module
         if attrs:
             for attr in attrs:
-                refs.append({
-                    "type": "code",
-                    "kind": "class",
-                    "name": cls_name,
-                    "attr": attr,
-                })
+                ref = dict(base)
+                ref["attr"] = attr
+                refs.append(ref)
         else:
-            refs.append({"type": "code", "kind": "class", "name": cls_name})
+            refs.append(base)
     for func_el in code_el.findall("function"):
         func_name = func_el.get("name", "")
         module = func_el.get("module", "")
@@ -678,19 +679,24 @@ def _build_code_xml(refs_el, code_refs):
     """Build <code><class>/<function>/<variable> from flat code refs."""
     code_el = etree.SubElement(refs_el, "code")
 
-    # Group classes: collect attrs per class name
+    # Group classes: collect attrs per (name, module)
     classes = {}
     for ref in code_refs:
         if ref.get("kind") == "class":
             name = ref.get("name", "")
-            if name not in classes:
-                classes[name] = []
+            module = ref.get("module", "")
+            key = (name, module)
+            if key not in classes:
+                classes[key] = []
             attr = ref.get("attr")
-            if attr and attr not in classes[name]:
-                classes[name].append(attr)
+            if attr and attr not in classes[key]:
+                classes[key].append(attr)
 
-    for cls_name, attrs in classes.items():
-        cls_el = etree.SubElement(code_el, "class", name=cls_name)
+    for (cls_name, module), attrs in classes.items():
+        el_attrs = {"name": cls_name}
+        if module:
+            el_attrs["module"] = module
+        cls_el = etree.SubElement(code_el, "class", **el_attrs)
         for attr in attrs:
             attr_el = etree.SubElement(cls_el, "attr")
             attr_el.text = attr
