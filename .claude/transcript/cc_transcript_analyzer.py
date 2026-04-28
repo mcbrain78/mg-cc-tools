@@ -39,6 +39,18 @@ NOISE_PATTERNS = [
 AGENT_ID_RE = re.compile(r"agentId:\s*([a-f0-9]+)")
 USAGE_BLOCK_RE = re.compile(r"\s*<usage>.*?</usage>\s*$", re.DOTALL)
 EXIT_CODE_RE = re.compile(r"^Exit code [1-9]", re.MULTILINE)
+# Anchored failure-announcement pattern. Matches lines that begin with
+# FAILED/ERROR/PLAN FAILED (after optional markdown lead like #, *, `),
+# followed by EOL or punctuation. Does NOT match mid-line occurrences such
+# as `ERROR` listed as an enum value, or identifiers like `ERROR_CODE_42`.
+AGENT_FAILURE_HEADER_RE = re.compile(
+    r"^[\s#*\-`_>]*"                  # optional markdown/quote lead
+    r"(?:\*\*|__|`)*"                 # optional bold/code wrapper open
+    r"(?:PLAN\s+FAILED|FAILED|ERROR)"
+    r"(?:\*\*|__|`)*"                 # optional wrapper close
+    r"(?=$|[\s:!.,;\-)])",            # boundary: EOL or punctuation
+    re.IGNORECASE,
+)
 PERSISTED_RE = re.compile(r"<persisted-output>(.*?)</persisted-output>", re.DOTALL)
 PERSISTED_PATH_RE = re.compile(r"Full output saved to:\s*(.+)")
 PERSISTED_PREVIEW_RE = re.compile(
@@ -558,40 +570,49 @@ def cmd_overview(data: dict, session_file: str, args) -> str:
 
 
 def _classify_agent_status(messages: list) -> str:
-    """Classify agent status from its messages. Returns 'failed' or 'ok'."""
+    """Classify agent status from its messages. Returns 'failed' or 'ok'.
+
+    Heuristic, display-only. Two signals:
+    1. Last assistant message's first or last line announces a failure
+       (anchored match — substring-in-narrative does not count).
+    2. The chronologically last tool_result in the agent's stream is an error.
+       Earlier errors that were recovered are deliberately ignored.
+    """
     if not messages:
         return "ok"
 
-    # Check last assistant message
+    # Signal 1: last assistant message's framing line.
     for msg in reversed(messages):
-        if not isinstance(msg, dict):
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
             continue
-        if msg.get("role") != "assistant":
-            continue
-        text = extract_text(msg.get("content", ""))
-        text = strip_usage(text).strip()
+        text = strip_usage(extract_text(msg.get("content", ""))).strip()
         if not text:
             continue
-        first_line = text.split("\n")[0].strip().upper()
-        last_line = text.rsplit("\n", 1)[-1].strip().upper()
-        if any(
-            kw in first_line or kw in last_line
-            for kw in ("FAILED", "ERROR", "PLAN FAILED")
-        ):
+        first_line = text.split("\n", 1)[0]
+        last_line = text.rsplit("\n", 1)[-1]
+        if (AGENT_FAILURE_HEADER_RE.search(first_line)
+                or AGENT_FAILURE_HEADER_RE.search(last_line)):
             return "failed"
         break
 
-    # Check tool_result is_error on the last tool_result
+    # Signal 2: last tool_result message. Walk in reverse; the first message
+    # carrying any tool_result is "the last tool-result turn". If any block in
+    # that turn has is_error, the agent ended on a failure.
     for msg in reversed(messages):
         if not isinstance(msg, dict):
             continue
         content = msg.get("content")
         if not isinstance(content, list):
             continue
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "tool_result":
-                if block.get("is_error"):
-                    return "failed"
+        tool_results = [
+            b for b in content
+            if isinstance(b, dict) and b.get("type") == "tool_result"
+        ]
+        if not tool_results:
+            continue
+        if any(b.get("is_error") for b in tool_results):
+            return "failed"
+        break
 
     return "ok"
 
