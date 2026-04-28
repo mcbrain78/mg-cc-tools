@@ -1904,3 +1904,126 @@ class TestImplicitComponentsClearing:
             with open(uf) as f:
                 uncleared = json.load(f)
             assert {"name": "flows/", "section": "section"} in uncleared
+
+
+class TestDirectoryRefClearing:
+    """Directory-only refs (empty identifier, path ending in /) clear both
+    slash forms of a prose mention."""
+
+    def test_dir_ref_clears_slashless_prose(self):
+        """Prose `src/road_runner` clears against ref path `src/road_runner/`.
+
+        Reproduces the road-runner auditv2 false-positive where the LLM
+        extracts the directory without a trailing slash and the declared
+        config ref carries one.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "file-paths",
+                    "body": (
+                        "## File paths\n\nSource code lives in "
+                        "`src/road_runner` and tests live in `tests/`."
+                    ),
+                    "ref_entries": [
+                        {"display": "[config] src/road_runner/",
+                         "identifier": "",
+                         "path": ["src/road_runner/"]},
+                    ],
+                    "implicit_components": ["road_runner", "src"],
+                },
+            ], [
+                {"name": "src/road_runner", "section": "file-paths"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+            assert "Cleared: 1" in result.stderr
+
+    def test_dir_ref_clears_slashful_prose(self):
+        """Prose `src/road_runner/` (with slash) still clears against the
+        same ref. Regression check for the existing behaviour."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "file-paths",
+                    "body": (
+                        "## File paths\n\nSource code lives in "
+                        "`src/road_runner/`."
+                    ),
+                    "ref_entries": [
+                        {"display": "[config] src/road_runner/",
+                         "identifier": "",
+                         "path": ["src/road_runner/"]},
+                    ],
+                    "implicit_components": ["road_runner", "src"],
+                },
+            ], [
+                {"name": "src/road_runner/", "section": "file-paths"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert uncleared == []
+
+    def test_dir_ref_does_not_overclear_prefix(self):
+        """A dir ref `src/road_runner/` must not clear an entity whose name
+        is a prefix-extended sibling (`src/road_runner_old`). Confirms we
+        are matching exact slash-stripped form, not doing prefix matching."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "file-paths",
+                    "body": (
+                        "## File paths\n\nLegacy code: `src/road_runner_old`."
+                    ),
+                    "ref_entries": [
+                        {"display": "[config] src/road_runner/",
+                         "identifier": "",
+                         "path": ["src/road_runner/"]},
+                    ],
+                    "implicit_components": ["road_runner", "src"],
+                },
+            ], [
+                {"name": "src/road_runner_old", "section": "file-paths"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert {"name": "src/road_runner_old",
+                    "section": "file-paths"} in uncleared
+
+    def test_file_ref_with_trailing_slash_unchanged(self):
+        """A ref with a non-empty identifier must not be treated as a
+        directory ref even if its path happens to end in /. The new branch
+        is gated on `not ident` and must not fire here."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "section",
+                    "body": "## S\n\nWe call `helper` defined at the path.",
+                    "ref_entries": [
+                        {"display": "[code:function] helper in some/dir/",
+                         "identifier": "helper",
+                         "path": ["some/dir/"]},
+                    ],
+                    "implicit_components": [],
+                },
+            ], [
+                {"name": "helper", "section": "section"},
+                {"name": "some/dir", "section": "section"},
+            ])
+
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(uf) as f:
+                uncleared = json.load(f)
+            assert {"name": "helper", "section": "section"} not in uncleared
+            assert {"name": "some/dir", "section": "section"} in uncleared

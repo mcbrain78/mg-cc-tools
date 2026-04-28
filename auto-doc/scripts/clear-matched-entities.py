@@ -246,6 +246,13 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
             ident = entry.get("identifier")
             if ident:
                 all_idents.add(ident)
+            # Directory-only refs: identifier is empty, the path itself names
+            # the directory. Promote both slash forms so prose mentioning
+            # `src/foo` or `src/foo/` clears against ref path `src/foo/`.
+            path = entry.get("path") or []
+            if not ident and len(path) == 1 and path[0].endswith("/"):
+                all_idents.add(path[0])
+                all_idents.add(path[0].rstrip("/"))
 
         # Covered-clear pass: mark entities resolved via persistent coverage
         # entries when the covered_by identifier is still declared in this
