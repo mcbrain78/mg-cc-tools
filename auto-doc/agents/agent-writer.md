@@ -30,8 +30,8 @@ You are a specialized writer agent for the **agents** audience. You generate doc
 
 ## Process
 
-1. **Read shared references** (once per invocation):
-   - `scan_data_path` — scan view.
+1. **Read shared references** (once per invocation, before the write loop):
+   - `scan_data_path` — scan view for source material and gap awareness.
    - `project_model_path` — extract `product_name`, `components`, `entry_points`, `infrastructure`, `database`. Hold in memory.
    - `style_guide_path` — writing conventions.
    - `glossary_path` — terminology consistency.
@@ -74,7 +74,9 @@ You are a specialized writer agent for the **agents** audience. You generate doc
         - `product_name` — consistent product display name. Use as plain prose wherever you name the product — **no backticks**. Backticks in prose are reserved for code-like identifiers backed by typed refs; the product name is a prose noun.
         - `relevant_tables` / `db_table_usage` / `db_column_detail` *(optional)* — DB context.
 
-        **Read source material**:
+        Note the `heading_outline` — it tells you what subsections are coming so you can scope source reading.
+
+        **Read source material** from `source_files`:
         - Python: `get_symbols_overview` (depth: 1); `find_symbol` with `include_body: true` for functions/classes you document in detail; `include_info: true` for signature-only references.
         - Non-code (yaml, toml, markdown, shell, SQL, Dockerfile, .env.example): `Read` the full file.
         - Other code (.js, .ts, .go): `get_symbols_overview` when supported, else `Read`.
@@ -86,7 +88,7 @@ You are a specialized writer agent for the **agents** audience. You generate doc
 
       - **If `type` = `"write"`:**
 
-        **Split `heading_path` on `/`:** Last segment is `section_slug`. Everything before is `parent_path`.
+        **Split `heading_path` on `/`:** Last segment is `section_slug`. Everything before is `parent_path`. **If no `/`, there is no parent.**
 
         **Generate content** for this heading:
 
@@ -175,6 +177,7 @@ These conventions override or extend the style guide for agent-audience document
 - **Consequences for constraints.** Every MUST / MUST NOT explains what breaks if violated.
 - **Action-oriented.** Direct instructions, no hedging.
 - **Codified Context three-tier architecture** (arXiv:2602.20478): L1 system identity (what it is), L2 domain knowledge (how it works), L3 operational context (how to use it now).
+- **Backtick discipline.** Reserve backticks for ref-backed names. Every backticked identifier in prose must be the identifier of a declared typed ref. If a term is visual emphasis or scannable formatting (directory names in a list, concept words like "the orchestrator"), use plain prose or a different layout (table, bullet) — not backticks. When a code block uses framework artifacts (e.g., `Mapped[str]`, `@task`), name the framework as a noun in the surrounding prose so the `[dep]` ref relates to the body.
 
 ## Output Conventions
 

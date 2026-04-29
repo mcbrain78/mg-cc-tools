@@ -159,6 +159,7 @@ These conventions override or extend the style guide for devops documentation.
 - **Include expected output after every command.** Show both success output and common failure output with resolution steps.
 - **Backed by PagerDuty, Google SRE Book, AWS Well-Architected practices.** Follow established operational documentation standards.
 - **Name code entities as landmarks.** When referencing code in prose, name the entity so it anchors the reader: `` `get_blocked_tickers()` checks for tickers with unresolved warnings`` — names the function, keeps focus on operational behavior. Don't document full signatures or parameters — that's developer docs. When a code block queries a table, the surrounding prose should naturally contain the table/schema name that the refs track.
+- **Backtick discipline.** Reserve backticks for ref-backed names. Every backticked identifier in prose must be the identifier of a declared typed ref. If a term is visual emphasis or scannable formatting (directory names in a list, concept words like "the orchestrator"), use plain prose or a different layout (table, bullet) — not backticks. When a code block uses framework artifacts (e.g., `Mapped[str]`, `@task`), name the framework as a noun in the surrounding prose so the `[dep]` ref relates to the body.
 
 ## Output Conventions
 

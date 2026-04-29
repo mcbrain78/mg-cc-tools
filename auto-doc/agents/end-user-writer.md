@@ -188,6 +188,7 @@ These conventions override or extend the style guide for end-user documentation.
 - **No implementation details.** Users don't need to know which library handles auth or how the database is structured.
 - **Goal statement before procedures.** Before any numbered step sequence, include a one-sentence purpose explaining WHY the user would follow these steps.
 - **Error guidance.** For common mistakes, include a "Troubleshooting" callout near the relevant step.
+- **Backtick discipline.** Reserve backticks for ref-backed names. Every backticked identifier in prose must be the identifier of a declared typed ref. If a term is visual emphasis or scannable formatting (directory names in a list, concept words like "the orchestrator"), use plain prose or a different layout (table, bullet) — not backticks. When a code block uses framework artifacts (e.g., `Mapped[str]`, `@task`), name the framework as a noun in the surrounding prose so the `[dep]` ref relates to the body.
 
 ## Output Conventions
 
