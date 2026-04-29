@@ -340,6 +340,7 @@ docs-verify-findings:
     check:       {type: string, required: true, description: "Verification check type (see valid_check_types)"}
     description: {type: string, required: true, description: "What is wrong"}
     suggestion:  {type: string, required: true, description: "How to fix it"}
+    entity:      {type: string, required: false, description: "Leaf identifier this finding is about (e.g., enum value, attr, env var, column). Used for suppression matching via suppressed-findings.json — entries are keyed on (section, check, entity)."}
     group_id:    {type: string, required: true, description: "Computed: {document}/{section}. Added by add-verify-finding.py."}
   valid_check_types:
     mechanical: [reference-integrity, cross-doc, diataxis, completeness, example-validity, link-integrity]

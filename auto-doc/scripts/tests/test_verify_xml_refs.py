@@ -1468,3 +1468,161 @@ class TestSharedDocInclusion:
             assert result.returncode == 0, result.stderr
             # devops doc filtered out — no OPERATIONS line in transcript
             assert "OPERATIONS" not in result.stderr
+
+
+class TestEntityField:
+    """Findings carry an `entity` field equal to the leaf identifier
+    that failed verification — the suppression matcher in
+    load-audit-findings.py keys on (section, check, entity).
+    """
+
+    def test_db_column_mismatch_entity_is_column(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
+                [{"type": "db", "db": "mydb", "schema": "road_runner",
+                  "table": "etl_runs", "column": "nonexistent_col"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "nonexistent_col"
+
+    def test_db_table_mismatch_entity_is_table(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
+                [{"type": "db", "db": "mydb", "schema": "road_runner",
+                  "table": "nonexistent_table"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "nonexistent_table"
+
+    def test_code_class_attr_mismatch_entity_is_attr(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "models",
+                "<!-- section: models -->\n## Models\n\nContent",
+                [{"type": "code", "kind": "class", "name": "EtlRun",
+                  "module": "src/app/models.py", "attr": "bogus_attr"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "bogus_attr"
+
+    def test_code_function_param_mismatch_entity_is_param(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "compute",
+                "<!-- section: compute -->\n## Compute\n\nContent",
+                [{"type": "code", "kind": "function",
+                  "name": "compute_finance_metrics",
+                  "module": "src/app/compute.py", "param": "nonexistent_param"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "nonexistent_param"
+
+    def test_code_missing_class_entity_is_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "models",
+                "<!-- section: models -->\n## Models\n\nContent",
+                [{"type": "code", "kind": "class", "name": "NoSuchClass",
+                  "module": "src/app/models.py"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "NoSuchClass"
+
+    def test_flow_mismatch_entity_is_flow_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "flows",
+                "<!-- section: flows -->\n## Flows\n\nContent",
+                [{"type": "flow", "name": "ghost-flow"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "ghost-flow"
+
+    def test_env_mismatch_entity_is_env_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "config",
+                "<!-- section: config -->\n## Config\n\nContent",
+                [{"type": "env", "name": "GHOST_VAR"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "GHOST_VAR"
+
+    def test_config_missing_path_entity_is_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "files",
+                "<!-- section: files -->\n## Files\n\nContent",
+                [{"type": "config", "path": "config/missing.yaml"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "config/missing.yaml"
+
+    def test_config_tilde_path_entity_is_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "files",
+                "<!-- section: files -->\n## Files\n\nContent",
+                [{"type": "config", "path": "~/.pgpass"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "~/.pgpass"
+
+    def test_enum_value_mismatch_entity_is_value(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "enums",
+                "<!-- section: enums -->\n## Enums\n\nContent",
+                [{"type": "enum", "class": "RunStatus", "field": "status",
+                  "value": "ghost_value"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "ghost_value"
+
+    def test_dep_mismatch_entity_is_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "deps",
+                "<!-- section: deps -->\n## Deps\n\nContent",
+                [{"type": "dep", "name": "ghost-pkg"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "ghost-pkg"
+
+    def test_literal_mismatch_entity_is_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            project_root, xml_dir, findings_file = _make_project(td)
+            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
+                "literals",
+                "<!-- section: literals -->\n## Literals\n\nContent",
+                [{"type": "literal", "name": "string_that_appears_nowhere_xyz"}],
+            )])
+            _run_verify(xml_dir, project_root, findings_file)
+            findings = json.loads(open(findings_file).read())
+            assert findings[0]["entity"] == "string_that_appears_nowhere_xyz"

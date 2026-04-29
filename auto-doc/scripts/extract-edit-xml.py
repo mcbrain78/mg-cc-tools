@@ -162,11 +162,17 @@ def extract_edit_xml(grouping, findings, xml_dir, group_index):
             document=info["document"],
         )
 
-        # Add findings (read-only context)
+        # Add findings (read-only context). The `entity` attribute lets
+        # the audit-fixer agent extract the suppression key directly,
+        # without parsing backticked identifiers from the description
+        # (which can be ambiguous when a description has multiple
+        # backticked tokens).
         findings_el = etree.SubElement(edit_section, "findings")
         for f in info["findings"]:
             finding_el = etree.SubElement(
-                findings_el, "finding", check=f.get("check", ""),
+                findings_el, "finding",
+                check=f.get("check", ""),
+                entity=f.get("entity", ""),
             )
             finding_el.text = f.get("description", "")
 

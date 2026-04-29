@@ -17,13 +17,15 @@ sys.path.insert(0, SCRIPTS_DIR)
 _spec.loader.exec_module(_mod)
 deduplicate = _mod.deduplicate
 load_and_merge = _mod.load_and_merge
+_apply_suppressions = _mod._apply_suppressions
+_load_suppressions = _mod._load_suppressions
 
 
-def _run_script(audit_dir, output_path):
-    return subprocess.run(
-        [sys.executable, SCRIPT, "--audit-dir", audit_dir, "--output", output_path],
-        capture_output=True, text=True,
-    )
+def _run_script(audit_dir, output_path, suppress_file=None):
+    cmd = [sys.executable, SCRIPT, "--audit-dir", audit_dir, "--output", output_path]
+    if suppress_file is not None:
+        cmd.extend(["--suppress-file", suppress_file])
+    return subprocess.run(cmd, capture_output=True, text=True)
 
 
 class TestDeduplicate:
@@ -257,3 +259,265 @@ class TestSlashSeparatedPaths:
             result = load_and_merge(td)
             # Should have 2: one xml-ref-integrity (deduped) + one dangling-prose-reference
             assert len(result) == 2
+
+
+class TestApplySuppressions:
+    """Filter findings against (section, check, entity) suppression tuples."""
+
+    def test_no_suppress_file_is_noop(self):
+        findings = [
+            {"section": "s1", "check": "c1", "entity": "e1", "description": "d1"},
+        ]
+        out, n_sup, n_miss = _apply_suppressions(findings, None)
+        assert out == findings
+        assert n_sup == 0
+        assert n_miss == 0
+
+    def test_missing_suppress_file_is_noop(self):
+        with tempfile.TemporaryDirectory() as td:
+            findings = [
+                {"section": "s1", "check": "c1", "entity": "e1", "description": "d1"},
+            ]
+            out, n_sup, n_miss = _apply_suppressions(
+                findings, os.path.join(td, "does-not-exist.json"),
+            )
+            assert out == findings
+            assert n_sup == 0
+            assert n_miss == 0
+
+    def test_matching_entry_filters(self):
+        with tempfile.TemporaryDirectory() as td:
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                json.dump([
+                    {"section": "s1", "check": "c1", "entity": "e1"},
+                ], f)
+            findings = [
+                {"section": "s1", "check": "c1", "entity": "e1", "description": "d1"},
+                {"section": "s1", "check": "c1", "entity": "e2", "description": "d2"},
+            ]
+            out, n_sup, n_miss = _apply_suppressions(findings, sup_path)
+            assert len(out) == 1
+            assert out[0]["entity"] == "e2"
+            assert n_sup == 1
+            assert n_miss == 0
+
+    def test_mismatched_entity_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                json.dump([
+                    {"section": "s1", "check": "c1", "entity": "OTHER"},
+                ], f)
+            findings = [
+                {"section": "s1", "check": "c1", "entity": "e1", "description": "d1"},
+            ]
+            out, n_sup, _ = _apply_suppressions(findings, sup_path)
+            assert out == findings
+            assert n_sup == 0
+
+    def test_mismatched_section_or_check_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                json.dump([
+                    {"section": "OTHER", "check": "c1", "entity": "e1"},
+                    {"section": "s1", "check": "OTHER", "entity": "e1"},
+                ], f)
+            findings = [
+                {"section": "s1", "check": "c1", "entity": "e1", "description": "d1"},
+            ]
+            out, n_sup, _ = _apply_suppressions(findings, sup_path)
+            assert out == findings
+            assert n_sup == 0
+
+    def test_missing_entity_passes_with_warning(self, capsys):
+        with tempfile.TemporaryDirectory() as td:
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                json.dump([
+                    {"section": "s1", "check": "c1", "entity": "e1"},
+                ], f)
+            findings = [
+                {"document": "DOC", "section": "s1", "check": "c1",
+                 "description": "no entity here"},
+            ]
+            out, n_sup, n_miss = _apply_suppressions(findings, sup_path)
+            assert out == findings
+            assert n_sup == 0
+            assert n_miss == 1
+            err = capsys.readouterr().err
+            assert "missing `entity`" in err
+            assert "DOC/s1" in err
+
+    def test_empty_entity_passes_with_warning(self, capsys):
+        with tempfile.TemporaryDirectory() as td:
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                json.dump([
+                    {"section": "s1", "check": "c1", "entity": "e1"},
+                ], f)
+            findings = [
+                {"document": "DOC", "section": "s1", "check": "c1",
+                 "entity": "", "description": "empty entity"},
+            ]
+            out, n_sup, n_miss = _apply_suppressions(findings, sup_path)
+            assert out == findings
+            assert n_miss == 1
+            assert "missing `entity`" in capsys.readouterr().err
+
+    def test_malformed_json_warns_and_passes(self, capsys):
+        with tempfile.TemporaryDirectory() as td:
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                f.write("{ this is not valid json [")
+            findings = [
+                {"section": "s1", "check": "c1", "entity": "e1", "description": "d1"},
+            ]
+            out, n_sup, _ = _apply_suppressions(findings, sup_path)
+            assert out == findings
+            assert n_sup == 0
+            err = capsys.readouterr().err
+            assert "malformed JSON" in err
+
+    def test_non_array_suppress_file_warns_and_passes(self, capsys):
+        with tempfile.TemporaryDirectory() as td:
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                json.dump({"not": "an array"}, f)
+            findings = [
+                {"section": "s1", "check": "c1", "entity": "e1", "description": "d1"},
+            ]
+            out, n_sup, _ = _apply_suppressions(findings, sup_path)
+            assert out == findings
+            assert n_sup == 0
+            assert "not a JSON array" in capsys.readouterr().err
+
+    def test_summary_counts_when_no_suppressions(self, capsys):
+        """Even with no suppress file, missing-entity findings are counted."""
+        findings = [
+            {"document": "DOC", "section": "s1", "check": "c1",
+             "description": "no entity"},
+            {"section": "s2", "check": "c2", "entity": "e2", "description": "d2"},
+        ]
+        out, n_sup, n_miss = _apply_suppressions(findings, None)
+        assert len(out) == 2
+        assert n_sup == 0
+        assert n_miss == 1
+
+
+class TestApplySuppressionsCLI:
+    """End-to-end CLI flow with --suppress-file."""
+
+    def test_cli_filters_suppressed(self):
+        with tempfile.TemporaryDirectory() as td:
+            with open(os.path.join(td, "findings-refs.json"), "w") as f:
+                json.dump([
+                    {"document": "OPS", "section": "s1", "check": "c1",
+                     "entity": "e1", "description": "d1"},
+                    {"document": "OPS", "section": "s2", "check": "c2",
+                     "entity": "e2", "description": "d2"},
+                ], f)
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                json.dump([
+                    {"section": "s1", "check": "c1", "entity": "e1"},
+                ], f)
+            output_path = os.path.join(td, "merged.json")
+
+            result = _run_script(td, output_path, suppress_file=sup_path)
+            assert result.returncode == 0
+            assert "1 suppressed" in result.stderr
+
+            merged = json.loads(open(output_path).read())
+            assert len(merged) == 1
+            assert merged[0]["entity"] == "e2"
+
+    def test_cli_no_suppress_file_passes_all(self):
+        with tempfile.TemporaryDirectory() as td:
+            with open(os.path.join(td, "findings-refs.json"), "w") as f:
+                json.dump([
+                    {"document": "OPS", "section": "s1", "check": "c1",
+                     "entity": "e1", "description": "d1"},
+                ], f)
+            output_path = os.path.join(td, "merged.json")
+
+            result = _run_script(td, output_path)
+            assert result.returncode == 0
+            merged = json.loads(open(output_path).read())
+            assert len(merged) == 1
+
+
+class TestEndToEndProducerToFilter:
+    """Smoke test: verify-xml-refs.py → load-audit-findings.py → filter."""
+
+    def test_xml_ref_finding_with_entity_gets_suppressed(self):
+        """An xml-ref-integrity finding produced by verify-xml-refs.py
+        carries an entity that load-audit-findings.py uses to suppress it."""
+        # Build the XML the same way other verify-xml-refs tests do.
+        from lib.xml_doc import (
+            build_xml_doc,
+            serialize_xml_doc,
+            update_section_refs,
+        )
+
+        verify_script = os.path.join(SCRIPTS_DIR, "verify-xml-refs.py")
+        with tempfile.TemporaryDirectory() as td:
+            project_root = os.path.join(td, "project")
+            xml_dir = os.path.join(project_root, ".mg", "docs", "xml-sources")
+            audience_dir = os.path.join(xml_dir, "developers")
+            os.makedirs(audience_dir)
+            with open(os.path.join(project_root, "pyproject.toml"), "w") as f:
+                f.write('[project]\nname = "x"\nversion = "0"\n')
+
+            tree = build_xml_doc(
+                "developers", "how-to", "# Test",
+                [{"slug": "s1",
+                  "body": "<!-- section: s1 -->\n## S1\n\nContent"}],
+            )
+            update_section_refs(tree, "s1", [
+                {"type": "dep", "name": "fake-package-xyz"},
+            ])
+            xml_path = os.path.join(audience_dir, "TEST.xml")
+            serialize_xml_doc(tree, xml_path)
+
+            audit_dir = os.path.join(td, "audit")
+            os.makedirs(audit_dir)
+            findings_refs = os.path.join(audit_dir, "findings-refs.json")
+            with open(findings_refs, "w") as f:
+                json.dump([], f)
+
+            r = subprocess.run(
+                [sys.executable, verify_script,
+                 "--xml-dir", xml_dir,
+                 "--project-root", project_root,
+                 "--findings-file", findings_refs],
+                capture_output=True, text=True,
+            )
+            assert r.returncode == 0, r.stderr
+
+            produced = json.loads(open(findings_refs).read())
+            dep_finding = next(
+                (f for f in produced
+                 if "fake-package-xyz" in f.get("description", "")),
+                None,
+            )
+            assert dep_finding is not None, produced
+            assert dep_finding.get("entity") == "fake-package-xyz"
+
+            # Now suppress it via the central filter and confirm it's gone.
+            sup_path = os.path.join(td, "suppress.json")
+            with open(sup_path, "w") as f:
+                json.dump([
+                    {"section": "s1", "check": "xml-ref-integrity",
+                     "entity": "fake-package-xyz"},
+                ], f)
+            output_path = os.path.join(td, "merged.json")
+            result = _run_script(audit_dir, output_path, suppress_file=sup_path)
+            assert result.returncode == 0
+
+            merged = json.loads(open(output_path).read())
+            # The dep finding should be gone; any other findings still pass.
+            assert all(
+                f.get("entity") != "fake-package-xyz" for f in merged
+            ), merged

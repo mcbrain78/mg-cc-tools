@@ -636,3 +636,64 @@ class TestNestedExtraction:
             # Top-level: path equals slug
             assert sec.get("path") == "deployment"
             assert sec.get("slug") == "deployment"
+
+
+class TestEntityAttribute:
+    """The <finding> element carries the entity attribute so the audit-fixer
+    agent can extract the suppression key directly without parsing the
+    description (which may contain multiple backticked tokens).
+    """
+
+    def test_entity_attribute_present_when_set(self):
+        with tempfile.TemporaryDirectory() as td:
+            xml_dir = os.path.join(td, "xml-sources")
+            _build_xml(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent.",
+                [],
+            )])
+
+            findings = [
+                {"document": "OPS", "section": "monitoring", "audience": "devops",
+                 "check": "xml-ref-integrity",
+                 "description": "Attribute `provider` not found on class `RateLimitError`",
+                 "entity": "provider"},
+            ]
+            grouping = {
+                "groups": [{
+                    "group_id": "g1",
+                    "root_cause_summary": "test",
+                    "finding_indices": [0],
+                }],
+            }
+            tree = extract_edit_xml(grouping, findings, xml_dir, 0)
+            finding_el = tree.getroot().findall("section/findings/finding")[0]
+            assert finding_el.get("entity") == "provider"
+            assert finding_el.get("check") == "xml-ref-integrity"
+
+    def test_entity_attribute_empty_when_missing(self):
+        """Findings without entity render as <finding entity=""> rather
+        than crashing — the orchestrator's load-audit-findings pass warns
+        on missing-entity findings; extract-edit-xml just preserves them."""
+        with tempfile.TemporaryDirectory() as td:
+            xml_dir = os.path.join(td, "xml-sources")
+            _build_xml(xml_dir, "devops", "OPS", [(
+                "monitoring",
+                "<!-- section: monitoring -->\n## Monitoring\n\nContent.",
+                [],
+            )])
+
+            findings = [
+                {"document": "OPS", "section": "monitoring", "audience": "devops",
+                 "check": "diataxis", "description": "Mixed content"},
+            ]
+            grouping = {
+                "groups": [{
+                    "group_id": "g1",
+                    "root_cause_summary": "test",
+                    "finding_indices": [0],
+                }],
+            }
+            tree = extract_edit_xml(grouping, findings, xml_dir, 0)
+            finding_el = tree.getroot().findall("section/findings/finding")[0]
+            assert finding_el.get("entity") == ""

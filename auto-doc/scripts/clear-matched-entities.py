@@ -48,8 +48,15 @@ def _section_json_path(prose_verify_dir, section_path):
     return os.path.join(prose_verify_dir, f"{slug}.json")
 
 
-def _emit_finding(findings_file, document, audience, section_path, display):
-    """Emit a reference-integrity finding via add-verify-finding.py."""
+def _emit_finding(findings_file, document, audience, section_path, display, ident):
+    """Emit a reference-integrity finding via add-verify-finding.py.
+
+    `ident` is the leaf identifier (the thing missing from prose) and is
+    passed as `--entity` so the suppression filter at finding-write time
+    and the central filter in load-audit-findings.py can match it.
+    The description backticks `ident` so audit-fixer agents can also
+    extract the entity from the description as a fallback.
+    """
     subprocess.run(
         [
             sys.executable, ADD_FINDING_SCRIPT,
@@ -58,8 +65,9 @@ def _emit_finding(findings_file, document, audience, section_path, display):
             "--section", section_path,
             "--audience", audience,
             "--check", "reference-integrity",
+            f"--entity={ident}",
             "--description",
-            f"Declared ref {display} — identifier not found in section body",
+            f"Declared ref {display} — identifier `{ident}` not found in section body",
             "--suggestion",
             "Remove the ref if the entity is no longer discussed, "
             "or mention it in the prose",
@@ -231,7 +239,7 @@ def clear(entities_file, prose_verify_dir, uncleared_file,
                 continue
             _emit_finding(
                 findings_file, document, audience,
-                section_path, display,
+                section_path, display, ident,
             )
 
         # -- Clearing: identifier match + path resolution -----------

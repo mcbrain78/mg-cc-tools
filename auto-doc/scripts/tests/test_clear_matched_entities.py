@@ -2027,3 +2027,70 @@ class TestDirectoryRefClearing:
                 uncleared = json.load(f)
             assert {"name": "helper", "section": "section"} not in uncleared
             assert {"name": "some/dir", "section": "section"} in uncleared
+
+
+class TestEntityField:
+    """Findings carry the leaf identifier as `entity` and backtick it in the
+    description so the suppression filter and audit-fixer agent can both
+    extract it unambiguously.
+    """
+
+    def test_finding_carries_entity_field(self):
+        """The reference-integrity finding has entity = identifier."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nGeneral info.",
+                    "ref_entries": [
+                        {"display": "[env] MISSING_VAR",
+                         "identifier": "MISSING_VAR"},
+                    ],
+                },
+            ], [])
+            result = _run(prose_dir, ef, uf, ff)
+            assert result.returncode == 0
+            with open(ff) as f:
+                findings = json.load(f)
+            assert findings[0].get("entity") == "MISSING_VAR"
+
+    def test_description_backticks_identifier(self):
+        """The description backticks `ident` so the audit-fixer's
+        backticked-identifier rule resolves to the entity."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "monitoring",
+                    "body": "## Monitoring\n\nGeneral info.",
+                    "ref_entries": [
+                        {"display": "[env] MISSING_VAR",
+                         "identifier": "MISSING_VAR"},
+                    ],
+                },
+            ], [])
+            _run(prose_dir, ef, uf, ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            assert "`MISSING_VAR`" in findings[0]["description"]
+
+    def test_param_finding_uses_param_as_entity(self):
+        """For a `[code:function] foo (param: bar)` ref where bar is the
+        unmatched identifier, entity = `bar` (matches verify-xml-refs's
+        leaf-identifier convention)."""
+        with tempfile.TemporaryDirectory() as td:
+            prose_dir, ef, uf, ff = _setup(td, [
+                {
+                    "path": "compute",
+                    "body": "## Compute\n\nThe foo function does work.",
+                    "ref_entries": [
+                        {"display": "[code:function] foo (param: bar)",
+                         "identifier": "bar",
+                         "path": ["src/x.py", "foo", "bar"]},
+                    ],
+                },
+            ], [])
+            _run(prose_dir, ef, uf, ff)
+            with open(ff) as f:
+                findings = json.load(f)
+            assert findings[0].get("entity") == "bar"
+            assert "`bar`" in findings[0]["description"]

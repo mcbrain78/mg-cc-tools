@@ -81,4 +81,4 @@ When using the Edit tool on the edit XML file:
       --entity "{entity_name}"
   ```
 
-  `{suppress_file}` is provided in the orchestrator's call. `{section_path}`, `{check_type}`, and `{entity_name}` come from the finding under `<findings>` in the edit file — `section_path` matches the enclosing `<section path="...">` attribute, `check_type` is the `check` attribute on the finding, and `entity_name` is the backticked identifier named in the finding description. Log: `"Suppressed as false positive: {description}"`.
+  `{suppress_file}` is provided in the orchestrator's call. `{section_path}`, `{check_type}`, and `{entity_name}` come from the finding under `<findings>` in the edit file — `section_path` matches the enclosing `<section path="...">` attribute, `check_type` is the `check` attribute on the finding, and `entity_name` is the value of the `entity` attribute on the `<finding>` element (stamped by `extract-edit-xml.py`). If the `entity` attribute is empty (older edit files produced before this convention landed), fall back to the backticked identifier in the finding description. Log: `"Suppressed as false positive: {description}"`.

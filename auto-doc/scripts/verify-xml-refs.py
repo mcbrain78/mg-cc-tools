@@ -253,23 +253,27 @@ def _extract_column_names(columns):
 
 
 def _check_db_ref_from_model(schema, table, column, db_model):
-    """Check db ref against pre-extracted database-model.json data."""
+    """Check db ref against pre-extracted database-model.json data.
+
+    Returns None on match, or (entity, error_msg) on mismatch where entity
+    is the leaf identifier the check failed on (column / table / schema).
+    """
     schemas = db_model.get("schemas", {})
     if schema and schema not in schemas:
         available = ", ".join(sorted(schemas.keys())) if schemas else "(none)"
-        return f"Schema `{schema}` not found in database model (available: {available})"
+        return (schema, f"Schema `{schema}` not found in database model (available: {available})")
 
     # If schema specified, check within that schema
     if schema:
         tables = schemas[schema].get("tables", {})
         if table not in tables:
             available = ", ".join(sorted(tables.keys())) if tables else "(none)"
-            return f"Table `{table}` not found in schema `{schema}` (available: {available})"
+            return (table, f"Table `{table}` not found in schema `{schema}` (available: {available})")
         if column:
             col_names = _extract_column_names(tables[table].get("columns", {}))
             if column not in col_names:
                 available = ", ".join(sorted(col_names)) if col_names else "(none)"
-                return f"Column `{column}` not found on `{schema}.{table}` (columns: {available})"
+                return (column, f"Column `{column}` not found on `{schema}.{table}` (columns: {available})")
         return None
 
     # No schema specified — search all schemas
@@ -280,25 +284,28 @@ def _check_db_ref_from_model(schema, table, column, db_model):
                 col_names = _extract_column_names(tables[table].get("columns", {}))
                 if column not in col_names:
                     available = ", ".join(sorted(col_names)) if col_names else "(none)"
-                    return f"Column `{column}` not found on `{s_name}.{table}` (columns: {available})"
+                    return (column, f"Column `{column}` not found on `{s_name}.{table}` (columns: {available})")
             return None
 
-    return f"Table `{table}` not found in database model"
+    return (table, f"Table `{table}` not found in database model")
 
 
 def _check_db_ref_from_ast(schema, table, column, cache):
-    """Check db ref against SQLAlchemy models via AST (fallback)."""
+    """Check db ref against SQLAlchemy models via AST (fallback).
+
+    Returns None on match, or (entity, error_msg) on mismatch.
+    """
     for py_path in cache.walk_py_files():
         models = cache.get_sqla_models(py_path)
         if table in models:
             model = models[table]
             if schema and model["schema"] and model["schema"] != schema:
-                return f"Table `{table}` exists but in schema `{model['schema']}`, not `{schema}`"
+                return (schema, f"Table `{table}` exists but in schema `{model['schema']}`, not `{schema}`")
             if column and column not in model["columns"]:
-                return f"Column `{column}` not found on table `{table}` (columns: {', '.join(model['columns'])})"
+                return (column, f"Column `{column}` not found on table `{table}` (columns: {', '.join(model['columns'])})")
             return None
 
-    return f"Table `{table}` not found in any SQLAlchemy model"
+    return (table, f"Table `{table}` not found in any SQLAlchemy model")
 
 
 def _is_dotted_module(module):
@@ -322,7 +329,11 @@ def _check_import(module, name):
 
 
 def check_code_ref(ref, cache):
-    """Check a code ref (class/function/variable with attrs/params) against AST."""
+    """Check a code ref (class/function/variable with attrs/params) against AST.
+
+    Returns None on match, or (entity, error_msg) on mismatch where entity
+    is the leaf identifier the check failed on (attr / param / name).
+    """
     kind = ref.get("kind", "")
     name = ref.get("name", "")
     module = ref.get("module", "")
@@ -337,17 +348,17 @@ def check_code_ref(ref, cache):
                 if result is True:
                     return None  # Found in installed package
                 if result is False:
-                    return f"`{name}` not found in `{module}`"
+                    return (name, f"`{name}` not found in `{module}`")
                 # result is None — not installed, skip rather than flag
                 return None
-            return f"`{name}` not found in `{module}`"
+            return (name, f"`{name}` not found in `{module}`")
 
         if kind == "class":
             attr = ref.get("attr")
             if attr:
                 attrs = cache.get_class_attrs(module, name)
                 if attr not in attrs:
-                    return f"Attribute `{attr}` not found on class `{name}` in `{module}`"
+                    return (attr, f"Attribute `{attr}` not found on class `{name}` in `{module}`")
 
         if kind == "function":
             param = ref.get("param")
@@ -356,13 +367,13 @@ def check_code_ref(ref, cache):
                 params = sigs.get(name)
                 if params is not None:
                     if "**" not in params and param not in params:
-                        return f"Parameter `{param}` not found on `{name}()` in `{module}` (params: {', '.join(params)})"
+                        return (param, f"Parameter `{param}` not found on `{name}()` in `{module}` (params: {', '.join(params)})")
 
         return None  # Found
 
     # No module specified — scan all Python files
     found_symbol = False
-    best_mismatch = None
+    best_mismatch = None  # (entity, msg) when set
     for py_path in cache.walk_py_files():
         symbols = cache.get_symbols(py_path)
         if name in symbols:
@@ -374,7 +385,7 @@ def check_code_ref(ref, cache):
                     attrs = cache.get_class_attrs(py_path, name)
                     if attr not in attrs:
                         if best_mismatch is None:
-                            best_mismatch = f"Attribute `{attr}` not found on class `{name}` (checked {py_path})"
+                            best_mismatch = (attr, f"Attribute `{attr}` not found on class `{name}` (checked {py_path})")
                         continue  # Maybe another file has it
                 return None
 
@@ -385,7 +396,7 @@ def check_code_ref(ref, cache):
                     params = sigs.get(name)
                     if params is not None and "**" not in params and param not in params:
                         if best_mismatch is None:
-                            best_mismatch = f"Parameter `{param}` not found on `{name}()` (checked {py_path}, params: {', '.join(params)})"
+                            best_mismatch = (param, f"Parameter `{param}` not found on `{name}()` (checked {py_path}, params: {', '.join(params)})")
                         continue  # Maybe another file has it
                 return None
 
@@ -393,11 +404,14 @@ def check_code_ref(ref, cache):
 
     if found_symbol and best_mismatch:
         return best_mismatch
-    return f"`{name}` not found in any Python file"
+    return (name, f"`{name}` not found in any Python file")
 
 
 def check_flow_ref(ref, cache):
-    """Check a flow ref against @flow decorated functions."""
+    """Check a flow ref against @flow decorated functions.
+
+    Returns None on match, or (entity, error_msg) on mismatch.
+    """
     flow_name = ref.get("name", "")
 
     for py_path in cache.walk_py_files():
@@ -412,7 +426,7 @@ def check_flow_ref(ref, cache):
         if flow_name in flow_names:
             return None
 
-    return f"Flow `{flow_name}` not found (no @flow-decorated function matches)"
+    return (flow_name, f"Flow `{flow_name}` not found (no @flow-decorated function matches)")
 
 
 def check_env_ref(ref, cache):
@@ -467,21 +481,26 @@ def check_env_ref(ref, cache):
                     return None
 
     return (
+        env_name,
         f"Environment variable `{env_name}` not found in .env files, "
-        f"systemd units, shell/yaml/toml configs, or Python source"
+        f"systemd units, shell/yaml/toml configs, or Python source",
     )
 
 
 def check_config_ref(ref, cache):
-    """Check a config ref against filesystem existence."""
+    """Check a config ref against filesystem existence.
+
+    Returns None on match, or (entity, error_msg) on mismatch.
+    """
     config_path = ref.get("path", "")
     # config refs must be project-relative. Tilde-prefixed user-home paths
     # (e.g. `~/.pgpass`) are a different kind of configuration — not
     # addressable from project_root and not portable across machines.
     if config_path.startswith("~"):
         return (
+            config_path,
             f"config refs must be project-relative paths; got "
-            f"`{config_path}` — use a different ref type for user-home files"
+            f"`{config_path}` — use a different ref type for user-home files",
         )
     # Paths under the generated-docs tree are doc-to-doc cross-references
     # (e.g. USER_GUIDE linking to devops/OPERATIONS.md). The target audience
@@ -493,7 +512,7 @@ def check_config_ref(ref, cache):
         return None
     if cache.file_exists(config_path):
         return None
-    return f"Config file `{config_path}` does not exist"
+    return (config_path, f"Config file `{config_path}` does not exist")
 
 
 def check_enum_ref(ref, cache):
@@ -524,27 +543,33 @@ def check_enum_ref(ref, cache):
             if value in lit_values:
                 return None
 
-    return f"Enum value `{value}` not found on class `{cls}`"
+    return (value, f"Enum value `{value}` not found on class `{cls}`")
 
 
 def check_dep_ref(ref, cache):
-    """Check a dep ref against pyproject.toml dependencies."""
+    """Check a dep ref against pyproject.toml dependencies.
+
+    Returns None on match, or (entity, error_msg) on mismatch.
+    """
     ref_name = ref.get("name", "")
     normalized = re.sub(r"[-_.]+", "-", ref_name).lower()
     deps = cache.get_pyproject_deps()
     if normalized in deps:
         return None
-    return f"Dependency `{ref_name}` not found in pyproject.toml"
+    return (ref_name, f"Dependency `{ref_name}` not found in pyproject.toml")
 
 
 def check_literal_ref(ref, cache):
-    """Check a literal ref by grepping project source/config files."""
+    """Check a literal ref by grepping project source/config files.
+
+    Returns None on match, or (entity, error_msg) on mismatch.
+    """
     ref_name = ref.get("name", "")
     for rel_path in cache.walk_project_files():
         src = cache._read_source(rel_path)
         if src and ref_name in src:
             return None
-    return f"Literal `{ref_name}` not found in any project file"
+    return (ref_name, f"Literal `{ref_name}` not found in any project file")
 
 
 def check_ext_ref(ref, cache):
@@ -569,8 +594,12 @@ CHECKER_BY_TYPE = {
 }
 
 
-def _make_finding(document, section, audience, description, suggestion, check="xml-ref-integrity"):
-    """Create a finding dict matching verify-references.py format."""
+def _make_finding(document, section, audience, description, suggestion, entity="", check="xml-ref-integrity"):
+    """Create a finding dict matching verify-references.py format.
+
+    `entity` is the leaf identifier the check failed on; required for
+    suppression matching via `suppressed-findings.json`.
+    """
     return {
         "document": document,
         "section": section,
@@ -578,6 +607,7 @@ def _make_finding(document, section, audience, description, suggestion, check="x
         "check": check,
         "description": description,
         "suggestion": suggestion,
+        "entity": entity,
         "group_id": f"{document}/{section}",
     }
 
@@ -590,7 +620,8 @@ def _doc_name_from_path(xml_path):
 def _check_malformed_ref(ref, body):
     """Check a malformed ref against the section body.
 
-    Returns (check_type, description) or None if no finding needed.
+    Returns (check_type, entity, description) or None if no finding needed.
+    Entity is the first non-empty candidate, or "" when none exist.
     """
     original_type = ref.get("original_type", "?")
 
@@ -605,6 +636,7 @@ def _check_malformed_ref(ref, body):
     if not candidates:
         return (
             "malformed-ref-empty",
+            "",
             f"Malformed {original_type} ref has no identifiable fields",
         )
 
@@ -612,12 +644,14 @@ def _check_malformed_ref(ref, body):
         if candidate in body:
             return (
                 "malformed-ref-resolved",
+                candidate,
                 f"Malformed {original_type} ref has candidate `{candidate}` found in section body",
             )
 
     cands_str = ", ".join(f"`{c}`" for c in candidates)
     return (
         "malformed-ref-unresolved",
+        candidates[0],
         f"Malformed {original_type} ref with candidates {cands_str} — none found in section body",
     )
 
@@ -642,13 +676,14 @@ def verify_xml_file(xml_path, cache, doc=None):
             if ref_type == "malformed":
                 result = _check_malformed_ref(ref, body)
                 if result:
-                    check_type, description = result
+                    check_type, entity, description = result
                     findings.append(_make_finding(
                         document=doc_name,
                         section=path,
                         audience=audience,
                         description=description,
                         suggestion="Re-generate this section to emit correct typed refs",
+                        entity=entity,
                         check=check_type,
                     ))
                 continue
@@ -657,14 +692,16 @@ def verify_xml_file(xml_path, cache, doc=None):
             if not checker:
                 continue
 
-            error = checker(ref, cache)
-            if error:
+            result = checker(ref, cache)
+            if result:
+                entity, description = result
                 findings.append(_make_finding(
                     document=doc_name,
                     section=path,
                     audience=audience,
-                    description=error,
+                    description=description,
                     suggestion=_suggestion_for_type(ref_type),
+                    entity=entity,
                 ))
 
     return findings

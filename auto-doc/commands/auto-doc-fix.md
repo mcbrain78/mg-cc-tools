@@ -61,8 +61,11 @@ Read references/schema.yaml
 ```bash
 uv run {MG_INSTALL_SCRIPTS_DIR}/load-audit-findings.py \
     --audit-dir {findings_dir} \
-    --output {findings_dir}/merged-findings.json
+    --output {findings_dir}/merged-findings.json \
+    --suppress-file {suppress_file}
 ```
+
+Findings whose `(section, check, entity)` tuple matches an entry in `{suppress_file}` are filtered out at this step, so already-suppressed findings never reach the fix queue. The summary line on stderr reports counts: `Merged N findings (M suppressed, K missing entity)`. Findings missing the `entity` field pass through unfiltered with a per-finding warning — this is normal during the migration window for legacy producers and should reach zero once all producers emit `entity`.
 
 Read the output file. If the merged array is empty, print:
 ```
