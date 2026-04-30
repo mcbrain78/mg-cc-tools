@@ -290,6 +290,9 @@ Recent decisions affecting current work:
 7. Create mg:add-phase-with-context compound command (area: tooling) — `.planning/todos/pending/2026-03-22-create-mg-add-phase-with-context-compound-command.md`
 8. Create mg:formalize-plan command for structured plan generation (area: tooling) — `.planning/todos/pending/2026-03-22-create-mg-formalize-plan-command-for-structured-plan-generation.md`
 9. Add pyright strict mode compliance (area: tooling) — `.planning/todos/pending/2026-03-22-add-pyright-strict-mode-compliance.md`
+10. Add codebase-health check for Python embedded in markdown (area: codebase-health) — `.planning/todos/pending/2026-03-23-add-codebase-health-check-for-python-embedded-in-markdown.md`
+11. Simplify auto-doc writer agents and move ref emission to writer (area: auto-doc) — `.planning/todos/pending/2026-03-30-simplify-auto-doc-writer-agents-and-move-ref-emission-to-writer.md`
+12. Integrate entity extraction and dangling-prose check into auto-doc generator (area: auto-doc) — `.planning/todos/pending/2026-04-30-integrate-entity-extraction-and-dangling-prose-check-into-auto-doc-generator.md`
 
 ### Roadmap Evolution
 
