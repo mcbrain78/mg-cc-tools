@@ -1,0 +1,648 @@
+# Schema: auto-doc pipeline data contracts
+#
+# Data contract for the /mg:auto-doc documentation pipeline.
+# Scanner creates it, generator reads it, verifier validates against it.
+
+# ── 1. docs-scan ─────────────────────────────────────────────
+docs-scan:
+  location: ".mg/docs/docs-scan.json"
+  notes: |
+    Created by the scan step (populates all fields). Read but not modified by
+    generate. Verify adds quality metrics.
+  fields:
+    project:         {type: string, required: true, description: "Project name from repo dir or config override"}
+    scan_date:       {type: "string (ISO 8601)", required: true, description: "UTC timestamp of scan"}
+    root_path:       {type: string, required: true, description: "Absolute path to scanned project root"}
+    mode:            {type: "string (enum: initial | update)", required: true, description: "initial = first scan; update = incremental, reuses previous data"}
+    last_generated:
+      type: "string (ISO 8601) | null"
+      required: false
+      description: |
+        When generate last ran. Written by generate at pipeline start. Used by
+        scan to detect incremental mode and by diff-scan.py to scope changes.
+        Over-inclusive by design: commits during generation appear in next diff.
+        Null/absent for initial scans.
+    project_model:
+      type: object
+      required: true
+      description: "Structured project architecture, tech stack, and components. Built by scanner from source analysis."
+      children:
+        product_name:
+          type: string
+          required: true
+          description: |
+            The project's user-facing display name. Deterministically extracted
+            by the Orient agent: pyproject.toml [project].name → package.json
+            "name" → README first H1 (stripped of markdown). Single source of
+            truth for product framing across all audience docs; refiner injects
+            it as the vocabulary anchor in every refined template.
+        tech_stack:    {type: "array of string", required: true, description: "Detected technologies and languages"}
+        entry_points:
+          type: "array of object"
+          required: true
+          description: "CLI scripts, main modules, route handlers, etc."
+          children:
+            path:        {type: string, required: true, description: "Relative path from project root"}
+            type:        {type: "string (enum: cli | api | web | worker | config | test)", required: true, description: "Entry point type"}
+            description: {type: string, required: true, description: "What it does"}
+        components:
+          type: "array of object"
+          required: true
+          description: "Distinct modules, services, or logical units."
+          children:
+            name:            {type: string, required: true, description: "Component name (usually module/directory name)"}
+            path:            {type: string, required: true, description: "Relative path from project root"}
+            purpose:         {type: string, required: true, description: "What this component does"}
+            public_api:      {type: "array of string", required: true, description: "Exported functions, classes, or endpoints"}
+            dependencies:    {type: "array of string", required: true, description: "Other components or libraries depended on"}
+            database_tables: {type: "array of string", required: true, description: "LLM-produced class names of DB tables (e.g., EtlRun). Used for component overview only; section-to-table mapping now uses db-usage-index.json"}
+        infrastructure:
+          type: object
+          required: true
+          description: "Deployment, CI, and config infrastructure."
+          children:
+            deployment:   {type: string, required: true, description: "How the project is deployed"}
+            ci:           {type: string, required: true, description: "CI/CD system or 'none'"}
+            config_files: {type: "array of string", required: true, description: "Config files in the project"}
+        database:
+          type: "object | null"
+          required: true
+          description: |
+            Lightweight DB metadata. null if no database. Orient produces only
+            {name, orm_framework, migration_tool, engine}. Full schema detail is in
+            database-model.json (produced by extract-database-model.py).
+            Writers use database-model-summary.json for high-level awareness.
+          children:
+            name:           {type: string, required: true, description: "Database name from connection URL"}
+            orm_framework:  {type: string, required: true, description: "ORM framework name and version"}
+            migration_tool: {type: string, required: true, description: "Migration tool or 'none'"}
+            engine:         {type: string, required: false, description: "Database engine (e.g., PostgreSQL)"}
+        user_interfaces:
+          type: "array of object"
+          required: false
+          description: |
+            Detected UI types. Writers adapt doc style to primary interface.
+            Falls back to CLI-style when absent. Field may be absent entirely.
+          children:
+            type:        {type: "string (enum: web | cli | api)", required: true, description: "Interface type"}
+            name:        {type: string, required: true, description: "Human-readable interface name"}
+            url_pattern: {type: "string | null", required: true, description: "URL pattern for web; null for CLI/API"}
+            primary:     {type: boolean, required: true, description: "Whether this is the primary UI"}
+    source_material_index:
+      type: object
+      required: true
+      description: |
+        Maps document sections to source files. Keys are "DOCUMENT/section" paths.
+        Used by staleness checker to detect which sections need updates.
+      children:
+        _value:
+          type: object
+          description: "Each key is a DOCUMENT/section path."
+          children:
+            source_files: {type: "array of string", required: true, description: "Relative paths to source files for this section"}
+            staleness:    {type: "string (enum: fresh | stale | unknown)", required: true, description: "fresh = unchanged; stale = changed; unknown = no history"}
+            synthesized_from:
+              type: "array of string"
+              required: false
+              description: |
+                Dotted field paths into scan data (e.g., "project_model.components").
+                HINT (not exclusion) — writer consults these project_model fields in
+                addition to source_files when composing sections that span the whole
+                system (Overview, Key Concepts, Workflows). The scanner still maps
+                narrative source files (README, primary-UI entry docstrings) into
+                source_files for these sections so the writer has user-facing
+                narrative material alongside the field hints.
+            has_user_facing_narrative:
+              type: boolean
+              required: false
+              description: |
+                Readiness signal for synthesized sections. True when mapped narrative
+                sources contain non-install/non-dev prose (heuristic: README has H2
+                sections beyond Installation/Development, or primary-UI entry points
+                have user-directed docstrings). Refiner emits a TODO marker in the
+                refined template when false so operators know a section needs manual
+                input before generate produces quality output.
+    staleness_report:
+      type: "array of object"
+      required: true
+      description: "Sections needing attention due to changed source material. Empty array if nothing stale."
+      children:
+        document:         {type: string, required: true, description: "Document name (e.g., ARCHITECTURE)"}
+        section:          {type: string, required: true, description: "Section identifier"}
+        reason:           {type: string, required: true, description: "Why the section is stale"}
+        changed_files:    {type: "array of string", required: true, description: "Source files changed since last generation"}
+        severity:         {type: "string (enum: high | medium | low)", required: true, description: "high=core changed, medium=supporting changed, low=minor"}
+        suggested_action: {type: string, required: true, description: "What the generator should do"}
+    gap_analysis:
+      type: object
+      required: true
+      description: "Components and topics lacking documentation coverage."
+      children:
+        undocumented_components: {type: "array of string", required: true, description: "Components with no documentation section"}
+        missing_for_audience:    {type: object, required: true, description: "Per-audience arrays of missing topics. Keys = audience names."}
+    gsd_context:
+      type: "object | null"
+      required: false
+      description: |
+        GSD workflow integration. Milestone progress and deviations for docs.
+        null if GSD not installed or gsd_integration disabled.
+      children:
+        milestone:                  {type: string, required: true, description: "Current GSD milestone identifier"}
+        completed_phases:           {type: "array of string", required: true, description: "Completed phase identifiers"}
+        deviations:                 {type: "array of string", required: true, description: "Plan deviations affecting documentation"}
+        new_requirements_completed: {type: "array of string", required: true, description: "Requirement IDs completed since last doc generation"}
+
+# ── 2. database-model ────────────────────────────────────────
+database-model:
+  location: ".mg/docs/generate/database-model.json"
+  notes: |
+    Deterministic extraction of DB schema/table/column metadata from SQLAlchemy
+    ORM models. Produced by extract-database-model.py during generate setup.
+    Separate from project-model.json to stay under 10KB CC read limit.
+    Created by generate-setup.py after project-model.json. Read by devops
+    writers. Regenerated each generate run.
+    Writers use database-model-summary.json for high-level awareness.
+  fields:
+    database_name:  {type: "string | null", required: false, description: "Database name from project_model.database.name"}
+    engine:         {type: "string | null", required: false, description: "Database engine from project model"}
+    orm_framework:  {type: "string | null", required: false, description: "ORM framework from project model"}
+    migration_tool: {type: "string | null", required: false, description: "Migration tool from project model"}
+    extracted_at:   {type: "string (ISO 8601)", required: true, description: "Timestamp when extraction ran"}
+    schemas:
+      type: object
+      required: true
+      description: "Map of schema name -> table details."
+      children:
+        _schema_entry:
+          type: object
+          description: "Each key is a schema name."
+          children:
+            tables:
+              type: object
+              required: true
+              description: "Map of table name -> table details."
+              children:
+                _table_entry:
+                  type: object
+                  description: "Each key is a table name."
+                  children:
+                    columns:
+                      type: "array of object"
+                      required: true
+                      description: "Column definitions."
+                      children:
+                        name:        {type: string, required: true, description: "Column name"}
+                        type:        {type: string, required: true, description: "SQLAlchemy type string (e.g., Integer, String(100))"}
+                        primary_key: {type: boolean, required: true, description: "Is primary key"}
+                        nullable:    {type: boolean, required: true, description: "Allows NULL"}
+                        foreign_key: {type: "string | null", required: true, description: "FK target as table.column, or null"}
+  skip_marker: |
+    When not applicable (no DB, non-SQLAlchemy ORM, no model files):
+    {"extraction": "skipped", "reason": "project does not use SQLAlchemy"}
+    generate-setup.py checks for schemas key and only sets database_model_path
+    when schemas were actually extracted.
+
+# ── 3. database-model-summary (Phase B) ─────────────────────
+database-model-summary:
+  location: ".mg/docs/generate/database-model-summary.json"
+  notes: |
+    Compact summary of database-model.json for writer agents to load in a
+    single read at orient time. Contains schema names, table names, column
+    counts, and FK targets — no column detail.
+    Produced by extract-database-model.py --summary-output during generate setup.
+    Read by writer agents once at orient time for high-level schema awareness.
+    Sections needing column detail use lib/db_format.py via next-heading.py orient
+    blocks (inline `db_column_detail` payload).
+  fields:
+    engine:         {type: "string | null", required: false, description: "Database engine from project model"}
+    orm_framework:  {type: "string | null", required: false, description: "ORM framework from project model"}
+    migration_tool: {type: "string | null", required: false, description: "Migration tool from project model"}
+    extracted_at:   {type: "string (ISO 8601)", required: true, description: "Timestamp when extraction ran"}
+    schemas:
+      type: object
+      required: true
+      description: "Map of schema name to compact table summaries."
+      children:
+        tables:
+          type: object
+          description: "Map of table name to summary."
+          children:
+            columns: {type: number, required: true, description: "Column count"}
+            fks:     {type: "array of string", required: true, description: "FK target fullnames (e.g., road_runner.stocks.id)"}
+
+# ── 4. db-table-map (Phase B) ────────────────────────────────
+db-table-map:
+  location: ".mg/docs/generate/db-table-map.json"
+  notes: |
+    Section-to-tables mapping built by generate-setup.py at generate time.
+    Maps each documentation section to the database tables it needs.
+    Primary path: source_material_index[section].source_files ->
+    db-usage-index.json file_usage -> table names (precise, file+function level).
+    Fallback: component-level prefix matching from project_model.components[].database_tables
+    (legacy, coarser). Injected into next-heading.py orient responses as
+    relevant_tables and db_table_usage. Omitted when project has no database.
+  fields:
+    _keys:
+      type: string
+      description: |
+        Keys are "DOCUMENT/section-slug" format.
+        Values are either:
+          - New format (usage-index-based): {tables: [str], usage: {table: [{file, functions}]}}
+          - Legacy format (fallback): [str] (plain list of table names)
+        next-heading.py handles both formats via isinstance check.
+  example: |
+    {
+      "OPERATIONS/monitoring": {
+        "tables": ["etl_runs", "stocks"],
+        "usage": {
+          "etl_runs": [{"file": "src/services/monitoring.py",
+                        "functions": ["check_quarterly_staleness"]}],
+          "stocks": [{"file": "src/services/monitoring.py",
+                      "functions": ["check_missing_tickers"]}]
+        }
+      },
+      "OPERATIONS/backup-recovery": {
+        "tables": ["etl_runs", "finance_metrics"]
+      }
+    }
+
+# ── 4b. db-usage-index ──────────────────────────────────────
+db-usage-index:
+  location: ".mg/docs/generate/db-usage-index.json"
+  notes: |
+    File-level usage index produced by extract-database-model.py --usage-output.
+    Maps Python source files to the SQLAlchemy model classes they import and use,
+    at function granularity. Consumed by generate-setup.py _build_db_table_map()
+    to produce precise section-to-table mappings. Regenerated each generate run.
+  fields:
+    table_definitions:
+      type: object
+      required: true
+      description: "Map of table_name -> {schema, model_class, source_file}."
+      children:
+        _table_entry:
+          type: object
+          children:
+            schema:       {type: string, required: true, description: "Database schema name"}
+            model_class:  {type: string, required: true, description: "Python class name (e.g., EtlRun)"}
+            source_file:  {type: string, required: true, description: "Relative path to file defining this model"}
+    file_usage:
+      type: object
+      required: true
+      description: "Map of relative file path -> {function_name: [table_names]}."
+      children:
+        _file_entry:
+          type: object
+          description: "Each key is a function/method name. <module> for module-level refs."
+          children:
+            _function_entry:
+              type: "array of string"
+              description: "Table names referenced by this function."
+  example: |
+    {
+      "table_definitions": {
+        "etl_runs": {"schema": "road_runner", "model_class": "EtlRun",
+                     "source_file": "src/road_runner/db/models.py"}
+      },
+      "file_usage": {
+        "src/road_runner/services/monitoring.py": {
+          "check_quarterly_staleness": ["etl_runs"],
+          "check_missing_tickers": ["stocks"]
+        }
+      }
+    }
+
+# ── 5. docs-audit-findings ───────────────────────────────────
+docs-audit-findings:
+  location: |
+    .mg/docs/auditv2/run/findings-refs.json (deterministic ref-integrity findings)
+    .mg/docs/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json (prose findings)
+  notes: |
+    Flat array of audit findings. One per quality issue per section. The schema
+    below describes the finding-object shape; both files share it.
+    Refs file: created by verify-xml-refs.py during auditv2 step 2.
+    Prose files: created by clear-matched-entities.py and resolution agents
+    during auditv2 steps 5–6, all routing through add-verify-finding.py.
+    Read by auto-doc-fix.md via load-audit-findings.py for grouping and fixing.
+  fields:
+    document:    {type: string, required: true, description: "Document name from config (no .md extension; stripped automatically)"}
+    section:     {type: string, required: true, description: "Section slug"}
+    audience:    {type: string, required: true, description: "Target audience key"}
+    check:       {type: string, required: true, description: "Verification check type (see valid_check_types)"}
+    description: {type: string, required: true, description: "What is wrong"}
+    suggestion:  {type: string, required: true, description: "How to fix it"}
+    entity:      {type: string, required: false, description: "Leaf identifier this finding is about (e.g., enum value, attr, env var, column). Used for suppression matching via suppressed-findings.json — entries are keyed on (section, check, entity)."}
+    group_id:    {type: string, required: true, description: "Computed: {document}/{section}. Added by add-verify-finding.py."}
+  valid_check_types:
+    mechanical: [reference-integrity, cross-doc, diataxis, completeness, example-validity, link-integrity]
+    editorial_universal: [filler-content, heading-content-mismatch, dangling-prose-reference, unexplained-code-block, internal-contradiction, malformed-table, placeholder-content]
+    editorial_end_user: [end-user-jargon, end-user-missing-expected-result, end-user-implementation-leak, end-user-missing-goal]
+    editorial_developer: [developer-abstract-architecture, developer-missing-types, developer-adr-missing-alternatives]
+    editorial_agent: [agent-ambiguous-constraint, agent-missing-negative-examples, agent-missing-consequences]
+    editorial_devops: [devops-missing-expected-output, devops-missing-rollback, devops-placeholder-in-command]
+    editorial_shared: [overview-missing-audience]
+  example: |
+    [
+      {
+        "document": "OPERATIONS", "section": "deployment-pipeline",
+        "audience": "devops", "check": "reference-integrity",
+        "description": "File path src/deploy/old-pipeline.sh does not exist",
+        "suggestion": "Update to src/deploy/pipeline.sh (renamed in abc1234)",
+        "group_id": "OPERATIONS/deployment-pipeline"
+      }
+    ]
+
+# ── 6. diff-scope ────────────────────────────────────────────
+diff-scope:
+  location: ".mg/docs/scan/diff-scope.json"
+  notes: |
+    Scoped work order from diff-scan.py for incremental scans. Sections
+    affected by code changes since last generation, plus new/deleted files.
+    NOT in scan/ root (avoids merge-scan.py which reads *.json there).
+    Created by scan in incremental mode. Read by scan agents to scope analysis.
+    Overwritten on next scan run.
+  fields:
+    since: {type: "string (ISO 8601)", required: true, description: "Diff baseline from last_generated in docs-scan.json"}
+    summary:
+      type: object
+      required: true
+      description: "Aggregate counts."
+      children:
+        files_changed:        {type: number, required: true, description: "Total files modified"}
+        files_added:          {type: number, required: true, description: "New files not in any manifest"}
+        files_deleted:        {type: number, required: true, description: "Deleted files still in manifests"}
+        sections_affected:    {type: number, required: true, description: "Doc sections needing update"}
+        new_file_candidates:  {type: number, required: true, description: "Files to classify by scan agents"}
+    affected_sections:
+      type: "array of object"
+      required: true
+      description: "Sections needing re-analysis (one per audience x document x section)."
+      children:
+        audience:      {type: string, required: true, description: "Audience key"}
+        document:      {type: string, required: true, description: "Document name"}
+        section:       {type: string, required: true, description: "Section slug"}
+        reason:        {type: string, required: true, description: "Why affected (e.g., source file modified)"}
+        changed_files: {type: "array of string", required: true, description: "Files that changed"}
+        gsd_context:   {type: "string | null", required: true, description: "GSD phase context explaining change"}
+        renames:       {type: "object | null", required: false, description: "old_path -> new_path for renamed files"}
+    new_file_candidates:
+      type: "array of object"
+      required: true
+      description: "Files not in any manifest, to classify."
+      children:
+        file:        {type: string, required: true, description: "Relative path to new file"}
+        reason:      {type: string, required: true, description: "Why candidate (e.g., new file, not in manifest)"}
+        gsd_context: {type: "string | null", required: true, description: "GSD phase context if available"}
+    deleted_files:
+      type: "array of object"
+      required: true
+      description: "Files in manifests but deleted from filesystem."
+      children:
+        file: {type: string, required: true, description: "Relative path to deleted file"}
+        referenced_in:
+          type: "array of object"
+          required: true
+          description: "Sections referencing this file."
+          children:
+            audience: {type: string, required: true, description: "Audience key"}
+            document: {type: string, required: true, description: "Document name"}
+            section:  {type: string, required: true, description: "Section slug"}
+    gsd_phases_since:
+      type: "array of object"
+      required: true
+      description: "GSD phases modified since last generation (empty if no GSD)."
+      children:
+        phase:         {type: string, required: true, description: "Phase number (e.g., 06)"}
+        name:          {type: string, required: true, description: "Phase name"}
+        deviations:    {type: "array of string", required: true, description: "Plan deviations"}
+        key_decisions: {type: "array of string", required: true, description: "Key decisions made"}
+  example: |
+    {
+      "since": "2026-03-17T14:30:00Z",
+      "summary": {"files_changed": 15, "files_added": 3, "files_deleted": 1,
+                   "sections_affected": 8, "new_file_candidates": 3},
+      "affected_sections": [{
+        "audience": "developers", "document": "ARCHITECTURE",
+        "section": "system-architecture", "reason": "source file modified",
+        "changed_files": ["src/llm/model_routing.py"],
+        "gsd_context": "Phase 6: replaced route_model()",
+        "renames": {"src/old/model.py": "src/llm/model_routing.py"}
+      }],
+      "new_file_candidates": [{
+        "file": "src/verify/add-verify-finding.py",
+        "reason": "new file, not in any manifest", "gsd_context": null
+      }],
+      "deleted_files": [{
+        "file": "src/old/legacy.py",
+        "referenced_in": [{"audience": "developers", "document": "ARCHITECTURE", "section": "data-model"}]
+      }],
+      "gsd_phases_since": [{
+        "phase": "06", "name": "fix-verify-feedback-loop",
+        "deviations": [], "key_decisions": ["replaced route_model with provider-specific functions"]
+      }]
+    }
+
+# ── 7. xml-sources ───────────────────────────────────────────
+xml-sources:
+  location: ".mg/docs/generate/xml-sources/{audience}/{DOCUMENT}.xml"
+  notes: |
+    Structured source of truth for documentation. Stores prose alongside typed
+    code references per section. Markdown in docs/auto-doc/ is assembled from
+    XML. Standalone docs (GLOSSARY, OVERVIEW) at .mg/docs/generate/xml-sources/{DOCUMENT}.xml.
+  schema: |
+    Recursive <section> nesting with no depth limit. One uniform element type
+    at all depths. Within each section, <refs> and <body> precede child
+    <section> elements. Each <body> contains ONLY prose between its heading
+    and the next child heading. Each <refs> declares only entities in that
+    section's body.
+
+    <document audience="devops" diataxis="how-to">
+      <meta>
+        <title>Operations Guide</title>
+        <generated>2026-03-29</generated>
+        <header><![CDATA[...]]></header>
+      </meta>
+      <section slug="monitoring-alerting">
+        <refs>...</refs>
+        <body><![CDATA[## Monitoring & Alerting ...]]></body>
+        <section slug="etl-run-logging">
+          <refs>...</refs>
+          <body><![CDATA[### ETL Run Logging ...]]></body>
+          <section slug="artifact-format">
+            <refs>...</refs>
+            <body><![CDATA[#### Artifact Format ...]]></body>
+          </section>
+        </section>
+        <section slug="alert-channels">
+          <refs>...</refs>
+          <body><![CDATA[### Alert Channels ...]]></body>
+        </section>
+      </section>
+    </document>
+  structural_rules:
+    - "## sections have own <refs>/<body> with intro prose, then child <section> elements"
+    - "### sections have own refs (different from parent), own body, optional children"
+    - "Leaf sections: no children, just refs and body"
+    - "Slugs unique among siblings, not globally"
+  section_markers: |
+    <!-- section: {slug} --> comment in each body maps 1:1 to <section slug>.
+    At every heading level (##, ###, ####, etc.).
+    - write-section.py injects markers during section-write mode
+    - sync-edits-to-xml.py splits .md on markers to match XML
+    - assemble-markdown.py preserves markers in output
+    - Invisible to readers, essential for XML sync pipeline
+  path_addressing: |
+    Slash-separated slug paths from root. Used by xml_doc.py (_find_section_by_path,
+    walk_sections, get_section_paths):
+    - "monitoring-alerting" — ## section
+    - "monitoring-alerting/etl-run-logging" — ### child
+    - "monitoring-alerting/etl-run-logging/artifact-format" — #### grandchild
+    Bare slug = valid single-segment path (backward-compatible).
+  ref_types:
+    db:      {nesting: '<db name="X"><schema><table><column>',                  verified: "SQLAlchemy __tablename__, __table_args__, Column defs"}
+    code:    {nesting: "<code><class attr>, <code><function param>, <code><variable>", verified: "AST via lib/symbols.py"}
+    flow:    {nesting: "<flow> (flat)",   verified: "@flow decorators"}
+    env:     {nesting: "<env> (flat)",    verified: "Settings classes, .env.example"}
+    config:  {nesting: "<config> (flat)", verified: "Filesystem existence"}
+    enum:    {nesting: "<enum class field><value>", verified: "Enum classes, string literals"}
+    dep:     {nesting: "<dep> (flat)",     verified: "pyproject.toml (normalized PEP 508)"}
+    literal: {nesting: "<literal> (flat)", verified: "Project-wide grep across source/config"}
+    ext:     {nesting: "<ext> (flat)",     verified: "No-op (external tools, no codebase footprint)"}
+  flat_json_wire_format: |
+    Scripts exchange refs as flat JSON arrays (never raw XML). Each element
+    has a type key. lib/xml_doc.py converts between flat JSON and nested XML.
+  flat_json_example: |
+    [
+      {"type": "db", "db": "road_runner_db", "schema": "road_runner", "table": "etl_runs", "column": "flow_name"},
+      {"type": "code", "kind": "function", "name": "compute_finance_metrics",
+       "module": "src/road_runner/flows/compute.py", "param": "recompute_stale"},
+      {"type": "code", "kind": "variable", "name": "FMP_QUARTERLY_ENDPOINTS",
+       "module": "src/road_runner/fmp/endpoints.py"},
+      {"type": "flow", "name": "ingest-quarterly-finance-data"},
+      {"type": "env", "name": "WORKER_CONCURRENCY"},
+      {"type": "config", "path": "config/field-mapping.yaml"},
+      {"type": "enum", "class": "EtlRun", "field": "status", "value": "completed"},
+      {"type": "dep", "name": "tenacity"},
+      {"type": "literal", "name": "fmp-api"},
+      {"type": "ext", "name": "pg_dump"}
+    ]
+
+# ── 8. reference-manifests ───────────────────────────────────
+reference-manifests:
+  location: ".mg/docs/generate/reference-manifests/{audience}.json"
+  notes: |
+    Per-audience symbol/file manifests. Track which code symbols and file paths
+    each section references. Produced by generate, consumed by verify for
+    reference-integrity checks. One file per audience.
+  fields:
+    audience:  {type: string, required: true, description: "Audience key: developers, end-users, agents, devops"}
+    generated: {type: "string (ISO 8601)", required: true, description: "Timestamp of last generation"}
+    documents:
+      type: object
+      required: true
+      description: "Nested: document name -> section slug -> entry."
+      children:
+        _section_entry:
+          type: object
+          description: "Each key is a section slug."
+          children:
+            symbols:    {type: "array of string", required: true, description: "Unqualified code identifiers (never dotted paths)"}
+            file_paths: {type: "array of string", required: true, description: "Referenced files/dirs relative to project root"}
+            calls:      {type: "array of object", required: false, description: 'Function calls in examples: {"symbol": "name", "kwargs": ["p1","p2"]}. Verified via ast.parse().'}
+  upsert_key: "Entries upserted by (document, section) pair. Same pair replaces previous entry."
+  lifecycle: |
+    Initial: manifests cleared before full generation. Writers emit per-section
+    manifest entries via write-section.py, which the orchestrator's finalize step
+    merges into per-audience manifest files. Update: only regenerated sections
+    upserted; others preserved. Audit reads manifests to check symbols/paths.
+  written_sections_metadata: |
+    Transient _written_sections entry for stale section cleanup:
+    {"document": "ARCHITECTURE", "section": "_written_sections",
+     "symbols": [], "file_paths": [],
+     "sections_written": ["overview", "data-model", "auth-flow"]}
+    Bypasses normal non-empty validation. Requires sections_written field.
+    Stripped before manifest persisted for verify.
+  example: |
+    {
+      "audience": "developers", "generated": "2026-03-22T14:30:00Z",
+      "documents": {
+        "ARCHITECTURE": {
+          "overview": {"symbols": ["App", "Router", "middleware"],
+                       "file_paths": ["src/app.ts", "src/routes/index.ts"]},
+          "data-model": {"symbols": ["User", "Session", "Product"],
+                         "file_paths": ["prisma/schema.prisma", "src/db/migrations/"]}
+        }
+      }
+    }
+
+# ── 9. file-locations ────────────────────────────────────────
+file-locations:
+  notes: |
+    Each pipeline step owns a directory. Scanner creates scan/ and docs-scan.json.
+    Generator creates generate/. Auditv2 creates auditv2/. Fix creates fix/.
+    Resetting a step = rm -rf its dir.
+  tree: |
+    <project-root>/.mg/docs/
+      .docs.config.json            -- project config overrides
+      docs-scan.json               -- shared scan contract (created by SCAN, read by all)
+      scan/                        -- SCAN step outputs
+        scan-{audience}.json
+        scan-orientation.md
+        scan-project.json
+        diff-scope.json            -- incremental scan work order
+        staleness-results.json
+        templates/
+      templates/                   -- PREPARE-TEMPLATES refined templates
+      generate/                    -- GENERATE step outputs
+        reference-manifests/       -- per-audience symbol/file manifests
+        xml-sources/               -- XML source files (source of truth)
+          devops/OPERATIONS.xml
+          end-users/USER_GUIDE.xml
+          GLOSSARY.xml
+          OVERVIEW.xml
+        terms/                     -- glossary term proposals + reconciliation
+        scan-views/                -- per-audience scan view splits
+        project-model.json
+        database-model.json        -- full DB schema extraction
+        database-model-summary.json
+        db-usage-index.json        -- file-level DB usage index
+        db-table-map.json          -- section-to-tables map
+      auditv2/                     -- AUDITV2 step persistent state + run history
+        not-entities.json          -- entities classified as not-an-entity
+        protected-entities.json    -- entities to never re-flag
+        covered-entities.json      -- entities documented elsewhere
+        suppressed-findings.json   -- finding-tuple suppressions
+        trajectory.json            -- audit-run trajectory log
+        entities-{audience}-{DOC}.json -- per-document entity baselines
+        run/                       -- current run workspace
+        history/                   -- archived previous runs (audit-N, fix-N)
+      fix/                         -- FIX step outputs (XML edits + state)
+
+# ── 10. docs-scan-example ────────────────────────────────────
+docs-scan-example: |
+  {
+    "project": "my-app",
+    "scan_date": "2026-03-15T14:30:00Z",
+    "root_path": "/home/user/projects/my-app",
+    "mode": "initial",
+    "last_generated": null,
+    "project_model": {
+      "tech_stack": ["python"],
+      "entry_points": [{"path": "main.py", "type": "cli", "description": "Application entry point"}],
+      "components": [{"name": "core", "path": "src/core.py", "purpose": "Core business logic",
+                       "public_api": ["process", "validate"], "dependencies": [], "database_tables": []}],
+      "infrastructure": {"deployment": "pip install", "ci": "none", "config_files": ["pyproject.toml"]},
+      "user_interfaces": [],
+      "database": null
+    },
+    "source_material_index": {},
+    "staleness_report": [],
+    "gap_analysis": {
+      "undocumented_components": ["src/core.py"],
+      "missing_for_audience": {
+        "end-users": ["installation", "usage"], "developers": ["architecture", "api-reference"],
+        "agents": ["system-map"], "devops": ["deployment"]
+      }
+    },
+    "gsd_context": null
+  }

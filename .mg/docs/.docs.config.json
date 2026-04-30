@@ -1,0 +1,25 @@
+{
+  "docs_dir": "docs/auto-doc",
+  "audiences": {
+    "end-users": {
+      "enabled": true,
+      "documents": ["USER_GUIDE"]
+    },
+    "developers": {
+      "enabled": true,
+      "documents": ["ARCHITECTURE", "DEVELOPER_GUIDE", "QUICK_REFERENCE"]
+    },
+    "agents": {
+      "enabled": true,
+      "documents": ["SYSTEM_MAP", "CONVENTIONS", "GOTCHAS", "TESTING"]
+    },
+    "devops": {
+      "enabled": true,
+      "documents": ["OPERATIONS", "TROUBLESHOOTING"]
+    }
+  },
+  "shared_documents": ["OVERVIEW", "GLOSSARY"],
+  "custom_documents": [],
+  "gsd_integration": true,
+  "user_interfaces": []
+}

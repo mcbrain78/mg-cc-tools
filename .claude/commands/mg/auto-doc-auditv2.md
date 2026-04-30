@@ -1,0 +1,402 @@
+---
+name: mg:auto-doc-auditv2
+description: "Audit docs v2 (extract → clear → resolve). Args: [audience] [waves=2]"
+allowed-tools: Bash, Read, Glob, Grep, Agent, Skill
+---
+
+# Documentation Audit v2
+
+You are the **Auditor v2** — a redesigned post-generate quality check that separates entity extraction from resolution. Runs deterministic reference verification, LLM entity extraction, deterministic clearing, and LLM resolution of uncleared entities only.
+
+## Session Context
+
+Run the session context emitter for permission auto-approval:
+```
+python3 .claude/permission-hooks/scripts/emit-context.py AUTO-DOC
+```
+If the script is not found, continue — permissions will require manual approval.
+
+## Before You Start
+
+Read the shared schema that defines the data contract:
+```
+Read .claude/auto-doc/references/schema.yaml
+```
+
+## Process
+
+### Step 1: Setup
+
+Parse the user's input text for optional parameters:
+- **Audience filter**: audience names (e.g., `/mg:auto-doc-auditv2 devops`). Extract as a comma-separated string and store as `{audience_filter}` (empty string if no audience names were provided). This same string feeds both the `--audience` flag on `verify-xml-refs.py` (Step 2) and the `--audience-filter` flag on the convergence-count and aggregate scripts.
+- **Wave count**: `waves=N` (e.g., `/mg:auto-doc-auditv2 waves=3`). Controls how many resolution waves to run after extraction. Default: 2. More waves = more findings but longer runtime. Total agents per document = 1 (extraction) + N (resolution).
+
+Store the wave count as `num_waves` (integer, minimum 1, default 2).
+
+**Convergence check.** Before any other setup, count how many trajectory entries match the current audience filter:
+```bash
+uv run .claude/auto-doc/scripts/count-trajectory-entries.py \
+    --trajectory-file .mg/docs/auditv2/trajectory.json \
+    --audience-filter "{audience_filter}"
+```
+The script prints `<matching> <legacy>` to stdout (two integers, space-separated). `matching` = entries that satisfy the asymmetric scoping rule for the current filter. `legacy` = entries written before audience-filter tagging existed. Branch on these counts:
+
+- **`matching == 0` and `legacy == 0`** (no prior runs at all): print `"No prior runs — skipping convergence check."` and continue with setup.
+- **`matching == 0` and `legacy > 0`** (legacy entries present but none attributable to this filter): print `"No prior runs for filter '{audience_filter or "all"}' (found {legacy} legacy untagged entries — not used for convergence; run unfiltered or wipe trajectory.json to reset) — skipping convergence check."` and continue with setup. The legacy count is surfaced so the user knows history exists but is invisible under the new schema.
+- **`matching >= 1`**: spawn a convergence assessment agent (**model: sonnet**, foreground):
+  ```
+  Agent(
+    model="sonnet",
+    description="Convergence assessment (pre-audit)",
+    prompt="You are a convergence assessment agent.
+
+  Read and follow the instructions in: .claude/auto-doc/agents/assess-convergence.md
+
+  Trajectory file: .mg/docs/auditv2/trajectory.json
+  Audience filter: {audience_filter}"
+  )
+  ```
+  Present the agent's recommendation to the user:
+  - If **RECOMMEND STOP**, ask the user whether to proceed with the audit or stop. The user always has the final say.
+  - If **CONTINUE** or if the user chooses to proceed, continue with setup below.
+
+1. **Read configuration.** Load `.mg/docs/.docs.config.json` from the project root. If not found, fall back to `.claude/auto-doc/references/.docs.config.json`. Extract:
+   - `docs_dir` (default: `docs/auto-doc`)
+   - `audiences` (which are enabled and their document lists)
+
+2. **Read scan data.** Read the first 5 lines of `.mg/docs/docs-scan.json`. If this file does not exist, abort with:
+   ```
+   Error: No scan data found. Run /mg:auto-doc-scan first.
+   ```
+   Find the `root_path` field value and store as `project_root`.
+
+3. **Check xml-sources exist.** Use Glob to verify `.mg/docs/generate/xml-sources/` contains `.xml` files. If not, abort with:
+   ```
+   Error: No XML sources found. Run /mg:auto-doc-generate first.
+   ```
+
+4. **Archive previous run and create auditv2 directory** (persistent files at top level, per-run data in `run/`):
+
+   First, archive the previous run if it completed (has `summary.md`):
+   ```bash
+   if [ -f .mg/docs/auditv2/run/summary.md ]; then
+     NEXT_NUM=$(python3 -c "
+   import os, re
+   hist = '.mg/docs/auditv2/history'
+   if not os.path.isdir(hist):
+       print(1)
+   else:
+       nums = [int(m.group(1)) for d in os.listdir(hist)
+               if (m := re.match(r'audit-(\d+)', d))]
+       print(max(nums) + 1 if nums else 1)
+   ")
+     mkdir -p .mg/docs/auditv2/history
+     mv .mg/docs/auditv2/run \
+        .mg/docs/auditv2/history/audit-${NEXT_NUM}
+   fi
+   ```
+
+   Then create a fresh run directory:
+   ```bash
+   rm -rf .mg/docs/auditv2/run
+   mkdir -p .mg/docs/auditv2/run
+   # Initialize persistent files if they don't exist
+   for f in not-entities.json protected-entities.json covered-entities.json suppressed-findings.json; do
+     [ -f .mg/docs/auditv2/$f ] || echo '[]' > .mg/docs/auditv2/$f
+   done
+   echo '[]' > .mg/docs/auditv2/run/dismissed-this-run.json
+   ```
+
+### Step 2: Deterministic Reference Checks
+
+Run verify-xml-refs.py once across all XML sources. **Do NOT run this in the background** — you need the results before proceeding.
+
+```bash
+uv run .claude/auto-doc/scripts/verify-xml-refs.py \
+    --xml-dir .mg/docs/generate/xml-sources \
+    --project-root {project_root} \
+    --findings-file .mg/docs/auditv2/run/findings-refs.json \
+    --database-model .mg/docs/generate/database-model.json \
+    --docs-dir {docs_dir} \
+    [--audience AUDIENCE]
+```
+
+Add `--audience` only if the user specified audience names. `{docs_dir}` comes from the config read in Step 1.
+
+Read `.mg/docs/auditv2/run/findings-refs.json` to get the deterministic findings list.
+
+### Step 3: Prepare Prose Verification Data
+
+1. **Collect XML files.** Use Glob to find all `.xml` files under `.mg/docs/generate/xml-sources/`. If an audience filter is active, only include files under `xml-sources/{audience}/` and root-level XML files (GLOSSARY.xml, OVERVIEW.xml).
+
+2. **For each XML file, run prepare-prose-verify.py:**
+   ```bash
+   uv run .claude/auto-doc/scripts/prepare-prose-verify.py \
+       --xml-file {xml_file_path} \
+       --output-dir .mg/docs/auditv2/run/prose-verify-{audience}-{DOCUMENT}
+   ```
+
+### Step 3.5: Delta Extraction Check
+
+For each document, check whether sections have changed since the last audit run. This avoids re-extracting entities from unchanged sections.
+
+For each XML file processed in Step 3:
+```bash
+uv run .claude/auto-doc/scripts/delta-extract.py \
+    --prose-verify-dir .mg/docs/auditv2/run/prose-verify-{audience}-{DOCUMENT} \
+    --prev-entities-file .mg/docs/auditv2/entities-{audience}-{DOCUMENT}.json \
+    --entities-file .mg/docs/auditv2/run/entities-{audience}-{DOCUMENT}.json
+```
+
+Parse the JSON output. If `changed` is empty (all sections reused), skip extraction for that document entirely. If `changed` has entries, write the changed sections list to a filter file:
+```bash
+python3 -c "
+import json, sys
+with open(sys.argv[1], 'w') as f: json.dump(json.loads(sys.argv[2]), f, indent=2)
+" .mg/docs/auditv2/run/changed-sections-{audience}-{DOCUMENT}.json '{changed_json}'
+```
+
+### Step 4: Wave 1 — Entity Extraction
+
+Spawn extraction agents (one per document that has changed sections, parallel foreground, **model: sonnet**). If delta check found changed sections, pass `--sections-filter`. If all sections were reused for a document, skip its extraction agent.
+
+```
+Agent(
+  model="sonnet",
+  description="Entity extraction {audience} {DOCUMENT}",
+  prompt="You are an entity extraction agent.
+
+Read and follow the instructions in: .claude/auto-doc/agents/extract-prose-entities.md
+
+Project root: {project_root}
+Prose verify dir: .mg/docs/auditv2/run/prose-verify-{audience}-{DOCUMENT}
+Entities file: .mg/docs/auditv2/run/entities-{audience}-{DOCUMENT}.json
+Scripts dir: .claude/auto-doc/scripts
+Sections filter: .mg/docs/auditv2/run/changed-sections-{audience}-{DOCUMENT}.json"
+)
+```
+
+Omit `Sections filter:` line if all sections need extraction (no previous run data).
+
+After extraction completes, copy the current entities file to the persistent location for next run's delta comparison:
+```bash
+cp .mg/docs/auditv2/run/entities-{audience}-{DOCUMENT}.json \
+   .mg/docs/auditv2/entities-{audience}-{DOCUMENT}.json
+```
+```
+
+### Step 5: Deterministic Clearing + Check B
+
+After all extraction agents complete, run the clearing script once per document:
+
+```bash
+uv run .claude/auto-doc/scripts/clear-matched-entities.py \
+    --entities-file .mg/docs/auditv2/run/entities-{audience}-{DOCUMENT}.json \
+    --prose-verify-dir .mg/docs/auditv2/run/prose-verify-{audience}-{DOCUMENT} \
+    --uncleared-file .mg/docs/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
+    --findings-file .mg/docs/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
+    --document {DOCUMENT} \
+    --audience {audience} \
+    --not-entities-file .mg/docs/auditv2/not-entities.json \
+    --covered-entities-file .mg/docs/auditv2/covered-entities.json
+```
+
+Read the stderr output for the clearing summary (Extracted/Cleared/Uncleared counts).
+
+Read the uncleared file to check if there are any uncleared entities. If the uncleared file is empty (`[]`) for a document, skip that document in waves 2+.
+
+### Step 6: Waves 2–N — Entity Resolution
+
+**Repeat the following for each wave from 1 to `num_waves`:**
+
+a. **Clean up state files** so the next wave's agents start fresh:
+```bash
+rm -f .mg/docs/auditv2/run/*.sectionctl
+```
+
+b. **Recompute affected sections.** Propagation within the previous wave pruned the uncleared file, so some sections may now have zero entities. Recompute the affected-sections filter for each document:
+```bash
+python3 -c "
+import json, sys
+with open(sys.argv[1]) as f: u = json.load(f)
+s = sorted(set(e['section'] for e in u))
+with open(sys.argv[2], 'w') as f: json.dump(s, f, indent=2)
+" .mg/docs/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
+  .mg/docs/auditv2/run/prose-verify-{audience}-{DOCUMENT}/affected-sections.json
+```
+If the uncleared file is empty (`[]`) for a document, skip that document for the remaining waves.
+
+c. **Write session config** for each document that still has uncleared entities:
+```bash
+python3 -c "
+import json, os
+session = {
+    'workspace': '.mg/docs',
+    'document': '{DOCUMENT}',
+    'audience': '{audience}',
+    'wave': {N},
+    'prose_verify_dir': '.mg/docs/auditv2/run/prose-verify-{audience}-{DOCUMENT}',
+    'uncleared_file': '.mg/docs/auditv2/run/uncleared-{audience}-{DOCUMENT}.json',
+    'findings_file': '.mg/docs/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json',
+    'sections_filter': '.mg/docs/auditv2/run/prose-verify-{audience}-{DOCUMENT}/affected-sections.json',
+    'not_entities_file': '.mg/docs/auditv2/not-entities.json',
+    'dismissed_this_run_file': '.mg/docs/auditv2/run/dismissed-this-run.json',
+    'protected_entities_file': '.mg/docs/auditv2/protected-entities.json',
+    'suppress_file': '.mg/docs/auditv2/suppressed-findings.json',
+    'covered_entities_file': '.mg/docs/auditv2/covered-entities.json',
+}
+path = os.path.join('.mg/docs', 'auditv2', 'run', 'session-{audience}-{DOCUMENT}.json')
+with open(path, 'w') as f:
+    json.dump(session, f, indent=2)
+"
+```
+
+Where `{N}` is the current wave number (1, 2, 3, ...).
+
+d. **Snapshot findings for diff.** Before spawning resolution agents, copy the current findings to a snapshot so the aggregate summary can compute the delta for this wave:
+```bash
+cp .mg/docs/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
+   .mg/docs/auditv2/run/findings-prose-{audience}-{DOCUMENT}-prev-w{N}.json 2>/dev/null || true
+```
+
+e. **Spawn resolution agents** (one per document that still has uncleared entities, parallel foreground, **model: sonnet**):
+```
+Agent(
+  model="sonnet",
+  description="Entity resolution W{N} {audience} {DOCUMENT}",
+  prompt="You are an entity resolution agent.
+
+Read and follow the instructions in: .claude/auto-doc/agents/resolve-prose-entities.md
+
+Scripts dir: .claude/auto-doc/scripts
+Session: .mg/docs/auditv2/run/session-{audience}-{DOCUMENT}.json
+Ref types reference: .claude/auto-doc/agents/../.claude/auto-doc/references/typed-refs-format.md
+Wave: {N}
+Num waves: {num_waves}"
+)
+```
+
+### Step 6.5: Classify Dismissed Entities
+
+After all resolution waves complete, check if any entities were dismissed during this run:
+
+```bash
+python3 -c "
+import json, sys
+with open(sys.argv[1]) as f: d = json.load(f)
+print(len(d))
+" .mg/docs/auditv2/run/dismissed-this-run.json
+```
+
+If the count is greater than 0, spawn a classification agent (**model: sonnet**, foreground):
+```
+Agent(
+  model="sonnet",
+  description="Classify dismissed entities",
+  prompt="You are a dismissed entity classification agent.
+
+Read and follow the instructions in: .claude/auto-doc/agents/classify-dismissed-entities.md
+
+Scripts dir: .claude/auto-doc/scripts
+Dismissed this run file: .mg/docs/auditv2/run/dismissed-this-run.json
+Not entities file: .mg/docs/auditv2/not-entities.json
+Protected entities file: .mg/docs/auditv2/protected-entities.json
+Covered entities file: .mg/docs/auditv2/covered-entities.json
+Workspace: .mg/docs/auditv2/run
+Prose verify dir pattern: .mg/docs/auditv2/run/prose-verify-{audience}-{document}
+Ref types reference: .claude/auto-doc/agents/../.claude/auto-doc/references/typed-refs-format.md"
+)
+```
+
+If the count is 0, skip classification (no dismissed entities to classify).
+
+### Step 6.7: Aggregate Summary + Trajectory
+
+Run `wave-summary.py` once per document (using the pre-wave snapshot as prev), then aggregate all per-document summaries and append to the persistent trajectory.
+
+For each document that had resolution agents:
+```bash
+uv run .claude/auto-doc/scripts/wave-summary.py \
+    --findings-file .mg/docs/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json \
+    --prev-findings-file .mg/docs/auditv2/run/findings-prose-{audience}-{DOCUMENT}-prev-w1.json \
+    --uncleared-file .mg/docs/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
+    --dismissed-file .mg/docs/auditv2/run/dismissed-this-run.json \
+    --wave {num_waves} \
+    --output .mg/docs/auditv2/run/wave-summary-{audience}-{DOCUMENT}.json
+```
+
+Note: `--prev-findings-file` uses the **wave 1** snapshot (`-prev-w1.json`) — this captures the full delta across all waves for this audit run.
+
+Then aggregate all per-document summaries into one (the `--audience-filter` value tags the aggregate so trajectory entries can be scoped by audience for future convergence checks):
+```bash
+uv run .claude/auto-doc/scripts/aggregate-wave-summaries.py \
+    --summaries .mg/docs/auditv2/run/wave-summary-*.json \
+    --output .mg/docs/auditv2/run/wave-summary-aggregate.json \
+    --audience-filter "{audience_filter}"
+```
+
+Append to the persistent trajectory:
+```bash
+uv run .claude/auto-doc/scripts/append-trajectory.py \
+    --trajectory-file .mg/docs/auditv2/trajectory.json \
+    --wave-summary .mg/docs/auditv2/run/wave-summary-aggregate.json
+```
+
+### Step 7: Report
+
+Present a summary combining deterministic and prose findings:
+
+```
+Audit v2 Results:
+
+| Document                  | Ref Issues | Prose Issues | Total |
+|---------------------------|------------|--------------|-------|
+| devops/OPERATIONS         | 2          | 1            | 3     |
+| devops/TROUBLESHOOTING    | 0          | 0            | 0     |
+| GLOSSARY                  | 1          | 0            | 1     |
+
+Total: {N} issues across {M} documents
+```
+
+Collect prose findings from each document's findings file (`.mg/docs/auditv2/run/findings-prose-*.json`).
+
+For documents with issues, show per-document details:
+- Findings grouped by category (ref integrity, prose consistency)
+- Each finding with section, check type, and description
+
+If you notice a dominant pattern (e.g., the same root cause accounting for many findings), call it out with its impact ("accounts for ~N of M findings").
+
+If zero issues found:
+```
+All clear. No reference integrity or prose consistency issues found.
+```
+
+If issues found, end with:
+```
+Run /mg:auto-doc-fix to correct these issues, then re-run /mg:auto-doc-auditv2 to confirm.
+```
+
+### Step 8: Persist Summary
+
+Write the full summary text from Step 7 to `.mg/docs/auditv2/run/summary.md` so it survives beyond the conversation. Then tell the user:
+```
+Summary written to .mg/docs/auditv2/run/summary.md
+```
+
+### Step 8.5: Archive Session Transcript
+
+**IMPORTANT: This step MUST run after Step 8 (Persist Summary). The transcript captures everything up to the point of export — if you export before the summary, it will be missing from the transcript.**
+
+Run `/mg:transcript-export md-subagent .mg/docs/auditv2/run/transcript.md`
+
+## Important Principles
+
+- **Audit is lightweight.** It checks reference integrity and prose consistency, not editorial quality or completeness. That's verify's job.
+- **Deterministic checks run first.** verify-xml-refs.py and clear-matched-entities.py are fast and catch the most common issues.
+- **verify-xml-refs.py runs ONCE for the whole xml-sources directory.** Do not call it per-file.
+- **prepare-prose-verify.py takes `--output-dir` (a directory), not `--output` (a file).**
+- **clear-matched-entities.py runs ONCE per document after extraction.** Do not call it per-section.
+- **Extraction agents do NOT read refs.** They extract entity names from prose only.
+- **Resolution agents only visit affected sections** (via `--sections-filter`). Clean sections are skipped.
+- **Skip documents with no uncleared entities** in resolution waves — no work to do.
+- **Zero exit on clean.** If no issues found, congratulate and suggest verify as next step.
