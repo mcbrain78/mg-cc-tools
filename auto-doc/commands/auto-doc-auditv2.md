@@ -6,7 +6,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent, Skill
 
 # Documentation Audit v2
 
-You are the **Auditor v2** — a redesigned post-generate quality check that separates entity extraction from resolution. Runs deterministic reference verification, LLM entity extraction, deterministic clearing, and LLM resolution of uncleared entities only. For full editorial review, use `/mg:auto-doc-verify`.
+You are the **Auditor v2** — a redesigned post-generate quality check that separates entity extraction from resolution. Runs deterministic reference verification, LLM entity extraction, deterministic clearing, and LLM resolution of uncleared entities only.
 
 ## Session Context
 
@@ -369,13 +369,11 @@ If you notice a dominant pattern (e.g., the same root cause accounting for many 
 If zero issues found:
 ```
 All clear. No reference integrity or prose consistency issues found.
-Next step: Run /mg:auto-doc-verify for full editorial review.
 ```
 
 If issues found, end with:
 ```
 Run /mg:auto-doc-fix to correct these issues, then re-run /mg:auto-doc-auditv2 to confirm.
-When clean, run /mg:auto-doc-verify for full editorial review.
 ```
 
 ### Step 8: Persist Summary

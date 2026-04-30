@@ -149,10 +149,10 @@ class TestOutput:
                 "project_root", "docs_dir_abs", "scan_data_path",
                 "generate_dir", "project_model_path", "database_model_path",
                 "database_model_summary_path", "db_table_map_path",
-                "notes_file", "notes_inbox", "manifests_dir",
+                "manifests_dir",
                 "scan_dir", "terms_dir", "xml_sources_dir",
                 "mode", "audiences", "audience_filter_active",
-                "scan_views", "notes_by_audience",
+                "scan_views",
                 "refined_templates", "stale_templates",
                 "pre_init_documents",
             }
@@ -364,54 +364,6 @@ class TestWorkspace:
                 "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
             ])
             assert os.path.exists(existing)
-
-
-# =============================================================================
-# Notes
-# =============================================================================
-
-class TestNotes:
-    """Standing notes loading and grouping."""
-
-    def test_no_inbox_returns_empty(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            _, result = _run_setup(tmp)
-            for aud in result["audiences"]:
-                assert result["notes_by_audience"][aud] == []
-
-    def test_notes_grouped_by_audience(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            project_root, scan_path, config_path = _make_project(tmp)
-            inbox = os.path.join(project_root, ".mg", "docs", "notes-inbox.json")
-            _write_json(inbox, {"notes": [
-                {
-                    "id": "note-1",
-                    "text": "Fix the intro",
-                    "classification": {
-                        "audience": "end-users",
-                        "document": "USER_GUIDE",
-                        "section": "getting-started",
-                    },
-                },
-                {
-                    "id": "note-2",
-                    "text": "Add rollback steps",
-                    "classification": {
-                        "audience": "devops",
-                        "document": "OPERATIONS",
-                        "section": "deployment",
-                    },
-                },
-            ]})
-
-            stdout, _, _ = _run([
-                "--scan-file", scan_path, "--config", config_path,
-                "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
-            ])
-            result = json.loads(stdout)
-            assert len(result["notes_by_audience"]["end-users"]) == 1
-            assert len(result["notes_by_audience"]["devops"]) == 1
-            assert len(result["notes_by_audience"]["developers"]) == 0
 
 
 # =============================================================================

@@ -73,7 +73,6 @@ class TestWriteScanOutputBasic:
 
             scan_output = _valid_scan_output()
             scan_output["staleness_report"] = {"stale_sections": []}
-            scan_output["note_classifications"] = []
 
             with open(input_file, "w") as f:
                 json.dump(scan_output, f)
@@ -91,7 +90,6 @@ class TestWriteScanOutputBasic:
                 data = json.load(f)
 
             assert "staleness_report" in data
-            assert "note_classifications" in data
             assert data["staleness_report"] == {"stale_sections": []}
 
     def test_parent_directories_created(self):

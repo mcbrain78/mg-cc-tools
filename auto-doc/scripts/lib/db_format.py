@@ -1,6 +1,6 @@
 """Shared database model formatting utilities.
 
-Used by read-database-model.py (CLI output) and next-heading.py (inline db_column_detail).
+Used by next-heading.py for inline db_column_detail in orient blocks.
 """
 
 

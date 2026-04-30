@@ -22,19 +22,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 COMMANDS=(
-  auto-doc
   auto-doc-scan
+  auto-doc-prepare-templates
   auto-doc-generate
-  auto-doc-update
-  auto-doc-audit
   auto-doc-auditv2
   auto-doc-fix
-  auto-doc-verify
-  auto-doc-verify-mini
-  auto-doc-verify-singledoc
-  auto-doc-add
-  auto-doc-script
-  auto-doc-prepare-templates
 )
 
 # -- Parse arguments -----------------------------------------------------------
@@ -75,19 +67,11 @@ while [[ $# -gt 0 ]]; do
       echo "  --target <path>    Install into a custom .claude/ directory"
       echo ""
       echo "Invoke with:"
-      echo "  /mg:auto-doc              <- router (guides you through the pipeline)"
-      echo "  /mg:auto-doc-scan         <- step 1: scan"
-      echo "  /mg:auto-doc-generate     <- step 2: generate"
-      echo "  /mg:auto-doc-update       <- fix findings + integrate notes"
-      echo "  /mg:auto-doc-audit        <- lightweight ref integrity + prose audit"
-      echo "  /mg:auto-doc-auditv2     <- audit v2: extract → clear → resolve (token-efficient)"
-      echo "  /mg:auto-doc-fix          <- fix audit findings (refs + prose)"
-      echo "  /mg:auto-doc-verify       <- step 3: verify (full editorial)"
-      echo "  /mg:auto-doc-verify-mini  <- step 3 alt: verify with Haiku editorial"
-      echo "  /mg:auto-doc-verify-singledoc  <- step 3 alt: verify with self-driven Sonnet editorial"
-      echo "  /mg:auto-doc-add          <- capture notes"
-      echo "  /mg:auto-doc-script       <- generate README for a standalone script"
-      echo "  /mg:auto-doc-prepare-templates <- refine templates with project-specific headings"
+      echo "  /mg:auto-doc-scan              <- step 1: scan"
+      echo "  /mg:auto-doc-prepare-templates <- step 2 (optional): refine templates with project-specific headings"
+      echo "  /mg:auto-doc-generate          <- step 3: generate"
+      echo "  /mg:auto-doc-auditv2           <- step 4: audit (extract → clear → resolve)"
+      echo "  /mg:auto-doc-fix               <- step 5: fix audit findings (refs + prose)"
       exit 0
       ;;
     *)
@@ -194,6 +178,29 @@ with open(p, 'w') as f: json.dump(m, f, indent=2)
   fi
 fi
 
+# -- Migrate from prior auto-doc command set ----------------------------------
+# Remove stale commands/agents/scripts/refs from prior installs so users do not
+# end up with resolvable slash commands that point at deleted prompts.
+for old_cmd in auto-doc auto-doc-add auto-doc-audit auto-doc-script \
+               auto-doc-update auto-doc-verify auto-doc-verify-mini \
+               auto-doc-verify-singledoc; do
+  rm -f "${COMMANDS_DIR}/${old_cmd}.md"
+done
+for old_agent in code-example-verifier completeness-checker cross-doc-checker \
+                 data-model-verifier editorial-checker editorial-checker-singledoc \
+                 per-doc-editorial triage-reporter verify-prose verify-prose-reaudit \
+                 doc-fixer section-verifier; do
+  rm -f "${SUPPORT_DIR}/agents/${old_agent}.md"
+done
+for old_script in add-note classify-note list-notes editorial-next \
+                  editorial-orchestrate editorial-questions extract-verify-context \
+                  list-verify-findings verify-references verify-setup \
+                  archive-verify audit-pass-control add-manifest-entry \
+                  verify-section-refs read-database-model; do
+  rm -f "${SUPPORT_DIR}/scripts/${old_script}.py"
+done
+rm -f "${SUPPORT_DIR}/references/verify-checks.json"
+
 # -- Install -------------------------------------------------------------------
 
 echo "Installing auto-doc pipeline to: ${TARGET_DIR}"
@@ -263,7 +270,6 @@ if [[ "$MODE" == "project" ]]; then
   AGENTS_PATH=".claude/auto-doc/agents"
   SCRIPTS_PATH=".claude/auto-doc/scripts"
   TEMPLATES_PATH=".claude/auto-doc/references/templates"
-  CHECKS_PATH=".claude/auto-doc/references/verify-checks.json"
   WORKSPACE_PATH=".mg/docs"
   EMIT_CONTEXT_PATH=".claude/permission-hooks/scripts/emit-context.py"
   REFS_BASE=".claude/auto-doc"
@@ -272,7 +278,6 @@ else
   AGENTS_PATH="${SUPPORT_DIR}/agents"
   SCRIPTS_PATH="${SUPPORT_DIR}/scripts"
   TEMPLATES_PATH="${SUPPORT_DIR}/references/templates"
-  CHECKS_PATH="${SUPPORT_DIR}/references/verify-checks.json"
   WORKSPACE_PATH="${PROJECT_ROOT}/.mg/docs"
   EMIT_CONTEXT_PATH="${TARGET_DIR}/permission-hooks/scripts/emit-context.py"
   REFS_BASE="${SUPPORT_DIR}"
@@ -295,7 +300,6 @@ for cmd in "${COMMANDS[@]}"; do
   sed -i "s|{MG_INSTALL_TEMPLATES_DIR}|${TEMPLATES_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_WORKSPACE_DIR}|${WORKSPACE_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_AGENTS_DIR}|${AGENTS_PATH}|g" "$cmd_file"
-  sed -i "s|{MG_INSTALL_CHECKS_FILE}|${CHECKS_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_PATH}|g" "$cmd_file"
 done
 
@@ -313,7 +317,6 @@ for agent_file in "${SUPPORT_DIR}/agents/"*.md; do
   sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$agent_file"
   sed -i "s|{MG_INSTALL_TEMPLATES_DIR}|${TEMPLATES_PATH}|g" "$agent_file"
   sed -i "s|{MG_INSTALL_WORKSPACE_DIR}|${WORKSPACE_PATH}|g" "$agent_file"
-  sed -i "s|{MG_INSTALL_CHECKS_FILE}|${CHECKS_PATH}|g" "$agent_file"
   sed -i "s|{MG_INSTALL_AGENTS_DIR}|${AGENTS_PATH}|g" "$agent_file"
 done
 
@@ -335,10 +338,6 @@ if [[ -n "$PROJECT_ROOT" ]]; then
     # Project-local config (copy of global defaults for user to customize)
     cp "${SCRIPT_DIR}/references/.docs.config.json" "${DOCS_WORKSPACE}/.docs.config.json"
     echo "    Created .docs.config.json (defaults -- customize as needed)"
-
-    # Empty notes inbox
-    echo '{"notes": []}' > "${DOCS_WORKSPACE}/notes-inbox.json"
-    echo "    Created notes-inbox.json (empty inbox)"
 
     echo "    Created scan/ directory"
   fi
@@ -397,7 +396,7 @@ done
 # 3. Unresolved install-time placeholders in installed .md files
 #    Only checks placeholders that install.sh is responsible for resolving.
 #    Runtime placeholders ({DOCUMENT}, {DOC_NAME}, etc.) are filled by the orchestrator.
-INSTALL_PLACEHOLDERS='{MG_INSTALL_GLOBAL_CONFIG} {MG_INSTALL_SCRIPTS_DIR} {MG_INSTALL_TEMPLATES_DIR} {MG_INSTALL_WORKSPACE_DIR} {MG_INSTALL_AGENTS_DIR} {MG_INSTALL_CHECKS_FILE} {MG_INSTALL_EMIT_CONTEXT_SCRIPT}'
+INSTALL_PLACEHOLDERS='{MG_INSTALL_GLOBAL_CONFIG} {MG_INSTALL_SCRIPTS_DIR} {MG_INSTALL_TEMPLATES_DIR} {MG_INSTALL_WORKSPACE_DIR} {MG_INSTALL_AGENTS_DIR} {MG_INSTALL_EMIT_CONTEXT_SCRIPT}'
 for md_file in "${COMMANDS_DIR}"/auto-doc*.md "${SUPPORT_DIR}/agents/"*.md; do
   [[ -f "$md_file" ]] || continue
   for placeholder in $INSTALL_PLACEHOLDERS; do
@@ -432,21 +431,13 @@ echo "  Templates:   ${TEMPLATE_COUNT} templates -> .claude/auto-doc/references/
 echo "  Agents:      ${AGENT_COUNT} agent definitions -> .claude/auto-doc/agents/"
 if [[ -n "$PROJECT_ROOT" ]]; then
   if [[ -d "${PROJECT_ROOT}/.mg/docs" ]]; then
-    echo "  Scaffolded:  .mg/docs/ (config, inbox, scan)"
+    echo "  Scaffolded:  .mg/docs/ (config, scan)"
   fi
 fi
 echo ""
 echo "Invoke with:"
-echo "  /mg:auto-doc              <- start here (guides you through the pipeline)"
-echo "  /mg:auto-doc-scan         <- step 1: scan"
-echo "  /mg:auto-doc-generate     <- step 2: generate"
-echo "  /mg:auto-doc-update       <- fix findings + integrate notes"
-echo "  /mg:auto-doc-audit        <- lightweight ref integrity + prose audit"
-echo "  /mg:auto-doc-auditv2     <- audit v2: extract → clear → resolve (token-efficient)"
-echo "  /mg:auto-doc-fix          <- fix audit findings (refs + prose)"
-echo "  /mg:auto-doc-verify       <- step 3: verify (full editorial)"
-echo "  /mg:auto-doc-verify-mini  <- step 3 alt: verify with Haiku editorial"
-echo "  /mg:auto-doc-verify-singledoc  <- step 3 alt: verify with Sonnet SendMessage editorial"
-echo "  /mg:auto-doc-add          <- capture documentation notes"
-echo "  /mg:auto-doc-script       <- generate README for a standalone script"
-echo "  /mg:auto-doc-prepare-templates <- refine templates with project-specific headings"
+echo "  /mg:auto-doc-scan              <- step 1: scan"
+echo "  /mg:auto-doc-prepare-templates <- step 2 (optional): refine templates"
+echo "  /mg:auto-doc-generate          <- step 3: generate"
+echo "  /mg:auto-doc-auditv2           <- step 4: audit (extract → clear → resolve)"
+echo "  /mg:auto-doc-fix               <- step 5: fix audit findings (refs + prose)"

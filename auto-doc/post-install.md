@@ -2,7 +2,7 @@
 
 <objective>
 Add Write permissions for auto-doc workspace paths to the target project's settings.local.json.
-Auto-doc subagents (scan, generate, verify) need Write access to `.mg/` (temp files, scan output, config)
+Auto-doc subagents (scan, generate, audit) need Write access to `.mg/` (temp files, scan output, config)
 and `docs/auto-doc/` (generated documentation) without interactive approval prompts.
 </objective>
 

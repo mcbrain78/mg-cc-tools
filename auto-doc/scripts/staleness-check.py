@@ -9,7 +9,7 @@ class lives in). Refs without a source-file anchor (`db`, `env`, `flow`,
 `enum`, `dep`, `literal`, `ext`, `malformed`) are skipped.
 
 Output shape matches the previous markdown-based implementation so
-downstream consumers (`merge-scan.py`, `auto-doc-update.md`) are unchanged.
+the downstream consumer (`merge-scan.py`) is unchanged.
 
 Used by the scan pipeline step.
 

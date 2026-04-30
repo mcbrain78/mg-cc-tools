@@ -1,5 +1,5 @@
 [tool]
-description = "Documentation pipeline (scan, generate, verify)"
+description = "Documentation pipeline (scan, generate, audit, fix)"
 
 [preflight]
 required = ["python3", "tiktoken"]

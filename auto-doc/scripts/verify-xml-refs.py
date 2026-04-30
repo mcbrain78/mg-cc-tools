@@ -16,8 +16,7 @@ Usage:
 Appends findings to --findings-file atomically. Exit 0 always
 (findings are data, not errors).
 
-Architecture follows verify-references.py: file cache, walk refs,
-produce findings, exit 0 always.
+Architecture: file cache, walk refs, produce findings, exit 0 always.
 """
 
 import argparse
@@ -595,7 +594,7 @@ CHECKER_BY_TYPE = {
 
 
 def _make_finding(document, section, audience, description, suggestion, entity="", check="xml-ref-integrity"):
-    """Create a finding dict matching verify-references.py format.
+    """Create an audit finding dict.
 
     `entity` is the leaf identifier the check failed on; required for
     suppression matching via `suppressed-findings.json`.

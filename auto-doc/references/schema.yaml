@@ -71,8 +71,7 @@ docs-scan:
             Lightweight DB metadata. null if no database. Orient produces only
             {name, orm_framework, migration_tool, engine}. Full schema detail is in
             database-model.json (produced by extract-database-model.py).
-            Writers use database-model-summary.json for high-level awareness
-            and read-database-model.py for per-section column detail slicing.
+            Writers use database-model-summary.json for high-level awareness.
           children:
             name:           {type: string, required: true, description: "Database name from connection URL"}
             orm_framework:  {type: string, required: true, description: "ORM framework name and version"}
@@ -134,18 +133,6 @@ docs-scan:
         changed_files:    {type: "array of string", required: true, description: "Source files changed since last generation"}
         severity:         {type: "string (enum: high | medium | low)", required: true, description: "high=core changed, medium=supporting changed, low=minor"}
         suggested_action: {type: string, required: true, description: "What the generator should do"}
-    note_classifications:
-      type: "array of object"
-      required: true
-      description: |
-        DEPRECATED — always empty array. Notes now read directly from
-        notes-inbox.json by generate/update via list-notes.py.
-      children:
-        note_id:    {type: string, required: true, description: "Reference in notes-inbox.json (NOTE-NNN)"}
-        audience:   {type: string, required: true, description: "Target audience: end-users, developers, agents, devops"}
-        document:   {type: string, required: true, description: "Target document name"}
-        section:    {type: string, required: true, description: "Target section"}
-        confidence: {type: number, required: true, description: "0.0-1.0; below 0.5 = flag for human review"}
     gap_analysis:
       type: object
       required: true
@@ -173,9 +160,8 @@ database-model:
     ORM models. Produced by extract-database-model.py during generate setup.
     Separate from project-model.json to stay under 10KB CC read limit.
     Created by generate-setup.py after project-model.json. Read by devops
-    writers and data-model-verifier.md. Regenerated each generate run.
-    Writers use database-model-summary.json for high-level awareness and
-    read-database-model.py for per-section column detail slicing.
+    writers. Regenerated each generate run.
+    Writers use database-model-summary.json for high-level awareness.
   fields:
     database_name:  {type: "string | null", required: false, description: "Database name from project_model.database.name"}
     engine:         {type: "string | null", required: false, description: "Database engine from project model"}
@@ -225,7 +211,8 @@ database-model-summary:
     counts, and FK targets — no column detail.
     Produced by extract-database-model.py --summary-output during generate setup.
     Read by writer agents once at orient time for high-level schema awareness.
-    Sections needing column detail call read-database-model.py on demand.
+    Sections needing column detail use lib/db_format.py via next-heading.py orient
+    blocks (inline `db_column_detail` payload).
   fields:
     engine:         {type: "string | null", required: false, description: "Database engine from project model"}
     orm_framework:  {type: "string | null", required: false, description: "ORM framework from project model"}
@@ -325,14 +312,18 @@ db-usage-index:
       }
     }
 
-# ── 5. docs-verify-findings ──────────────────────────────────
-docs-verify-findings:
-  location: ".mg/docs/verify/findings.json"
+# ── 5. docs-audit-findings ───────────────────────────────────
+docs-audit-findings:
+  location: |
+    .mg/docs/auditv2/run/findings-refs.json (deterministic ref-integrity findings)
+    .mg/docs/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json (prose findings)
   notes: |
-    Flat array of verification findings. One per quality issue per section.
-    Created/cleared by auto-doc-verify.md before each verify run.
-    Populated via add-verify-finding.py (validates 6 input fields, computes group_id).
-    Read by auto-doc-generate.md via list-verify-findings.py for 3rd approval tier.
+    Flat array of audit findings. One per quality issue per section. The schema
+    below describes the finding-object shape; both files share it.
+    Refs file: created by verify-xml-refs.py during auditv2 step 2.
+    Prose files: created by clear-matched-entities.py and resolution agents
+    during auditv2 steps 5–6, all routing through add-verify-finding.py.
+    Read by auto-doc-fix.md via load-audit-findings.py for grouping and fixing.
   fields:
     document:    {type: string, required: true, description: "Document name from config (no .md extension; stripped automatically)"}
     section:     {type: string, required: true, description: "Section slug"}
@@ -560,9 +551,10 @@ reference-manifests:
             calls:      {type: "array of object", required: false, description: 'Function calls in examples: {"symbol": "name", "kwargs": ["p1","p2"]}. Verified via ast.parse().'}
   upsert_key: "Entries upserted by (document, section) pair. Same pair replaces previous entry."
   lifecycle: |
-    Initial: manifests cleared before full generation. Writers call
-    add-manifest-entry.py per section. Update: only regenerated sections
-    upserted; others preserved. Verify reads manifests to check symbols/paths.
+    Initial: manifests cleared before full generation. Writers emit per-section
+    manifest entries via write-section.py, which the orchestrator's finalize step
+    merges into per-audience manifest files. Update: only regenerated sections
+    upserted; others preserved. Audit reads manifests to check symbols/paths.
   written_sections_metadata: |
     Transient _written_sections entry for stale section cleanup:
     {"document": "ARCHITECTURE", "section": "_written_sections",
@@ -587,20 +579,18 @@ reference-manifests:
 file-locations:
   notes: |
     Each pipeline step owns a directory. Scanner creates scan/ and docs-scan.json.
-    Generator creates generate/. Verifier creates verify/. Resetting a step = rm -rf its dir.
+    Generator creates generate/. Auditv2 creates auditv2/. Fix creates fix/.
+    Resetting a step = rm -rf its dir.
   tree: |
     <project-root>/.mg/docs/
       .docs.config.json            -- project config overrides
-      notes-inbox.json             -- captured documentation notes
       docs-scan.json               -- shared scan contract (created by SCAN, read by all)
-      docs-update-report.md        -- generation report
       scan/                        -- SCAN step outputs
         scan-{audience}.json
         scan-orientation.md
         scan-project.json
         diff-scope.json            -- incremental scan work order
         staleness-results.json
-        note-classifications.json
         templates/
       templates/                   -- PREPARE-TEMPLATES refined templates
       generate/                    -- GENERATE step outputs
@@ -617,17 +607,16 @@ file-locations:
         database-model-summary.json
         db-usage-index.json        -- file-level DB usage index
         db-table-map.json          -- section-to-tables map
-        all-notes.json
-      audit/                       -- AUDIT step outputs
-      fix/                         -- FIX step outputs
-      verify/                      -- VERIFY step outputs
-        findings.json              -- verify findings (flat array)
-        report.md                  -- verification report
-        findings-dismissed.json    -- persistent dismissals
-        findings-*.json            -- per-agent findings
-        review-chunks/
-      update/                      -- UPDATE step outputs
-      verify-runs/                 -- archived verify runs
+      auditv2/                     -- AUDITV2 step persistent state + run history
+        not-entities.json          -- entities classified as not-an-entity
+        protected-entities.json    -- entities to never re-flag
+        covered-entities.json      -- entities documented elsewhere
+        suppressed-findings.json   -- finding-tuple suppressions
+        trajectory.json            -- audit-run trajectory log
+        entities-{audience}-{DOC}.json -- per-document entity baselines
+        run/                       -- current run workspace
+        history/                   -- archived previous runs (audit-N, fix-N)
+      fix/                         -- FIX step outputs (XML edits + state)
 
 # ── 10. docs-scan-example ────────────────────────────────────
 docs-scan-example: |
@@ -648,7 +637,6 @@ docs-scan-example: |
     },
     "source_material_index": {},
     "staleness_report": [],
-    "note_classifications": [],
     "gap_analysis": {
       "undocumented_components": ["src/core.py"],
       "missing_for_audience": {
@@ -658,17 +646,3 @@ docs-scan-example: |
     },
     "gsd_context": null
   }
-
-# ── read-database-model-script ───────────────────────────────
-read-database-model-script:
-  notes: |
-    Slice reader for database-model.json. Filters to requested tables and outputs
-    compact column detail to stdout. Called by writer agents during orient blocks
-    that have relevant_tables.
-    CLI: python3 read-database-model.py --db-model PATH --tables t1,t2,t3
-    Exit 0 even if a requested table is not found (warning to stderr).
-  output_format: |
-    road_runner.etl_runs:
-      id: Integer PK
-      flow_name: String(100) NOT NULL
-      ticker_id: Integer FK(road_runner.stocks.id)

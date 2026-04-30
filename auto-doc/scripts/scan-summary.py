@@ -30,7 +30,6 @@ def main():
 
     smi = len(d.get("source_material_index", {}))
     stale = len(d.get("staleness_report", []))
-    notes = len(d.get("note_classifications", []))
     gap = d.get("gap_analysis", {})
     undoc = len(gap.get("undocumented_components", []))
     missing = {k: len(v) for k, v in gap.get("missing_for_audience", {}).items()}
@@ -48,7 +47,6 @@ def main():
     print(f"entry_points={eps}")
     print(f"source_material={smi}")
     print(f"staleness={stale}")
-    print(f"notes={notes}")
     print(f"undocumented={undoc}")
     print(f"missing={json.dumps(missing)}")
     print(f"gsd_milestone={gsd.get('milestone') if gsd else 'none'}")

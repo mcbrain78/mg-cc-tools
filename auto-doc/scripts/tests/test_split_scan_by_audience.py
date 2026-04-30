@@ -112,15 +112,6 @@ def _make_scan_data():
                 "suggested_action": "Regenerate",
             }
         ],
-        "note_classifications": [
-            {
-                "note_id": "NOTE-001",
-                "audience": "developers",
-                "document": "ARCHITECTURE",
-                "section": "overview",
-                "confidence": 0.9,
-            }
-        ],
     }
 
 
@@ -299,8 +290,8 @@ class TestAudienceModeFiltering:
             assert "devops" not in gap["missing_for_audience"]
 
     def test_omits_excluded_keys(self):
-        """Test 4: staleness_report, note_classifications, scan_date, project,
-        root_path, mode, last_generated are all omitted from output."""
+        """Test 4: staleness_report, scan_date, project, root_path, mode,
+        last_generated are all omitted from output."""
         data = _make_scan_data()
         with tempfile.TemporaryDirectory() as tmp:
             input_path = os.path.join(tmp, "docs-scan.json")
@@ -324,7 +315,7 @@ class TestAudienceModeFiltering:
                 view = json.load(f)
 
             for excluded in [
-                "staleness_report", "note_classifications", "scan_date",
+                "staleness_report", "scan_date",
                 "project", "root_path", "mode", "last_generated",
             ]:
                 assert excluded not in view, f"{excluded} should be omitted"

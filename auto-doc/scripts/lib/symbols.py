@@ -1,8 +1,6 @@
 """Shared AST-based Python symbol extraction.
 
-Used by add-manifest-entry.py (advisory validation),
-verify-references.py (reference integrity checking), and
-verify-xml-refs.py (deterministic XML ref verification).
+Used by verify-xml-refs.py for deterministic XML ref verification.
 
 Zero external dependencies -- stdlib only.
 """

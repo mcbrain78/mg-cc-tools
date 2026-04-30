@@ -1,6 +1,6 @@
 ---
 name: mg:auto-doc-fix
-description: "Fix audit findings by correcting XML refs and prose. Args: [audit-source]"
+description: "Fix audit findings by correcting XML refs and prose."
 allowed-tools: Bash, Read, Write, Glob, Grep, Agent, AskUserQuestion, Skill
 ---
 
@@ -37,10 +37,9 @@ Read references/schema.yaml
    ```
    Find the `root_path` field value and store as `project_root`.
 
-3. **Parse audit source.** Check user input for an audit source name (e.g., `auditv2`). Default: `audit`.
-   - `audit` → findings dir is `{MG_INSTALL_WORKSPACE_DIR}/audit/`, suppress file is `{MG_INSTALL_WORKSPACE_DIR}/audit/suppressed-findings.json`
-   - `auditv2` → findings dir is `{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/`, suppress file is `{MG_INSTALL_WORKSPACE_DIR}/auditv2/suppressed-findings.json`
-   Store as `{findings_dir}` and `{suppress_file}`.
+3. **Set findings paths.**
+   - `findings_dir = {MG_INSTALL_WORKSPACE_DIR}/auditv2/run`
+   - `suppress_file = {MG_INSTALL_WORKSPACE_DIR}/auditv2/suppressed-findings.json`
 
 4. **Check xml-sources exist.** Use Glob to verify `{MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/` contains `.xml` files. If not, abort with:
    ```
@@ -53,7 +52,7 @@ Read references/schema.yaml
 
    If the directory doesn't exist or neither file type exists, abort with:
    ```
-   Error: No audit findings found in {findings_dir}. Run /mg:auto-doc-audit or /mg:auto-doc-auditv2 first.
+   Error: No audit findings found in {findings_dir}. Run /mg:auto-doc-auditv2 first.
    ```
 
 ### Step 2: Load and Merge Findings

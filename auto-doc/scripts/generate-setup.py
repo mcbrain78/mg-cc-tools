@@ -3,7 +3,7 @@
 
 Replaces Steps 1-3 of the generate orchestrator: loads config, detects
 mode, builds runtime paths, creates directories, cleans stale artifacts,
-splits scan data into per-audience views, and loads standing notes.
+and splits scan data into per-audience views.
 
 Usage:
     python3 generate-setup.py \
@@ -13,8 +13,8 @@ Usage:
         --scripts-dir {MG_INSTALL_SCRIPTS_DIR} \
         [--audience end-users,devops]
 
-Stdout (JSON): all runtime paths, mode, audience config, and grouped
-notes needed by the orchestrator.
+Stdout (JSON): all runtime paths, mode, and audience config needed by
+the orchestrator.
 Exit 1 with stderr message on failure. Exit 0 on success.
 
 Atomic writes via lib/json_io.py. Zero external dependencies.
@@ -146,8 +146,6 @@ def build_paths(project_root, docs_dir):
         "generate_dir": generate_dir,
         "project_model_path": os.path.join(generate_dir, "project-model.json"),
         "database_model_path": os.path.join(generate_dir, "database-model.json"),
-        "notes_file": os.path.join(generate_dir, "all-notes.json"),
-        "notes_inbox": os.path.join(mg_docs, "notes-inbox.json"),
         "manifests_dir": os.path.join(generate_dir, "reference-manifests"),
         "scan_dir": os.path.join(mg_docs, "scan"),
         "terms_dir": os.path.join(generate_dir, "terms"),
@@ -156,7 +154,7 @@ def build_paths(project_root, docs_dir):
 
 
 def prepare_workspace(paths, mode, audiences, scripts_dir):
-    """Create dirs, clean artifacts, split scans, load notes.
+    """Create dirs, clean artifacts, split scans.
 
     Args:
         paths: Dict from build_paths().
@@ -165,7 +163,7 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         scripts_dir: Absolute path to scripts directory.
 
     Returns:
-        Dict with scan_views and notes_by_audience.
+        Dict mapping audience name (and 'glossary') to scan-view JSON path.
     """
     docs_dir_abs = paths["docs_dir_abs"]
     generate_dir = paths["generate_dir"]
@@ -252,46 +250,7 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
     )
     scan_views["glossary"] = glossary_view
 
-    # Load and group standing notes by audience
-    notes_by_audience = _load_notes(paths, scripts_dir, audiences)
-
-    return scan_views, notes_by_audience
-
-
-def _load_notes(paths, scripts_dir, audiences):
-    """Load notes from inbox and group by audience.
-
-    Returns:
-        Dict of audience_name -> list of note dicts. Empty dict if no inbox.
-    """
-    inbox = paths["notes_inbox"]
-    notes_file = paths["notes_file"]
-
-    if not os.path.isfile(inbox):
-        return {aud: [] for aud in audiences}
-
-    _run_script(
-        [sys.executable, os.path.join(scripts_dir, "list-notes.py"),
-         "--inbox", inbox,
-         "--output", notes_file],
-        label="list-notes",
-        critical=False,
-    )
-
-    notes = load_json(notes_file)
-    if not notes:
-        return {aud: [] for aud in audiences}
-
-    grouped = {aud: [] for aud in audiences}
-    for note in notes:
-        classification = note.get("classification")
-        if not classification:
-            continue
-        aud = classification.get("audience")
-        if aud in grouped:
-            grouped[aud].append(note)
-
-    return grouped
+    return scan_views
 
 
 def _extract_database_model(paths, scripts_dir):
@@ -664,7 +623,7 @@ def main():
     )
 
     # Prepare workspace
-    scan_views, notes_by_audience = prepare_workspace(
+    scan_views = prepare_workspace(
         paths, mode, audiences, scripts_dir,
     )
 
@@ -697,7 +656,6 @@ def main():
         "audiences": audiences,
         "audience_filter_active": audience_filter is not None,
         "scan_views": scan_views,
-        "notes_by_audience": notes_by_audience,
         "refined_templates": refined_templates,
         "stale_templates": stale_templates,
         "pre_init_documents": pre_init_documents,

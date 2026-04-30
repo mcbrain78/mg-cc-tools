@@ -63,7 +63,7 @@ Only gather the small decisions needed to drive the pipeline. Heavy project anal
     rm -f <project_root>/.mg/docs/scan/*.json
     rm -f <project_root>/.mg/docs/scan/*.md
     ```
-    **Do NOT delete** `notes-inbox.json` or `.docs.config.json` -- those live in the parent `.mg/docs/` directory, not in `scan/`.
+    **Do NOT delete** `.docs.config.json` -- it lives in the parent `.mg/docs/` directory, not in `scan/`.
 
 7. **Create workspace** if it does not exist:
     ```bash
@@ -360,7 +360,6 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
    - `scan-project.json` (project_model, gsd_context)
    - `scan-{audience}.json` files (source_material_index, gap_analysis per audience)
    - `staleness-results.json` (if update mode)
-   - `note-classifications.json` (if notes were classified)
 
 2. **Read the summary counts** from docs-scan.json via script (keeps full JSON out of orchestrator context):
    ```bash
@@ -373,7 +372,6 @@ For each enabled audience in the config, spawn a scan subagent via the Agent too
    - **Project model:** tech stack count, component count, entry point count
    - **Source material:** total entries in source_material_index
    - **Staleness issues:** count (if update mode)
-   - **Notes classified:** count (if any)
    - **Gaps identified:** per-audience summary of undocumented components and missing topics
    - **GSD context:** milestone, completed phases (if applicable)
 

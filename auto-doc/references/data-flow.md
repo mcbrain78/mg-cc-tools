@@ -25,8 +25,8 @@ generate-setup.py:
 writer agents:
   next-heading.py (runtime) → orient response → read source → write-section.py → section-*.md + refs-*.json
 
-verify:
-  docs + reference-manifests → verify agents → findings.json
+auditv2:
+  docs + xml-sources → verify-xml-refs.py + extract/clear/resolve agents → findings-{refs,prose-*}.json + trajectory.json
 ```
 
 ## The Section→File→Table Bridge

@@ -59,13 +59,13 @@ Key layers:
 
 ### Auto-doc pipeline (the documentation tool)
 
-A 3-step pipeline: **scan** (read-only) → **generate** (creates/updates docs) → **verify** (read-only). The scan produces a `docs-scan.json` contract consumed by generate and verify.
+A pipeline of five commands: **scan** → **prepare-templates** (optional) → **generate** → **auditv2** → **fix**. The scan produces a `docs-scan.json` contract consumed by the rest of the pipeline; auditv2 produces audit findings consumed by fix.
 
 Key layers:
-- **Commands** (`commands/*.md`) — orchestrate pipeline steps: router (`auto-doc.md`), scan, generate, verify, and add (notes capture)
-- **Agents** (`agents/*.md`) — audience-specific writer subagents (end-user, developer, agent, devops, glossary) plus a scan-audience agent and verifier
-- **Scripts** (`scripts/*.py`) — deterministic Python helpers for JSON I/O (add-note, classify-note, merge-scan, staleness-check, check-references, write-scan-output, add-verify-finding, list-verify-findings)
-- **Schema** (`references/schema.md`) — shared `docs-scan.json` data contract between pipeline steps
+- **Commands** (`commands/*.md`) — orchestrate the five pipeline steps (`auto-doc-scan`, `auto-doc-prepare-templates`, `auto-doc-generate`, `auto-doc-auditv2`, `auto-doc-fix`)
+- **Agents** (`agents/*.md`) — audience-specific writer subagents (end-user, developer, agent, devops, glossary, overview) plus scan-audience, template-refiner, doc-polisher, and the auditv2 / fix agent set (extract-prose-entities, resolve-prose-entities, classify-dismissed-entities, assess-convergence, group-findings, audit-fixer)
+- **Scripts** (`scripts/*.py`) — deterministic Python helpers for the pipeline (generate-setup, merge-scan, staleness-check, write-section, next-heading, verify-xml-refs, clear-matched-entities, prepare-prose-verify, fix-queue, load-audit-findings, etc.)
+- **Schema** (`references/schema.yaml`) — shared `docs-scan.json` and audit-findings data contract between pipeline steps
 - **Templates** (`references/templates/`) — three-layer document templates (Diataxis + structure + exemplar) organized by audience
 
 ### GSD extension tools

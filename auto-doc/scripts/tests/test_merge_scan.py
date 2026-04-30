@@ -41,10 +41,6 @@ class TestMergeScanBasic:
                      "reason": "config changed", "changed_files": ["config.yml"],
                      "severity": "medium", "suggested_action": "review"}
                 ],
-                "note_classifications": [
-                    {"note_id": "NOTE-001", "audience": "devops",
-                     "document": "OPERATIONS", "section": "general", "confidence": 0.85}
-                ],
                 "gap_analysis": {
                     "undocumented_components": ["monitoring"],
                     "missing_for_audience": {"devops": ["scaling-guide"]}
@@ -63,10 +59,6 @@ class TestMergeScanBasic:
                     }
                 },
                 "staleness_report": [],
-                "note_classifications": [
-                    {"note_id": "NOTE-002", "audience": "developers",
-                     "document": "ARCHITECTURE", "section": "general", "confidence": 0.9}
-                ],
                 "gap_analysis": {
                     "undocumented_components": ["auth-module"],
                     "missing_for_audience": {"developers": ["api-reference"]}
@@ -91,9 +83,6 @@ class TestMergeScanBasic:
             # Both source material entries present
             assert "OPERATIONS/deployment" in data["source_material_index"]
             assert "ARCHITECTURE/components" in data["source_material_index"]
-
-            # Both note classifications present
-            assert len(data["note_classifications"]) == 2
 
             # Staleness report from devops present
             assert len(data["staleness_report"]) == 1
@@ -126,7 +115,6 @@ class TestMergeScanBasic:
             assert data["root_path"] == "/tmp/test-project"
             assert data["source_material_index"] == {}
             assert data["staleness_report"] == []
-            assert data["note_classifications"] == []
 
 
 class TestMergeScanDeduplication:
@@ -149,7 +137,6 @@ class TestMergeScanDeduplication:
                     }
                 },
                 "staleness_report": [],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-file1.json"), "w") as f:
@@ -165,7 +152,6 @@ class TestMergeScanDeduplication:
                     }
                 },
                 "staleness_report": [],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-file2.json"), "w") as f:
@@ -205,7 +191,6 @@ class TestMergeScanDeduplication:
                     }
                 },
                 "staleness_report": [],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-agents.json"), "w") as f:
@@ -220,7 +205,6 @@ class TestMergeScanDeduplication:
                     }
                 },
                 "staleness_report": [],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-devops.json"), "w") as f:
@@ -259,7 +243,6 @@ class TestMergeScanDeduplication:
                     }
                 },
                 "staleness_report": [],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-a.json"), "w") as f:
@@ -273,7 +256,6 @@ class TestMergeScanDeduplication:
                     }
                 },
                 "staleness_report": [],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-b.json"), "w") as f:
@@ -311,7 +293,6 @@ class TestMergeScanDeduplication:
                      "reason": "minor change", "changed_files": ["a.py"],
                      "severity": "low", "suggested_action": "review"}
                 ],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-a.json"), "w") as f:
@@ -324,7 +305,6 @@ class TestMergeScanDeduplication:
                      "reason": "major rewrite", "changed_files": ["a.py", "b.py"],
                      "severity": "high", "suggested_action": "rewrite"}
                 ],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-b.json"), "w") as f:
@@ -374,7 +354,7 @@ class TestMergeScanOutputFields:
             required_fields = [
                 "project", "scan_date", "root_path", "mode",
                 "project_model", "source_material_index",
-                "staleness_report", "note_classifications",
+                "staleness_report",
                 "gap_analysis", "gsd_context",
             ]
             for field in required_fields:
@@ -451,7 +431,6 @@ class TestMergeScanEdgeCases:
                     }
                 },
                 "staleness_report": [],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-good.json"), "w") as f:
@@ -491,7 +470,6 @@ class TestMergeScanEdgeCases:
                     {"document": "A", "section": "b", "reason": "changed",
                      "changed_files": ["a.py"], "severity": "low", "suggested_action": "review"}
                 ],
-                "note_classifications": [],
                 "gap_analysis": {"undocumented_components": [], "missing_for_audience": {}},
             }
             with open(os.path.join(scan_dir, "scan-test.json"), "w") as f:

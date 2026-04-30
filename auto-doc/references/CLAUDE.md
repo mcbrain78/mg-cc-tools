@@ -6,5 +6,4 @@ Reference files for the auto-doc pipeline. These are installed alongside command
 - **data-flow.md** — Pipeline architecture: key concepts, data flow, and the section→file→table bridge
 - **style-guide.md** — Writing conventions for generated documentation
 - **typed-refs-format.md** — Ref type specification for writer agents
-- **verify-checks.json** — Verification check definitions
 - **templates/** — Document templates by audience (Diataxis + structure + exemplar)

@@ -168,7 +168,6 @@ def main():
     # Merged state
     source_material = {}
     staleness_report = []
-    note_classifications = []
     gap_analysis = {
         "undocumented_components": [],
         "missing_for_audience": {},
@@ -209,10 +208,6 @@ def main():
                 staleness_report, data["staleness_report"]
             )
 
-        # Concatenate note_classifications
-        if "note_classifications" in data:
-            note_classifications.extend(data["note_classifications"])
-
         # Merge gap_analysis
         if "gap_analysis" in data:
             gap_analysis = merge_gap_analysis(gap_analysis, data["gap_analysis"])
@@ -234,7 +229,6 @@ def main():
         "project_model": project_model,
         "source_material_index": source_material,
         "staleness_report": staleness_report,
-        "note_classifications": note_classifications,
         "gap_analysis": gap_analysis,
         "gsd_context": gsd_context,
     }

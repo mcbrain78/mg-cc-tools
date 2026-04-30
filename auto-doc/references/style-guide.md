@@ -102,17 +102,17 @@ Loads and parses a JSON file. Returns `default` if the file doesn't exist.
 **Example structure:**
 ```
 ---
-tool: add-note
-purpose: Append documentation note to inbox
-inputs: --inbox, --text
-outputs: Updated notes-inbox.json
+tool: add-verify-finding
+purpose: Append audit finding to a findings JSON file
+inputs: --findings-file, --document, --section, --check, --description, --suggestion, --entity (optional)
+outputs: Updated findings-{refs|prose-...}.json
 ---
 
 ## Behavior
 
 - MUST write atomically (temp file + os.replace)
-- MUST generate sequential NOTE-NNN IDs
-- MUST NOT modify existing notes
+- MUST validate input fields and compute group_id deterministically
+- MUST NOT modify existing findings
 - Returns exit code 0 on success, 1 on failure
 ```
 
