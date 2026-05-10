@@ -1805,10 +1805,14 @@ class TestParseExistingSectionsNested:
         # We need to import the function directly
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
         import importlib.machinery
+        import importlib.util
         loader = importlib.machinery.SourceFileLoader(
             "write_section", SCRIPT_PATH,
         )
-        mod = loader.load_module()
+        spec = importlib.util.spec_from_loader("write_section", loader)
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
 
         content = (
             "# Doc Title\n\nSome header text\n\n"
