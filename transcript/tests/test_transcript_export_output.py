@@ -422,12 +422,12 @@ class TestSessionResolution:
 
         # Monkey-patch CLAUDE_DIR
         original = mod.CLAUDE_DIR
-        mod.CLAUDE_DIR = tmp_path / "projects"
+        setattr(mod, "CLAUDE_DIR", tmp_path / "projects")
         try:
             result = mod.resolve_session("abc12345-1234-5678-9abc-def012345678", "/tmp/test-project")
             assert result == jsonl
         finally:
-            mod.CLAUDE_DIR = original
+            setattr(mod, "CLAUDE_DIR", original)
 
     def test_resolve_prefix(self, tmp_path):
         mod = load_exporter()
@@ -437,12 +437,12 @@ class TestSessionResolution:
         jsonl.write_text(json.dumps(_make_user_entry()) + "\n")
 
         original = mod.CLAUDE_DIR
-        mod.CLAUDE_DIR = tmp_path / "projects"
+        setattr(mod, "CLAUDE_DIR", tmp_path / "projects")
         try:
             result = mod.resolve_session("abc12345", "/tmp/test-project")
             assert result == jsonl
         finally:
-            mod.CLAUDE_DIR = original
+            setattr(mod, "CLAUDE_DIR", original)
 
 
 def _make_user_entry():

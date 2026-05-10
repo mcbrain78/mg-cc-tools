@@ -191,7 +191,7 @@ class SourceCache:
             import tomllib
         except ModuleNotFoundError:
             try:
-                import tomli as tomllib
+                import tomli as tomllib  # pyright: ignore[reportMissingImports]
             except ModuleNotFoundError:
                 self._pyproject_deps = deps
                 return deps

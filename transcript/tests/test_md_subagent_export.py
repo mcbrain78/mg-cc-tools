@@ -8,7 +8,7 @@ from conftest import load_exporter
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_user_entry(content="Hello", uuid="u1", parent=None, ts="2026-01-01T00:00:00.000Z"):
+def _make_user_entry(content: "str | list[dict[str, object]]" = "Hello", uuid="u1", parent=None, ts="2026-01-01T00:00:00.000Z"):
     return {
         "type": "user",
         "uuid": uuid,

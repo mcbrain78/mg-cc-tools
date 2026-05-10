@@ -21,7 +21,7 @@ def _assistant_msg(text):
 
 
 def _tool_result_msg(text="ok", is_error=False):
-    block = {"type": "tool_result", "tool_use_id": "toolu_test", "content": text}
+    block: dict[str, object] = {"type": "tool_result", "tool_use_id": "toolu_test", "content": text}
     if is_error:
         block["is_error"] = True
     return {"role": "user", "type": "user", "content": [block]}

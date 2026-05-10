@@ -612,6 +612,7 @@ class TestUpdateSectionRefs:
             {"type": "db", "db": "mydb", "schema": "public", "table": "users"},
         ])
         db_el = refs_el.find("db")
+        assert db_el is not None
         assert db_el.get("name") == "mydb"
 
     def test_db_refs_parse_all_levels(self):

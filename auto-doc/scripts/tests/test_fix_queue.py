@@ -130,6 +130,7 @@ class TestInit:
 
             state = load_json(sf)
             assert state is not None
+            assert state is not None
             assert state["queue"] == [0, 1, 2]
             assert state["current"] is None
             assert state["completed"] == []
@@ -149,6 +150,7 @@ class TestInit:
                   "--state-file", sf])
 
             state = load_json(sf)
+            assert state is not None
             assert state["queue"] == [0, 2]
 
     def test_out_of_range_indices_filtered(self):
@@ -164,6 +166,7 @@ class TestInit:
                            "--state-file", sf])
 
             state = load_json(sf)
+            assert state is not None
             assert state["queue"] == [0, 1]
             assert "skipping" in result.stderr.lower()
 
@@ -198,6 +201,7 @@ class TestInit:
                   "--state-file", sf])
 
             state = load_json(sf)
+            assert state is not None
             for key, val in state["config"].items():
                 assert os.path.isabs(val), f"{key} should be absolute: {val}"
 
@@ -217,6 +221,7 @@ class TestInit:
                   "--state-file", sf])
 
             state = load_json(sf)
+            assert state is not None
             assert state["config"]["suppress_file"] == os.path.abspath(sup)
 
     def test_suppress_file_optional_defaults_empty(self):
@@ -233,6 +238,7 @@ class TestInit:
                   "--state-file", sf])
 
             state = load_json(sf)
+            assert state is not None
             assert state["config"]["suppress_file"] == ""
 
     def test_next_output_includes_suppress_file(self):
@@ -290,6 +296,7 @@ class TestNextBasic:
 
             _run(["next", "--state-file", sf])
             state = load_json(sf)
+            assert state is not None
 
             assert state["current"] == 0
             assert state["queue"] == [1]
@@ -340,6 +347,7 @@ class TestMergeBeforeExtract:
 
             # State: current=0, queue=[1]
             state = load_json(sf)
+            assert state is not None
             assert state["current"] == 0
 
             # Call next again → should merge group 0, then extract group 1
@@ -350,6 +358,7 @@ class TestMergeBeforeExtract:
 
             # State: group 0 completed, current=1
             state = load_json(sf)
+            assert state is not None
             assert 0 in state["completed"]
             assert state["current"] == 1
 
@@ -371,6 +380,7 @@ class TestMergeBeforeExtract:
             assert output["completed"] == 2
 
             state = load_json(sf)
+            assert state is not None
             assert 0 in state["completed"]
             assert 1 in state["completed"]
             assert state["current"] is None
@@ -404,6 +414,7 @@ class TestAutoSkip:
             assert out2["group_index"] == 2
 
             state = load_json(sf)
+            assert state is not None
             assert 1 in state["skipped"]
 
     def test_all_empty_goes_to_done(self):
@@ -480,6 +491,7 @@ def _modify_edit_body(edit_file, slug, new_text):
     for section in tree.getroot().findall("section"):
         if section.get("slug") == slug:
             body = section.find("body")
+            assert body is not None
             body.text = etree.CDATA(
                 f"<!-- section: {slug} -->\n## {slug}\n\n{new_text}"
             )

@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.ignore import load_ignore_patterns, should_ignore
 
 try:
-    from vulture import Vulture
+    from vulture import Vulture  # pyright: ignore[reportMissingImports]
 except ImportError:
     print(
         "Error: vulture is not installed.\n"

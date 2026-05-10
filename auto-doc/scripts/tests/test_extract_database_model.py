@@ -53,9 +53,9 @@ def _run(project_root, search_paths, pm_path, output_path,
     if usage_output:
         cmd.extend(["--usage-output", usage_output])
     result = subprocess.run(cmd, capture_output=True, text=True)
-    data = None
-    if os.path.isfile(output_path):
-        data = _read_json(output_path)
+    data: dict = (
+        _read_json(output_path) if os.path.isfile(output_path) else {}
+    )
     return data, result.returncode, result.stderr
 
 

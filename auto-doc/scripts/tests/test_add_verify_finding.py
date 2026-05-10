@@ -17,7 +17,7 @@ SCRIPT_PATH = os.path.join(
 )
 
 
-def _valid_finding():
+def _valid_finding() -> dict[str, object]:
     """Return a valid finding dict with all 6 required fields."""
     return {
         "document": "OPERATIONS",
