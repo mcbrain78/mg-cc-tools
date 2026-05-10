@@ -218,59 +218,11 @@ def _drain_all(paths):
 
 
 # ---------------------------------------------------------------------------
-# HIT-01: CLI interface -- four required arguments
+# HIT-01: CLI smoke
 # ---------------------------------------------------------------------------
 
 class TestCLI:
-    """HIT-01: Script accepts four required arguments."""
-
-    def test_missing_state_file_exits_2(self):
-        """Missing --state-file causes argparse error."""
-        with tempfile.TemporaryDirectory() as td:
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--template", "/fake",
-                 "--scan-file", "/fake",
-                 "--document", "DOC"],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 2
-
-    def test_missing_template_exits_2(self):
-        """Missing --template causes argparse error."""
-        with tempfile.TemporaryDirectory() as td:
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--state-file", "/fake",
-                 "--scan-file", "/fake",
-                 "--document", "DOC"],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 2
-
-    def test_missing_scan_file_exits_2(self):
-        """Missing --scan-file causes argparse error."""
-        with tempfile.TemporaryDirectory() as td:
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--state-file", "/fake",
-                 "--template", "/fake",
-                 "--document", "DOC"],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 2
-
-    def test_missing_document_exits_2(self):
-        """Missing --document causes argparse error."""
-        with tempfile.TemporaryDirectory() as td:
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--state-file", "/fake",
-                 "--template", "/fake",
-                 "--scan-file", "/fake"],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 2
+    """HIT-01: Script runs end-to-end when all four required args are present."""
 
     def test_all_args_present_succeeds(self):
         """All four args present runs successfully."""

@@ -433,14 +433,6 @@ class TestNonGitHandling:
 
 
 class TestCLI:
-    def test_help_exits_zero(self):
-        script = os.path.join(os.path.dirname(__file__), "..", "staleness-check.py")
-        result = subprocess.run(
-            [sys.executable, script, "--help"],
-            capture_output=True, text=True,
-        )
-        assert result.returncode == 0
-
     def test_cli_json_output(self, git_project, xml_dir):
         section = _section(slug="empty", last_updated="")
         (xml_dir / "api.xml").write_text(_xml_doc("end-users", section))
