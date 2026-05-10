@@ -1,20 +1,35 @@
 """Tests for add-verify-finding.py -- validate and append verify findings.
 
-Uses subprocess to invoke the script as a CLI tool, matching the
-project's test pattern (no direct imports of kebab-case modules).
+Uses subprocess for CLI/end-to-end behavior; imports validate_finding
+directly via importlib for fast unit-level coverage of the validator
+(check-type acceptance, normalization).
 """
 
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 import tempfile
 
+import pytest
+
 SCRIPT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "..",
     "add-verify-finding.py",
 )
+
+
+def _load_module():
+    spec = importlib.util.spec_from_file_location("add_verify_finding", SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_avf = _load_module()
 
 
 def _valid_finding() -> dict[str, object]:
@@ -218,97 +233,55 @@ MALFORMED_REF_CHECKS = [
 ]
 
 
-class TestAddVerifyFindingEditorialChecks:
-    """Editorial check types accepted by add-verify-finding.py."""
+class TestAddVerifyFindingValidCheckTypes:
+    """Every accepted check type — editorial, fact-checker, malformed-ref —
+    passes validate_finding() in-process. One subprocess smoke test per
+    group covers the end-to-end CLI path.
+    """
 
-    def test_all_editorial_checks_accepted(self):
-        """Each of the 22 editorial check types is accepted (exit code 0)."""
-        for check in EDITORIAL_CHECKS:
-            with tempfile.TemporaryDirectory() as tmp:
-                findings_file = os.path.join(tmp, "findings.json")
-                input_file = os.path.join(tmp, "input.json")
+    @pytest.mark.parametrize("check", EDITORIAL_CHECKS + FACT_CHECKER_CHECKS + MALFORMED_REF_CHECKS,
+                             ids=lambda c: c)
+    def test_check_type_accepted_in_validator(self, check):
+        finding = _valid_finding()
+        finding["check"] = check
+        is_valid, error = _avf.validate_finding(finding)
+        assert is_valid, f"Check '{check}' rejected: {error}"
 
-                finding = _valid_finding()
-                finding["check"] = check
-                with open(input_file, "w") as f:
-                    json.dump(finding, f)
+    def test_editorial_check_smoke_via_subprocess(self, findings_file, input_file_factory, run_script):
+        finding = _valid_finding()
+        finding["check"] = "filler-content"
+        result = run_script(
+            "add-verify-finding.py",
+            "--input", input_file_factory(finding),
+            "--findings-file", findings_file,
+        )
+        assert result.returncode == 0
+        with open(findings_file) as f:
+            assert json.load(f)[0]["check"] == "filler-content"
 
-                result = subprocess.run(
-                    [sys.executable, SCRIPT_PATH,
-                     "--input", input_file,
-                     "--findings-file", findings_file],
-                    capture_output=True, text=True,
-                )
-                assert result.returncode == 0, (
-                    f"Editorial check '{check}' rejected: {result.stderr}"
-                )
+    def test_fact_checker_check_smoke_via_subprocess(self, findings_file, input_file_factory, run_script):
+        finding = _valid_finding()
+        finding["check"] = "code-example-fact-check"
+        result = run_script(
+            "add-verify-finding.py",
+            "--input", input_file_factory(finding),
+            "--findings-file", findings_file,
+        )
+        assert result.returncode == 0
+        with open(findings_file) as f:
+            assert json.load(f)[0]["check"] == "code-example-fact-check"
 
-                with open(findings_file) as f:
-                    data = json.load(f)
-                assert len(data) == 1
-                assert data[0]["check"] == check
-
-
-class TestAddVerifyFindingFactCheckerChecks:
-    """Fact-checker check types accepted by add-verify-finding.py."""
-
-    def test_all_fact_checker_checks_accepted(self):
-        """Each of the 3 fact-checker check types is accepted (exit code 0)."""
-        for check in FACT_CHECKER_CHECKS:
-            with tempfile.TemporaryDirectory() as tmp:
-                findings_file = os.path.join(tmp, "findings.json")
-                input_file = os.path.join(tmp, "input.json")
-
-                finding = _valid_finding()
-                finding["check"] = check
-                with open(input_file, "w") as f:
-                    json.dump(finding, f)
-
-                result = subprocess.run(
-                    [sys.executable, SCRIPT_PATH,
-                     "--input", input_file,
-                     "--findings-file", findings_file],
-                    capture_output=True, text=True,
-                )
-                assert result.returncode == 0, (
-                    f"Fact-checker check '{check}' rejected: {result.stderr}"
-                )
-
-                with open(findings_file) as f:
-                    data = json.load(f)
-                assert len(data) == 1
-                assert data[0]["check"] == check
-
-
-class TestAddVerifyFindingMalformedRefChecks:
-    """Malformed ref check types accepted by add-verify-finding.py."""
-
-    def test_malformed_ref_unresolved_accepted(self):
-        """The malformed-ref-unresolved check type is accepted (exit code 0)."""
-        for check in MALFORMED_REF_CHECKS:
-            with tempfile.TemporaryDirectory() as tmp:
-                findings_file = os.path.join(tmp, "findings.json")
-                input_file = os.path.join(tmp, "input.json")
-
-                finding = _valid_finding()
-                finding["check"] = check
-                with open(input_file, "w") as f:
-                    json.dump(finding, f)
-
-                result = subprocess.run(
-                    [sys.executable, SCRIPT_PATH,
-                     "--input", input_file,
-                     "--findings-file", findings_file],
-                    capture_output=True, text=True,
-                )
-                assert result.returncode == 0, (
-                    f"Malformed ref check '{check}' rejected: {result.stderr}"
-                )
-
-                with open(findings_file) as f:
-                    data = json.load(f)
-                assert len(data) == 1
-                assert data[0]["check"] == check
+    def test_malformed_ref_check_smoke_via_subprocess(self, findings_file, input_file_factory, run_script):
+        finding = _valid_finding()
+        finding["check"] = "malformed-ref-unresolved"
+        result = run_script(
+            "add-verify-finding.py",
+            "--input", input_file_factory(finding),
+            "--findings-file", findings_file,
+        )
+        assert result.returncode == 0
+        with open(findings_file) as f:
+            assert json.load(f)[0]["check"] == "malformed-ref-unresolved"
 
 
 class TestAddVerifyFindingNormalization:
