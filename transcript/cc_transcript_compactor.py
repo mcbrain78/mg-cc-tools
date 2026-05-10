@@ -547,7 +547,8 @@ def slim(data: dict, level: int | str) -> dict:
         data["slim_schema"] = "restructured"
         return data
 
-    for i in range(min(level + 1, len(APPLY_FNS))):  # type: ignore[arg-type]
+    assert isinstance(level, int)
+    for i in range(min(level + 1, len(APPLY_FNS))):
         data = APPLY_FNS[i](data)
 
     schema = "restructured" if level >= 4 else "original"
@@ -558,7 +559,7 @@ def slim(data: dict, level: int | str) -> dict:
 
 # --- Analyze (estimation) ---
 
-def estimate_sizes(data: dict, original_size: int) -> list[tuple[int, str, int, str]]:
+def estimate_sizes(data: dict, original_size: int) -> list[tuple[int | str, str, int, str]]:
     """Walk data once, estimate size at each level by subtraction.
 
     Key insight: toolResults is slimmed at L0 (content stripped), then dropped

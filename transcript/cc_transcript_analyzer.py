@@ -1381,6 +1381,7 @@ def _import_compactor():
         print(f"Error: compactor not found at {compactor_path}", file=sys.stderr)
         sys.exit(1)
     spec = importlib.util.spec_from_file_location("cc_transcript_compactor", compactor_path)
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

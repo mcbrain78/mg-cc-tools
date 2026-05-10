@@ -269,6 +269,7 @@ def update_fix_refs(edit_file, section_path, add_snippet=None, remove_snippet=No
         if err:
             print(f"Error: {err}", file=sys.stderr)
             sys.exit(1)
+        assert new_flat is not None
 
         # Validate required fields
         for ref in new_flat:
@@ -328,6 +329,7 @@ def update_fix_refs(edit_file, section_path, add_snippet=None, remove_snippet=No
         if err:
             print(f"Error: {err}", file=sys.stderr)
             sys.exit(1)
+        assert remove_flat is not None
 
         remaining = list(existing_flat)
         removed = []

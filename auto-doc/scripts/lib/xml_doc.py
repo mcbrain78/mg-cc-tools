@@ -126,6 +126,7 @@ def parse_xml_doc(path):
     root = tree.getroot()
 
     meta_el = root.find("meta")
+    assert meta_el is not None, f"<meta> element missing in {path}"
     meta = {
         "title": _text(meta_el.find("title")),
         "generated": _text(meta_el.find("generated")),

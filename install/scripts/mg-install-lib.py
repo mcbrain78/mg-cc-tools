@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from typing import Any
 
 try:
     import tomllib
@@ -503,6 +504,7 @@ def update_manifest(target_dir, tool_name, source_tool_dir):
     )
 
     # Read existing manifest or create new
+    manifest: dict[str, Any]
     if os.path.isfile(manifest_path):
         with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
