@@ -12,7 +12,7 @@ dev = ["pytest", "pytest-xdist", "ruff", "sqlalchemy>=2.0", "types-lxml"]
 
 [tool.pytest.ini_options]
 markers = ["slow: marks tests requiring large sample files (deselect with '-m \"not slow\"')"]
-addopts = "--import-mode=importlib"
+addopts = "--import-mode=importlib -n auto"
 pythonpath = ["."]
 
 [dependency-groups]
