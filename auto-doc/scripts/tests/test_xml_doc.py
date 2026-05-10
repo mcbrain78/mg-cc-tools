@@ -828,65 +828,21 @@ class TestUpdateSectionRefs:
         finally:
             os.unlink(path)
 
-    def test_dep_refs(self):
+    @pytest.mark.parametrize("ref_type,names", [
+        pytest.param("dep", ["tenacity", "edgartools"], id="dep"),
+        pytest.param("literal", ["fmp-api", "finance-data-pool"], id="literal"),
+        pytest.param("ext", ["pg_dump", "VACUUM"], id="ext"),
+    ])
+    def test_simple_named_refs_round_trip(self, tmp_xml_path, ref_type, names):
+        """Single-field {type, name} refs round-trip in declared order."""
         tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
-        flat_refs = [
-            {"type": "dep", "name": "tenacity"},
-            {"type": "dep", "name": "edgartools"},
-        ]
+        flat_refs = [{"type": ref_type, "name": n} for n in names]
         update_section_refs(tree, "monitoring-alerting", flat_refs)
 
-        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
-            path = f.name
-        try:
-            serialize_xml_doc(tree, path)
-            doc = parse_xml_doc(path)
-            refs = doc["sections"][0]["refs"]
-            assert len(refs) == 2
-            assert refs[0] == {"type": "dep", "name": "tenacity"}
-            assert refs[1] == {"type": "dep", "name": "edgartools"}
-        finally:
-            os.unlink(path)
-
-    def test_literal_refs(self):
-        tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
-        flat_refs = [
-            {"type": "literal", "name": "fmp-api"},
-            {"type": "literal", "name": "finance-data-pool"},
-        ]
-        update_section_refs(tree, "monitoring-alerting", flat_refs)
-
-        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
-            path = f.name
-        try:
-            serialize_xml_doc(tree, path)
-            doc = parse_xml_doc(path)
-            refs = doc["sections"][0]["refs"]
-            assert len(refs) == 2
-            assert refs[0] == {"type": "literal", "name": "fmp-api"}
-            assert refs[1] == {"type": "literal", "name": "finance-data-pool"}
-        finally:
-            os.unlink(path)
-
-    def test_ext_refs(self):
-        tree = build_xml_doc("devops", "how-to", "# Title", FLAT_SECTIONS)
-        flat_refs = [
-            {"type": "ext", "name": "pg_dump"},
-            {"type": "ext", "name": "VACUUM"},
-        ]
-        update_section_refs(tree, "monitoring-alerting", flat_refs)
-
-        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
-            path = f.name
-        try:
-            serialize_xml_doc(tree, path)
-            doc = parse_xml_doc(path)
-            refs = doc["sections"][0]["refs"]
-            assert len(refs) == 2
-            assert refs[0] == {"type": "ext", "name": "pg_dump"}
-            assert refs[1] == {"type": "ext", "name": "VACUUM"}
-        finally:
-            os.unlink(path)
+        serialize_xml_doc(tree, tmp_xml_path)
+        doc = parse_xml_doc(tmp_xml_path)
+        refs = doc["sections"][0]["refs"]
+        assert refs == flat_refs
 
     def test_replace_existing_refs(self):
         """Updating refs replaces previous refs entirely."""
