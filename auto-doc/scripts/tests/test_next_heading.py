@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 
+import pytest
+
 SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 SCRIPT = os.path.join(SCRIPTS_DIR, "next-heading.py")
 
@@ -815,45 +817,36 @@ alembic_archive.ini). 3 systemd services with Requires ordering.</evidence>
 class TestDbTableMap:
     """--db-table-map injects relevant_tables into orient responses."""
 
-    def test_orient_includes_relevant_tables_when_map_provided(self):
-        """Orient response includes relevant_tables when section is in map."""
-        db_table_map = {
-            "OPERATIONS/infrastructure-overview": ["etl_runs", "stocks"],
-        }
-        with tempfile.TemporaryDirectory() as td:
-            paths = _write_fixtures(td)
-            # Write db-table-map file
-            map_path = os.path.join(td, "db-table-map.json")
-            with open(map_path, "w") as f:
-                json.dump(db_table_map, f)
-            # Run with --db-table-map
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--state-file", paths["state"],
-                 "--template", paths["template"],
-                 "--scan-file", paths["scan"],
-                 "--document", paths["document"],
-                 "--db-table-map", map_path],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 0
-            out = json.loads(result.stdout)
-            assert out["type"] == "orient"
-            assert out["relevant_tables"] == ["etl_runs", "stocks"]
-
-    def test_orient_omits_relevant_tables_when_no_map(self):
-        """Orient response has no relevant_tables when --db-table-map not provided."""
-        with tempfile.TemporaryDirectory() as td:
-            paths = _write_fixtures(td)
-            out = _run(paths)  # no --db-table-map
-            assert out["type"] == "orient"
-            assert "relevant_tables" not in out
-
-    def test_orient_omits_relevant_tables_when_section_not_in_map(self):
-        """Orient response has no relevant_tables when section is not in map."""
-        db_table_map = {
-            "OPERATIONS/other-section": ["some_table"],
-        }
+    @pytest.mark.parametrize("map_value,expected_tables,expected_usage", [
+        pytest.param(
+            ["etl_runs", "stocks"],
+            ["etl_runs", "stocks"],
+            None,
+            id="legacy_list",
+        ),
+        pytest.param(
+            {
+                "tables": ["etl_runs", "stocks"],
+                "usage": {
+                    "etl_runs": [{"file": "src/monitoring.py",
+                                  "functions": ["check_staleness"]}],
+                },
+            },
+            ["etl_runs", "stocks"],
+            {"etl_runs": [{"file": "src/monitoring.py",
+                           "functions": ["check_staleness"]}]},
+            id="dict_with_usage",
+        ),
+        pytest.param(
+            {"tables": ["etl_runs"]},
+            ["etl_runs"],
+            None,
+            id="dict_without_usage",
+        ),
+    ])
+    def test_map_parsing(self, map_value, expected_tables, expected_usage):
+        """Map-parsing branch: legacy list, dict with usage, dict without usage."""
+        db_table_map = {"OPERATIONS/infrastructure-overview": map_value}
         with tempfile.TemporaryDirectory() as td:
             paths = _write_fixtures(td)
             map_path = os.path.join(td, "db-table-map.json")
@@ -870,6 +863,38 @@ class TestDbTableMap:
             )
             assert result.returncode == 0
             out = json.loads(result.stdout)
+            assert out["type"] == "orient"
+            assert out["relevant_tables"] == expected_tables
+            if expected_usage is None:
+                assert "db_table_usage" not in out
+            else:
+                assert out["db_table_usage"] == expected_usage
+
+    @pytest.mark.parametrize("db_table_map", [
+        pytest.param(None, id="no_map"),
+        pytest.param({"OPERATIONS/other-section": ["some_table"]}, id="section_not_in_map"),
+    ])
+    def test_relevant_tables_omitted(self, db_table_map):
+        """relevant_tables absent when no map or section not in map."""
+        with tempfile.TemporaryDirectory() as td:
+            paths = _write_fixtures(td)
+            if db_table_map is None:
+                out = _run(paths)
+            else:
+                map_path = os.path.join(td, "db-table-map.json")
+                with open(map_path, "w") as f:
+                    json.dump(db_table_map, f)
+                result = subprocess.run(
+                    [sys.executable, SCRIPT,
+                     "--state-file", paths["state"],
+                     "--template", paths["template"],
+                     "--scan-file", paths["scan"],
+                     "--document", paths["document"],
+                     "--db-table-map", map_path],
+                    capture_output=True, text=True,
+                )
+                assert result.returncode == 0
+                out = json.loads(result.stdout)
             assert out["type"] == "orient"
             assert "relevant_tables" not in out
 
@@ -908,116 +933,6 @@ class TestDbTableMap:
             assert orients[0].get("relevant_tables") == ["etl_runs"]
             assert orients[1].get("relevant_tables") == ["stocks"]
 
-    def test_new_dict_format_extracts_tables(self):
-        """New dict-of-dicts format {tables, usage} extracts relevant_tables."""
-        db_table_map = {
-            "OPERATIONS/infrastructure-overview": {
-                "tables": ["etl_runs", "stocks"],
-                "usage": {
-                    "etl_runs": [{"file": "src/monitoring.py",
-                                  "functions": ["check_staleness"]}],
-                },
-            },
-        }
-        with tempfile.TemporaryDirectory() as td:
-            paths = _write_fixtures(td)
-            map_path = os.path.join(td, "db-table-map.json")
-            with open(map_path, "w") as f:
-                json.dump(db_table_map, f)
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--state-file", paths["state"],
-                 "--template", paths["template"],
-                 "--scan-file", paths["scan"],
-                 "--document", paths["document"],
-                 "--db-table-map", map_path],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 0
-            out = json.loads(result.stdout)
-            assert out["type"] == "orient"
-            assert out["relevant_tables"] == ["etl_runs", "stocks"]
-
-    def test_new_dict_format_includes_db_table_usage(self):
-        """New dict-of-dicts format injects db_table_usage into orient."""
-        db_table_map = {
-            "OPERATIONS/infrastructure-overview": {
-                "tables": ["etl_runs"],
-                "usage": {
-                    "etl_runs": [{"file": "src/monitoring.py",
-                                  "functions": ["check_staleness"]}],
-                },
-            },
-        }
-        with tempfile.TemporaryDirectory() as td:
-            paths = _write_fixtures(td)
-            map_path = os.path.join(td, "db-table-map.json")
-            with open(map_path, "w") as f:
-                json.dump(db_table_map, f)
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--state-file", paths["state"],
-                 "--template", paths["template"],
-                 "--scan-file", paths["scan"],
-                 "--document", paths["document"],
-                 "--db-table-map", map_path],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 0
-            out = json.loads(result.stdout)
-            assert "db_table_usage" in out
-            assert "etl_runs" in out["db_table_usage"]
-            assert out["db_table_usage"]["etl_runs"][0]["file"] == "src/monitoring.py"
-
-    def test_dict_format_without_usage_omits_db_table_usage(self):
-        """Dict format without usage key omits db_table_usage."""
-        db_table_map = {
-            "OPERATIONS/infrastructure-overview": {
-                "tables": ["etl_runs"],
-            },
-        }
-        with tempfile.TemporaryDirectory() as td:
-            paths = _write_fixtures(td)
-            map_path = os.path.join(td, "db-table-map.json")
-            with open(map_path, "w") as f:
-                json.dump(db_table_map, f)
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--state-file", paths["state"],
-                 "--template", paths["template"],
-                 "--scan-file", paths["scan"],
-                 "--document", paths["document"],
-                 "--db-table-map", map_path],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 0
-            out = json.loads(result.stdout)
-            assert out["relevant_tables"] == ["etl_runs"]
-            assert "db_table_usage" not in out
-
-    def test_legacy_list_format_still_works(self):
-        """Legacy list format (backward compat) still produces relevant_tables."""
-        db_table_map = {
-            "OPERATIONS/infrastructure-overview": ["etl_runs", "stocks"],
-        }
-        with tempfile.TemporaryDirectory() as td:
-            paths = _write_fixtures(td)
-            map_path = os.path.join(td, "db-table-map.json")
-            with open(map_path, "w") as f:
-                json.dump(db_table_map, f)
-            result = subprocess.run(
-                [sys.executable, SCRIPT,
-                 "--state-file", paths["state"],
-                 "--template", paths["template"],
-                 "--scan-file", paths["scan"],
-                 "--document", paths["document"],
-                 "--db-table-map", map_path],
-                capture_output=True, text=True,
-            )
-            assert result.returncode == 0
-            out = json.loads(result.stdout)
-            assert out["relevant_tables"] == ["etl_runs", "stocks"]
-            assert "db_table_usage" not in out
 
 
 # ---------------------------------------------------------------------------
