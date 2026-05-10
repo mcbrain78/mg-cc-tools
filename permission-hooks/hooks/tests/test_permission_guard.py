@@ -2062,7 +2062,7 @@ class TestSessionId:
 class TestWriteContextSidecar:
     """_write_context_sidecar creates a sidecar file."""
 
-    SESSION_PREFIX = "test-ctx-sidecar"
+    SESSION_PREFIX = f"test-ctx-sidecar-{os.getpid()}"
 
     def _session_dir(self, session_id):
         return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
@@ -2090,7 +2090,7 @@ class TestWriteContextSidecar:
 class TestSessionContext:
     """check_session_context reads sidecar file and validates TTL."""
 
-    SESSION_PREFIX = "test-session-ctx"
+    SESSION_PREFIX = f"test-session-ctx-{os.getpid()}"
 
     def _session_dir(self, session_id):
         return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
@@ -2332,7 +2332,7 @@ _write_edit_guard_bridge = guard._write_edit_guard_bridge
 class TestEditGuardBridge:
     """_write_edit_guard_bridge writes edit guard state to a session-scoped bridge file."""
 
-    SESSION_PREFIX = "test-bridge-guard"
+    SESSION_PREFIX = f"test-bridge-guard-{os.getpid()}"
 
     def _session_dir(self, session_id):
         return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
@@ -2446,7 +2446,7 @@ class TestEditGuardBridge:
 class TestStage0WritesSidecar:
     """Stage 0 auto-approve path writes context sidecar."""
 
-    SESSION_PREFIX = "test-stage0-sidecar"
+    SESSION_PREFIX = f"test-stage0-sidecar-{os.getpid()}"
 
     def _session_dir(self, session_id):
         return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
