@@ -65,6 +65,31 @@ def _make_typed_refs(symbols=None, file_paths=None):
     return refs
 
 
+def _build_state(tmp, sections, header="# Doc\n", doc_name="ARCHITECTURE"):
+    """Build a state file with given sections, return state_file path."""
+    state_file = os.path.join(tmp, "state.json")
+    state = {
+        "documents": {
+            doc_name: {
+                "header": header,
+                "sections_order": [s[0] for s in sections],
+                "sections": {
+                    slug: {
+                        "content": content,
+                        "symbols": symbols,
+                        "file_paths": fps,
+                        "typed_refs": _make_typed_refs(symbols, fps),
+                    }
+                    for slug, content, symbols, fps in sections
+                },
+            }
+        }
+    }
+    with open(state_file, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    return state_file
+
+
 def _run_section(tmp, state_file, document, section, content_text,
                  symbols=None, file_paths=None, header_text=None,
                  project_root=None, typed_refs=None, parent=None,
@@ -350,30 +375,6 @@ class TestSectionWrite:
 class TestFinalize:
     """Finalize mode: assemble documents and generate manifests."""
 
-    def _build_state(self, tmp, sections, header="# Doc\n", doc_name="ARCHITECTURE"):
-        """Build a state file with given sections, return state_file path."""
-        state_file = os.path.join(tmp, "state.json")
-        state = {
-            "documents": {
-                doc_name: {
-                    "header": header,
-                    "sections_order": [s[0] for s in sections],
-                    "sections": {
-                        slug: {
-                            "content": content,
-                            "symbols": symbols,
-                            "file_paths": fps,
-                            "typed_refs": _make_typed_refs(symbols, fps),
-                        }
-                        for slug, content, symbols, fps in sections
-                    },
-                }
-            }
-        }
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump(state, f)
-        return state_file
-
     def test_finalize_assembles_document(self):
         """Header + 3 sections -> correct markdown file."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -383,7 +384,7 @@ class TestFinalize:
                 ("data-model", "## Data Model\n\nModel text", ["Sym2"], ["b.py"]),
                 ("decisions", "## Decisions\n\nDecision text", [], []),
             ]
-            state_file = self._build_state(tmp, sections, header)
+            state_file = _build_state(tmp, sections, header)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -410,7 +411,7 @@ class TestFinalize:
                 ("overview", "## Overview\n\nText", ["Pipeline"], ["src/app.ts"]),
                 ("config", "## Config\n\nText", ["Config"], ["src/config.py"]),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -432,7 +433,7 @@ class TestFinalize:
                 ("overview", "## Overview\n\nText", ["Sym"], ["a.py"]),
                 ("data-model", "## Data Model\n\nText", [], ["b.py"]),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -453,7 +454,7 @@ class TestFinalize:
             sections = [
                 ("overview", "## Overview\n\nText", ["Sym"], ["a.py"]),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -472,7 +473,7 @@ class TestFinalize:
                 ("overview", "## Overview\n\nText", ["Sym"], ["a.py"]),
                 ("concepts", "## Concepts\n\nPure prose", [], []),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -534,7 +535,7 @@ class TestFinalize:
             sections = [
                 ("overview", "## Overview\n\nText", [], ["a.py"]),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -722,30 +723,6 @@ class TestSymbolValidation:
 class TestMergeMode:
     """Finalize with --merge: merge new sections into existing documents."""
 
-    def _build_state(self, tmp, sections, header="", doc_name="ARCHITECTURE"):
-        """Build a state file with given sections, return state_file path."""
-        state_file = os.path.join(tmp, "state.json")
-        state = {
-            "documents": {
-                doc_name: {
-                    "header": header,
-                    "sections_order": [s[0] for s in sections],
-                    "sections": {
-                        slug: {
-                            "content": content,
-                            "symbols": symbols,
-                            "file_paths": fps,
-                            "typed_refs": _make_typed_refs(symbols, fps),
-                        }
-                        for slug, content, symbols, fps in sections
-                    },
-                }
-            }
-        }
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump(state, f)
-        return state_file
-
     def _write_existing_doc(self, tmp, audience, doc_name, content):
         """Write an existing document file and return its path."""
         doc_dir = os.path.join(tmp, "docs", audience)
@@ -777,7 +754,7 @@ class TestMergeMode:
                 ("testing", "## Testing\n\nBrand new testing section",
                  ["Sym2"], ["b.py"]),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -824,7 +801,7 @@ class TestMergeMode:
                 ("beta", "## Beta\n\nUpdated Beta", [], []),
                 ("delta", "## Delta\n\nNew Delta", [], []),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -853,7 +830,7 @@ class TestMergeMode:
             sections = [
                 ("overview", "## Overview\n\nNew overview", ["S"], ["a.py"]),
             ]
-            state_file = self._build_state(tmp, sections, header)
+            state_file = _build_state(tmp, sections, header)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -885,7 +862,7 @@ class TestMergeMode:
                 ("overview", "## Overview\n\nNew content",
                  ["Pipeline"], ["src/app.ts"]),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -944,7 +921,7 @@ class TestMergeMode:
                  "<!-- section: infrastructure-terms -->\n## Infrastructure Terms\n\nNew infra terms",
                  [], []),
             ]
-            state_file = self._build_state(
+            state_file = _build_state(
                 tmp, sections, doc_name="GLOSSARY",
             )
             docs_dir = os.path.join(tmp, "docs")
@@ -1018,30 +995,6 @@ class TestSectionMarkerInjection:
 class TestFinalizeXmlOutput:
     """Finalize with --xml-dir produces XML source files."""
 
-    def _build_state(self, tmp, sections, header="# Doc\n", doc_name="ARCHITECTURE"):
-        """Build a state file with given sections, return state_file path."""
-        state_file = os.path.join(tmp, "state.json")
-        state = {
-            "documents": {
-                doc_name: {
-                    "header": header,
-                    "sections_order": [s[0] for s in sections],
-                    "sections": {
-                        slug: {
-                            "content": content,
-                            "symbols": symbols,
-                            "file_paths": fps,
-                            "typed_refs": _make_typed_refs(symbols, fps),
-                        }
-                        for slug, content, symbols, fps in sections
-                    },
-                }
-            }
-        }
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump(state, f)
-        return state_file
-
     def test_xml_file_created(self):
         """Finalize with --xml-dir produces XML file."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -1049,7 +1002,7 @@ class TestFinalizeXmlOutput:
             sections = [
                 ("overview", "<!-- section: overview -->\n## Overview\n\nText", ["Sym"], ["a.py"]),
             ]
-            state_file = self._build_state(tmp, sections, header)
+            state_file = _build_state(tmp, sections, header)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
             xml_dir = os.path.join(tmp, "xml-sources")
@@ -1077,7 +1030,7 @@ class TestFinalizeXmlOutput:
             sections = [
                 ("monitoring", "<!-- section: monitoring -->\n## Monitoring\n\nContent", [], []),
             ]
-            state_file = self._build_state(tmp, sections, header)
+            state_file = _build_state(tmp, sections, header)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
             xml_dir = os.path.join(tmp, "xml-sources")
@@ -1147,7 +1100,7 @@ class TestFinalizeXmlOutput:
             sections = [
                 ("items", "<!-- section: items -->\n## Items\n\nStuff", [], []),
             ]
-            state_file = self._build_state(tmp, sections, header)
+            state_file = _build_state(tmp, sections, header)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
             xml_dir = os.path.join(tmp, "xml-sources")
@@ -1168,7 +1121,7 @@ class TestFinalizeXmlOutput:
             sections = [
                 ("overview", "## Overview\n\nText", [], []),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections)
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
 
@@ -1181,30 +1134,6 @@ class TestFinalizeXmlOutput:
 class TestFinalizeEmptyAudience:
     """Finalize with empty audience writes to docs root, not a subdirectory."""
 
-    def _build_state(self, tmp, sections, header="# Doc\n", doc_name="GLOSSARY"):
-        """Build a state file with given sections, return state_file path."""
-        state_file = os.path.join(tmp, "state.json")
-        state = {
-            "documents": {
-                doc_name: {
-                    "header": header,
-                    "sections_order": [s[0] for s in sections],
-                    "sections": {
-                        slug: {
-                            "content": content,
-                            "symbols": symbols,
-                            "file_paths": fps,
-                            "typed_refs": _make_typed_refs(symbols, fps),
-                        }
-                        for slug, content, symbols, fps in sections
-                    },
-                }
-            }
-        }
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump(state, f)
-        return state_file
-
     def test_empty_audience_writes_to_docs_root(self):
         """Empty audience writes doc to docs_dir/DOCUMENT.md, not docs_dir//DOCUMENT.md."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -1213,7 +1142,7 @@ class TestFinalizeEmptyAudience:
                 ("system-concepts", "## System Concepts\n\nTerms", [], []),
                 ("domain-terms", "## Domain Terms\n\nMore terms", [], []),
             ]
-            state_file = self._build_state(tmp, sections, header)
+            state_file = _build_state(tmp, sections, header, doc_name="GLOSSARY")
             docs_dir = os.path.join(tmp, "docs")
             os.makedirs(docs_dir, exist_ok=True)
             manifest_file = os.path.join(tmp, "manifest.json")
@@ -1241,7 +1170,7 @@ class TestFinalizeEmptyAudience:
             sections = [
                 ("system-concepts", "<!-- section: system-concepts -->\n## System Concepts\n\nTerms", [], []),
             ]
-            state_file = self._build_state(tmp, sections, header)
+            state_file = _build_state(tmp, sections, header, doc_name="GLOSSARY")
             docs_dir = os.path.join(tmp, "docs")
             manifest_file = os.path.join(tmp, "manifest.json")
             xml_dir = os.path.join(tmp, "xml-sources")
@@ -1265,7 +1194,7 @@ class TestFinalizeEmptyAudience:
             sections = [
                 ("system-concepts", "## System Concepts\n\nTerms", ["Term1"], ["glossary.md"]),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections, doc_name="GLOSSARY")
             docs_dir = os.path.join(tmp, "docs")
             os.makedirs(docs_dir, exist_ok=True)
             manifest_file = os.path.join(tmp, "manifest.json")
@@ -1284,7 +1213,7 @@ class TestFinalizeEmptyAudience:
             sections = [
                 ("terms", "## Terms\n\nText", [], []),
             ]
-            state_file = self._build_state(tmp, sections)
+            state_file = _build_state(tmp, sections, doc_name="GLOSSARY")
             docs_dir = os.path.join(tmp, "docs")
             os.makedirs(docs_dir, exist_ok=True)
             manifest_file = os.path.join(tmp, "manifest.json")
