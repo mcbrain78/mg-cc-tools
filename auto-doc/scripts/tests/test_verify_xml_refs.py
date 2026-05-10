@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from lib.xml_doc import build_xml_doc, serialize_xml_doc, update_section_refs, walk_sections
 
@@ -554,35 +556,33 @@ class TestConfigRefs:
             assert "~/.pgpass" in description
             assert "project-relative" in description
 
-    def test_docs_dir_path_skipped_when_missing(self):
+    @pytest.mark.parametrize("section_slug,heading,refs", [
+        pytest.param(
+            "troubleshooting",
+            "## Help",
+            [{"type": "config", "path": "docs/auto-doc/devops/OPERATIONS.md"}],
+            id="audience_subdir",
+        ),
+        pytest.param(
+            "glossary",
+            "## Glossary",
+            [{"type": "config", "path": "docs/auto-doc/GLOSSARY.md"}],
+            id="shared_top_level",
+        ),
+    ])
+    def test_docs_dir_path_skipped_when_missing(self, section_slug, heading, refs):
         """Config refs to paths under --docs-dir pass even if the file is absent.
 
         The generated-docs tree is allowed to be partial — an end-users doc
         legitimately links to devops/OPERATIONS.md before devops is generated.
+        Both audience-subdir and shared-top-level paths short-circuit.
         """
         with tempfile.TemporaryDirectory() as td:
             project_root, xml_dir, findings_file = _make_project(td)
             _build_xml_with_refs(xml_dir, "end-users", "USER_GUIDE", [(
-                "troubleshooting",
-                "<!-- section: troubleshooting -->\n## Help\n\nContent",
-                [{"type": "config", "path": "docs/auto-doc/devops/OPERATIONS.md"}],
-            )])
-
-            _run_verify(
-                xml_dir, project_root, findings_file,
-                docs_dir="docs/auto-doc",
-            )
-            findings = json.loads(open(findings_file).read())
-            assert len(findings) == 0
-
-    def test_docs_dir_shared_path_skipped(self):
-        """Shared-doc-shape paths (directly under docs_dir) are also skipped."""
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "end-users", "USER_GUIDE", [(
-                "glossary",
-                "<!-- section: glossary -->\n## Glossary\n\nContent",
-                [{"type": "config", "path": "docs/auto-doc/GLOSSARY.md"}],
+                section_slug,
+                f"<!-- section: {section_slug} -->\n{heading}\n\nContent",
+                refs,
             )])
 
             _run_verify(
@@ -1154,53 +1154,41 @@ class TestDatabaseModel:
             findings = json.loads(open(findings_file).read())
             assert len(findings) == 0
 
-    def test_wrong_column_with_model(self):
-        """Wrong column name detected via database model."""
+    @pytest.mark.parametrize("refs,expected_substring", [
+        pytest.param(
+            [{"type": "db", "db": "mydb", "schema": "road_runner",
+              "table": "etl_runs", "column": "bogus_col"}],
+            "bogus_col",
+            id="wrong_column",
+        ),
+        pytest.param(
+            [{"type": "db", "db": "mydb", "schema": "nonexistent_schema",
+              "table": "etl_runs"}],
+            "nonexistent_schema",
+            id="wrong_schema",
+        ),
+        pytest.param(
+            [{"type": "db", "db": "mydb", "schema": "road_runner",
+              "table": "nonexistent_table"}],
+            "nonexistent_table",
+            id="wrong_table",
+        ),
+    ])
+    def test_mismatch_with_model(self, refs, expected_substring):
+        """Wrong schema/table/column detected via database model."""
         with tempfile.TemporaryDirectory() as td:
             project_root, xml_dir, findings_file = _make_project(td)
             db_model = self._make_db_model(project_root)
             _build_xml_with_refs(xml_dir, "devops", "OPS", [(
                 "monitoring",
                 "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "etl_runs", "column": "bogus_col"}],
+                refs,
             )])
 
             self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
             findings = json.loads(open(findings_file).read())
             assert len(findings) == 1
-            assert "bogus_col" in findings[0]["description"]
-
-    def test_wrong_schema_with_model(self):
-        """Wrong schema name detected via database model."""
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            db_model = self._make_db_model(project_root)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "monitoring",
-                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "db": "mydb", "schema": "nonexistent_schema", "table": "etl_runs"}],
-            )])
-
-            self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
-            findings = json.loads(open(findings_file).read())
-            assert len(findings) == 1
-            assert "nonexistent_schema" in findings[0]["description"]
-
-    def test_wrong_table_with_model(self):
-        """Wrong table name within valid schema detected via database model."""
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            db_model = self._make_db_model(project_root)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "monitoring",
-                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "db": "mydb", "schema": "road_runner", "table": "nonexistent_table"}],
-            )])
-
-            self._run_with_db_model(xml_dir, project_root, findings_file, db_model)
-            findings = json.loads(open(findings_file).read())
-            assert len(findings) == 1
-            assert "nonexistent_table" in findings[0]["description"]
+            assert expected_substring in findings[0]["description"]
 
     def test_fallback_to_ast_without_model(self):
         """Without --database-model flag, falls back to AST check."""
@@ -1476,153 +1464,97 @@ class TestEntityField:
     load-audit-findings.py keys on (section, check, entity).
     """
 
-    def test_db_column_mismatch_entity_is_column(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "monitoring",
-                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "db": "mydb", "schema": "road_runner",
-                  "table": "etl_runs", "column": "nonexistent_col"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "nonexistent_col"
-
-    def test_db_table_mismatch_entity_is_table(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "monitoring",
-                "<!-- section: monitoring -->\n## Monitoring\n\nContent",
-                [{"type": "db", "db": "mydb", "schema": "road_runner",
-                  "table": "nonexistent_table"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "nonexistent_table"
-
-    def test_code_class_attr_mismatch_entity_is_attr(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "models",
-                "<!-- section: models -->\n## Models\n\nContent",
-                [{"type": "code", "kind": "class", "name": "EtlRun",
-                  "module": "src/app/models.py", "attr": "bogus_attr"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "bogus_attr"
-
-    def test_code_function_param_mismatch_entity_is_param(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "compute",
-                "<!-- section: compute -->\n## Compute\n\nContent",
-                [{"type": "code", "kind": "function",
-                  "name": "compute_finance_metrics",
-                  "module": "src/app/compute.py", "param": "nonexistent_param"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "nonexistent_param"
-
-    def test_code_missing_class_entity_is_name(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "models",
-                "<!-- section: models -->\n## Models\n\nContent",
-                [{"type": "code", "kind": "class", "name": "NoSuchClass",
-                  "module": "src/app/models.py"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "NoSuchClass"
-
-    def test_flow_mismatch_entity_is_flow_name(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "flows",
-                "<!-- section: flows -->\n## Flows\n\nContent",
-                [{"type": "flow", "name": "ghost-flow"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "ghost-flow"
-
-    def test_env_mismatch_entity_is_env_name(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "config",
-                "<!-- section: config -->\n## Config\n\nContent",
-                [{"type": "env", "name": "GHOST_VAR"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "GHOST_VAR"
-
-    def test_config_missing_path_entity_is_path(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "files",
-                "<!-- section: files -->\n## Files\n\nContent",
-                [{"type": "config", "path": "config/missing.yaml"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "config/missing.yaml"
-
-    def test_config_tilde_path_entity_is_path(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "files",
-                "<!-- section: files -->\n## Files\n\nContent",
-                [{"type": "config", "path": "~/.pgpass"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "~/.pgpass"
-
-    def test_enum_value_mismatch_entity_is_value(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "enums",
-                "<!-- section: enums -->\n## Enums\n\nContent",
-                [{"type": "enum", "class": "RunStatus", "field": "status",
-                  "value": "ghost_value"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "ghost_value"
-
-    def test_dep_mismatch_entity_is_name(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "deps",
-                "<!-- section: deps -->\n## Deps\n\nContent",
-                [{"type": "dep", "name": "ghost-pkg"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "ghost-pkg"
-
-    def test_literal_mismatch_entity_is_name(self):
-        with tempfile.TemporaryDirectory() as td:
-            project_root, xml_dir, findings_file = _make_project(td)
-            _build_xml_with_refs(xml_dir, "devops", "OPS", [(
-                "literals",
-                "<!-- section: literals -->\n## Literals\n\nContent",
-                [{"type": "literal", "name": "string_that_appears_nowhere_xyz"}],
-            )])
-            _run_verify(xml_dir, project_root, findings_file)
-            findings = json.loads(open(findings_file).read())
-            assert findings[0]["entity"] == "string_that_appears_nowhere_xyz"
+    @pytest.mark.parametrize("section_slug,refs,expected_entity", [
+        pytest.param(
+            "monitoring",
+            [{"type": "db", "db": "mydb", "schema": "road_runner",
+              "table": "etl_runs", "column": "nonexistent_col"}],
+            "nonexistent_col",
+            id="db_column",
+        ),
+        pytest.param(
+            "monitoring",
+            [{"type": "db", "db": "mydb", "schema": "road_runner",
+              "table": "nonexistent_table"}],
+            "nonexistent_table",
+            id="db_table",
+        ),
+        pytest.param(
+            "models",
+            [{"type": "code", "kind": "class", "name": "EtlRun",
+              "module": "src/app/models.py", "attr": "bogus_attr"}],
+            "bogus_attr",
+            id="code_class_attr",
+        ),
+        pytest.param(
+            "compute",
+            [{"type": "code", "kind": "function",
+              "name": "compute_finance_metrics",
+              "module": "src/app/compute.py", "param": "nonexistent_param"}],
+            "nonexistent_param",
+            id="code_function_param",
+        ),
+        pytest.param(
+            "models",
+            [{"type": "code", "kind": "class", "name": "NoSuchClass",
+              "module": "src/app/models.py"}],
+            "NoSuchClass",
+            id="code_missing_class",
+        ),
+        pytest.param(
+            "flows",
+            [{"type": "flow", "name": "ghost-flow"}],
+            "ghost-flow",
+            id="flow",
+        ),
+        pytest.param(
+            "config",
+            [{"type": "env", "name": "GHOST_VAR"}],
+            "GHOST_VAR",
+            id="env",
+        ),
+        pytest.param(
+            "files",
+            [{"type": "config", "path": "config/missing.yaml"}],
+            "config/missing.yaml",
+            id="config_missing_path",
+        ),
+        pytest.param(
+            "files",
+            [{"type": "config", "path": "~/.pgpass"}],
+            "~/.pgpass",
+            id="config_tilde_path",
+        ),
+        pytest.param(
+            "enums",
+            [{"type": "enum", "class": "RunStatus", "field": "status",
+              "value": "ghost_value"}],
+            "ghost_value",
+            id="enum_value",
+        ),
+        pytest.param(
+            "deps",
+            [{"type": "dep", "name": "ghost-pkg"}],
+            "ghost-pkg",
+            id="dep",
+        ),
+        pytest.param(
+            "literals",
+            [{"type": "literal", "name": "string_that_appears_nowhere_xyz"}],
+            "string_that_appears_nowhere_xyz",
+            id="literal",
+        ),
+    ])
+    def test_entity_is_leaf_identifier(self, mock_project, xml_doc_factory, run_script,
+                                        section_slug, refs, expected_entity):
+        project_root, xml_dir, findings_file = mock_project
+        body = f"<!-- section: {section_slug} -->\n## {section_slug}\n\nContent"
+        xml_doc_factory(xml_dir, "devops", "OPS", [(section_slug, body, refs)])
+        run_script(
+            "verify-xml-refs.py",
+            "--xml-dir", xml_dir,
+            "--project-root", project_root,
+            "--findings-file", findings_file,
+        )
+        findings = json.loads(open(findings_file).read())
+        assert findings[0]["entity"] == expected_entity
