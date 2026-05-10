@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
@@ -439,7 +440,7 @@ def _build_db_table_map(project_model_path, scan_path, generate_dir,
                                 section_tables.add(tbl_name)
 
                 if section_tables:
-                    entry = {"tables": sorted(section_tables)}
+                    entry: dict[str, Any] = {"tables": sorted(section_tables)}
                     if usage_detail:
                         entry["usage"] = usage_detail
                     table_map[section_key] = entry

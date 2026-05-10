@@ -125,6 +125,8 @@ def merge_audience(tmp_dir, output_dir, audience):
     save_json(persisted_path, persisted_manifest)
 
     docs = persisted_manifest.get("documents", {})
+    if not isinstance(docs, dict):
+        docs = {}
     doc_count = len(docs)
     section_count = sum(len(secs) for secs in docs.values())
     return doc_count, section_count

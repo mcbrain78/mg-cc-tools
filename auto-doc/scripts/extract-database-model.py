@@ -25,6 +25,7 @@ import importlib.util
 import os
 import sys
 import traceback
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.json_io import load_json, save_json
@@ -132,7 +133,7 @@ def _discover_bases(project_root, python_files):
 
             # Track model class -> table mapping
             if hasattr(obj, "__tablename__") and hasattr(obj, "__table__"):
-                tbl = obj.__table__
+                tbl: Any = obj.__table__
                 model_class_map[attr_name] = {
                     "table_name": tbl.name,
                     "schema": tbl.schema or "public",

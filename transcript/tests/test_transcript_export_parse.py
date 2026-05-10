@@ -1,5 +1,6 @@
 """Tests for JSONL parsing, deduplication, and message conversion."""
 import json
+from typing import Any
 
 
 from conftest import load_exporter
@@ -9,7 +10,7 @@ from conftest import load_exporter
 # Fixtures — synthetic JSONL data
 # ---------------------------------------------------------------------------
 
-def _make_user_entry(content="Hello", uuid="u1", parent=None, ts="2026-01-01T00:00:00.000Z", session_id="sess-1"):
+def _make_user_entry(content: "str | list[dict[str, Any]]" = "Hello", uuid="u1", parent=None, ts="2026-01-01T00:00:00.000Z", session_id="sess-1"):
     return {
         "type": "user",
         "uuid": uuid,
