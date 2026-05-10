@@ -17,6 +17,7 @@ from lxml import etree  # noqa: E402
 
 # Import hyphen-named module via importlib
 _spec = importlib.util.spec_from_file_location("update_fix_refs", SCRIPT)
+assert _spec is not None and _spec.loader is not None
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 update_fix_refs = _mod.update_fix_refs

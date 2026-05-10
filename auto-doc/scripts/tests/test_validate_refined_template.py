@@ -14,6 +14,7 @@ _script_path = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "validate-refined-template.py"
 )
 _spec = importlib.util.spec_from_file_location("validate_refined_template", _script_path)
+assert _spec is not None and _spec.loader is not None
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 validate = _mod.validate

@@ -20,6 +20,7 @@ SYNC_SCRIPT = os.path.join(SCRIPTS_DIR, "sync-edits-to-xml.py")
 
 # Import sync module for direct function testing
 _spec = importlib.util.spec_from_file_location("sync_edits_to_xml", SYNC_SCRIPT)
+assert _spec is not None and _spec.loader is not None
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 _infer_paths = _mod._infer_paths

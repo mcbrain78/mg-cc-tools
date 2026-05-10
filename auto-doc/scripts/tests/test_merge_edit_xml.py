@@ -22,6 +22,7 @@ from lxml import etree  # noqa: E402
 
 # Import hyphen-named module via importlib
 _spec = importlib.util.spec_from_file_location("merge_edit_xml", SCRIPT)
+assert _spec is not None and _spec.loader is not None
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 merge_edit_xml = _mod.merge_edit_xml
@@ -375,6 +376,7 @@ class TestRoundTrip:
                 "extract_edit_xml",
                 os.path.join(SCRIPTS_DIR, "extract-edit-xml.py"),
             )
+            assert extract_spec is not None and extract_spec.loader is not None
             extract_mod = importlib.util.module_from_spec(extract_spec)
             extract_spec.loader.exec_module(extract_mod)
 
@@ -559,6 +561,7 @@ class TestNestedMerge:
                 "extract_edit_xml",
                 os.path.join(SCRIPTS_DIR, "extract-edit-xml.py"),
             )
+            assert extract_spec is not None and extract_spec.loader is not None
             extract_mod = importlib.util.module_from_spec(extract_spec)
             extract_spec.loader.exec_module(extract_mod)
 

@@ -20,6 +20,7 @@ _loader = importlib.machinery.SourceFileLoader(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assemble-markdown.py"),
 )
 _spec = importlib.util.spec_from_loader("assemble_markdown", _loader)
+assert _spec is not None and _spec.loader is not None
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 assemble = _mod.assemble

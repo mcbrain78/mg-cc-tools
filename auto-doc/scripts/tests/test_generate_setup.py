@@ -409,6 +409,7 @@ def _load_module():
     """Load generate-setup.py as a module via importlib (kebab-case filename)."""
     loader = importlib.machinery.SourceFileLoader("generate_setup", SCRIPT_PATH)
     spec = importlib.util.spec_from_loader("generate_setup", loader)
+    assert spec is not None
     mod = importlib.util.module_from_spec(spec)
     loader.exec_module(mod)
     return mod

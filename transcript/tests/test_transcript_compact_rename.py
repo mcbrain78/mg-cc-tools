@@ -11,6 +11,7 @@ _COMPACTOR_PATH = _TRANSCRIPT_DIR / "cc_transcript_compactor.py"
 def _load_compactor():
     loader = importlib.machinery.SourceFileLoader("cc_transcript_compactor", str(_COMPACTOR_PATH))
     spec = importlib.util.spec_from_loader("cc_transcript_compactor", loader)
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

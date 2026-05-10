@@ -12,6 +12,7 @@ SCRIPT = os.path.join(SCRIPTS_DIR, "load-audit-findings.py")
 
 # Import hyphen-named module via importlib
 _spec = importlib.util.spec_from_file_location("load_audit_findings", SCRIPT)
+assert _spec is not None and _spec.loader is not None
 _mod = importlib.util.module_from_spec(_spec)
 sys.path.insert(0, SCRIPTS_DIR)
 _spec.loader.exec_module(_mod)

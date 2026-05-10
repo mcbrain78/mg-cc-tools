@@ -1,6 +1,7 @@
 """Tests for staleness-check.py -- XML-ref-based section freshness analysis."""
 
-import importlib
+import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
@@ -17,6 +18,7 @@ _loader = importlib.machinery.SourceFileLoader(
     os.path.join(os.path.dirname(__file__), "..", "staleness-check.py"),
 )
 _spec = importlib.util.spec_from_loader("staleness_check", _loader)
+assert _spec is not None
 staleness_check = importlib.util.module_from_spec(_spec)
 _loader.exec_module(staleness_check)
 

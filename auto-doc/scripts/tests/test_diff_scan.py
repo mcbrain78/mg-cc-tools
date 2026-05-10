@@ -6,6 +6,7 @@ tests, subprocess for CLI integration tests.
 """
 
 import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
@@ -22,6 +23,7 @@ _loader = importlib.machinery.SourceFileLoader(
     "diff_scan", SCRIPT_PATH
 )
 _spec = importlib.util.spec_from_loader("diff_scan", _loader)
+assert _spec is not None
 diff_scan = importlib.util.module_from_spec(_spec)
 _loader.exec_module(diff_scan)
 

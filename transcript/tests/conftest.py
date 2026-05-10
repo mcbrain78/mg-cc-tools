@@ -65,6 +65,7 @@ def load_analyzer():
 
     loader = importlib.machinery.SourceFileLoader("cc_transcript_analyzer", str(_ANALYZER_PATH))
     spec = importlib.util.spec_from_loader("cc_transcript_analyzer", loader)
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -77,6 +78,7 @@ def load_compactor():
 
     loader = importlib.machinery.SourceFileLoader("cc_transcript_compactor", str(_COMPACTOR_PATH))
     spec = importlib.util.spec_from_loader("cc_transcript_compactor", loader)
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -89,6 +91,7 @@ def load_exporter():
 
     loader = importlib.machinery.SourceFileLoader("cc_transcript_exporter", str(_EXPORTER_PATH))
     spec = importlib.util.spec_from_loader("cc_transcript_exporter", loader)
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
