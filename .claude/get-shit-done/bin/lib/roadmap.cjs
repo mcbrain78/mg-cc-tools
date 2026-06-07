@@ -173,7 +173,8 @@ function cmdRoadmapAnalyze(cwd, raw) {
 
   // Extract milestone info
   const milestones = [];
-  const milestonePattern = /##\s*(.*v(\d+\.\d+)[^(\n]*)/gi;
+  // GSD-LOCAL-PATCH (Bug 1): accept MAJOR-only versions (v3) as well as decimal (v2.1)
+  const milestonePattern = /##\s*(.*\bv(\d+(?:\.\d+)?)\b[^(\n]*)/gi;
   let mMatch;
   while ((mMatch = milestonePattern.exec(content)) !== null) {
     milestones.push({

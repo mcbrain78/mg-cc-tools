@@ -402,9 +402,13 @@ function getMilestoneInfo(cwd) {
   try {
     const roadmap = fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8');
 
+    // GSD-LOCAL-PATCH (Bug 1): version regex accepts MAJOR-only ('v3') as well as decimal
+    // ('v2.1'). The original /v(\d+\.\d+)/ silently missed major-only versions and fell through
+    // to a bare-match grab of an incidental prose token, corrupting STATE's milestone field.
+    // Re-apply via /gsd:reapply-patches after gsd:update.
     // First: check for list-format roadmaps using 🚧 (in-progress) marker
     // e.g. "- 🚧 **v2.1 Belgium** — Phases 24-28 (in progress)"
-    const inProgressMatch = roadmap.match(/🚧\s*\*\*v(\d+\.\d+)\s+([^*]+)\*\*/);
+    const inProgressMatch = roadmap.match(/🚧\s*\*\*v(\d+(?:\.\d+)?)\s+([^*]+)\*\*/);
     if (inProgressMatch) {
       return {
         version: 'v' + inProgressMatch[1],
@@ -415,7 +419,7 @@ function getMilestoneInfo(cwd) {
     // Second: heading-format roadmaps — strip shipped milestones in <details> blocks
     const cleaned = roadmap.replace(/<details>[\s\S]*?<\/details>/gi, '');
     // Extract version and name from the same ## heading for consistency
-    const headingMatch = cleaned.match(/## .*v(\d+\.\d+)[:\s]+([^\n(]+)/);
+    const headingMatch = cleaned.match(/## .*v(\d+(?:\.\d+)?)[:\s]+([^\n(]+)/); // GSD-LOCAL-PATCH (Bug 1): optional decimal
     if (headingMatch) {
       return {
         version: 'v' + headingMatch[1],
@@ -423,7 +427,7 @@ function getMilestoneInfo(cwd) {
       };
     }
     // Fallback: try bare version match
-    const versionMatch = cleaned.match(/v(\d+\.\d+)/);
+    const versionMatch = cleaned.match(/v(\d+(?:\.\d+)?)/); // GSD-LOCAL-PATCH (Bug 1): optional decimal
     return {
       version: versionMatch ? versionMatch[0] : 'v1.0',
       name: 'milestone',
