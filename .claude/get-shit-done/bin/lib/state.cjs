@@ -212,6 +212,14 @@ function cmdStateAdvancePlan(cwd, raw) {
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
+  // GSD-LOCAL-PATCH (Bug 2): bail when 'Current Plan' is not a bare integer counter
+  // (e.g. '9/9 complete', '12.1-00') that parseInt would silently truncate to a wrong number,
+  // falsely concluding last_plan. Re-apply via /gsd:reapply-patches after gsd:update.
+  const rawCP = stateExtractField(content, 'Current Plan');
+  if (rawCP && /[.\-/]/.test(rawCP.trim().split(/\s/)[0])) {
+    output({ advanced: false, reason: 'current_plan_not_numeric', current_plan: rawCP }, raw, 'false');
+    return;
+  }
   const currentPlan = parseInt(stateExtractField(content, 'Current Plan'), 10);
   const totalPlans = parseInt(stateExtractField(content, 'Total Plans in Phase'), 10);
   const today = new Date().toISOString().split('T')[0];
