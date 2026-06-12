@@ -731,13 +731,18 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
 
     // Progress table: update Status to Complete, add date
     const phaseEscaped = escapeRegex(phaseNum);
+    // GSD-LOCAL-PATCH (Bug 3): anchor on the LAST two cells (Status | Completed) at line end
+    // instead of counting columns from the left. The old positional pattern assumed the
+    // 4-column table and, on the multi-milestone 5-column layout the roadmap template ALSO
+    // ships (| Phase | Milestone | Plans | Status | Completed |), wrote "Complete" into the
+    // Plans cell and the date into the Status cell. Both layouts end with Status | Completed.
     const tablePattern = new RegExp(
-      `(\\|\\s*${phaseEscaped}\\.?\\s[^|]*\\|[^|]*\\|)\\s*[^|]*(\\|)\\s*[^|]*(\\|)`,
-      'i'
+      `^(\\|\\s*${phaseEscaped}\\.?\\s[^|\\n]*\\|(?:[^|\\n]*\\|)*?)[^|\\n]*\\|[^|\\n]*\\|[ \\t]*\\r?$`,
+      'im'
     );
     roadmapContent = roadmapContent.replace(
       tablePattern,
-      `$1 Complete    $2 ${today} $3`
+      `$1 Complete    | ${today} |`
     );
 
     // Update plan count in phase section

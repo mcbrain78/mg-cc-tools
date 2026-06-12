@@ -257,12 +257,19 @@ function cmdStateRecordMetric(cwd, options, raw) {
   }
 
   // Find Performance Metrics section and its table
-  const metricsPattern = /(##\s*Performance Metrics[\s\S]*?\n\|[^\n]+\n\|[-|\s]+\n)([\s\S]*?)(?=\n##|\n$|$)/i;
+  // GSD-LOCAL-PATCH (Bug 4): capture only the contiguous table rows (plus a "None yet"
+  // placeholder) after the separator — not everything up to the next ## heading. The old
+  // body capture swallowed prose following the table (e.g. an archival footnote), so new
+  // rows were appended AFTER the prose, outside the table.
+  const metricsPattern = /(##\s*Performance Metrics[\s\S]*?\n\|[^\n]+\n\|[-|\s]+\n)((?:\|[^\n]*\n?|[ \t]*\*?None yet[^\n]*\n?)*)/i;
   const metricsMatch = content.match(metricsPattern);
 
   if (metricsMatch) {
     let tableBody = metricsMatch[2].trimEnd();
-    const newRow = `| Phase ${phase} P${plan} | ${duration} | ${tasks || '-'} tasks | ${files || '-'} files |`;
+    // GSD-LOCAL-PATCH (Bug 4): row format matches the established table
+    // (| Phase-Plan | Duration | Tasks | Files |) — "| 15-03 | 9 min | 2 | 2 |";
+    // the old "| Phase 15 P03 | ... | 2 tasks | 2 files |" template mismatched it.
+    const newRow = `| ${phase}-${plan} | ${duration} | ${tasks || '-'} | ${files || '-'} |`;
 
     if (tableBody.trim() === '' || tableBody.includes('None yet')) {
       tableBody = newRow;

@@ -406,9 +406,13 @@ function getMilestoneInfo(cwd) {
     // ('v2.1'). The original /v(\d+\.\d+)/ silently missed major-only versions and fell through
     // to a bare-match grab of an incidental prose token, corrupting STATE's milestone field.
     // Re-apply via /gsd:reapply-patches after gsd:update.
-    // First: check for list-format roadmaps using 🚧 (in-progress) marker
+    // First: check for list-format roadmaps using an in-progress marker
     // e.g. "- 🚧 **v2.1 Belgium** — Phases 24-28 (in progress)"
-    const inProgressMatch = roadmap.match(/🚧\s*\*\*v(\d+(?:\.\d+)?)\s+([^*]+)\*\*/);
+    // GSD-LOCAL-PATCH (Bug 1 ext): also accept 🔄 — the v4.0 roadmap marks its in-progress
+    // milestone with 🔄; matching only 🚧 fell through to the heading fallback, which
+    // false-matched "### Phase 21: ... v1.0 Retirement" → milestone corrupted on every
+    // state-write. Alternation (not a char class) — emoji are surrogate pairs.
+    const inProgressMatch = roadmap.match(/(?:🚧|🔄)\s*\*\*v(\d+(?:\.\d+)?)\s+([^*]+)\*\*/);
     if (inProgressMatch) {
       return {
         version: 'v' + inProgressMatch[1],
@@ -419,7 +423,12 @@ function getMilestoneInfo(cwd) {
     // Second: heading-format roadmaps — strip shipped milestones in <details> blocks
     const cleaned = roadmap.replace(/<details>[\s\S]*?<\/details>/gi, '');
     // Extract version and name from the same ## heading for consistency
-    const headingMatch = cleaned.match(/## .*v(\d+(?:\.\d+)?)[:\s]+([^\n(]+)/); // GSD-LOCAL-PATCH (Bug 1): optional decimal
+    // GSD-LOCAL-PATCH (Bug 1 ext): anchor to line start and exclude phase headings so
+    // "### Phase 21: ... v1.0 Retirement" can no longer false-match (the old unanchored
+    // pattern matched ## INSIDE ###). Any heading level #{2,} stays accepted — milestone
+    // headings like "### v12 KPI Ingestion V2 (In Progress)" are legitimate sources
+    // (ai-stock-ranker format); they never start with "Phase". Optional decimal from Bug 1.
+    const headingMatch = cleaned.match(/(?:^|\n)#{2,} (?!Phase\b)[^\n]*v(\d+(?:\.\d+)?)[:\s]+([^\n(]+)/);
     if (headingMatch) {
       return {
         version: 'v' + headingMatch[1],
