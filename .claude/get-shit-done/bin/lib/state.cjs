@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { escapeRegex, loadConfig, getMilestoneInfo, getMilestonePhaseFilter, output, error } = require('./core.cjs');
+const { escapeRegex, loadConfig, getMilestoneInfo, getMilestonePhaseFilter, findPhaseInternal, output, error } = require('./core.cjs');
 const { extractFrontmatter, reconstructFrontmatter } = require('./frontmatter.cjs');
 
 // Shared helper: extract a field value from STATE.md content.
@@ -211,36 +211,66 @@ function cmdStateAdvancePlan(cwd, raw) {
   const statePath = path.join(cwd, '.planning', 'STATE.md');
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
-  let content = fs.readFileSync(statePath, 'utf-8');
-  // GSD-LOCAL-PATCH (Bug 2): bail when 'Current Plan' is not a bare integer counter
-  // (e.g. '9/9 complete', '12.1-00') that parseInt would silently truncate to a wrong number,
-  // falsely concluding last_plan. Re-apply via /gsd:reapply-patches after gsd:update.
-  const rawCP = stateExtractField(content, 'Current Plan');
-  if (rawCP && /[.\-/]/.test(rawCP.trim().split(/\s/)[0])) {
-    output({ advanced: false, reason: 'current_plan_not_numeric', current_plan: rawCP }, raw, 'false');
-    return;
-  }
-  const currentPlan = parseInt(stateExtractField(content, 'Current Plan'), 10);
-  const totalPlans = parseInt(stateExtractField(content, 'Total Plans in Phase'), 10);
+  const content = fs.readFileSync(statePath, 'utf-8');
   const today = new Date().toISOString().split('T')[0];
 
-  if (isNaN(currentPlan) || isNaN(totalPlans)) {
-    output({ error: 'Cannot parse Current Plan or Total Plans in Phase from STATE.md' }, raw);
+  // GSD-LOCAL-PATCH (Bug 2 fix, supersedes the Bug 2 bail guard): derive the plan position
+  // from the FILESYSTEM instead of parsing 'Current Plan' / 'Total Plans in Phase' — fields
+  // the current STATE template doesn't define (it ships 'Plan: [A] of [B] in current phase')
+  // and that executors fill with free-text prose ('Plan: 15-04 complete (wave 3 — ...)').
+  // parseInt on those values either bailed (every plan since Phase 13) or, pre-guard,
+  // truncated '12.1-00' to 12 and falsely concluded last_plan. Same disk derivation as
+  // update-progress / update-plan-progress / phase complete (count *-PLAN.md vs *-SUMMARY.md
+  // via findPhaseInternal). Called AFTER the finished plan's SUMMARY is written, so
+  // summaries == completed plans. All unparseable inputs bail fail-safe (no write).
+  // Field reads/writes operate on the BODY only — the i-flagged ^Status: pattern would
+  // otherwise hit the YAML frontmatter's 'status:' line first (a no-op once writeStateMd
+  // rebuilds the frontmatter from the body).
+  // Re-apply via /gsd:reapply-patches after gsd:update.
+  const fmMatch = content.match(/^---\n[\s\S]+?\n---\n?/);
+  const fmBlock = fmMatch ? fmMatch[0] : '';
+  let body = content.slice(fmBlock.length);
+
+  const phaseField = stateExtractField(body, 'Current Phase') || stateExtractField(body, 'Phase');
+  const phaseMatch = phaseField && (phaseField.match(/Phase\s+(\d+(?:\.\d+)*)/i) || phaseField.match(/^(\d+(?:\.\d+)*)\b/));
+  if (!phaseMatch) {
+    output({ advanced: false, reason: 'cannot_parse_phase', phase_field: phaseField }, raw, 'false');
+    return;
+  }
+  const phaseNum = phaseMatch[1];
+  const phaseInfo = findPhaseInternal(cwd, phaseNum);
+  if (!phaseInfo) {
+    output({ advanced: false, reason: 'phase_dir_not_found', phase: phaseNum }, raw, 'false');
+    return;
+  }
+  const totalPlans = phaseInfo.plans.length;
+  const completedPlans = phaseInfo.summaries.length;
+  if (totalPlans === 0) {
+    output({ advanced: false, reason: 'no_plans', phase: phaseNum }, raw, 'false');
     return;
   }
 
-  if (currentPlan >= totalPlans) {
-    content = stateReplaceField(content, 'Status', 'Phase complete — ready for verification') || content;
-    content = stateReplaceField(content, 'Last Activity', today) || content;
-    writeStateMd(statePath, content, cwd);
-    output({ advanced: false, reason: 'last_plan', current_plan: currentPlan, total_plans: totalPlans, status: 'ready_for_verification' }, raw, 'false');
+  // Update the position field under whichever name this STATE.md uses
+  // (legacy 'Current Plan:' first, then the template's 'Plan:').
+  const setPlanField = (value) =>
+    stateReplaceField(body, 'Current Plan', value) || stateReplaceField(body, 'Plan', value);
+  // Keep a legacy 'Total Plans in Phase:' field consistent if one exists.
+  const withTotal = stateReplaceField(body, 'Total Plans in Phase', String(totalPlans));
+  if (withTotal) body = withTotal;
+
+  if (completedPlans >= totalPlans) {
+    body = setPlanField(`${completedPlans} of ${totalPlans} in current phase — all complete`) || body;
+    body = stateReplaceField(body, 'Status', 'Phase complete — ready for verification') || body;
+    body = stateReplaceField(body, 'Last Activity', today) || body;
+    writeStateMd(statePath, fmBlock + body, cwd);
+    output({ advanced: false, reason: 'last_plan', current_plan: completedPlans, total_plans: totalPlans, status: 'ready_for_verification' }, raw, 'false');
   } else {
-    const newPlan = currentPlan + 1;
-    content = stateReplaceField(content, 'Current Plan', String(newPlan)) || content;
-    content = stateReplaceField(content, 'Status', 'Ready to execute') || content;
-    content = stateReplaceField(content, 'Last Activity', today) || content;
-    writeStateMd(statePath, content, cwd);
-    output({ advanced: true, previous_plan: currentPlan, current_plan: newPlan, total_plans: totalPlans }, raw, 'true');
+    const nextPlan = completedPlans + 1;
+    body = setPlanField(`${nextPlan} of ${totalPlans} in current phase`) || body;
+    body = stateReplaceField(body, 'Status', 'Ready to execute') || body;
+    body = stateReplaceField(body, 'Last Activity', today) || body;
+    writeStateMd(statePath, fmBlock + body, cwd);
+    output({ advanced: true, previous_plan: completedPlans, current_plan: nextPlan, total_plans: totalPlans }, raw, 'true');
   }
 }
 
