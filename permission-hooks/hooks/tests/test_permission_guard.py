@@ -452,6 +452,17 @@ class TestSystemOperations:
     def test_block_service_managers(self):
         assert_blocked("launchctl load plist", self.CAT)
         assert_blocked("service nginx restart", self.CAT)
+        # Still caught when chained after a shell separator.
+        assert_blocked("cd /tmp; service nginx restart", self.CAT)
+        assert_blocked("true && service nginx stop", self.CAT)
+
+    def test_allow_service_as_path_or_prose(self):
+        # "service" inside a path segment or prose must NOT trigger the
+        # service-manager rule — the word is only dangerous at command position.
+        assert_allowed("mkdir -p /tmp/gpu-inference-service/phase-docs")
+        assert_allowed('OUT="$D/phase-17.1-implement-gpu-inference-service-modal.md"')
+        assert_allowed("echo 'implement gpu inference service modal'")
+        assert_allowed("ls docs/work-queue/todo/gpu-inference-service")
 
     def test_block_user_management(self):
         assert_blocked("useradd bob", self.CAT)

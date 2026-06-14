@@ -85,7 +85,7 @@ CATEGORIES = {
         (r"\b(apt|apt-get|brew|yum|dnf|pacman|apk)\s+(install|remove|purge|uninstall)\b", "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
         (r"\bsystemctl\s+(?!status\b)", "systemctl (not status)"),
-        (r"\b(launchctl|service)\b", "service manager"),
+        (r"(?:^|[;&|]\s*)(launchctl|service)\b", "service manager"),
         (r"\b(useradd|userdel|usermod|passwd)\b", "user management"),
         (r"\b(iptables|ufw)\b", "firewall management"),
         (r"\b(kill|killall)\b", "process termination"),
