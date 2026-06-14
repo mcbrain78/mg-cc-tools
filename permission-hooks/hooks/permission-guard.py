@@ -330,7 +330,11 @@ _TOKEN_STRIP_CHARS = "'\"`(),[]{}"
 FILE_MODIFYING_CMDS = re.compile(
     r"\b(rm|mv|cp|mkdir|touch|tee)\b"
 )
-WRITE_REDIRECT = re.compile(r"(?<!\d)>{1,2}")
+# Captures the target of a write redirect (> or >>). The (?<!\d) lookbehind
+# excludes fd-prefixed redirects (e.g. 2>) and the (?!&) lookahead excludes fd
+# duplications (e.g. >&2 / 2>&1) — neither is a file write we guard. Group 1 is
+# the file the redirect writes to.
+_REDIRECT_TARGET_RE = re.compile(r"(?<!\d)>{1,2}\s*(?!&)([^\s;|&<>]+)")
 
 # Heredoc body stripping — removes content between heredoc markers
 # so that data inside heredocs is not mistaken for shell arguments.
@@ -506,8 +510,37 @@ def check_file_outside_project(file_path, project_root):
     return None
 
 
+def _candidate_write_targets(command):
+    """Yield tokens that are genuine write targets in *command*.
+
+    Only these positions can write outside the project, so only these are
+    worth checking. A path-shaped substring anywhere else — a grep/sed
+    pattern, a regex, a URL, an HTTP request path in a log line — is not a
+    write and must not be flagged.
+
+    Sources:
+      1. Redirect targets — the file after ``>`` / ``>>`` (fd redirects like
+         ``2>`` and fd duplications like ``>&2`` are excluded).
+      2. Arguments of file-modifying commands (rm/mv/cp/mkdir/touch/tee),
+         scanned per shell-segment (split on ``; | & newline``) so only the
+         segment that actually runs the command is examined — a path-pattern
+         sitting in an unrelated segment is never treated as a write target.
+    """
+    # 1. Redirect targets (scanned across the whole command)
+    for match in _REDIRECT_TARGET_RE.finditer(command):
+        yield match.group(1)
+
+    # 2. File-modifying command arguments (per segment)
+    for segment in re.split(r'[\n;|&]+', command):
+        if FILE_MODIFYING_CMDS.search(segment):
+            yield from segment.split()
+
+
 def check_outside_project(command, project_root):
-    """Check if command targets paths outside the project root.
+    """Check if command writes to a path outside the project root.
+
+    Only genuine write targets are examined (see _candidate_write_targets);
+    path-shaped substrings elsewhere in the command are ignored.
 
     Returns (description, matched_path) or None.
     """
@@ -520,17 +553,7 @@ def check_outside_project(command, project_root):
     # Normalize project root (remove trailing slash)
     project_root = project_root.rstrip("/")
 
-    has_file_cmd = FILE_MODIFYING_CMDS.search(command)
-    has_redirect = WRITE_REDIRECT.search(command)
-
-    if not has_file_cmd and not has_redirect:
-        return None
-
-    # Extract potential paths from the command
-    # Split on whitespace and common shell operators
-    tokens = re.split(r'[\s;|&]+', command)
-
-    for token in tokens:
+    for token in _candidate_write_targets(command):
         # Strip quotes and shell punctuation
         token = token.strip(_TOKEN_STRIP_CHARS)
         if not token:

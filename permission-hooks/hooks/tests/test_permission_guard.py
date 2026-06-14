@@ -15,6 +15,7 @@ check_sensitive_in_command = guard.check_sensitive_in_command
 check_file_path = guard.check_file_path
 check_file_outside_project = guard.check_file_outside_project
 check_outside_project = guard.check_outside_project
+_candidate_write_targets = guard._candidate_write_targets
 _is_safe_rm = guard._is_safe_rm
 _strip_heredocs = guard._strip_heredocs
 check_exit_code_masking = guard.check_exit_code_masking
@@ -720,6 +721,116 @@ class TestOutsideProject:
             self.PROJECT,
         )
         assert result is not None
+
+    # ── Write-target scoping ─────────────────────────────────────────────
+    # Only genuine write targets (redirect targets + file-cmd arguments) are
+    # checked. A path-shaped substring elsewhere — a grep/sed pattern, a regex,
+    # an HTTP request path in a log line — must NOT be flagged just because an
+    # unrelated redirect opens the write gate.
+
+    def test_allow_grep_pattern_with_unrelated_redirect(self):
+        """The reported false positive: a grep pattern that looks like an
+        absolute path, beside an unrelated >/dev/null redirect."""
+        result = check_outside_project(
+            'pgrep -f x >/dev/null 2>&1; grep -c "/rerank \\"HTTP/1.1 200" /tmp/log',
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_grep_pattern_in_subshell(self):
+        """The exact reported shape: pattern inside $(...) with an fd redirect."""
+        result = check_outside_project(
+            'rr=$(grep -c "/rerank x" /tmp/remote.log 2>/dev/null)',
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_absolute_pattern_with_unrelated_redirect(self):
+        """A path-shaped grep pattern is never a write target."""
+        result = check_outside_project(
+            'echo hi > /dev/null; grep "/usr/local/bin" notes.txt',
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_path_pattern_in_segment_without_file_cmd(self):
+        """A file-cmd in one segment must not cause an unrelated grep segment
+        to be scanned for path-shaped patterns."""
+        result = check_outside_project(
+            'cp a.txt out.txt && grep "/etc/shadow rule" log.txt',
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_block_redirect_target_outside(self):
+        """A real write redirect to an outside path is still caught."""
+        result = check_outside_project(
+            "echo data > /etc/evil.conf", self.PROJECT
+        )
+        assert result is not None
+        assert "/etc/evil.conf" in result[1]
+
+    def test_block_redirect_append_target_outside(self):
+        """A >> append redirect to an outside path is still caught."""
+        result = check_outside_project(
+            "echo data >> /etc/hosts", self.PROJECT
+        )
+        assert result is not None
+        assert "/etc/hosts" in result[1]
+
+    def test_block_file_cmd_arg_with_safe_redirect(self):
+        """A cp to an outside path is caught even when the redirect is safe."""
+        result = check_outside_project(
+            "cp secret /etc/dest > /dev/null", self.PROJECT
+        )
+        assert result is not None
+        assert "/etc/dest" in result[1]
+
+    def test_allow_fd_dup_redirect_no_false_target(self):
+        """2>&1 fd duplication must not be parsed as a write to a file '1'."""
+        result = check_outside_project(
+            "make 2>&1 | tee /home/user/myproject/build.log", self.PROJECT
+        )
+        assert result is None
+
+
+class TestCandidateWriteTargets:
+    """Unit tests for the write-target extractor."""
+
+    def test_redirect_target_extracted(self):
+        assert "/etc/out" in list(_candidate_write_targets("echo x > /etc/out"))
+
+    def test_append_redirect_target_extracted(self):
+        assert "/etc/out" in list(_candidate_write_targets("echo x >> /etc/out"))
+
+    def test_glued_redirect_target_extracted(self):
+        assert "/dev/null" in list(_candidate_write_targets("cmd >/dev/null"))
+
+    def test_fd_prefixed_redirect_excluded(self):
+        # 2>/dev/null is an fd redirect, not a guarded file write.
+        assert list(_candidate_write_targets("cmd 2>/dev/null")) == []
+
+    def test_fd_duplication_excluded(self):
+        # 2>&1 / >&2 must not yield a bogus target.
+        assert list(_candidate_write_targets("cmd 2>&1")) == []
+        assert list(_candidate_write_targets("cmd >&2")) == []
+
+    def test_grep_pattern_not_a_target(self):
+        # A path-shaped grep pattern with an unrelated redirect yields only the
+        # redirect target, never the pattern.
+        targets = list(_candidate_write_targets(
+            'grep "/rerank" log >/dev/null'
+        ))
+        assert "/rerank" not in targets
+        assert "/dev/null" in targets
+
+    def test_file_cmd_args_yielded_per_segment(self):
+        # Only the cp segment's tokens are yielded; the grep segment is skipped.
+        targets = list(_candidate_write_targets(
+            'cp a /etc/b && grep "/etc/c" log'
+        ))
+        assert "/etc/b" in targets
+        assert "/etc/c" not in targets
 
 
 # ── Sensitive file path guard (Read/Edit/Write) ─────────────────────────────
