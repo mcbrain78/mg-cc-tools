@@ -85,10 +85,17 @@ CATEGORIES = {
         (r"\b(apt|apt-get|brew|yum|dnf|pacman|apk)\s+(install|remove|purge|uninstall)\b", "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
         (r"\bsystemctl\s+(?!status\b)", "systemctl (not status)"),
-        (r"(?:^|[;&|]\s*)(launchctl|service)\b", "service manager"),
-        (r"\b(useradd|userdel|usermod|passwd)\b", "user management"),
-        (r"\b(iptables|ufw)\b", "firewall management"),
-        (r"\b(kill|killall)\b", "process termination"),
+        # Command-position only (start of command or after ; / & / &&), and must
+        # take an argument. NOT after a pipe: you never pipe into service/launchctl,
+        # but "|service" is common in TEXT (regex alternations, markdown tables) and
+        # the guard scans the raw command string, quotes/heredocs included.
+        (r"(?:^|[;&]\s*)(launchctl|service)\s+\S", "service manager"),
+        # Same command-position + argument anchoring as the service rule above:
+        # these words are common in prose/paths ("kill the test", /etc/passwd,
+        # "iptables rules"), so only flag them as an actual command invocation.
+        (r"(?:^|[;&]\s*)(useradd|userdel|usermod|passwd)\s+\S", "user management"),
+        (r"(?:^|[;&]\s*)(iptables|ufw)\s+\S", "firewall management"),
+        (r"(?:^|[;&]\s*)(kill|killall)\s+\S", "process termination"),
     ],
 }
 

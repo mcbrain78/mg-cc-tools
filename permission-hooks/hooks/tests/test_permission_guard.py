@@ -452,7 +452,7 @@ class TestSystemOperations:
     def test_block_service_managers(self):
         assert_blocked("launchctl load plist", self.CAT)
         assert_blocked("service nginx restart", self.CAT)
-        # Still caught when chained after a shell separator.
+        # Still caught when chained after a sequencing separator.
         assert_blocked("cd /tmp; service nginx restart", self.CAT)
         assert_blocked("true && service nginx stop", self.CAT)
 
@@ -464,19 +464,58 @@ class TestSystemOperations:
         assert_allowed("echo 'implement gpu inference service modal'")
         assert_allowed("ls docs/work-queue/todo/gpu-inference-service")
 
+    def test_allow_service_after_pipe_or_in_quoted_text(self):
+        # The guard scans the raw command string, so quoted text that merely
+        # *mentions* service must not trip the rule. You never pipe into
+        # service/launchctl, so "|service" is text, not a command.
+        # Regex alternation inside a commit message (this very fix):
+        assert_allowed(r'git commit -m "rule used \b(launchctl|service)\b which over-matched"')
+        # Markdown table cell written via a heredoc/echo:
+        assert_allowed('echo "| service | restart | notes |" >> table.md')
+        # Pipe-as-prose:
+        assert_allowed('git commit -m "a pipe | service foo would be nonsense"')
+
+    def test_allow_bare_service_without_args(self):
+        # Bare "service"/"launchctl" with no argument just prints usage — harmless,
+        # and requiring an argument is what lets the path/text cases above pass.
+        assert_allowed("service")
+        assert_allowed("echo done; service")
+
     def test_block_user_management(self):
         assert_blocked("useradd bob", self.CAT)
         assert_blocked("userdel bob", self.CAT)
         assert_blocked("usermod -aG sudo bob", self.CAT)
         assert_blocked("passwd bob", self.CAT)
+        assert_blocked("cd /etc; userdel bob", self.CAT)
+
+    def test_allow_user_management_words_in_text(self):
+        # These words appear constantly in paths/prose; only a real invocation
+        # at command position should trigger the rule.
+        assert_allowed("cat /etc/passwd")
+        assert_allowed("getent passwd")
+        assert_allowed('git commit -m "rotate the user passwd policy"')
+        assert_allowed('echo "useradd/userdel are user management"')
 
     def test_block_firewall(self):
         assert_blocked("iptables -A INPUT -j DROP", self.CAT)
         assert_blocked("ufw allow 80", self.CAT)
+        assert_blocked("true && iptables -F", self.CAT)
+
+    def test_allow_firewall_words_in_text(self):
+        assert_allowed('git commit -m "document iptables and ufw firewall rules"')
+        assert_allowed("ls docs/iptables")
 
     def test_block_kill(self):
         assert_blocked("kill 1234", self.CAT)
         assert_blocked("killall node", self.CAT)
+        assert_blocked("kill -9 1234", self.CAT)
+        assert_blocked("sleep 1; kill 1234", self.CAT)
+
+    def test_allow_kill_as_english_word(self):
+        # "kill" is a common English word — must not trigger in prose/messages.
+        assert_allowed('git commit -m "kill the flaky test"')
+        assert_allowed('echo "kill switch documented"')
+        assert_allowed("ls scripts/kill-switch.sh")
 
 
 # ── Read-only git commands should always pass ───────────────────────────────
