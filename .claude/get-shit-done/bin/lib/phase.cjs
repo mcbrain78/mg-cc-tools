@@ -788,50 +788,65 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
     }
   }
 
-  // Find next phase — check both filesystem AND roadmap
-  // Phases may be defined in ROADMAP.md but not yet scaffolded to disk,
-  // so a filesystem-only scan would incorrectly report is_last_phase:true
+  // Find next phase — the ROADMAP order is authoritative.
+  // GSD-LOCAL-PATCH (Bug 5): the next phase is the SMALLEST phase number greater than
+  // the current one across BOTH the on-disk directories AND the ROADMAP — not "filesystem
+  // first, roadmap only as a fallback". A roadmap phase that has not been planned yet has
+  // no directory on disk; the old filesystem-first scan would jump straight to a LATER phase
+  // that happens to already have a directory (e.g. complete 17 with dirs 17 + 19 present but
+  // 18 only in the roadmap → wrongly reported next_phase 19, silently skipping 18). Taking
+  // the minimum over both sources keeps un-planned roadmap phases in order while still finding
+  // on-disk phases the roadmap may omit. (Regression introduced by the Bug-2 filesystem-derived
+  // rewrite, which made advance-plan filesystem-driven; phase-complete inherited the same trap.)
   let nextPhaseNum = null;
   let nextPhaseName = null;
   let isLastPhase = true;
 
+  // Candidate from on-disk phase directories (smallest number > current)
+  let fsNextNum = null, fsNextName = null;
   try {
     const isDirInMilestone = getMilestonePhaseFilter(cwd);
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
     const dirs = entries.filter(e => e.isDirectory()).map(e => e.name)
       .filter(isDirInMilestone)
       .sort((a, b) => comparePhaseNum(a, b));
-
-    // Find the next phase directory after current
     for (const dir of dirs) {
       const dm = dir.match(/^(\d+[A-Z]?(?:\.\d+)*)-?(.*)/i);
-      if (dm) {
-        if (comparePhaseNum(dm[1], phaseNum) > 0) {
-          nextPhaseNum = dm[1];
-          nextPhaseName = dm[2] || null;
-          isLastPhase = false;
-          break;
-        }
+      if (dm && comparePhaseNum(dm[1], phaseNum) > 0) {
+        fsNextNum = dm[1];
+        fsNextName = dm[2] || null;
+        break;
       }
     }
   } catch {}
 
-  // Fallback: if filesystem found no next phase, check ROADMAP.md
-  // for phases that are defined but not yet planned (no directory on disk)
-  if (isLastPhase && fs.existsSync(roadmapPath)) {
+  // Candidate from ROADMAP.md (authoritative for ordering; smallest number > current)
+  let rmNextNum = null, rmNextName = null;
+  if (fs.existsSync(roadmapPath)) {
     try {
       const roadmapForPhases = fs.readFileSync(roadmapPath, 'utf-8');
       const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
       let pm;
       while ((pm = phasePattern.exec(roadmapForPhases)) !== null) {
-        if (comparePhaseNum(pm[1], phaseNum) > 0) {
-          nextPhaseNum = pm[1];
-          nextPhaseName = pm[2].replace(/\(INSERTED\)/i, '').trim().toLowerCase().replace(/\s+/g, '-');
-          isLastPhase = false;
-          break;
+        if (comparePhaseNum(pm[1], phaseNum) > 0 &&
+            (rmNextNum === null || comparePhaseNum(pm[1], rmNextNum) < 0)) {
+          rmNextNum = pm[1];
+          rmNextName = pm[2].replace(/\(INSERTED\)/i, '').trim().toLowerCase().replace(/\s+/g, '-');
         }
       }
     } catch {}
+  }
+
+  // Pick the smaller of the two candidates; prefer the ROADMAP name on a tie
+  // (it is the authoritative, human-readable phase title).
+  if (rmNextNum !== null && (fsNextNum === null || comparePhaseNum(rmNextNum, fsNextNum) <= 0)) {
+    nextPhaseNum = rmNextNum;
+    nextPhaseName = rmNextName;
+    isLastPhase = false;
+  } else if (fsNextNum !== null) {
+    nextPhaseNum = fsNextNum;
+    nextPhaseName = fsNextName;
+    isLastPhase = false;
   }
 
   // Update STATE.md
