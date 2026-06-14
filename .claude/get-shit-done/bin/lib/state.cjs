@@ -347,11 +347,11 @@ function cmdStateUpdateProgress(cwd, raw) {
   const plainProgressPattern = /^(Progress:\s*).*/im;
   if (boldProgressPattern.test(content)) {
     content = content.replace(boldProgressPattern, (_match, prefix) => `${prefix}${progressStr}`);
-    writeStateMd(statePath, content, cwd);
+    writeStateMd(statePath, content, cwd, { recomputeProgress: true }); // GSD-LOCAL-PATCH (Bug 6): the explicit recompute point
     output({ updated: true, percent, completed: totalSummaries, total: totalPlans, bar: progressStr }, raw, progressStr);
   } else if (plainProgressPattern.test(content)) {
     content = content.replace(plainProgressPattern, (_match, prefix) => `${prefix}${progressStr}`);
-    writeStateMd(statePath, content, cwd);
+    writeStateMd(statePath, content, cwd, { recomputeProgress: true }); // GSD-LOCAL-PATCH (Bug 6): the explicit recompute point
     output({ updated: true, percent, completed: totalSummaries, total: totalPlans, bar: progressStr }, raw, progressStr);
   } else {
     output({ updated: false, reason: 'Progress field not found in STATE.md' }, raw, 'false');
@@ -600,7 +600,7 @@ function cmdStateSnapshot(cwd, raw) {
  * a YAML frontmatter object. Allows hooks and scripts to read state
  * reliably via `state json` instead of fragile regex parsing.
  */
-function buildStateFrontmatter(bodyContent, cwd) {
+function buildStateFrontmatter(bodyContent, cwd, opts = {}) {
   const currentPhase = stateExtractField(bodyContent, 'Current Phase');
   const currentPhaseName = stateExtractField(bodyContent, 'Current Phase Name');
   const currentPlan = stateExtractField(bodyContent, 'Current Plan');
@@ -627,7 +627,37 @@ function buildStateFrontmatter(bodyContent, cwd) {
   let totalPlans = totalPlansRaw ? parseInt(totalPlansRaw, 10) : null;
   let completedPlans = null;
 
+  let progressPercent = null;
+  if (progressRaw) {
+    const pctMatch = progressRaw.match(/(\d+)%/);
+    if (pctMatch) progressPercent = parseInt(pctMatch[1], 10);
+  }
+
+  // GSD-LOCAL-PATCH (Bug 6): PRESERVE the existing frontmatter progress block on
+  // incidental state-writes (record-metric, add-decision, advance-plan, phase
+  // complete, milestone, verify). The unconditional disk recount swept in inserted
+  // decimal phases (e.g. 17.1) that ARE in the roadmap but are deliberately held
+  // OUTSIDE a curated milestone baseline — inflating total_plans/completed_plans on
+  // every write — and also DROPPED `percent` whenever no body Progress field exists.
+  // Only `update-progress` (opts.recomputeProgress) recomputes from disk; a fresh
+  // STATE.md with no existing progress block still bootstraps via recompute.
+  let existingProgress = null;
   if (cwd) {
+    try {
+      const sp = path.join(cwd, '.planning', 'STATE.md');
+      if (fs.existsSync(sp)) {
+        const existingFm = extractFrontmatter(fs.readFileSync(sp, 'utf-8'));
+        if (existingFm && existingFm.progress && typeof existingFm.progress === 'object'
+            && !Array.isArray(existingFm.progress) && Object.keys(existingFm.progress).length > 0) {
+          existingProgress = existingFm.progress;
+        }
+      }
+    } catch {}
+  }
+
+  const recomputeProgress = opts.recomputeProgress === true || existingProgress === null;
+
+  if (recomputeProgress && cwd) {
     try {
       const phasesDir = path.join(cwd, '.planning', 'phases');
       if (fs.existsSync(phasesDir)) {
@@ -655,12 +685,14 @@ function buildStateFrontmatter(bodyContent, cwd) {
         completedPlans = diskTotalSummaries;
       }
     } catch {}
-  }
-
-  let progressPercent = null;
-  if (progressRaw) {
-    const pctMatch = progressRaw.match(/(\d+)%/);
-    if (pctMatch) progressPercent = parseInt(pctMatch[1], 10);
+  } else if (existingProgress) {
+    // GSD-LOCAL-PATCH (Bug 6): carry the curated counts forward verbatim.
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : v; };
+    if (existingProgress.total_phases != null) totalPhases = num(existingProgress.total_phases);
+    if (existingProgress.completed_phases != null) completedPhases = num(existingProgress.completed_phases);
+    if (existingProgress.total_plans != null) totalPlans = num(existingProgress.total_plans);
+    if (existingProgress.completed_plans != null) completedPlans = num(existingProgress.completed_plans);
+    if (existingProgress.percent != null) progressPercent = num(existingProgress.percent);
   }
 
   // Normalize status to one of: planning, discussing, executing, verifying, paused, completed, unknown
@@ -710,9 +742,9 @@ function stripFrontmatter(content) {
   return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
 }
 
-function syncStateFrontmatter(content, cwd) {
+function syncStateFrontmatter(content, cwd, opts = {}) {
   const body = stripFrontmatter(content);
-  const fm = buildStateFrontmatter(body, cwd);
+  const fm = buildStateFrontmatter(body, cwd, opts);
   const yamlStr = reconstructFrontmatter(fm);
   return `---\n${yamlStr}\n---\n\n${body}`;
 }
@@ -721,8 +753,8 @@ function syncStateFrontmatter(content, cwd) {
  * Write STATE.md with synchronized YAML frontmatter.
  * All STATE.md writes should use this instead of raw writeFileSync.
  */
-function writeStateMd(statePath, content, cwd) {
-  const synced = syncStateFrontmatter(content, cwd);
+function writeStateMd(statePath, content, cwd, opts = {}) {
+  const synced = syncStateFrontmatter(content, cwd, opts);
   fs.writeFileSync(statePath, synced, 'utf-8');
 }
 
