@@ -891,7 +891,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
       `$1Phase ${phaseNum} complete${nextPhaseNum ? `, transitioned to Phase ${nextPhaseNum}` : ''}`
     );
 
-    writeStateMd(statePath, stateContent, cwd);
+    writeStateMd(statePath, stateContent, cwd, { recomputeStatus: true });  // GSD-LOCAL-PATCH (Bug 7): transition — Status line set above
   }
 
   const result = {

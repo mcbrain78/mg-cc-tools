@@ -142,7 +142,9 @@ function cmdStatePatch(cwd, patches, raw) {
     }
 
     if (results.updated.length > 0) {
-      writeStateMd(statePath, content, cwd);
+      // GSD-LOCAL-PATCH (Bug 7): re-derive the status enum only if a Status field was patched
+      const recomputeStatus = results.updated.some(f => String(f).toLowerCase() === 'status');
+      writeStateMd(statePath, content, cwd, { recomputeStatus });
     }
 
     output(results, raw, results.updated.length > 0 ? 'true' : 'false');
@@ -163,13 +165,16 @@ function cmdStateUpdate(cwd, field, value) {
     // Try **Field:** bold format first, then plain Field: format
     const boldPattern = new RegExp(`(\\*\\*${fieldEscaped}:\\*\\*\\s*)(.*)`, 'i');
     const plainPattern = new RegExp(`(^${fieldEscaped}:\\s*)(.*)`, 'im');
+    // GSD-LOCAL-PATCH (Bug 7): re-derive the status enum only when THIS update set the Status
+    // line (case-insensitive — the body-field match above is case-insensitive too).
+    const recomputeStatus = String(field).toLowerCase() === 'status';
     if (boldPattern.test(content)) {
       content = content.replace(boldPattern, (_match, prefix) => `${prefix}${value}`);
-      writeStateMd(statePath, content, cwd);
+      writeStateMd(statePath, content, cwd, { recomputeStatus });
       output({ updated: true });
     } else if (plainPattern.test(content)) {
       content = content.replace(plainPattern, (_match, prefix) => `${prefix}${value}`);
-      writeStateMd(statePath, content, cwd);
+      writeStateMd(statePath, content, cwd, { recomputeStatus });
       output({ updated: true });
     } else {
       output({ updated: false, reason: `Field "${field}" not found in STATE.md` });
@@ -262,14 +267,14 @@ function cmdStateAdvancePlan(cwd, raw) {
     body = setPlanField(`${completedPlans} of ${totalPlans} in current phase — all complete`) || body;
     body = stateReplaceField(body, 'Status', 'Phase complete — ready for verification') || body;
     body = stateReplaceField(body, 'Last Activity', today) || body;
-    writeStateMd(statePath, fmBlock + body, cwd);
+    writeStateMd(statePath, fmBlock + body, cwd, { recomputeStatus: true });  // GSD-LOCAL-PATCH (Bug 7): transition — Status line set above
     output({ advanced: false, reason: 'last_plan', current_plan: completedPlans, total_plans: totalPlans, status: 'ready_for_verification' }, raw, 'false');
   } else {
     const nextPlan = completedPlans + 1;
     body = setPlanField(`${nextPlan} of ${totalPlans} in current phase`) || body;
     body = stateReplaceField(body, 'Status', 'Ready to execute') || body;
     body = stateReplaceField(body, 'Last Activity', today) || body;
-    writeStateMd(statePath, fmBlock + body, cwd);
+    writeStateMd(statePath, fmBlock + body, cwd, { recomputeStatus: true });  // GSD-LOCAL-PATCH (Bug 7): transition — Status line set above
     output({ advanced: true, previous_plan: completedPlans, current_plan: nextPlan, total_plans: totalPlans }, raw, 'true');
   }
 }
@@ -642,6 +647,7 @@ function buildStateFrontmatter(bodyContent, cwd, opts = {}) {
   // Only `update-progress` (opts.recomputeProgress) recomputes from disk; a fresh
   // STATE.md with no existing progress block still bootstraps via recompute.
   let existingProgress = null;
+  let existingStatus = null;  // GSD-LOCAL-PATCH (Bug 7): carry-forward source for the status enum
   if (cwd) {
     try {
       const sp = path.join(cwd, '.planning', 'STATE.md');
@@ -650,6 +656,11 @@ function buildStateFrontmatter(bodyContent, cwd, opts = {}) {
         if (existingFm && existingFm.progress && typeof existingFm.progress === 'object'
             && !Array.isArray(existingFm.progress) && Object.keys(existingFm.progress).length > 0) {
           existingProgress = existingFm.progress;
+        }
+        // GSD-LOCAL-PATCH (Bug 7): capture the existing frontmatter status to preserve it on
+        // incidental writes (only an explicit transition or bootstrap re-derives it below).
+        if (existingFm && typeof existingFm.status === 'string' && existingFm.status.trim()) {
+          existingStatus = existingFm.status.trim();
         }
       }
     } catch {}
@@ -695,23 +706,37 @@ function buildStateFrontmatter(bodyContent, cwd, opts = {}) {
     if (existingProgress.percent != null) progressPercent = num(existingProgress.percent);
   }
 
-  // Normalize status to one of: planning, discussing, executing, verifying, paused, completed, unknown
-  let normalizedStatus = status || 'unknown';
-  const statusLower = (status || '').toLowerCase();
-  if (statusLower.includes('paused') || statusLower.includes('stopped') || pausedAt) {
-    normalizedStatus = 'paused';
-  } else if (statusLower.includes('executing') || statusLower.includes('in progress')) {
-    normalizedStatus = 'executing';
-  } else if (statusLower.includes('planning') || statusLower.includes('ready to plan')) {
-    normalizedStatus = 'planning';
-  } else if (statusLower.includes('discussing')) {
-    normalizedStatus = 'discussing';
-  } else if (statusLower.includes('verif')) {
-    normalizedStatus = 'verifying';
-  } else if (statusLower.includes('complete') || statusLower.includes('done')) {
-    normalizedStatus = 'completed';
-  } else if (statusLower.includes('ready to execute')) {
-    normalizedStatus = 'executing';
+  // GSD-LOCAL-PATCH (Bug 7): the frontmatter status enum is a DERIVED projection of the body
+  // 'Status:' prose. Re-deriving on EVERY write let incidental writes (record-session,
+  // record-metric, add-decision/blocker, phase remove) silently flip status — e.g. body prose
+  // "Phase N COMPLETE + VERIFIED" normalizes to 'verifying' because the 'verif' branch precedes
+  // 'complete'. Mirror the Bug-6 progress-preservation: re-derive ONLY on an explicit transition
+  // (opts.recomputeStatus, set by callers that just wrote the body 'Status:' line) or when
+  // bootstrapping (no prior frontmatter status — loose !existingStatus catches null/undefined/'');
+  // otherwise carry the existing frontmatter status forward verbatim.
+  const recomputeStatus = opts.recomputeStatus === true || !existingStatus;
+  let normalizedStatus;
+  if (recomputeStatus) {
+    // Normalize to one of: planning, discussing, executing, verifying, paused, completed, unknown
+    normalizedStatus = status || 'unknown';
+    const statusLower = (status || '').toLowerCase();
+    if (statusLower.includes('paused') || statusLower.includes('stopped') || pausedAt) {
+      normalizedStatus = 'paused';
+    } else if (statusLower.includes('executing') || statusLower.includes('in progress')) {
+      normalizedStatus = 'executing';
+    } else if (statusLower.includes('planning') || statusLower.includes('ready to plan')) {
+      normalizedStatus = 'planning';
+    } else if (statusLower.includes('discussing')) {
+      normalizedStatus = 'discussing';
+    } else if (statusLower.includes('verif')) {
+      normalizedStatus = 'verifying';
+    } else if (statusLower.includes('complete') || statusLower.includes('done')) {
+      normalizedStatus = 'completed';
+    } else if (statusLower.includes('ready to execute')) {
+      normalizedStatus = 'executing';
+    }
+  } else {
+    normalizedStatus = existingStatus;  // carry the existing frontmatter status forward verbatim
   }
 
   const fm = { gsd_state_version: '1.0' };

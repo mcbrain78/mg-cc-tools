@@ -192,7 +192,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
       /(\*\*Last Activity Description:\*\*\s*).*/,
       `$1${version} milestone completed and archived`
     );
-    writeStateMd(statePath, stateContent, cwd);
+    writeStateMd(statePath, stateContent, cwd, { recomputeStatus: true });  // GSD-LOCAL-PATCH (Bug 7): transition — Status line set above
   }
 
   // Archive phase directories if requested
