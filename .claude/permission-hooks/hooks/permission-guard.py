@@ -317,6 +317,12 @@ def _write_edit_guard_bridge(event):
 _CLAUDE_DIR_TILDE = "~/.claude/"
 _CLAUDE_DIR_ABS = os.path.expanduser("~/.claude/")
 
+# The user's home directory (no trailing slash). The workspace-sibling
+# allowance is suppressed when a project's parent directory IS $HOME (or the
+# filesystem root), since every home dotfile/folder would otherwise look like a
+# "sibling project" and be allowed implicitly.
+_HOME_DIR = os.path.expanduser("~").rstrip("/")
+
 
 def _is_claude_internal(path):
     """Return True if *path* points inside Claude's own ~/.claude/ directory."""
@@ -462,10 +468,40 @@ def check_sensitive_in_command(command):
     return None
 
 
+def _resolved_path_allowed(resolved, project_root):
+    """Return True if *resolved* (an already-expanded absolute path) is allowed
+    by the out-of-project guard.
+
+    A path is allowed when it is:
+      * inside the project root,
+      * a known-safe absolute path (/dev/null, /tmp, …), or
+      * inside the workspace directory (the parent of the project root) — i.e. a
+        sibling project — UNLESS that workspace is ``$HOME`` or the filesystem
+        root, where "sibling" would mean "all of $HOME" / "everything" and is
+        too broad to allow implicitly.
+
+    Shared by the Read/Edit/Write guard and the Bash write-target guard so that
+    ``~/``, ``../`` and absolute paths are judged identically — only the
+    description string differs by caller.
+    """
+    if resolved.startswith(project_root + "/") or resolved == project_root:
+        return True
+    if any(resolved == safe or resolved.startswith(safe + "/")
+           for safe in SAFE_ABSOLUTE_PATHS):
+        return True
+    workspace = os.path.dirname(project_root)
+    if workspace and workspace not in ("/", _HOME_DIR) and resolved.startswith(workspace + "/"):
+        return True
+    return False
+
+
 def check_file_outside_project(file_path, project_root):
     """Check if a file path is outside the project root.
 
-    Returns a description string or None.
+    Returns a description string or None. Tilde, parent-traversal and absolute
+    paths are each expanded to an absolute path and judged by the shared
+    _resolved_path_allowed check; only the description differs. Bare relative
+    paths are assumed in-project (CC resolves them against the project-root cwd).
     """
     if not project_root:
         return None
@@ -476,35 +512,23 @@ def check_file_outside_project(file_path, project_root):
     if _is_claude_internal(file_path):
         return None
 
-    # Expand ~ and check whether it resolves inside the project
+    # Expand ~ and judge the resolved path
     if file_path.startswith("~/") or file_path == "~":
         resolved = os.path.expanduser(file_path)
-        if resolved.startswith(project_root + "/") or resolved == project_root:
-            return None  # resolves inside the project
-        return f"home directory path: {file_path}"
+        if not _resolved_path_allowed(resolved, project_root):
+            return f"home directory path: {file_path}"
+        return None
 
-    # Parent traversal — resolve to absolute and check against project root
+    # Parent traversal — resolve to absolute and judge
     if "../" in file_path:
         resolved = os.path.realpath(file_path)
-        if resolved.startswith(project_root + "/") or resolved == project_root:
-            return None  # resolves inside the project
-        # Allow sibling projects in the same workspace directory
-        workspace = os.path.dirname(project_root)
-        if workspace and resolved.startswith(workspace + "/"):
-            return None
-        return f"parent directory traversal: {file_path}"
+        if not _resolved_path_allowed(resolved, project_root):
+            return f"parent directory traversal: {file_path}"
+        return None
 
-    # Absolute paths not under project root
+    # Absolute paths
     if file_path.startswith("/"):
-        # Allow safe paths
-        if any(file_path == safe or file_path.startswith(safe + "/")
-               for safe in SAFE_ABSOLUTE_PATHS):
-            return None
-        # Allow sibling projects in the same workspace directory
-        workspace = os.path.dirname(project_root)
-        if workspace and file_path.startswith(workspace + "/"):
-            return None
-        if not file_path.startswith(project_root + "/") and file_path != project_root:
+        if not _resolved_path_allowed(file_path, project_root):
             return f"path outside project root: {file_path}"
 
     return None
@@ -563,49 +587,25 @@ def check_outside_project(command, project_root):
         if _is_claude_internal(token):
             continue
 
-        # Check absolute paths not under project root
+        # Absolute, ~/, and ../ write targets are each expanded to an absolute
+        # path and judged by the shared _resolved_path_allowed check; only the
+        # description differs.
         if token.startswith("/"):
             # Skip bare slash tokens (e.g. Python's // operator)
             if token.rstrip("/") == "":
                 continue
-            # Allow safe paths
-            if any(token == safe or token.startswith(safe + "/")
-                   for safe in SAFE_ABSOLUTE_PATHS):
-                continue
-            # Allow sibling projects in the same workspace directory
-            workspace = os.path.dirname(project_root)
-            if workspace and token.startswith(workspace + "/"):
-                continue
-            # Block if not under project root
-            if not token.startswith(project_root + "/") and token != project_root:
-                return (
-                    f"path outside project root: {token}",
-                    token,
-                )
+            if not _resolved_path_allowed(token, project_root):
+                return (f"path outside project root: {token}", token)
 
-        # Check home directory paths — resolve first to allow in-project tilde paths
-        if token.startswith("~/"):
+        elif token.startswith("~/") or token == "~":
             resolved = os.path.expanduser(token)
-            if resolved.startswith(project_root + "/") or resolved == project_root:
-                continue  # resolves inside the project
-            return (
-                f"home directory path: {token}",
-                token,
-            )
+            if not _resolved_path_allowed(resolved, project_root):
+                return (f"home directory path: {token}", token)
 
-        # Check parent traversal — resolve and allow if inside project
-        if "../" in token:
+        elif "../" in token:
             resolved = os.path.realpath(token)
-            if resolved.startswith(project_root + "/") or resolved == project_root:
-                continue  # resolves inside the project
-            # Allow sibling projects in the same workspace directory
-            workspace = os.path.dirname(project_root)
-            if workspace and resolved.startswith(workspace + "/"):
-                continue
-            return (
-                f"parent directory traversal: {token}",
-                token,
-            )
+            if not _resolved_path_allowed(resolved, project_root):
+                return (f"parent directory traversal: {token}", token)
 
     return None
 
@@ -787,11 +787,22 @@ def _gate_rm_variable_cleanup(command, event):
 
 
 def _resolve_project_root(event):
-    """Return the resolved project root, or empty string if unavailable."""
+    """Return the resolved project root, or empty string if unavailable.
+
+    When the install-time PROJECT_ROOT placeholder is unresolved/empty:
+      1. Prefer CLAUDE_PROJECT_DIR — the project root CC exports to hooks. It is
+         stable regardless of the session's working directory.
+      2. Fall back to the event cwd only when the env var is absent.
+
+    Using the event cwd as the root is wrong when the session was launched from
+    (or cd'd into) a subdirectory: the guard would then treat the project's own
+    files elsewhere in the tree as out-of-project. CLAUDE_PROJECT_DIR always
+    points at the real root, so it takes precedence.
+    """
     root = PROJECT_ROOT
     # Skip unresolved install-time placeholder
     if not root or root.startswith("{"):
-        root = event.get("cwd", "")
+        root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or event.get("cwd", "")
     return root
 
 

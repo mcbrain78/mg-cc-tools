@@ -643,6 +643,17 @@ class TestOutsideProject:
         assert result is not None
         assert "~/Documents/" in result[1]
 
+    def test_tilde_sibling_write_allowed_like_absolute(self):
+        """Bash: a ~/ write target into a sibling project is allowed, matching the
+        absolute form."""
+        import os
+        home = os.path.expanduser("~")
+        project = home + "/workspace/myproject"
+        r_tilde = check_outside_project("cp x.txt ~/workspace/other/lib.py", project)
+        r_abs = check_outside_project(f"cp x.txt {home}/workspace/other/lib.py", project)
+        assert r_tilde is None
+        assert r_abs is None
+
     def test_allow_non_modifying_command(self):
         result = check_outside_project(
             "cat /etc/passwd", self.PROJECT
@@ -1025,6 +1036,26 @@ class TestFileOutsideProject:
     def test_block_home_directory_listing(self):
         result = check_file_outside_project("/home/user", self.PROJECT)
         assert result is not None
+
+    def test_tilde_sibling_project_allowed_like_absolute(self):
+        """A ~/ path into a sibling project (workspace is a real projects dir, not
+        $HOME) is allowed — and agrees with the absolute form."""
+        import os
+        home = os.path.expanduser("~")
+        project = home + "/workspace/myproject"            # workspace = ~/workspace
+        tilde = "~/workspace/other-project/file.txt"
+        absolute = home + "/workspace/other-project/file.txt"
+        assert check_file_outside_project(tilde, project) is None
+        assert check_file_outside_project(absolute, project) is None
+
+    def test_tilde_and_absolute_agree_for_home_workspace(self):
+        """When the project sits directly in $HOME, neither ~/Documents nor its
+        absolute form counts as a sibling — both are blocked."""
+        import os
+        home = os.path.expanduser("~")
+        project = home + "/myproject"                      # workspace = $HOME
+        assert check_file_outside_project("~/Documents/x.txt", project) is not None
+        assert check_file_outside_project(home + "/Documents/x.txt", project) is not None
 
 
 # ── Claude internal memory exemption ─────────────────────────────────────────
@@ -1584,12 +1615,14 @@ class TestTranscriptContext:
 
 class TestResolveProjectRoot:
 
-    def test_uses_cwd_when_placeholder_unresolved(self):
-        """Source file has literal '{MG_INSTALL_PROJECT_ROOT}' — should fall back to event cwd."""
+    def test_uses_cwd_when_placeholder_unresolved(self, monkeypatch):
+        """Placeholder PROJECT_ROOT + no CLAUDE_PROJECT_DIR → fall back to event cwd."""
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
         with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
             assert _resolve_project_root({"cwd": "/home/user/myproject"}) == "/home/user/myproject"
 
-    def test_uses_cwd_when_empty(self):
+    def test_uses_cwd_when_empty(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
         with patch.object(guard, "PROJECT_ROOT", ""):
             assert _resolve_project_root({"cwd": "/home/user/myproject"}) == "/home/user/myproject"
 
@@ -1597,9 +1630,31 @@ class TestResolveProjectRoot:
         with patch.object(guard, "PROJECT_ROOT", "/home/user/myproject"):
             assert _resolve_project_root({}) == "/home/user/myproject"
 
-    def test_empty_when_nothing_available(self):
+    def test_empty_when_nothing_available(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
         with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
             assert _resolve_project_root({}) == ""
+
+    def test_prefers_claude_project_dir_over_subdir_cwd(self, monkeypatch):
+        """Real-world bug: cwd is a deep subdirectory. The true root comes from
+        CLAUDE_PROJECT_DIR (exported by CC), not the cwd."""
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/home/user/myproject")
+        with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
+            assert _resolve_project_root(
+                {"cwd": "/home/user/myproject/docs/work-queue/todo/feature-x"}
+            ) == "/home/user/myproject"
+
+    def test_resolved_project_root_wins_over_env(self, monkeypatch):
+        """An explicitly substituted PROJECT_ROOT stays authoritative over the env var."""
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/somewhere/else")
+        with patch.object(guard, "PROJECT_ROOT", "/home/user/myproject"):
+            assert _resolve_project_root({"cwd": "/x"}) == "/home/user/myproject"
+
+    def test_blank_env_falls_back_to_cwd(self, monkeypatch):
+        """A blank/whitespace CLAUDE_PROJECT_DIR must not shadow the cwd fallback."""
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", "   ")
+        with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
+            assert _resolve_project_root({"cwd": "/home/user/myproject"}) == "/home/user/myproject"
 
 
 class TestMainUsesResolvedProjectRoot:
@@ -1625,6 +1680,7 @@ class TestMainUsesResolvedProjectRoot:
 
     def test_bash_inproject_path_not_flagged_when_placeholder_unresolved(self, monkeypatch):
         """Bash guard must not flag an in-cwd path as out-of-project when PROJECT_ROOT is the placeholder."""
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
         with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
             decisions = self._run_main({
                 "tool_name": "Bash",
@@ -1638,6 +1694,7 @@ class TestMainUsesResolvedProjectRoot:
 
     def test_write_inproject_path_not_flagged_when_placeholder_unresolved(self, monkeypatch):
         """Read/Edit/Write guard must not flag an in-cwd file_path as out-of-project either."""
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
         with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
             decisions = self._run_main({
                 "tool_name": "Write",
@@ -1647,6 +1704,34 @@ class TestMainUsesResolvedProjectRoot:
             }, monkeypatch)
         for reason, _ in decisions:
             assert "Out-of-project" not in reason, f"Unexpected out-of-project flag: {reason}"
+
+    def test_read_elsewhere_in_project_not_flagged_from_subdir_cwd(self, monkeypatch):
+        """Real-world regression: cwd is a deep subdirectory and the agent reads a
+        file elsewhere in the SAME project by absolute path. With CLAUDE_PROJECT_DIR
+        at the true root, it must not be flagged out-of-project."""
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/home/user/myproject")
+        with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
+            decisions = self._run_main({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "/home/user/myproject/src/models.py"},
+                "cwd": "/home/user/myproject/docs/work-queue/todo/feature-x",
+                "transcript_path": "",
+            }, monkeypatch)
+        for reason, _ in decisions:
+            assert "Out-of-project" not in reason, f"Unexpected out-of-project flag: {reason}"
+
+    def test_read_elsewhere_in_project_flagged_without_project_dir(self, monkeypatch):
+        """Without CLAUDE_PROJECT_DIR the subdir cwd is the only root signal, so the
+        same read IS flagged — documents why preferring the env var matters."""
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        with patch.object(guard, "PROJECT_ROOT", "{MG_INSTALL_PROJECT_ROOT}"):
+            decisions = self._run_main({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "/home/user/myproject/src/models.py"},
+                "cwd": "/home/user/myproject/docs/work-queue/todo/feature-x",
+                "transcript_path": "",
+            }, monkeypatch)
+        assert any("Out-of-project" in r for r, _ in decisions)
 
 
 # ── Prompt content: safe directories ──────────────────────────────────────────
