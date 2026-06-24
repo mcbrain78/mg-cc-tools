@@ -1734,6 +1734,55 @@ class TestMainUsesResolvedProjectRoot:
         assert any("Out-of-project" in r for r, _ in decisions)
 
 
+# ── Permission-mode gate ──────────────────────────────────────────────────────
+
+class TestPermissionModeGate:
+    """Active only in bypassPermissions; defers (no decision) in the modes CC
+    vets itself, and fails safe (active) for missing/unknown modes."""
+
+    def _run_main(self, event, monkeypatch):
+        import io as _io
+        decisions = []
+        monkeypatch.setattr(guard, "_decide", lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_deny", lambda reason: decisions.append((reason, "deny")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr("sys.stdin", _io.StringIO(json.dumps(event)))
+        guard.main()
+        return decisions
+
+    def _event(self, mode):
+        # A clearly-dangerous Bash command the guard flags whenever it is active.
+        e = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push --force origin main"},
+            "cwd": "/home/user/myproject",
+            "transcript_path": "",
+        }
+        if mode is not None:
+            e["permission_mode"] = mode
+        return e
+
+    def test_active_in_bypass(self, monkeypatch):
+        decisions = self._run_main(self._event("bypassPermissions"), monkeypatch)
+        assert any(d == "ask" for _, d in decisions), "guard must run in bypassPermissions"
+
+    @pytest.mark.parametrize("mode", ["auto", "default", "acceptEdits", "plan", "dontAsk"])
+    def test_defers_in_vetted_modes(self, mode, monkeypatch):
+        decisions = self._run_main(self._event(mode), monkeypatch)
+        assert decisions == [], f"guard must stand down in {mode}"
+
+    def test_active_when_mode_missing(self, monkeypatch):
+        """No permission_mode field → fail safe → guard active."""
+        decisions = self._run_main(self._event(None), monkeypatch)
+        assert any(d == "ask" for _, d in decisions)
+
+    def test_active_for_unknown_mode(self, monkeypatch):
+        """An unrecognised mode string must NOT silently disable the guard."""
+        decisions = self._run_main(self._event("someFutureMode"), monkeypatch)
+        assert any(d == "ask" for _, d in decisions)
+
+
 # ── Prompt content: safe directories ──────────────────────────────────────────
 
 class TestPromptSafeDirectories:

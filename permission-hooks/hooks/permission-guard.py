@@ -9,6 +9,11 @@ For Read/Edit/Write: checks file paths against sensitive file patterns.
 Returns permissionDecision: "ask" for any match so the user gets an
 approval prompt.
 
+Active only in bypassPermissions mode — the one mode where CC approves
+everything and this hook is the sole safety net. In every other permission
+mode the hook defers (returns no output) so CC's native permission flow
+applies; unknown/missing modes fail safe (the guard stays active).
+
 PROJECT_ROOT is embedded at install time via sed. For --global installs
 it's empty and falls back to cwd from the hook event.
 """
@@ -929,10 +934,24 @@ def _deny(reason):
     _decide(reason, "deny")
 
 
+# Permission modes in which this guard stands down. It is the user's safety net
+# for bypassPermissions (CC approves everything there), so it stays active in
+# that mode — and in any unknown/missing mode (fail safe) — but defers to CC's
+# native permission flow in the modes below, which already vet tool calls.
+_DEFER_PERMISSION_MODES = frozenset({"default", "plan", "acceptEdits", "auto", "dontAsk"})
+
+
 def main():
     try:
         event = json.load(sys.stdin)
     except (json.JSONDecodeError, EOFError):
+        return
+
+    # ── Permission-mode gate ────────────────────────────────────────────
+    # Active only in bypassPermissions (and any unknown/missing mode — fail
+    # safe). In the modes CC vets itself, stand down: returning with no output
+    # is the documented neutral "defer to the normal permission flow" signal.
+    if event.get("permission_mode") in _DEFER_PERMISSION_MODES:
         return
 
     # Best-effort: write edit guard state for statusline badge
