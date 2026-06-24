@@ -102,6 +102,11 @@ if [[ ! -f "${SCRIPT_DIR}/scripts/emit-edit-guard.py" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${SCRIPT_DIR}/scripts/auto-approve-session.py" ]]; then
+  echo "Error: missing scripts/auto-approve-session.py"
+  exit 1
+fi
+
 # ── Check for python3 ───────────────────────────────────────────────────────
 
 if ! command -v python3 &>/dev/null; then
@@ -126,8 +131,10 @@ echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
 mkdir -p "${SUPPORT_DIR}/scripts"
 cp "${SCRIPT_DIR}/scripts/emit-context.py" "${SUPPORT_DIR}/scripts/"
 cp "${SCRIPT_DIR}/scripts/emit-edit-guard.py" "${SUPPORT_DIR}/scripts/"
+cp "${SCRIPT_DIR}/scripts/auto-approve-session.py" "${SUPPORT_DIR}/scripts/"
 chmod +x "${SUPPORT_DIR}/scripts/emit-context.py"
 chmod +x "${SUPPORT_DIR}/scripts/emit-edit-guard.py"
+chmod +x "${SUPPORT_DIR}/scripts/auto-approve-session.py"
 echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
 
 # Commands
@@ -135,7 +142,8 @@ mkdir -p "${COMMANDS_DIR}"
 cp "${SCRIPT_DIR}/commands/edit-on.md" "${COMMANDS_DIR}/"
 cp "${SCRIPT_DIR}/commands/edit-off.md" "${COMMANDS_DIR}/"
 cp "${SCRIPT_DIR}/commands/auto-approve.md" "${COMMANDS_DIR}/"
-echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md, auto-approve.md)"
+cp "${SCRIPT_DIR}/commands/auto-approve-session.md" "${COMMANDS_DIR}/"
+echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md, auto-approve.md, auto-approve-session.md)"
 
 # ── Resolve placeholders ────────────────────────────────────────────────────
 #
@@ -161,11 +169,13 @@ if [[ "$MODE" == "project" ]]; then
   # Single-quoted so $(...) is left literal for runtime expansion.
   EMIT_EDIT_GUARD_PATH='$(git rev-parse --show-toplevel)/.claude/permission-hooks/scripts/emit-edit-guard.py'
   EMIT_CONTEXT_PATH='$(git rev-parse --show-toplevel)/.claude/permission-hooks/scripts/emit-context.py'
+  AUTO_APPROVE_SESSION_PATH='$(git rev-parse --show-toplevel)/.claude/permission-hooks/scripts/auto-approve-session.py'
 else
   # Bake absolute paths for global/custom installs
   sed -i "s|{MG_INSTALL_PROJECT_ROOT}|${PROJECT_ROOT}|g" "$hook_file"
   EMIT_EDIT_GUARD_PATH="${SUPPORT_DIR}/scripts/emit-edit-guard.py"
   EMIT_CONTEXT_PATH="${SUPPORT_DIR}/scripts/emit-context.py"
+  AUTO_APPROVE_SESSION_PATH="${SUPPORT_DIR}/scripts/auto-approve-session.py"
 fi
 
 # Command files: {MG_INSTALL_EMIT_EDIT_GUARD_SCRIPT}
@@ -177,6 +187,9 @@ done
 
 # Command file: {MG_INSTALL_EMIT_CONTEXT_SCRIPT}
 sed -i "s|{MG_INSTALL_EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_PATH}|g" "${COMMANDS_DIR}/auto-approve.md"
+
+# Command file: {MG_INSTALL_AUTO_APPROVE_SESSION_SCRIPT}
+sed -i "s|{MG_INSTALL_AUTO_APPROVE_SESSION_SCRIPT}|${AUTO_APPROVE_SESSION_PATH}|g" "${COMMANDS_DIR}/auto-approve-session.md"
 
 # ── Clean up stale files ───────────────────────────────────────────────────
 
