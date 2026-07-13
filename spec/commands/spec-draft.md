@@ -189,6 +189,7 @@ Write the concept spec using the template structure from `{MG_INSTALL_CONCEPT_TE
 - Resolved choices with non-obvious rationale become Design Decision D-blocks
 - Items that remain unresolved after Phase 5 go into **Open Items** with the options and dependencies clearly stated
 - Include concrete examples (JSON, CLI, file structures) where they emerged during discussion
+- In `### What gets built`, cite the realizing decision(s) on each top-level bullet as `(Dx)` / `(Dx, Dy)`, referencing the D-blocks. Every top-level deliverable bullet must cite ≥1 decision — a deliverable no decision motivates is a smell; surface it rather than inventing a citation. (This keeps the spec projectable into a GSD milestone.)
 
 Determine the output name. Use AskUserQuestion:
 - header: "Output"
@@ -204,6 +205,7 @@ Before presenting the draft, scan the written document for:
 - **Scope conflicts** — items implicitly required by the Solution but listed in "What does NOT get built"
 - **Resolvable Open Items** — items in Open Items that actually have enough information from the discussion to be resolved (they should be Design Decisions instead)
 - **Uncovered scope items** — deliverables in "What gets built" that have no corresponding Verification criterion. Every scope row should be testable by at least one verification item
+- **Uncited deliverables** — top-level bullets in "What gets built" with no `(Dx)` citation. Every top-level bullet must cite ≥1 D-block; flag and fix before finalizing
 
 If any findings: report them to the user alongside the draft and fix before finalizing.
 

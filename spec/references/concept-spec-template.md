@@ -48,6 +48,8 @@ Numbered D1, D2, etc. Each decision captures a choice that was non-obvious, cont
 
 Files, commands, scripts, integrations — the concrete deliverables. Include complexity notes where useful (e.g., "straightforward wiring" vs. "requires new parsing logic"). File structure diagrams help when the concept introduces new directories or reorganizes existing ones.
 
+**Citation discipline (required):** every top-level bullet in this section must cite the design decision(s) it realizes, as `(Dx)` or `(Dx, Dy)`, referencing the `### Dn:` headings under `## Design Decisions`. A top-level bullet is a line starting at column 0 with `- ` inside this section; indented sub-bullets, prose, code blocks, and file-tree diagrams are illustration and are not required to cite. The citation must appear on the bullet's own single line. A deliverable that no decision motivates is a spec smell — add the decision or drop the deliverable. This lets each deliverable be traced to its decision when the spec is later projected into a milestone (`mg:spec-create-milestone`); the discipline is unconditional — it does not depend on whether the spec will become a milestone.
+
 ### What does NOT get built
 
 Explicit exclusions with a one-line reason each. These are scope boundaries, not deferrals — they state what this concept intentionally leaves out, not what it promises to do later.

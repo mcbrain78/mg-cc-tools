@@ -131,6 +131,15 @@ Provide a critical review focused on:
    least one corresponding item in the Verification section. A deliverable
    with no way to verify it is either untestable (rethink the deliverable)
    or under-specified (add the verification criterion).
+10. Citation discipline — in `### What gets built`, every top-level bullet (a
+    line starting at column 0 with `- ` in that section) must cite the design
+    decision(s) it realizes as `(Dx)` / `(Dx, Dy)`, referencing `### Dn:`
+    headings. Flag any top-level bullet with no citation, or citing a decision
+    number that has no matching D-block. Indented sub-bullets, prose, code
+    blocks, and file-tree diagrams are illustration and need no citation. A
+    deliverable no decision motivates is a spec smell: recommend adding the
+    decision or dropping the deliverable. (This keeps the spec projectable into
+    a GSD milestone via mg:spec-create-milestone.)
 
 Be harsh. Flag everything that seems off.
 Validate claims against actual data or code where possible.
