@@ -15,8 +15,10 @@ is optional — enter the pipeline wherever your work already is.
 Spec Pipeline
 =============
 
-  spec-draft ──→ spec-improve ──→ spec-gsd-phases ──→ spec-prepare-context ──→ spec-create-context
-   (idea)          (refine)        (add phases)         (split by phase)        (lock decisions)
+  spec-draft ──→ spec-improve ──┬─ spec-create-milestone ─┬─→ spec-prepare-context ──→ spec-create-context
+   (idea)          (refine)      │  (spec IS the milestone)│    (split by phase)        (lock decisions)
+                                 └─ spec-gsd-phases ───────┘
+                                    (add phases to an open milestone)
 
 Entry points
 ------------
@@ -24,7 +26,11 @@ Entry points
   Start from an idea or conversation:
     /mg:spec-draft
 
-  Start from an existing concept doc:
+  Turn a frozen concept doc into a whole new milestone (opens it, projects
+  requirements + roadmap):
+    /mg:spec-create-milestone v6.0 docs/work-queue/todo/{name}/concept.md
+
+  Add spec-derived phases to an already-open milestone:
     /mg:spec-gsd-phases docs/work-queue/todo/{name}/concept.md
 
   Phases already exist, concept needs splitting:
@@ -40,6 +46,8 @@ Commands
                                               Asks questions on gray areas, contradictions, gaps.
   /mg:spec-improve <file>                     Review and refine an existing concept spec.
                                               Uses fresh-eyes subagents to surface blind spots.
+  /mg:spec-create-milestone <version> <file>  Project a frozen concept spec into a GSD milestone:
+                                              PROJECT.md section, gated REQUIREMENTS.md, ROADMAP.md
   /mg:spec-gsd-phases <file>                  Analyze concept, propose and create GSD phases
   /mg:spec-prepare-context <range> <file>     Split concept into per-phase files
   /mg:spec-create-context <phase> <file>      Convert per-phase file to GSD CONTEXT.md

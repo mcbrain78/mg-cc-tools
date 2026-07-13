@@ -9,6 +9,7 @@ set -euo pipefail
 #   mg:spec-draft            Formalize ideas into concept specs
 #   mg:spec-improve          Iterative subagent-review improvement
 #   mg:spec-create-context   Convert concept spec to GSD CONTEXT.md
+#   mg:spec-create-milestone Project a frozen concept spec into a GSD milestone
 #   mg:spec-prepare-context  Split multi-phase doc into per-phase files
 #   mg:spec-gsd-phases       Analyze concept doc and create GSD phases
 #   mg:spec-help             Show pipeline and usage guide
@@ -25,6 +26,7 @@ COMMANDS=(
   spec-draft
   spec-improve
   spec-create-context
+  spec-create-milestone
   spec-prepare-context
   spec-gsd-phases
   spec-help
@@ -33,6 +35,7 @@ COMMANDS=(
 REFERENCES=(
   concept-spec-template.md
   context-template.snapshot
+  requirements-template.snapshot
 )
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
@@ -175,10 +178,12 @@ echo "  References → ${REFS_DIR}/"
 
 if [[ "$MODE" == "project" ]]; then
   SNAPSHOT_PATH=".claude/spec/references/context-template.snapshot"
+  REQ_SNAPSHOT_PATH=".claude/spec/references/requirements-template.snapshot"
   TEMPLATE_PATH=".claude/spec/references/concept-spec-template.md"
   SCRIPTS_PATH=".claude/spec/scripts"
 else
   SNAPSHOT_PATH="${REFS_DIR}/context-template.snapshot"
+  REQ_SNAPSHOT_PATH="${REFS_DIR}/requirements-template.snapshot"
   TEMPLATE_PATH="${REFS_DIR}/concept-spec-template.md"
   SCRIPTS_PATH="${SCRIPTS_DIR}"
 fi
@@ -188,6 +193,7 @@ for cmd in "${COMMANDS[@]}"; do
   [[ -f "$cmd_file" ]] || continue
 
   sed -i "s|{MG_INSTALL_TEMPLATE_SNAPSHOT}|${SNAPSHOT_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_REQUIREMENTS_SNAPSHOT}|${REQ_SNAPSHOT_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_CONCEPT_TEMPLATE}|${TEMPLATE_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
 done
@@ -219,6 +225,7 @@ echo "Invoke with:"
 echo "  /mg:spec-draft [<source-file-path>]"
 echo "  /mg:spec-improve <file-path>"
 echo "  /mg:spec-create-context <phase-number> <source-file-path>"
+echo "  /mg:spec-create-milestone <version> <spec-path>"
 echo "  /mg:spec-prepare-context <start>-<end> <source-file-path>"
 echo "  /mg:spec-gsd-phases <source-file-path>"
 echo "  /mg:spec-help"
