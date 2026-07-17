@@ -154,13 +154,13 @@ Read the reviewer's feedback. For each issue, apply this test — but only consi
 
 **Skip** everything else. Log it as cosmetic in the report and move on.
 
-Fix **up to 5 issues** per round. If fewer than 5 clear the bar, fix only those. If zero clear the bar, skip straight to Step 7 and recommend stopping.
+Fix **up to 10 issues** per round. If fewer than 10 clear the bar, fix only those. If zero clear the bar, skip straight to Step 7 and recommend stopping.
 
 **When running multiple rounds:** Treat each reviewer's output as the complete, canonical list of live issues. If an issue appears again from a previous round, it means it was not fixed — do not dismiss it as "already seen." If an issue from a previous round no longer appears, the reviewer considers it resolved. Never use your memory of prior rounds to filter or deprioritize findings.
 
 ## Step 3 — Enforce Cap
 
-Count the issues you marked for fixing in Step 2. If the count exceeds 5, re-read the list, keep only the 5 highest-severity ones, and move the rest to deferred. Do NOT proceed until the count is at most 5.
+Count the issues you marked for fixing in Step 2. If the count exceeds 10, re-read the list, keep only the 10 highest-severity ones, and move the rest to deferred. Do NOT proceed until the count is at most 10.
 
 ## Step 4 — Targeted Research
 
@@ -184,7 +184,7 @@ For each issue, report:
 
 ## Step 5 — Implement Fixes
 
-Apply all fixes to AUTO_IMPROVE_FILE where you are confident in the resolution. For each fix, leave a brief inline comment or commit-style note explaining what changed and why.
+Apply all fixes to AUTO_IMPROVE_FILE where you are confident in the resolution.
 
 When adding detail to resolve a "missing piece" finding, specify the interface contract (CLI flags, data format, behavior description) — not implementation code. If the fix requires showing how something works, describe the algorithm in prose rather than writing the function body.
 
@@ -240,7 +240,7 @@ After delivering the report, **stop and wait for the user**. Do not proceed unti
 <important_notes>
 - Only a subagent can review with truly fresh eyes. The main agent carries conversation context that biases the review. Always use the Agent tool for the reviewer.
 - The concept spec template at `.claude/spec/references/concept-spec-template.md` is included in the reviewer prompt so it can assess structural completeness — whether expected sections are present and adequately filled.
-- The 5-issue cap per round prevents scope creep and keeps each round focused. If the reviewer finds 15 issues, the 5 most severe get fixed first. The rest surface in subsequent rounds.
+- The 10-issue cap per round prevents scope creep and keeps each round focused. If the reviewer finds 15 issues, the 10 most severe get fixed first. The rest surface in subsequent rounds.
 - AUTO_IMPROVE_FILE is the safety net. The original is never touched until explicit approval. This allows the user to reject changes cleanly.
 - NON_GOALS_FILE accumulates across rounds. Once a non-goal is approved, future reviewers skip it, preventing the same intentional exclusion from being flagged repeatedly.
 - When running multiple rounds, each round starts fresh — the reviewer re-reads the file and produces a new list. Do not carry state from previous rounds except for the NON_GOALS_FILE.
