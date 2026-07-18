@@ -56,6 +56,7 @@ REQUIRED_HEADINGS: list[str] = [
 # temporary section a mature spec legitimately empties or drops (concept D8).
 
 BLOCK_THRESHOLD = 3          # D5: >= this many distinct anchor units → blocked
+CHURN_ESCALATE = 2           # D2/D13: >= this many flips or fixes → step-7 escalation
 JUDGES = ("builds-wrong-thing", "implementer-blocked", "scope-intent-drift")
 MIN_PANEL = 3                # tally rejects vote sets smaller than this
 
@@ -345,6 +346,7 @@ def cmd_decisions_summary(dpath: Path) -> int:
             "confidence": r.get("confidence"),
             "review_first": bool(r.get("review_first")),
             "dropped": bool(r.get("dropped")),
+            "finding_atoms": r.get("finding_atoms", []),  # continuation rebuild recomputes atoms radius
             "pre_take_radius": r.get("pre_take_radius"),
             "post_take_radius": r.get("post_take_radius"),
             "depends_on": sorted(deps.get(rid, set()), key=_id_num),
@@ -956,13 +958,64 @@ def cmd_atoms_radius(ledger_path: Path, lineage_json: str) -> int:
     return 0
 
 
+def cmd_atoms_churn_check(ledger_path: Path) -> int:
+    """Step-7 escalation threshold (D2/D13). Returns the lineage ids whose churn
+    has crossed CHURN_ESCALATE and the macro-finding ids that have been fixed
+    that many times, so the drain does only set-membership lookups."""
+    try:
+        ledger = _load_ledger(ledger_path)
+    except (ValueError, json.JSONDecodeError) as e:
+        return _fail(f"cannot read ledger: {e}")
+    flip_lids: set[str] = set()
+    fix_lids: set[str] = set()
+    for atom in ledger["atoms"]:
+        lid = atom.get("lineage_id")
+        if lid is None:
+            continue
+        churn = atom.get("churn", {})
+        if churn.get("verdict_flips", 0) >= CHURN_ESCALATE:
+            flip_lids.add(lid)
+        if churn.get("fix_count", 0) >= CHURN_ESCALATE:
+            fix_lids.add(lid)
+    macros = sorted(
+        m["id"] for m in ledger.get("macro_findings", [])
+        if m.get("fix_count", 0) >= CHURN_ESCALATE
+    )
+    _emit({
+        "flip_escalate_lineages": sorted(flip_lids),
+        "fix_escalate_lineages": sorted(fix_lids),
+        "escalate_macros": macros,
+    })
+    return 0
+
+
+def cmd_atoms_macro_ids(doc: Path, findings_json: str) -> int:
+    """Canonical macro-finding ids (D13: the script is its sole canonicalizer).
+    Each finding is '<class>:<sorted distinct canonical sections joined by |>'."""
+    if not doc.is_file():
+        return _fail(f"doc not found: {doc}")
+    try:
+        findings = json.loads(findings_json)
+    except json.JSONDecodeError:
+        return _fail("macro-ids --findings must be a JSON list")
+    doc_text = doc.read_text()
+    ids: list[str] = []
+    for finding in findings:
+        cls = finding.get("class", "")
+        canon = sorted({_canonicalize(s, doc_text) for s in finding.get("sections", [])})
+        ids.append(f"{cls}:" + "|".join(canon))
+    _emit({"ids": ids})
+    return 0
+
+
 # ── atoms dispatch ───────────────────────────────────────────────────────────
 
 
 def _dispatch_atoms(subargs: list[str]) -> int:
     if not subargs:
         return _fail("atoms requires a subcommand "
-                     "(extract | merge | reanchor | mark-dirty | record-verdicts | coverage | radius)")
+                     "(extract | merge | reanchor | mark-dirty | record-verdicts | "
+                     "coverage | radius | churn-check | macro-ids)")
     sub, rest = subargs[0], subargs[1:]
     if sub == "extract":
         ledger, rest = _flag(rest, "--ledger")
@@ -1009,6 +1062,17 @@ def _dispatch_atoms(subargs: list[str]) -> int:
         if not ledger or atoms_json is None:
             return _fail("atoms radius requires --ledger <path> --atoms <json>")
         return cmd_atoms_radius(Path(ledger), atoms_json)
+    if sub == "churn-check":
+        ledger, rest = _flag(rest, "--ledger")
+        if not ledger:
+            return _fail("atoms churn-check requires --ledger <path>")
+        return cmd_atoms_churn_check(Path(ledger))
+    if sub == "macro-ids":
+        doc, rest = _flag(rest, "--doc")
+        findings, rest = _flag(rest, "--findings")
+        if not doc or findings is None:
+            return _fail("atoms macro-ids requires --doc <path> --findings <json>")
+        return cmd_atoms_macro_ids(Path(doc), findings)
     return _fail(f"unknown atoms subcommand: {sub}")
 
 
@@ -1030,6 +1094,8 @@ Usage: spec_checks.py <command> [args]
   atoms record-verdicts --ledger P --verdicts F       Apply round delta (echoes count)
   atoms coverage --ledger P                           Coverage-completeness verdict
   atoms radius --ledger P --atoms JSON                Anchor-unit footprint of lineage ids
+  atoms churn-check --ledger P                        Step-7 escalation lineage/macro sets
+  atoms macro-ids --doc D --findings JSON             Canonical macro-finding ids
 """
 
 

@@ -296,6 +296,7 @@ class TestCrossScriptRoundTrip:
         assert proj["title"] == "Cross-script"
         assert proj["confidence"] == "high"
         assert proj["review_first"] is True
+        assert proj["finding_atoms"] == ["L1", "L2"]  # carried for continuation atoms-radius recompute
 
         # read side — briefing renders it
         assert main(["briefing", str(decisions)]) == 0
@@ -540,6 +541,58 @@ class TestRadius:
         out = _out(capsys)
         assert out["sections"] == ["## A / ### D1", "## B"]
         assert out["units"] == 2 and out["atoms"] == 2
+
+
+class TestChurnCheck:
+    def test_escalation_sets(self, tmp_path: Path, capsys) -> None:
+        atoms = [
+            _atom("a1", "L1", "claim", "## S", "x", flips=2),               # flip escalate
+            _atom("a2", "L2", "claim", "## S", "y", flips=1),               # below flip bar
+            _atom("a3", "L3", "claim", "## S", "z", fix_count=3),           # fix escalate
+            _atom("a4", "L4", "claim", "## S", "w", fix_count=1),           # below fix bar
+            _atom("a5", "L1", "claim", "## S", "v", flips=5),               # dup lineage L1
+        ]
+        macro = [
+            {"id": "builds-wrong:## A", "fix_count": 2},                    # escalate
+            {"id": "drift:## B", "fix_count": 1},                          # below bar
+        ]
+        ledger = _ledger(tmp_path, atoms, macro)
+        assert main(["atoms", "churn-check", "--ledger", str(ledger)]) == 0
+        out = _out(capsys)
+        assert out["flip_escalate_lineages"] == ["L1"]         # sorted distinct
+        assert out["fix_escalate_lineages"] == ["L3"]
+        assert out["escalate_macros"] == ["builds-wrong:## A"]
+
+    def test_empty_ledger(self, tmp_path: Path, capsys) -> None:
+        ledger = _ledger(tmp_path, [])
+        assert main(["atoms", "churn-check", "--ledger", str(ledger)]) == 0
+        out = _out(capsys)
+        assert out == {"flip_escalate_lineages": [], "fix_escalate_lineages": [],
+                       "escalate_macros": []}
+
+
+class TestMacroIds:
+    def test_canonicalizes_and_joins(self, tmp_path: Path, capsys) -> None:
+        doc = tmp_path / "concept.md"
+        doc.write_text("## Design Decisions\n\n### D3: Foo\nbody\n\n## Scope\ntext\n")
+        findings = [
+            # bare ### D3 canonicalizes to its chain; duplicate collapses; sorted
+            {"class": "builds-wrong-thing", "sections": ["## Scope", "### D3", "### D3"]},
+            {"class": "scope-intent-drift", "sections": ["### D3"]},
+        ]
+        assert main(["atoms", "macro-ids", "--doc", str(doc),
+                     "--findings", json.dumps(findings)]) == 0
+        out = _out(capsys)
+        assert out["ids"] == [
+            "builds-wrong-thing:## Design Decisions / ### D3: Foo|## Scope",
+            "scope-intent-drift:## Design Decisions / ### D3: Foo",
+        ]
+
+    def test_empty_findings(self, tmp_path: Path, capsys) -> None:
+        doc = tmp_path / "concept.md"
+        doc.write_text("## S\ntext\n")
+        assert main(["atoms", "macro-ids", "--doc", str(doc), "--findings", "[]"]) == 0
+        assert _out(capsys)["ids"] == []
 
 
 class TestLineageAndChurn:
