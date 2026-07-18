@@ -425,14 +425,14 @@ def cmd_briefing(dpath: Path) -> int:
     return 0
 
 
-# ── Atom ledger (D13) — minimal core: extract, reanchor, record-verdicts ─────
+# ── Atom ledger (D13) — extract, merge, reanchor, mark-dirty, record-verdicts,
+#    coverage, radius; lineage + churn ─────────────────────────────────────────
 #
 # The pyramid's working state. Managed exclusively here (never hand-edited).
-# This is the minimal slice the ledger-fidelity spike (Gate B) exercises; Phase
-# 2 extends it with prose merge tie-breaks, lineage, input-set propagation,
-# coverage, and radius. The document text always comes from the working copy
-# passed as <doc>; the ledger lives at the separate --ledger path (the two are
-# decoupled, so this module never depends on improve_files' naming).
+# Spans are CHARACTER offsets into the document so two distinct prose atoms on
+# one line stay distinct (line spans would collapse them). Document text always
+# comes from the working copy passed as <doc>; the ledger lives at the separate
+# --ledger path (decoupled from improve_files' naming).
 
 
 def _atom_hash(text: str) -> str:
@@ -453,9 +453,17 @@ def _write_ledger(path: Path, ledger: dict) -> None:
     path.write_text(json.dumps(ledger, indent=2) + "\n")
 
 
+def _doc_lines(text: str) -> list[str]:
+    return text.split("\n")
+
+
+def _line_index(text: str, char_pos: int) -> int:
+    return text.count("\n", 0, max(0, char_pos))
+
+
 def _anchor_at(lines: list[str], idx: int) -> str:
     """Canonical section path enclosing line ``idx``: the ``##``-to-deepest-
-    ``###`` chain joined by ' / ' (concept D13 anchoring; script is the sole
+    ``###`` chain joined by ' / ' (D13 anchoring; the script is the sole
     canonicalizer)."""
     h3: str | None = None
     h2: str | None = None
@@ -475,6 +483,29 @@ def _anchor_at(lines: list[str], idx: int) -> str:
     return "(preamble)"
 
 
+def _anchor_at_char(text: str, char_pos: int) -> str:
+    return _anchor_at(_doc_lines(text), _line_index(text, char_pos))
+
+
+def _heading_key(h: str) -> str:
+    """Normalize a heading for matching — drop a trailing ': title' so a bare
+    '### D3' in a report matches the document's '### D3: A decision'."""
+    return re.sub(r":\s.*$", "", h.strip()).rstrip()
+
+
+def _canonicalize(raw: str, text: str) -> str:
+    """Resolve a raw/bare heading (e.g. '### D3', or an already-canonical chain)
+    to canonical '## X / ### Y' form against the current heading tree."""
+    target = raw.strip().split("/")[-1].strip()
+    tkey = _heading_key(target)
+    lines = _doc_lines(text)
+    for i, ln in enumerate(lines):
+        s = ln.rstrip()
+        if (s.startswith("## ") or s.startswith("### ")) and _heading_key(s) == tkey:
+            return _anchor_at(lines, i)
+    return raw.strip()
+
+
 def _mk_atom(atype: str, anchor: str, text: str, start: int, end: int) -> dict:
     return {
         "id": None,
@@ -483,42 +514,46 @@ def _mk_atom(atype: str, anchor: str, text: str, start: int, end: int) -> dict:
         "anchor": anchor,
         "text": text,
         "hash": _atom_hash(text),
-        "span": {"start_line": start, "end_line": end},
+        "span": {"start": start, "end": end},
         "input_set": {"sections": [anchor], "external": []},
         "verdict": {"state": "unverified", "computed_against_hash": None},
-        "churn": {"verdict_flips": 0, "fix_count": 0},
+        "churn": {"verdict_flips": 0, "fix_count": 0, "last_conclusion": None},
     }
 
 
 _CITE = re.compile(r"\(D\d+(?:,\s*D\d+)*\)")
+_DBLOCK = re.compile(r"^### D\d+:")
 
 
 def _extract_mechanical(text: str) -> list[dict]:
-    """Deterministic mechanical atoms: headings, code-fenced contracts, and
-    citation bullets. (Prose atoms — claims/assumptions/scope-items/examples —
-    come from the redundant extraction agents, merged in later.)"""
-    lines = text.splitlines()
+    """Deterministic mechanical atoms with CHARACTER spans: D-block frames
+    (### Dn: heading), other headings, code-fenced contracts, citation bullets.
+    Prose atoms come from the redundant extraction agents, merged in by `merge`."""
     atoms: list[dict] = []
+    pos = 0
     in_fence = False
     fence_start = 0
-    for i, line in enumerate(lines):
+    for line in _doc_lines(text):
+        line_start = pos
+        line_end = pos + len(line)
         stripped = line.lstrip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             if not in_fence:
                 in_fence = True
-                fence_start = i
+                fence_start = line_start
             else:
                 in_fence = False
-                block = "\n".join(lines[fence_start:i + 1])
-                atoms.append(_mk_atom("contract", _anchor_at(lines, fence_start), block, fence_start, i))
-            continue
-        if in_fence:
-            continue
-        s = line.rstrip()
-        if s.startswith("## ") or s.startswith("### "):
-            atoms.append(_mk_atom("heading", _anchor_at(lines, i), s, i, i))
-        elif line.startswith("- ") and _CITE.search(line):
-            atoms.append(_mk_atom("citation", _anchor_at(lines, i), s, i, i))
+                atoms.append(_mk_atom("contract", _anchor_at_char(text, fence_start),
+                                      text[fence_start:line_end], fence_start, line_end))
+        elif not in_fence:
+            s = line.rstrip()
+            if _DBLOCK.match(s):
+                atoms.append(_mk_atom("d-block", _anchor_at_char(text, line_start), s, line_start, line_end))
+            elif s.startswith("## ") or s.startswith("### "):
+                atoms.append(_mk_atom("heading", _anchor_at_char(text, line_start), s, line_start, line_end))
+            elif line.startswith("- ") and _CITE.search(line):
+                atoms.append(_mk_atom("citation", _anchor_at_char(text, line_start), s, line_start, line_end))
+        pos = line_end + 1
     return atoms
 
 
@@ -529,10 +564,142 @@ def _assign_ids(atoms: list[dict], start: int = 1) -> list[dict]:
     return atoms
 
 
+def _next_num(ledger: dict, prefix: str, field: str) -> int:
+    nums = [int(m.group(1)) for a in ledger["atoms"]
+            if (m := re.match(rf"{prefix}(\d+)$", str(a.get(field, ""))))]
+    return (max(nums) + 1) if nums else 1
+
+
+def _locate(atext: str, doc_text: str) -> tuple[int, int] | None:
+    idx = doc_text.find(atext)
+    return None if idx == -1 else (idx, idx + len(atext))
+
+
+def _spans_overlap(a: tuple, b: tuple) -> bool:
+    return a[0] < b[1] and b[0] < a[1]
+
+
+# ── extract ──────────────────────────────────────────────────────────────────
+
+
+def cmd_atoms_extract(doc: Path, ledger_path: Path | None, write: bool) -> int:
+    if not doc.is_file():
+        return _fail(f"document not found: {doc}")
+    atoms = _assign_ids(_extract_mechanical(doc.read_text()))
+    if write:
+        if ledger_path is None:
+            return _fail("atoms extract --write requires --ledger <path>")
+        _write_ledger(ledger_path, {"atoms": atoms, "macro_findings": []})
+    _emit({"atoms": atoms})
+    return 0
+
+
+# ── merge (prose union, tie-breaks, drop-mechanical-overlap) ─────────────────
+
+
+def _native_type(anchor: str, types: list[str]) -> str:
+    """Section-native precedence for a cross-type overlap (D13): a scope section
+    resolves to scope-item; otherwise claim > assumption > example."""
+    if "What gets built" in anchor or "What does NOT get built" in anchor:
+        return "scope-item"
+    for t in ("claim", "assumption", "example"):
+        if t in types:
+            return t
+    return types[0]
+
+
+def _cluster_overlapping(items: list[dict]) -> list[list[dict]]:
+    """Group candidates whose char spans transitively overlap."""
+    items = sorted(items, key=lambda c: c["span"][0])
+    clusters: list[list[dict]] = []
+    cur: list[dict] = []
+    cur_end = -1
+    for c in items:
+        s, e = c["span"]
+        if cur and s < cur_end:
+            cur.append(c)
+            cur_end = max(cur_end, e)
+        else:
+            if cur:
+                clusters.append(cur)
+            cur = [c]
+            cur_end = e
+    if cur:
+        clusters.append(cur)
+    return clusters
+
+
+def _merge_prose(located: list[dict]) -> list[dict]:
+    """Same-type + same-section + overlapping candidates collapse to the WIDEST
+    span; a cross-type overlap reconciles to one atom by section-native
+    precedence; disjoint candidates survive. No flagged text is dropped — the
+    widest span of a cluster contains the narrower ones."""
+    by_anchor: dict = {}
+    for c in located:
+        by_anchor.setdefault(c["anchor"], []).append(c)
+    result: list[dict] = []
+    for anchor, group in by_anchor.items():
+        for cluster in _cluster_overlapping(group):
+            types = [c["type"] for c in cluster]
+            widest = max(cluster, key=lambda c: c["span"][1] - c["span"][0])
+            atype = types[0] if len(set(types)) == 1 else _native_type(anchor, types)
+            result.append({"type": atype, "text": widest["text"], "anchor": anchor,
+                           "span": {"start": widest["span"][0], "end": widest["span"][1]}})
+    result.sort(key=lambda r: r["span"]["start"])
+    return result
+
+
+def cmd_atoms_merge(doc: Path, ledger_path: Path, cand_files: list[str], write: bool) -> int:
+    if not doc.is_file():
+        return _fail(f"document not found: {doc}")
+    try:
+        ledger = _load_ledger(ledger_path)
+    except (ValueError, json.JSONDecodeError) as e:
+        return _fail(f"cannot read ledger: {e}")
+    doc_text = doc.read_text()
+    mech_spans = [(a["span"]["start"], a["span"]["end"]) for a in ledger["atoms"] if "span" in a]
+
+    located: list[dict] = []
+    for cf in cand_files:
+        p = Path(cf)
+        if not p.is_file():
+            return _fail(f"candidates file not found: {p}")
+        data = json.loads(p.read_text())
+        items = data if isinstance(data, list) else data.get("candidates", [])
+        for c in items:
+            t = c.get("text", "")
+            if not t:
+                continue
+            span = _locate(t, doc_text)
+            if span is None:
+                continue                                    # unlocatable (fidelity miss) — skip
+            if any(_spans_overlap(span, ms) for ms in mech_spans):
+                continue                                    # overlaps a mechanical span — dropped at merge
+            located.append({"type": c.get("type", "claim"), "text": t,
+                            "anchor": _anchor_at_char(doc_text, span[0]), "span": span})
+
+    merged = _merge_prose(located)
+    na = _next_num(ledger, "a", "id")
+    nl = _next_num(ledger, "L", "lineage_id")
+    new_atoms: list[dict] = []
+    for k, mg in enumerate(merged):
+        atom = _mk_atom(mg["type"], mg["anchor"], mg["text"], mg["span"]["start"], mg["span"]["end"])
+        atom["id"] = f"a{na + k}"
+        atom["lineage_id"] = f"L{nl + k}"
+        new_atoms.append(atom)
+    if write:
+        ledger["atoms"].extend(new_atoms)
+        _write_ledger(ledger_path, ledger)
+    _emit({"merged_atoms": new_atoms})
+    return 0
+
+
+# ── reanchor (content-hash re-walk + external-input staleness) ───────────────
+
+
 def _find_atom(new_lines: list[str], new_text: str, text: str) -> tuple[int, int] | None:
-    """Locate an atom's stored text in the current document (content-hash
-    re-walk, realized as a text search). Returns (start_line, end_line) or None
-    if the atom vanished."""
+    """Locate an atom's stored text in the current document (content-hash re-walk
+    as a text search). Returns (start_line, end_line) or None if vanished."""
     if "\n" in text:
         idx = new_text.find(text)
         if idx == -1:
@@ -562,18 +729,6 @@ def _uncovered_regions(new_lines: list[str], covered: set[int]) -> list[dict]:
     return regions
 
 
-def cmd_atoms_extract(doc: Path, ledger_path: Path | None, write: bool) -> int:
-    if not doc.is_file():
-        return _fail(f"document not found: {doc}")
-    atoms = _assign_ids(_extract_mechanical(doc.read_text()))
-    if write:
-        if ledger_path is None:
-            return _fail("atoms extract --write requires --ledger <path>")
-        _write_ledger(ledger_path, {"atoms": atoms, "macro_findings": []})
-    _emit({"atoms": atoms})
-    return 0
-
-
 def cmd_atoms_reanchor(doc: Path, ledger_path: Path) -> int:
     if not doc.is_file():
         return _fail(f"document not found: {doc}")
@@ -582,32 +737,94 @@ def cmd_atoms_reanchor(doc: Path, ledger_path: Path) -> int:
     except (ValueError, json.JSONDecodeError) as e:
         return _fail(f"cannot read ledger: {e}")
     new_text = doc.read_text()
-    new_lines = new_text.splitlines()
+    new_lines = new_text.split("\n")
     relocated: list[dict] = []
     vanished: list[str] = []
+    external_stale: list[str] = []
     covered: set[int] = set()
     for atom in ledger["atoms"]:
         pos = _find_atom(new_lines, new_text, atom["text"])
         if pos is None:
             vanished.append(atom["id"])
-            continue
-        start, end = pos
-        covered.update(range(start, end + 1))
-        new_anchor = _anchor_at(new_lines, start)
-        if new_anchor != atom["anchor"]:
-            relocated.append({"id": atom["id"], "old": atom["anchor"], "new": new_anchor})
+        else:
+            start, end = pos
+            covered.update(range(start, end + 1))
+            new_anchor = _anchor_at(new_lines, start)
+            if new_anchor != atom["anchor"]:
+                relocated.append({"id": atom["id"], "old": atom["anchor"], "new": new_anchor})
+        for ext in atom.get("input_set", {}).get("external", []):
+            ep = Path(ext.get("path", ""))
+            if ep.is_file() and _atom_hash(ep.read_text()) != ext.get("hash"):
+                external_stale.append(atom["id"])
+                break
     _emit({
         "relocated": relocated,
         "vanished": vanished,
+        "external_stale": external_stale,
         "new_regions": _uncovered_regions(new_lines, covered),
     })
     return 0
 
 
+# ── mark-dirty (canonicalize + input-set propagation) ────────────────────────
+
+
+def cmd_atoms_mark_dirty(doc: Path, ledger_path: Path, touched_json: str) -> int:
+    if not doc.is_file():
+        return _fail(f"document not found: {doc}")
+    try:
+        ledger = _load_ledger(ledger_path)
+    except (ValueError, json.JSONDecodeError) as e:
+        return _fail(f"cannot read ledger: {e}")
+    try:
+        touched_raw = json.loads(touched_json)
+    except json.JSONDecodeError:
+        return _fail("mark-dirty --touched must be a JSON list of section paths")
+    doc_text = doc.read_text()
+    canon_touched = {_canonicalize(t, doc_text) for t in touched_raw}
+    dirty: list[str] = []
+    for atom in ledger["atoms"]:
+        atom_sections = {_canonicalize(s, doc_text) for s in atom.get("input_set", {}).get("sections", [])}
+        if atom_sections & canon_touched:
+            dirty.append(atom["id"])
+    _emit({"dirty": dirty, "canonical_touched": sorted(canon_touched)})
+    return 0
+
+
+# ── record-verdicts (sole round-close writer) ────────────────────────────────
+
+
+def _assign_new_lineage(new_atoms: list[dict], vanished_atoms: list[dict], ledger: dict) -> None:
+    """A successor inherits its predecessor's lineage id + churn counters, matched
+    by anchor locality (same section; among several, the highest-churn ancestor —
+    the merge rule; a split forks the same id to every successor). fix_count += 1
+    for the edit that produced the successor. No predecessor → a fresh lineage."""
+    next_l = _next_num(ledger, "L", "lineage_id")
+    for na in new_atoms:
+        if na.get("lineage_id"):
+            continue
+        cands = [va for va in vanished_atoms if va.get("anchor") == na.get("anchor")]
+        if cands:
+            pred = max(cands, key=lambda va: (va.get("churn", {}).get("fix_count", 0),
+                                              va.get("churn", {}).get("verdict_flips", 0)))
+            pc = pred.get("churn", {})
+            na["lineage_id"] = pred.get("lineage_id")
+            na["churn"] = {"verdict_flips": pc.get("verdict_flips", 0),
+                           "fix_count": pc.get("fix_count", 0) + 1,
+                           "last_conclusion": pc.get("last_conclusion")}
+        else:
+            na["lineage_id"] = f"L{next_l}"
+            next_l += 1
+            na.setdefault("churn", {"verdict_flips": 0, "fix_count": 0, "last_conclusion": None})
+
+
 def cmd_atoms_record_verdicts(ledger_path: Path, verdicts_path: Path) -> int:
-    """Sole round-close ledger writer. Applies verdicts + reanchor delta + any
-    incrementally-extracted atoms, and echoes the applied count so the JS can
-    assert it equals what it marshaled in (reverse-relay guard, concept)."""
+    """Sole round-close ledger writer. Applies the whole round delta — verdicts
+    (overwriting prior), churn (verdict_flips only on a finding-conclusion change),
+    input-set-propagation dirty flags, reanchor delta (relocations, vanished
+    removal, external-stale dirtying), incrementally-extracted atoms (with
+    lineage), and macro-finding fix_count bumps — and echoes the applied verdict
+    count so the JS can assert it equals what it marshaled in."""
     try:
         ledger = _load_ledger(ledger_path)
     except (ValueError, json.JSONDecodeError) as e:
@@ -625,6 +842,13 @@ def cmd_atoms_record_verdicts(ledger_path: Path, verdicts_path: Path) -> int:
         atom = by_id.get(v.get("atom_id"))
         if atom is None:
             continue
+        conclusion = v.get("finding_conclusion")
+        if conclusion is not None:
+            churn = atom.setdefault("churn", {"verdict_flips": 0, "fix_count": 0, "last_conclusion": None})
+            last = churn.get("last_conclusion")
+            if last is not None and last != conclusion:
+                churn["verdict_flips"] = churn.get("verdict_flips", 0) + 1
+            churn["last_conclusion"] = conclusion
         atom["verdict"] = {"state": v.get("state"), "computed_against_hash": v.get("computed_against_hash")}
         if "input_set" in v:
             atom["input_set"] = v["input_set"]
@@ -635,25 +859,110 @@ def cmd_atoms_record_verdicts(ledger_path: Path, verdicts_path: Path) -> int:
         atom = by_id.get(r["id"])
         if atom:
             atom["anchor"] = r["new"]
-    vanished = set(delta.get("vanished", []))
-    ledger["atoms"] = [a for a in ledger["atoms"] if a["id"] not in vanished]
 
+    def _dirty(atom_id: str) -> None:
+        atom = by_id.get(atom_id)
+        if atom and atom["verdict"].get("state") == "verified":
+            atom["verdict"]["state"] = "dirty"
+
+    for did in vf.get("dirty", []):
+        _dirty(did)
+    for did in delta.get("external_stale", []):
+        _dirty(did)
+
+    vanished_ids = set(delta.get("vanished", []))
+    vanished_atoms = [a for a in ledger["atoms"] if a["id"] in vanished_ids]
     new_atoms = vf.get("new_atoms", [])
-    nums = [int(m.group(1)) for a in ledger["atoms"] if (m := re.match(r"a(\d+)$", str(a.get("id"))))]
-    next_a = (max(nums) + 1) if nums else 1
+    _assign_new_lineage(new_atoms, vanished_atoms, ledger)
+    ledger["atoms"] = [a for a in ledger["atoms"] if a["id"] not in vanished_ids]
+
+    next_a = _next_num(ledger, "a", "id")
     for k, na in enumerate(new_atoms):
         na.setdefault("id", f"a{next_a + k}")
         na.setdefault("hash", _atom_hash(na.get("text", "")))
         ledger["atoms"].append(na)
+
+    macro = {m["id"]: m for m in ledger.get("macro_findings", [])}
+    for mf in vf.get("macro_findings", []):
+        mid = mf.get("id")
+        entry = macro.get(mid)
+        if entry is None:
+            entry = {"id": mid, "fix_count": 0}
+            macro[mid] = entry
+            ledger.setdefault("macro_findings", []).append(entry)
+        if mf.get("fixed"):
+            entry["fix_count"] = entry.get("fix_count", 0) + 1
 
     _write_ledger(ledger_path, ledger)
     _emit({"applied": applied, "new_atoms_added": len(new_atoms), "atom_count": len(ledger["atoms"])})
     return 0
 
 
+# ── coverage + radius ────────────────────────────────────────────────────────
+
+
+def cmd_atoms_coverage(ledger_path: Path) -> int:
+    """{verified, unverifiable, total, complete, never_verified}. Denominator
+    excludes heading atoms (no micro-check) and vanished atoms (already removed).
+    An atom is verified only if state==verified AND computed against the current
+    hash; a hash-stale 'verified' atom counts as dirty."""
+    try:
+        ledger = _load_ledger(ledger_path)
+    except (ValueError, json.JSONDecodeError) as e:
+        return _fail(f"cannot read ledger: {e}")
+    non_heading = [a for a in ledger["atoms"] if a.get("type") != "heading"]
+    verified = unverifiable = 0
+    never_verified: list[str] = []
+    dirty: list[str] = []
+    for a in non_heading:
+        st = a.get("verdict", {}).get("state")
+        if st == "verified":
+            if a["verdict"].get("computed_against_hash") == a.get("hash"):
+                verified += 1
+            else:
+                dirty.append(a["id"])
+        elif st == "unverifiable":
+            unverifiable += 1
+        elif st == "dirty":
+            dirty.append(a["id"])
+        else:
+            never_verified.append(a["id"])
+    total = len(non_heading)
+    _emit({
+        "verified": verified,
+        "unverifiable": unverifiable,
+        "total": total,
+        "complete": verified + unverifiable == total,
+        "never_verified": never_verified,
+        "dirty": dirty,
+    })
+    return 0
+
+
+def cmd_atoms_radius(ledger_path: Path, lineage_json: str) -> int:
+    """Anchor-unit footprint of a set of lineage ids (the evidence footprint the
+    pre-take blast radius and briefing ranking consume)."""
+    try:
+        ledger = _load_ledger(ledger_path)
+    except (ValueError, json.JSONDecodeError) as e:
+        return _fail(f"cannot read ledger: {e}")
+    try:
+        lids = set(json.loads(lineage_json))
+    except json.JSONDecodeError:
+        return _fail("radius --atoms must be a JSON list of lineage ids")
+    atoms = [a for a in ledger["atoms"] if a.get("lineage_id") in lids]
+    sections = sorted({a.get("anchor") for a in atoms})
+    _emit({"sections": sections, "units": len(sections), "atoms": len(atoms)})
+    return 0
+
+
+# ── atoms dispatch ───────────────────────────────────────────────────────────
+
+
 def _dispatch_atoms(subargs: list[str]) -> int:
     if not subargs:
-        return _fail("atoms requires a subcommand (extract | reanchor | record-verdicts)")
+        return _fail("atoms requires a subcommand "
+                     "(extract | merge | reanchor | mark-dirty | record-verdicts | coverage | radius)")
     sub, rest = subargs[0], subargs[1:]
     if sub == "extract":
         ledger, rest = _flag(rest, "--ledger")
@@ -662,18 +971,44 @@ def _dispatch_atoms(subargs: list[str]) -> int:
         if not positionals:
             return _fail("atoms extract requires <doc>")
         return cmd_atoms_extract(Path(positionals[0]), Path(ledger) if ledger else None, write)
+    if sub == "merge":
+        ledger, rest = _flag(rest, "--ledger")
+        cands, rest = _flag(rest, "--candidates")
+        write = "--write" in rest
+        positionals = [a for a in rest if not a.startswith("--")]
+        if not positionals or not ledger or not cands:
+            return _fail("atoms merge requires <doc> --ledger <path> --candidates <f1[,f2]>")
+        return cmd_atoms_merge(Path(positionals[0]), Path(ledger), cands.split(","), write)
     if sub == "reanchor":
         ledger, rest = _flag(rest, "--ledger")
         positionals = [a for a in rest if not a.startswith("--")]
         if not positionals or not ledger:
             return _fail("atoms reanchor requires <doc> --ledger <path>")
         return cmd_atoms_reanchor(Path(positionals[0]), Path(ledger))
+    if sub == "mark-dirty":
+        ledger, rest = _flag(rest, "--ledger")
+        touched, rest = _flag(rest, "--touched")
+        positionals = [a for a in rest if not a.startswith("--")]
+        if not positionals or not ledger or touched is None:
+            return _fail("atoms mark-dirty requires <doc> --ledger <path> --touched <json>")
+        return cmd_atoms_mark_dirty(Path(positionals[0]), Path(ledger), touched)
     if sub == "record-verdicts":
         ledger, rest = _flag(rest, "--ledger")
         verdicts, rest = _flag(rest, "--verdicts")
         if not ledger or not verdicts:
             return _fail("atoms record-verdicts requires --ledger <path> --verdicts <file>")
         return cmd_atoms_record_verdicts(Path(ledger), Path(verdicts))
+    if sub == "coverage":
+        ledger, rest = _flag(rest, "--ledger")
+        if not ledger:
+            return _fail("atoms coverage requires --ledger <path>")
+        return cmd_atoms_coverage(Path(ledger))
+    if sub == "radius":
+        ledger, rest = _flag(rest, "--ledger")
+        atoms_json, rest = _flag(rest, "--atoms")
+        if not ledger or atoms_json is None:
+            return _fail("atoms radius requires --ledger <path> --atoms <json>")
+        return cmd_atoms_radius(Path(ledger), atoms_json)
     return _fail(f"unknown atoms subcommand: {sub}")
 
 
@@ -688,9 +1023,13 @@ Usage: spec_checks.py <command> [args]
   floor <spec>                         citations + structure → one relay verdict
   briefing <decisions-file>            Deterministic human render of decisions
   decisions summary <decisions-file>   Thin decision projection (JSON)
-  atoms extract <doc> [--ledger P --write]        Mechanical atom extraction
-  atoms reanchor <doc> --ledger P                 Content-hash re-walk delta
-  atoms record-verdicts --ledger P --verdicts F   Apply round delta (echoes count)
+  atoms extract <doc> [--ledger P --write]           Mechanical atom extraction
+  atoms merge <doc> --ledger P --candidates F1[,F2] [--write]  Prose union-merge
+  atoms reanchor <doc> --ledger P                     Content-hash re-walk delta
+  atoms mark-dirty <doc> --ledger P --touched JSON    Input-set-propagation dirty set
+  atoms record-verdicts --ledger P --verdicts F       Apply round delta (echoes count)
+  atoms coverage --ledger P                           Coverage-completeness verdict
+  atoms radius --ledger P --atoms JSON                Anchor-unit footprint of lineage ids
 """
 
 

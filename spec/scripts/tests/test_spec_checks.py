@@ -394,6 +394,274 @@ class TestAtoms:
         assert any(a.get("text") == "a new claim" for a in led["atoms"])  # new atom added w/ id
 
 
+# ── atoms: full ledger (D13) — Phase 2 ──────────────────────────────────────
+
+
+def _atom(aid, lid, atype, anchor, text, state="unverified", hash_=None, chash=None,
+          fix_count=0, flips=0, last=None, sections=None, external=None, span=None):
+    from spec.scripts.spec_checks import _atom_hash
+    h = hash_ or _atom_hash(text)
+    return {
+        "id": aid, "lineage_id": lid, "type": atype, "anchor": anchor, "text": text,
+        "hash": h, "span": span or {"start": 0, "end": len(text)},
+        "input_set": {"sections": sections or [anchor], "external": external or []},
+        "verdict": {"state": state, "computed_against_hash": chash},
+        "churn": {"verdict_flips": flips, "fix_count": fix_count, "last_conclusion": last},
+    }
+
+
+def _ledger(tmp_path: Path, atoms: list, macro: list | None = None) -> Path:
+    p = tmp_path / "L.json"
+    p.write_text(json.dumps({"atoms": atoms, "macro_findings": macro or []}))
+    return p
+
+
+class TestCanonicalize:
+    def test_bare_dblock_resolves_to_chain(self) -> None:
+        from spec.scripts.spec_checks import _canonicalize
+        doc = "## Design Decisions\n\n### D3: A decision\nbody\n"
+        assert _canonicalize("### D3", doc) == "## Design Decisions / ### D3: A decision"
+
+    def test_already_canonical_passthrough(self) -> None:
+        from spec.scripts.spec_checks import _canonicalize
+        doc = "## Situation\ntext\n"
+        assert _canonicalize("## Situation", doc) == "## Situation"
+
+
+class TestMerge:
+    def _doc(self, tmp_path: Path, text: str) -> tuple[Path, Path]:
+        doc = tmp_path / "concept-auto-improve.md"
+        doc.write_text(text)
+        ledger = tmp_path / "concept-ATOMS.json"
+        main(["atoms", "extract", str(doc), "--ledger", str(ledger), "--write"])
+        return doc, ledger
+
+    def _merge(self, tmp_path: Path, doc: Path, ledger: Path, cands: list, capsys) -> list:
+        cf = tmp_path / "cand.json"
+        cf.write_text(json.dumps({"candidates": cands}))
+        capsys.readouterr()
+        assert main(["atoms", "merge", str(doc), "--ledger", str(ledger),
+                     "--candidates", str(cf), "--write"]) == 0
+        return _out(capsys)["merged_atoms"]
+
+    def test_same_type_overlap_collapses_to_widest(self, tmp_path: Path, capsys) -> None:
+        doc, ledger = self._doc(tmp_path, "## S\n\nThe cache is cold today.\n")
+        merged = self._merge(tmp_path, doc, ledger, [
+            {"type": "claim", "text": "The cache is cold"},
+            {"type": "claim", "text": "The cache is cold today"},
+        ], capsys)
+        assert len(merged) == 1
+        assert merged[0]["text"] == "The cache is cold today"  # widest
+
+    def test_disjoint_survive(self, tmp_path: Path, capsys) -> None:
+        doc, ledger = self._doc(tmp_path, "## S\n\nAlpha statement here. Beta statement there.\n")
+        merged = self._merge(tmp_path, doc, ledger, [
+            {"type": "claim", "text": "Alpha statement here"},
+            {"type": "claim", "text": "Beta statement there"},
+        ], capsys)
+        assert len(merged) == 2
+
+    def test_cross_type_scope_precedence(self, tmp_path: Path, capsys) -> None:
+        doc, ledger = self._doc(
+            tmp_path, "## Scope\n\n### What gets built\n\nBuild the widget carefully now.\n")
+        merged = self._merge(tmp_path, doc, ledger, [
+            {"type": "claim", "text": "Build the widget"},
+            {"type": "assumption", "text": "Build the widget carefully now"},
+        ], capsys)
+        assert len(merged) == 1
+        assert merged[0]["type"] == "scope-item"  # section-native precedence
+
+    def test_drop_mechanical_overlap(self, tmp_path: Path, capsys) -> None:
+        doc, ledger = self._doc(
+            tmp_path, "## Scope\n\n### What gets built\n\n- A thing (D1)\n")
+        # a prose candidate whose text IS the citation bullet must be dropped
+        merged = self._merge(tmp_path, doc, ledger, [
+            {"type": "scope-item", "text": "- A thing (D1)"},
+        ], capsys)
+        assert merged == []
+
+
+class TestMarkDirty:
+    def test_input_set_propagation_bare_dblock(self, tmp_path: Path, capsys) -> None:
+        doc = tmp_path / "concept-auto-improve.md"
+        doc.write_text("## Design Decisions\n\n### D3: Foo\nbody\n\n## Other\ntext\n")
+        # an atom in ## Other whose CHECK reads ### D3 (input_set), own text unchanged
+        atom = _atom("a1", "L1", "claim", "## Other", "text",
+                     sections=["## Design Decisions / ### D3"])
+        ledger = _ledger(tmp_path, [atom])
+        assert main(["atoms", "mark-dirty", str(doc), "--ledger", str(ledger),
+                     "--touched", json.dumps(["### D3"])]) == 0
+        out = _out(capsys)
+        assert out["dirty"] == ["a1"]  # bare ### D3 matched canonical input entry
+
+
+class TestCoverage:
+    def test_counts_and_incomplete(self, tmp_path: Path, capsys) -> None:
+        from spec.scripts.spec_checks import _atom_hash
+        atoms = [
+            _atom("h1", "L0", "heading", "## S", "## S"),                       # excluded
+            _atom("a1", "L1", "claim", "## S", "c1", state="verified", chash=_atom_hash("c1")),
+            _atom("a2", "L2", "claim", "## S", "c2", state="unverifiable"),
+            _atom("a3", "L3", "claim", "## S", "c3", state="dirty"),
+            _atom("a4", "L4", "claim", "## S", "c4", state="unverified"),
+            _atom("a5", "L5", "claim", "## S", "c5", state="verified", chash="sha256:stale"),
+        ]
+        ledger = _ledger(tmp_path, atoms)
+        assert main(["atoms", "coverage", "--ledger", str(ledger)]) == 0
+        out = _out(capsys)
+        assert out["total"] == 5                # heading excluded
+        assert out["verified"] == 1             # only a1 (a5 hash-stale → dirty)
+        assert out["unverifiable"] == 1
+        assert out["complete"] is False
+        assert "a4" in out["never_verified"]
+
+    def test_complete_when_all_settled(self, tmp_path: Path, capsys) -> None:
+        from spec.scripts.spec_checks import _atom_hash
+        atoms = [
+            _atom("h1", "L0", "heading", "## S", "## S"),
+            _atom("a1", "L1", "claim", "## S", "c1", state="verified", chash=_atom_hash("c1")),
+            _atom("a2", "L2", "claim", "## S", "c2", state="unverifiable"),
+        ]
+        ledger = _ledger(tmp_path, atoms)
+        main(["atoms", "coverage", "--ledger", str(ledger)])
+        assert _out(capsys)["complete"] is True
+
+
+class TestRadius:
+    def test_anchor_units(self, tmp_path: Path, capsys) -> None:
+        atoms = [
+            _atom("a1", "L1", "claim", "## A / ### D1", "x"),
+            _atom("a2", "L2", "claim", "## A / ### D1", "y"),
+            _atom("a3", "L3", "claim", "## B", "z"),
+        ]
+        ledger = _ledger(tmp_path, atoms)
+        assert main(["atoms", "radius", "--ledger", str(ledger),
+                     "--atoms", json.dumps(["L1", "L3"])]) == 0
+        out = _out(capsys)
+        assert out["sections"] == ["## A / ### D1", "## B"]
+        assert out["units"] == 2 and out["atoms"] == 2
+
+
+class TestLineageAndChurn:
+    def _apply(self, tmp_path: Path, ledger: Path, vf: dict, capsys) -> dict:
+        vfile = tmp_path / "vf.json"
+        vfile.write_text(json.dumps(vf))
+        capsys.readouterr()
+        assert main(["atoms", "record-verdicts", "--ledger", str(ledger),
+                     "--verdicts", str(vfile)]) == 0
+        return json.loads(ledger.read_text())
+
+    def test_successor_inherits_lineage_and_bumps_fix_count(self, tmp_path: Path, capsys) -> None:
+        ledger = _ledger(tmp_path, [_atom("a1", "L1", "claim", "## S", "old", fix_count=1)])
+        led = self._apply(tmp_path, ledger, {
+            "reanchor_delta": {"vanished": ["a1"]},
+            "new_atoms": [{"type": "claim", "anchor": "## S", "text": "new", "span": {"start": 0, "end": 3}}],
+        }, capsys)
+        succ = next(a for a in led["atoms"] if a["text"] == "new")
+        assert succ["lineage_id"] == "L1"                 # identity survives the fix
+        assert succ["churn"]["fix_count"] == 2            # inherited 1 + this fix
+
+    def test_split_forks_lineage(self, tmp_path: Path, capsys) -> None:
+        ledger = _ledger(tmp_path, [_atom("a1", "L1", "claim", "## S", "old", fix_count=1)])
+        led = self._apply(tmp_path, ledger, {
+            "reanchor_delta": {"vanished": ["a1"]},
+            "new_atoms": [
+                {"type": "claim", "anchor": "## S", "text": "n1", "span": {"start": 0, "end": 2}},
+                {"type": "claim", "anchor": "## S", "text": "n2", "span": {"start": 3, "end": 5}},
+            ],
+        }, capsys)
+        lids = {a["text"]: a["lineage_id"] for a in led["atoms"]}
+        assert lids["n1"] == "L1" and lids["n2"] == "L1"  # both inherit — a split forks
+
+    def test_merge_inherits_highest_churn(self, tmp_path: Path, capsys) -> None:
+        ledger = _ledger(tmp_path, [
+            _atom("a1", "L1", "claim", "## S", "o1", fix_count=1),
+            _atom("a2", "L2", "claim", "## S", "o2", fix_count=3),
+        ])
+        led = self._apply(tmp_path, ledger, {
+            "reanchor_delta": {"vanished": ["a1", "a2"]},
+            "new_atoms": [{"type": "claim", "anchor": "## S", "text": "merged", "span": {"start": 0, "end": 6}}],
+        }, capsys)
+        succ = next(a for a in led["atoms"] if a["text"] == "merged")
+        assert succ["lineage_id"] == "L2"                 # highest-churn ancestor
+        assert succ["churn"]["fix_count"] == 4            # 3 + this fix
+
+    def test_retire_no_successor(self, tmp_path: Path, capsys) -> None:
+        from spec.scripts.spec_checks import _atom_hash
+        ledger = _ledger(tmp_path, [
+            _atom("a1", "L1", "claim", "## S", "gone"),
+            _atom("a2", "L2", "claim", "## S", "kept", state="verified", chash=_atom_hash("kept")),
+        ])
+        led = self._apply(tmp_path, ledger, {"reanchor_delta": {"vanished": ["a1"]}}, capsys)
+        ids = {a["id"] for a in led["atoms"]}
+        assert "a1" not in ids                            # retired, dropped from denominator
+        capsys.readouterr()  # drain the record-verdicts emit before reading coverage
+        main(["atoms", "coverage", "--ledger", str(ledger)])
+        assert _out(capsys)["complete"] is True           # complete without the retired atom
+
+    def test_verdict_flips_only_on_conclusion_change(self, tmp_path: Path, capsys) -> None:
+        ledger = _ledger(tmp_path, [_atom("a1", "L1", "claim", "## S", "x")])
+        self._apply(tmp_path, ledger, {"atom_verdicts": [
+            {"atom_id": "a1", "state": "verified", "finding_conclusion": False}]}, capsys)
+        led = self._apply(tmp_path, ledger, {"atom_verdicts": [
+            {"atom_id": "a1", "state": "verified", "finding_conclusion": True}]}, capsys)  # changed
+        assert next(a for a in led["atoms"] if a["id"] == "a1")["churn"]["verdict_flips"] == 1
+        led = self._apply(tmp_path, ledger, {"atom_verdicts": [
+            {"atom_id": "a1", "state": "verified", "finding_conclusion": True}]}, capsys)  # same
+        assert next(a for a in led["atoms"] if a["id"] == "a1")["churn"]["verdict_flips"] == 1  # no bump
+
+    def test_no_flip_on_state_cycle(self, tmp_path: Path, capsys) -> None:
+        # verified → dirty → verified with no finding_conclusion must NOT flip
+        ledger = _ledger(tmp_path, [_atom("a1", "L1", "claim", "## S", "x")])
+        for st in ("verified", "dirty", "verified"):
+            self._apply(tmp_path, ledger, {"atom_verdicts": [{"atom_id": "a1", "state": st}]}, capsys)
+        led = json.loads(ledger.read_text())
+        assert next(a for a in led["atoms"] if a["id"] == "a1")["churn"]["verdict_flips"] == 0
+
+    def test_macro_fix_count(self, tmp_path: Path, capsys) -> None:
+        ledger = _ledger(tmp_path, [_atom("a1", "L1", "claim", "## S", "x")])
+        for _ in range(2):
+            self._apply(tmp_path, ledger, {"macro_findings": [{"id": "contradiction:## S|## T", "fixed": True}]}, capsys)
+        led = json.loads(ledger.read_text())
+        mf = next(m for m in led["macro_findings"] if m["id"] == "contradiction:## S|## T")
+        assert mf["fix_count"] == 2
+
+    def test_overwrite_not_duplicate(self, tmp_path: Path, capsys) -> None:
+        from spec.scripts.spec_checks import _atom_hash
+        ledger = _ledger(tmp_path, [_atom("a1", "L1", "claim", "## S", "x")])
+        self._apply(tmp_path, ledger, {"atom_verdicts": [
+            {"atom_id": "a1", "state": "verified", "computed_against_hash": _atom_hash("x")}]}, capsys)
+        led = self._apply(tmp_path, ledger, {"atom_verdicts": [
+            {"atom_id": "a1", "state": "unverifiable"}]}, capsys)
+        a1s = [a for a in led["atoms"] if a["id"] == "a1"]
+        assert len(a1s) == 1 and a1s[0]["verdict"]["state"] == "unverifiable"  # overwritten, not duplicated
+
+
+class TestExternalStaleness:
+    def test_reanchor_flags_changed_external(self, tmp_path: Path, capsys) -> None:
+        from spec.scripts.spec_checks import _atom_hash
+        ext = tmp_path / "code.py"
+        ext.write_text("original\n")
+        doc = tmp_path / "concept-auto-improve.md"
+        doc.write_text("## S\n\nthe claim text\n")
+        atom = _atom("a1", "L1", "claim", "## S", "the claim text",
+                     external=[{"path": str(ext), "hash": _atom_hash("original\n")}])
+        ledger = _ledger(tmp_path, [atom])
+        ext.write_text("CHANGED\n")  # cited code changed between runs
+        assert main(["atoms", "reanchor", str(doc), "--ledger", str(ledger)]) == 0
+        assert _out(capsys)["external_stale"] == ["a1"]
+
+
+class TestDblockTyping:
+    def test_dblock_typed_and_checkable(self, tmp_path: Path, capsys) -> None:
+        doc = tmp_path / "concept-auto-improve.md"
+        doc.write_text(CONFORMANT)
+        assert main(["atoms", "extract", str(doc)]) == 0
+        atoms = _out(capsys)["atoms"]
+        dblocks = [a for a in atoms if a["type"] == "d-block"]
+        assert any("### D1:" in a["text"] for a in dblocks)  # ### Dn: is a checkable d-block, not a plain heading
+
+
 # ── CLI dispatch ─────────────────────────────────────────────────────────────
 
 
