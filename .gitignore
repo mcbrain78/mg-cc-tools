@@ -39,3 +39,9 @@ temp/
 # TEST FIXTURES (large session exports)
 # ============================================
 **/samples/
+
+# ============================================
+# CLAUDE CODE RUNTIME
+# ============================================
+# Ephemeral scheduler lock (session id + pid)
+.claude/scheduled_tasks.lock
