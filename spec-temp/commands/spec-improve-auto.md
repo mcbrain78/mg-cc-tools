@@ -2,19 +2,23 @@
 
 ---
 name: mg-temp:spec-improve-auto
-description: Autonomous workflow-driven refinement of a concept spec — one drain run per invocation, decisions reviewed post-hoc via a deterministic briefing
+description: Autonomous refinement of a concept spec — a main-session loop of fresh-eyes review + fix + deterministic floor, terminated by a substantive exit exam
 argument-hint: "<file-path>"
 allowed-tools:
   - Bash
   - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Agent
   - AskUserQuestion
-  - Workflow
 ---
 
 <objective>
-Refine a concept spec autonomously. Each invocation drives **one drain run** through the Workflow tool: a horizontal macro pass stabilizes the skeleton, a verification pyramid verifies typed atoms and disposes of findings, and an exit exam confirms convergence. Decision-shaped findings do not stop the run — they are researched and **auto-taken**, written as D-blocks, and logged as decision records.
+Refine a concept spec autonomously, without a per-round human gate. This command drives a loop **in the main session** (like `mg-temp:spec-improve`, not the Workflow tool): each round spawns a fresh-eyes reviewer, applies the safe fixes, enforces a deterministic structural floor, snapshots for audit, and asks a fresh **exit exam** whether anything substantive is still wrong. It loops until the exit exam comes back clean (converged) or a round cap is hit.
 
-This command orchestrates; the drain executes. The user reviews **decisions, not rounds**: after each run the command presents a deterministic **decision briefing** plus a scorecard, and the user accepts, overrides a decision, or raises an editorial directive — each collected structurally and fed to a scoped re-run. The safety net is unchanged: every edit lands on the working copy, the original changes only on explicit approve, and fixes and non-goals are approved independently.
+The safety net is unchanged from `spec-improve`: every edit lands on the working copy, the original changes only on explicit `approve`, and fixes and non-goals are approved independently. The user reviews the **result** — a run summary + scorecard — not each round.
 </objective>
 
 <context>
@@ -26,9 +30,7 @@ Concept spec template: `{MG_INSTALL_CONCEPT_TEMPLATE}`
 
 File-operations script: `{MG_INSTALL_SCRIPTS_DIR}/improve_files.py`
 
-Checks / derivation script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
-
-Drain workflow: `{MG_INSTALL_WORKFLOWS_DIR}/spec-improve-auto.js`
+Checks script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
 </context>
 
 <process>
@@ -52,137 +54,204 @@ Drain workflow: `{MG_INSTALL_WORKFLOWS_DIR}/spec-improve-auto.js`
    ```
    uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py init <target-file-path>
    ```
-   - **On success (exit 0):** capture the emitted JSON — the resolved paths object (`source`, `auto_improve`, `atoms`, `decisions`, `implementer_notes`, `changelog`, `non_goals`, `history_dir`, `next_run`, the `*_exists` flags, `original_backup`, `backup_created`). Store it as `PATHS_JSON`. If `backup_created` is true, report: `Backed up original to <original_backup>`.
-   - **On guard-fail (exit 1):** a working copy already exists (the D7 guard). Do **not** overwrite it blindly. Run the read-only:
+   - **On success (exit 0):** capture the emitted resolved-paths JSON (`source`, `auto_improve`, `non_goals`, `non_goals_exists`, `changelog`, `history_dir`, `next_run`, `original_backup`, `backup_created`, plus the other `*_exists` flags). Store it as `PATHS_JSON`. If `backup_created` is true, report: `Backed up original to <original_backup>`.
+   - **On guard-fail (exit 1):** an in-progress working copy from a prior session exists (the D7 guard). Do **not** overwrite it blindly. Run the read-only:
      ```
      uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py paths <target-file-path>
      ```
-     to get the resolved-paths JSON. Surface the leftover state to the user (there is an in-progress working copy from a prior session), then use **AskUserQuestion** for the binary choice:
+     to get the resolved-paths JSON, surface the leftover state to the user, then use **AskUserQuestion** for the binary choice:
      - **Resume** — continue with the existing working copy. Use the `paths` JSON as `PATHS_JSON`.
      - **Discard and restart** — run `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py init <target-file-path> --fresh`, then use its JSON as `PATHS_JSON`.
 
-     This AskUserQuestion is the **only** picker in the command. All later decision discussion is prose, never a picker.
+     This AskUserQuestion is the **only** picker before convergence. Everything else in the loop is autonomous.
 
-**CRITICAL: All modifications happen exclusively on the working copy (`auto_improve`). The original is never touched until the user explicitly approves via `improve_files.py approve`.**
+   From `PATHS_JSON`, bind the paths used throughout:
+   - `WORKING` = `auto_improve` (the working copy — every edit lands here)
+   - `NON_GOALS` = `non_goals` (may not exist yet; `non_goals_exists` tells you)
+   - `CHANGELOG` = `changelog`
+   - `RUN` = `next_run` (the run number for this invocation)
 
-## Path absolutization + scratch dir (before the first Drain invocation)
+**CRITICAL: All modifications happen exclusively on `WORKING`. The original is never touched until the user explicitly approves via `improve_files.py approve`.**
 
-4. **Get cwd.** Run a Bash `pwd`. The command runs in the main session, whose cwd is reliably the project root.
+## Path prep for subagents
 
-5. **Absolutize every path that crosses into the drain.** Rule: if a path does not begin with `/`, prepend `<cwd>/`; this is a no-op on an already-absolute `--global`/`--target` path. Absolutize:
-   - `scriptPath` = `{MG_INSTALL_WORKFLOWS_DIR}/spec-improve-auto.js`
-   - `scripts_dir` = `{MG_INSTALL_SCRIPTS_DIR}`
-   - `template_path` = `{MG_INSTALL_CONCEPT_TEMPLATE}`
-   - **every path value inside `PATHS_JSON`** (`source`, `auto_improve`, `atoms`, `decisions`, `implementer_notes`, `changelog`, `non_goals`, `history_dir`)
+4. **Get cwd** with a Bash `pwd` (the command runs in the main session, whose cwd is reliably the project root).
 
-   The command's **own** `uv run {MG_INSTALL_SCRIPTS_DIR}/…` calls stay **relative** — they execute in the main session, so their cwd is known. Only the paths handed to the drain are absolutized (the drain's spawned agents have an undocumented cwd).
+5. **Absolutize the paths handed to subagents** — `WORKING`, `NON_GOALS`, `{MG_INSTALL_CONCEPT_TEMPLATE}`, and the project root (`pwd`). Rule: if a path does not begin with `/`, prepend `<cwd>/` (a no-op on already-absolute `--global`/`--target` paths). Subagent cwd is not guaranteed, so reviewer prompts always carry absolute paths. The command's **own** `uv run`, `Read`, and `Edit` calls stay **relative to `WORKING`** — they run in the main session where cwd is known.
 
-6. **Create the scratch dir.** Run a Bash `mkdir -p` for an absolute scratch directory under the session scratch path (this is drain scratch — where the drain's agents marshal relayed values to files for scripts; keep it out of the spec's directory). Record its absolute path as `SCRATCH_DIR`.
+## The auto-loop
 
-## Drain run
+Run rounds `M = 1, 2, 3, …` up to the **round cap of 20**. Each round is self-contained; carry no reviewer prose between rounds (see **State discipline**). A round:
 
-7. Invoke the drain, passing the args object (see **Args object** below):
-   ```
-   Workflow({ scriptPath: <absolutized scriptPath>, args: <args object> })
-   ```
+### 1 — Fresh review (drives fixes)
+Spawn ONE reviewer subagent (Agent tool). This is the harsh, wide-net pass — its job is to find everything worth fixing:
 
-## On return — branch on `status`
+```
+You are a senior engineer reviewing a file with completely fresh eyes.
+You have NO prior context about this project.
 
-The return is thin: `{ status, rounds, fixed, below_bar }` only. `status` is the one value only the workflow can supply; the three counts are **this-run** (per-invocation) accumulators (`fixed` = auto-fixable findings applied, **not** decision-takes). Everything about **decisions and atoms** the command derives itself, after return, from the on-disk sidecars (see **Command-side derivation**).
+Read the file at: {absolute WORKING path}
 
-### `converged`
+{If non_goals_exists is true, include:}
+Also read the non-goals file at: {absolute NON_GOALS path}
+These are explicit scoping decisions — do not flag issues that fall under a
+listed non-goal. You may still flag severe bugs in non-goal areas if they
+would break something.
+
+Also read the concept spec template at: {absolute template path}
+Use it to assess whether expected sections are present and adequately filled.
+A thin section is worth flagging if it should have more depth.
+
+If the file references existing functionality — by path, code reference, or
+concept ("replaces X", "extends Y") — read that code before reviewing (project
+root: {absolute pwd}). You cannot assess a plan without understanding what it
+builds on. All issues must be actionable on the target file only.
+
+Provide a critical review focused on:
+1. Internal contradictions or inconsistencies
+2. Missing pieces that would block implementation
+3. Assumptions that aren't stated or validated
+4. Overengineering vs underengineering
+5. Whether examples actually match the spec text
+6. Decision quality — every decision must be real. Open questions
+   ("non-blocking", "resolve during implementation"), thin decisions that
+   restate a choice without reasoning/tradeoffs/evidence, and deferred
+   commitments ("future work", "v2") are NOT decisions — flag them. (Explicit
+   scope exclusions like "this plan does NOT cover X" are boundaries, fine.)
+7. Simpler alternatives — only if you can name a concrete one and why it's better.
+8. Over-specification — flag implementation code (function bodies, algorithms)
+   in the spec. A concept defines interfaces/contracts, not bodies. Test: if you
+   replaced the code with a prose description, would an implementer still know
+   what to build? If yes, the code doesn't belong.
+9. Verification coverage — every row in the Scope table needs at least one
+   matching item in the Verification section.
+10. Citation discipline — in `### What gets built`, every top-level bullet
+    (column-0 `- ` line) must cite the design decision(s) it realizes as `(Dx)` /
+    `(Dx, Dy)`, referencing `### Dn:` headings. Flag any uncited top-level bullet
+    or a citation with no matching D-block.
+
+Be harsh. Flag everything that seems off. Validate claims against code where possible.
+
+Return your findings as a compact list. For EACH issue, one entry in exactly
+this shape (no extra prose between entries):
+
+  - [SEVERITY] <section or line> — <what is wrong>. FIX: <suggested fix, or "none">. NEEDS_USER: <yes|no>.
+
+  SEVERITY is critical | major | minor.
+  NEEDS_USER is "yes" if resolving the issue requires a human decision, changes
+  intent/scope, or is an unresolved architectural choice (a decision-shaped
+  finding). Otherwise "no" (a mechanical/clarity fix you could make safely).
+
+If you find nothing worth flagging, return exactly: NO ISSUES.
+```
+
+### 2 — Triage + fix
+From the reviewer's list, apply this discipline on the working copy:
+
+- **Fix now** every `NEEDS_USER: no` finding you are confident resolves the issue without changing intent or scope — an implementer would otherwise build the wrong thing, get stuck, or have to come back and ask. Read `WORKING`, then `Edit` it. When resolving a "missing piece", specify the interface contract (CLI flags, data shapes, behavior) in prose — **never** write implementation code / function bodies into the spec.
+- **Cap: at most 10 fixes this round.** If more than 10 clear the bar, keep the 10 highest-severity; the rest re-surface next round (the reviewer re-derives them — see State discipline).
+- **Do NOT touch `NEEDS_USER: yes` (decision-shaped) findings.** This loop takes no decisions. They are left unresolved on purpose; they will re-surface every round and — if never resolved — correctly prevent convergence and be reported at the cap.
+- Log each applied fix:
+  ```
+  uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py append-changelog <target-file-path> --run <RUN> --round <M> --kind fix "<one-line description>"
+  ```
+
+### 3 — Deterministic floor
+Run the structural + citation floor on the working copy:
+```
+uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py floor <WORKING>
+```
+- Exit 0 → floor passes.
+- Exit 1 → the emitted `findings` (missing required headings, uncited bullets) are always safe mechanical fixes. Apply them to `WORKING` (respecting the 10-fix budget over the whole round), log each via `append-changelog`, and re-run `floor` until it passes. Floor **must** pass before the round completes.
+
+### 4 — Snapshot (audit trail, not held in context)
+```
+uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py snapshot <target-file-path> --run <RUN> --round <M>
+```
+Writes `history/run-<RUN>/round-<M>.md`. Do not read it back — it is an audit artifact, not loop state.
+
+### 5 — Exit exam (drives termination)
+Spawn ONE fresh exit-exam subagent (Agent tool). This is a **different, higher bar** than step 1 — it decides *done*, not *nitpick*:
+
+```
+You are a senior engineer doing a final readiness check on a concept spec, with
+completely fresh eyes and NO prior context.
+
+Read the file at: {absolute WORKING path}
+{If non_goals_exists: Also read {absolute NON_GOALS path} — respect those exclusions.}
+Concept spec template (for structural expectations): {absolute template path}
+If the spec cites code/paths, read them (project root: {absolute pwd}).
+
+Answer ONE question: is anything SUBSTANTIVE still wrong or missing — something
+that would make an implementer build the wrong thing, get blocked, or have to
+come back and ask? Ignore cosmetic wording, stylistic nitpicks, and anything
+already covered by a listed non-goal. Hold a high bar: a spec does not need to
+be perfect to be buildable.
+
+An unresolved decision-shaped issue (an open question, a thin/undecided choice,
+a deferred commitment that the plan actually needs) IS substantive — report it.
+
+If there is nothing substantive left, return exactly: CLEAN.
+Otherwise return a short list, one line each:
+  - [SEVERITY] <section> — <what is substantively wrong>. NEEDS_USER: <yes|no>.
+```
+
+### 6 — Converge or continue
+- **Exit exam returned `CLEAN` AND floor passed this round → CONVERGED.** Stop the loop, go to **On convergence**.
+- **Otherwise → next round.** Do not carry the exit exam's findings in context; the next round's fresh reviewer re-derives the live issue set from the (now-updated) working copy on disk.
+- **If `M` reaches the cap (20) without converging → STOP at cap.** Go to **On round cap**.
+
+## State discipline (load-bearing)
+
+The orchestrator keeps **nothing durable in its own context**. Every round it re-reads the working copy from disk (to `Edit` it) and spawns fresh, stateless subagents that read from disk themselves. This is what lets one long-running main session survive 10–20 rounds:
+
+- **Never** filter or deprioritize a reviewer's finding using memory of a prior round. Each reviewer's output is the complete, canonical list of live issues. A finding that reappears was not fixed; one that disappears is resolved. The **working copy on disk is the only state** — unresolved issues persist because they are still in (or absent from) the doc.
+- If the session is compacted mid-loop, resume by re-deriving position from disk: `M` = (count of `round-*.md` files in `history/run-<RUN>/`) + 1; re-read `RUN`/paths via `improve_files.py paths <target>`; continue the loop. No in-context history is required to proceed.
+- After triaging a round, discard the reviewer/exit-exam prose from working memory — do not summarize prior rounds into context. The changelog on disk is the durable record.
+
+## On convergence
+
 Present, in order:
-1. **Decision briefing** — `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py briefing <decisions-path>` (deterministic, dependency-ordered, blast-radius-ranked, `review_first` items first).
-2. **CHANGELOG summary** — read `<changelog-path>` and summarize the run's entries.
-3. **Scorecard** — see **The scorecard**.
+1. **Run summary** — read `<CHANGELOG>` and summarize what changed across the run's rounds (grouped, not verbatim).
+2. **Scorecard** — see **The scorecard**.
+3. Confirm the exit exam came back `CLEAN` and the floor passes.
 
-Then run the **approval / override / directive flow**:
-- **Accept** → approve fixes and proposed non-goals **independently**:
+Then run the approval flow (fixes and non-goals approved **independently**, exactly as `spec-improve`):
+- **Accept** →
   - `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py approve <target-file-path>`
-  - for each accepted proposed non-goal: `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py append-non-goal <target-file-path> "<non-goal text>"`
-  - (to reject the fixes instead: `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py reject <target-file-path>`)
-  - Acceptance ends the loop.
-- **Override a decision** → collect a structured `overrides` entry `{ "decision_id": "<id>", "directive": "<free-form override text>" }` (the id is known — the command presented that specific card). Re-run (see **Re-run / re-entry rule**).
-- **Editorial non-decision change** ("section 4's approach is wrong, redo it") → collect a free-form `directives` entry. Re-run.
+  - for each proposed non-goal the user accepts: `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py append-non-goal <target-file-path> "<non-goal text>"`
+  - Acceptance ends the session.
+- **Reject** → `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py reject <target-file-path>` (discards the working copy; original untouched).
+- The user may instead request specific further changes or another batch of rounds — re-enter the loop from round `M+1` (never re-run Setup; the D7 guard is cold-start only).
 
-### `blocked`
-The drain hit ≥1 untakeable decision (D5's graded gate). Present:
-- the **blocked cards** — from `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py decisions summary <decisions-path>`, the records with `status: blocked`,
-- **alongside the accumulated briefing** — `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py briefing <decisions-path>` — for context (the auto-taken decisions so far).
+## On round cap
 
-Discuss in **prose in the conversation**, dependency-ordered — **NOT** AskUserQuestion. Architectural decisions need back-and-forth. Collect resolutions as structured `overrides` entries (each carrying its blocked decision's `decision_id`, known at collection time). **Also** accept an override of any auto-taken decision the user objects to in that accumulated context — the same `overrides` channel, keyed by decision id. Then re-run.
+Reaching the cap without a clean exit exam is itself a signal — usually an unresolved decision-shaped issue this loop cannot take, or genuine churn. Present an **honest non-convergence report**:
+- **What is still blocking** — the last round's exit-exam findings, especially any `NEEDS_USER: yes` (decision-shaped) items the loop left unresolved by design.
+- **What kept churning** — summarize from `<CHANGELOG>` (e.g. the same section edited many rounds running).
+- **Scorecard**.
 
-A `blocked` stop is a **discussion, not an approval opportunity** — do **not** call `approve` / `reject` / `append-non-goal` here. That waits for a `converged` acceptance or a round-cap partial.
-
-### `round-cap`
-No convergence within the cap — itself a signal the spec has a structural problem. Present an honest non-convergence report:
-- **what kept churning** (from the run and CHANGELOG),
-- **which atoms never verified** — `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py atoms coverage --ledger <atoms-path>` → the `never_verified` list,
-- **which decisions are still pending** — `spec_checks.py decisions summary <decisions-path>` → the `status: pending` records,
-- accompanied by the **briefing** and **scorecard** (this is an approval opportunity — the invariant holds).
-
-The user then chooses:
-- **Re-run** — bare continuation (keep draining the carried dirty set), or carrying `overrides` / `directives` if decisions were discussed. Re-run.
+Then let the user choose:
+- **Re-run** — another batch of rounds from `M+1` (e.g. after the user resolves a blocking decision in discussion and you apply it).
 - **Approve the partial work** → `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py approve <target-file-path>` (+ `append-non-goal` per accepted proposal).
-- **Reject the partial work** → `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py reject <target-file-path>`.
-
-## Command-side derivation (race-free)
-
-Nothing writes between workflow-exit and command-read (the workflow has exited; only the command runs next). Use exactly these three, all **relative**, in the main session:
-- `spec_checks.py briefing <decisions-path>` — the human-facing decision view.
-- `spec_checks.py decisions summary <decisions-path>` — structured JSON projection (`id, kind, status, title, confidence, review_first, dropped, radii, depends_on`). Group by `status`: `taken` / `blocked` / `pending` / `proposal`. Exclude any `dropped: true` proposal from the active proposal group (its finding has been un-parked to re-enter the gate).
-- `spec_checks.py atoms coverage --ledger <atoms-path>` — emits `{ verified, unverifiable, total, complete, never_verified, dirty }`.
+- **Reject** → `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py reject <target-file-path>`.
 
 ## The scorecard
 
-Shown at every **approval opportunity** (`converged` accept and `round-cap` partial — **NOT** `blocked`). Command-derived, with **mixed scopes explicitly labeled — never silently merged**:
-
-- **This-run (per-invocation)** — from the return: `rounds`, `fixed` (auto-fixable applied, **not** decision-takes), `below_bar`.
-- **Session-cumulative (from the sidecars)**:
-  - decisions taken / blocked / pending + proposed-non-goal counts — from `decisions summary`,
-  - atoms verified / unverifiable / total — from `atoms coverage` (re-render `complete` as `verified + unverifiable == total`),
-  - optionally a cumulative `fixed` via a deterministic shell `grep -c` of `[fix]`-kind CHANGELOG entries (**excluding** `[decision-take]` entries — a take is counted under decisions taken, no double-count).
-
-Tag each block with its scope so a last-drain `fixed: N` is never read as a session total.
-
-## Re-run / re-entry rule (load-bearing)
-
-In-session re-runs **re-enter at the Drain-run step (step 7), never Setup.** Before **every** re-invocation:
-1. Re-run the read-only `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py paths <target-file-path>` — **never `init`** (whose guard would spuriously re-prompt resume/restart each round) — to freshly derive `next_run` and the current path values.
-2. Re-absolutize the path values (step 5's rule).
-3. Rebuild the args object with the `overrides` / `directives` collected in this turn (`[]` for a bare continuation).
-4. Re-invoke `Workflow(...)`.
-
-Loop until a run exits `converged` and the user accepts the briefing. The Setup `init` guard and its resume/restart prompt are **cold-start only**.
-
-## Args object
-
-Pass the whole `PATHS_JSON` (path values absolutized) as `paths` — the drain reads `paths.source, .auto_improve, .atoms, .decisions, .implementer_notes, .changelog, .non_goals, .history_dir`. Use snake_case keys (the drain tolerates camelCase too, but snake_case matches the concept contract):
-
-```json
-{
-  "paths": { "...the whole init/paths JSON, path values absolutized against cwd..." },
-  "scripts_dir": "<absolutized {MG_INSTALL_SCRIPTS_DIR}>",
-  "template_path": "<absolutized {MG_INSTALL_CONCEPT_TEMPLATE}>",
-  "scratch_dir": "<absolute SCRATCH_DIR>",
-  "run": <next_run from the init/paths JSON>,
-  "overrides": [ { "decision_id": "R7", "directive": "free-form override text" } ],
-  "directives": [ "free-form editorial instruction tied to no decision record" ]
-}
-```
-
-- On a **first run**, pass `overrides: []` and `directives: []`.
-- `run` = `next_run`, **freshly re-derived from `paths` before every invocation** — a reused run number would overwrite `history/run-N/`, destroying the audit trail.
-- `paths.source` (the `<target>` arg) must always be present and absolutized — the drain keys every script on it.
+Shown at every approval opportunity (convergence accept and round-cap partial). Derive it deterministically — do not paraphrase from memory:
+- **Rounds run** this invocation = `M`.
+- **Fixes applied** = `grep -c '\[fix\]' <CHANGELOG>` (count of logged fix entries; a floor fix is a fix).
+- **Outcome** = `converged` or `round-cap`.
+- **Still open (if any)** = count of the last round's `NEEDS_USER: yes` exit-exam findings.
 
 </process>
 
 <important_notes>
-- **The command orchestrates; the drain executes one drain run per invocation.** The per-round / per-phase loop discipline lives in the JS, not this file.
-- **Only `status` crosses back as a value only the workflow can supply.** `rounds` / `fixed` / `below_bar` are this-run accumulators; **all decision and atom data is derived command-side from the on-disk sidecars via the three `spec_checks.py` calls — never paraphrased** from the return.
-- **Auto-taken decisions are never approved unseen.** The briefing accompanies **every** approval opportunity (a `converged` accept and a `round-cap` partial). A `blocked` stop is a discussion, not an approval.
-- **All mutation is via `improve_files.py` or the drain's agents — the command holds no Edit/Write.** Working-copy edits, sidecar writes, backup/approve/reject/non-goal appends all go through the script or the drain.
-- **The working copy is the safety net.** The original is untouched until `improve_files.py approve`. Fixes and proposed non-goals are approved independently, exactly as `spec-improve` does today.
-- **Absolutization rationale.** The Workflow tool's resolution of a *relative* `scriptPath`, and a workflow-spawned agent's cwd, are undocumented. The command is the one context whose cwd is reliably the project root, so it absolutizes every path crossing into the drain (`scriptPath`, `scripts_dir`, `template_path`, all `paths` values) against its own cwd — a no-op on already-absolute `--global`/`--target` forms. Its own `uv run` calls stay relative because they run in the main session. The workflow JS is copied verbatim at install (no sed pass), which is why the command must hand it absolute values.
-- **Scratch dir is drain scratch, not a sidecar.** The drain's agents marshal relayed values to files there for scripts (`record-verdicts`, `atoms merge`, `block-gate`). Create it absolute and keep it out of the spec's directory.
+- **This is a main-session loop, not the Workflow tool.** There is no `.js` drain, no atom ledger, no verification pyramid, no auto-decision block-gate. Those were dropped deliberately for cost and simplicity (see `docs/work-queue/todo/spec-improve-auto/AUTO2-DESIGN.md`). Coverage comes from fresh reviewers over many cheap rounds; termination comes from the exit exam.
+- **Two asymmetric fresh looks per round.** The round reviewer (step 1) is deliberately harsh and wide — it drives fixes. The exit exam (step 5) holds a deliberately high, substantive-only bar — it drives termination. This asymmetry is the point: the loop converges when *substantive* issues are gone, even if a harsh reviewer could always find one more cosmetic nitpick. Using the round reviewer's emptiness as the stop signal would risk never terminating.
+- **This loop takes no decisions (yet).** Decision-shaped findings (`NEEDS_USER: yes`) are never auto-fixed. If the spec has an unresolved decision, the loop cannot converge on its own — it will run to the cap and surface the decision for the user. Convergence without user interaction therefore requires a spec with no open decisions; a cap-stop that surfaces a real open decision is a correct outcome, not a failure. (Auto-decisions are deferred future work.)
+- **Only a subagent reviews with truly fresh eyes.** The main agent carries loop context that biases judgment. Always use the Agent tool for both the reviewer and the exit exam.
+- **The working copy is the safety net and the only state.** Every edit lands on `WORKING`; the original is untouched until `approve`. The orchestrator holds no durable round state — it re-reads from disk and is resilient to mid-loop compaction (see State discipline).
+- **All file mutation of sidecars/originals goes through `improve_files.py`.** The orchestrator uses `Edit` only on the working copy (to apply fixes); backups, changelog, snapshots, approve/reject, and non-goal appends all go through the script.
+- **The 10-fix-per-round cap** bounds blast radius and keeps each round focused, exactly as `spec-improve`. Excess findings re-surface next round.
 </important_notes>

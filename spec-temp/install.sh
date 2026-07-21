@@ -8,7 +8,7 @@ set -euo pipefail
 # Commands:
 #   mg-temp:spec-draft            Formalize ideas into concept specs
 #   mg-temp:spec-improve          Iterative subagent-review improvement
-#   mg-temp:spec-improve-auto     Autonomous workflow-driven refinement
+#   mg-temp:spec-improve-auto     Autonomous main-session review+fix loop
 #   mg-temp:spec-create-context   Convert concept spec to GSD CONTEXT.md
 #   mg-temp:spec-create-milestone Project a frozen concept spec into a GSD milestone
 #   mg-temp:spec-prepare-context  Split multi-phase doc into per-phase files
@@ -116,12 +116,6 @@ for ref in "${REFERENCES[@]}"; do
   fi
 done
 
-# The drain workflow(s) — copied verbatim (no sed pass), so validate the source exists.
-if ! ls "${SCRIPT_DIR}/workflows/"*.js >/dev/null 2>&1; then
-  echo "Error: no workflow .js files in source directory (${SCRIPT_DIR}/workflows)"
-  exit 1
-fi
-
 # ── Check for python3 ────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
   echo "Error: python3 is required. Install it and re-run."
@@ -170,12 +164,6 @@ cp "${SCRIPT_DIR}/scripts/"*.py "$SCRIPTS_DIR/"
 chmod +x "$SCRIPTS_DIR/"*.py
 echo "  Scripts → ${SCRIPTS_DIR}/"
 
-# Workflows (drain orchestrator — copied verbatim, no placeholder pass)
-WORKFLOWS_DIR="${TARGET_DIR}/spec-temp/workflows"
-mkdir -p "$WORKFLOWS_DIR"
-cp "${SCRIPT_DIR}/workflows/"*.js "$WORKFLOWS_DIR/"
-echo "  Workflows → ${WORKFLOWS_DIR}/"
-
 # References
 REFS_DIR="${TARGET_DIR}/spec-temp/references"
 mkdir -p "$REFS_DIR"
@@ -195,13 +183,11 @@ if [[ "$MODE" == "project" ]]; then
   REQ_SNAPSHOT_PATH=".claude/spec-temp/references/requirements-template.snapshot"
   TEMPLATE_PATH=".claude/spec-temp/references/concept-spec-template.md"
   SCRIPTS_PATH=".claude/spec-temp/scripts"
-  WORKFLOWS_PATH=".claude/spec-temp/workflows"
 else
   SNAPSHOT_PATH="${REFS_DIR}/context-template.snapshot"
   REQ_SNAPSHOT_PATH="${REFS_DIR}/requirements-template.snapshot"
   TEMPLATE_PATH="${REFS_DIR}/concept-spec-template.md"
   SCRIPTS_PATH="${SCRIPTS_DIR}"
-  WORKFLOWS_PATH="${WORKFLOWS_DIR}"
 fi
 
 for cmd in "${COMMANDS[@]}"; do
@@ -212,7 +198,6 @@ for cmd in "${COMMANDS[@]}"; do
   sed -i "s|{MG_INSTALL_REQUIREMENTS_SNAPSHOT}|${REQ_SNAPSHOT_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_CONCEPT_TEMPLATE}|${TEMPLATE_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
-  sed -i "s|{MG_INSTALL_WORKFLOWS_DIR}|${WORKFLOWS_PATH}|g" "$cmd_file"
 done
 echo "  Placeholders resolved"
 
