@@ -137,14 +137,16 @@ Also read the concept spec template at: {absolute template path} — assess whet
 expected sections are present and adequately filled.
 
 IGNORE anything already listed under a `## Open Decisions` heading in the spec —
-those are known, already escalated to the user; do not re-flag them.
+those are known, already escalated to the user; do not re-flag them. Also skip
+any spec section named in an Open Decision's **Governs** line: it is under an
+open call and must not be re-flagged until that call is resolved.
 
 Provide a critical review focused on: (1) internal contradictions; (2) missing
 pieces that block implementation; (3) unstated/unvalidated assumptions; (4) over/
 under-engineering; (5) examples that don't match the text; (6) decision quality —
 open questions, thin decisions (a choice with no reasoning/tradeoffs/evidence),
 and deferred commitments ("future work", "later phase") are NOT real decisions,
-flag them (explicit scope exclusions are fine); (7) a concrete simpler
+flag them (explicit scope exclusions are fine); also flag as a MINOR fix any `### Dn:` block that does not open with a plain-language **Context:** line (situation + problem in product terms, no code identifiers) — a decision a reader cannot follow without the code in front of them fails the readability bar; (7) a concrete simpler
 alternative, if you can name one and say why; (8) over-specification — flag
 implementation code (function bodies/algorithms); a concept defines contracts,
 not bodies; (9) verification coverage — every `### What gets built` bullet needs
@@ -191,21 +193,38 @@ or the spec's evident intent. Return:
   ALTERNATIVES_REJECTED: <the main alternative(s) and why not>
   EDIT: <the exact new/replacement spec text and where it goes — a repaired or
         new `### Dn:` decision block, a corrected premise, a resolved open item.
-        Contracts/prose, never implementation code.>
+        Contracts/prose, never implementation code. A `### Dn:` block MUST open
+        with a **Context:** line — the situation and the problem it resolves, in
+        plain product language with NO code identifiers (those go in Why) — then
+        **Choice** / **Why** / **Alternatives rejected** as in the template, so a
+        reviewer can judge it without reverse-engineering it from the answer.>
 
 ESCALATE — if the answer is genuinely ambiguous, high-stakes, wide-blast-radius,
-or would reverse intent/a non-goal. Return:
+or would reverse intent/a non-goal. Frame it as a decision memo a reader with
+high-level product knowledge (not the code) can act on: plain language, with
+code specifics only in a clearly-marked tail. Return:
   VERDICT: ESCALATE
-  QUESTION: <the decision, framed in one or two sentences>
-  OPTIONS: <2-3 concrete options, each with its tradeoff>
-  RECOMMENDATION: <your lean, if any, and why>
+  SITUATION: <the relevant state of the world in plain product terms, 1-2 sentences>
+  PROBLEM: <the tension that forces a choice, and why you cannot just take it
+           (genuinely ambiguous / high-stakes / would reverse intent), 1-2 sentences>
+  OPTIONS: <the REAL options — usually 2-4; do NOT pad to a fixed count. Open with
+           one line naming the axis they trade on. Label each option with a
+           sequential lowercase letter — **a**, **b**, **c**, … — then a short
+           name, then its pros and its cons. The letters give the user something
+           short to type back. Unavoidable code specifics go in a trailing
+           "(impl: …)" clause, never in the framing.>
+  RECOMMENDATION: <your lean named by its letter (e.g. "b") + confidence (e.g.
+                  "moderate"), the one reason it wins, and what would flip you to
+                  another option>
+  GOVERNS: <the spec sections/decisions this choice controls, so review skips them
+           until it is resolved — e.g. "the WASO solution section, D1, D8, D10">
 
 Default to TAKE when you can defend it; escalate only what truly needs the human.
 ```
 
 For each result:
 - **TAKE** → apply `EDIT` to `WORKING` (Read then Edit), and log: `append-changelog <target> --run <RUN> --round <M> --kind decision-take "<one-line: what was decided>"`.
-- **ESCALATE** → append the framed decision to the `## Open Decisions` section of `WORKING` (create the section once, near the end, before `## Verification` if present, else at end). One entry: the question, the options+tradeoffs, and the recommendation. This makes it surfaced-to-user and, being in the doc, invisible to future rounds' reviewers.
+- **ESCALATE** → append the framed decision to the `## Open Decisions` section of `WORKING` (create the section once, near the end, before `## Verification` if present, else at end) as an `### ODn — <title>` entry. Render the escalation's own beats as a decision memo: **Situation** → **Problem** → **Options** (the axis line, then each lettered option — **a**, **b**, **c**, … — with its pros/cons) → **Recommendation** (naming its pick by letter), closing with a **Governs (skip in review until resolved):** line carrying its `GOVERNS` list. Product-altitude prose; code specifics only in the `(impl: …)` tails. This makes it surfaced-to-user and, being in the doc — including the Governs list — invisible to the sections future reviewers would otherwise re-flag.
 
 **Round budget:** apply at most **10 changes** (fixes + takes) to `WORKING` per round. If more clear the bar, take the 10 highest-severity; the rest re-surface next round. Escalations do not count against the budget (they are cheap appends).
 
@@ -226,9 +245,10 @@ Is anything SUBSTANTIVE still wrong or missing — something that would make an
 implementer build the wrong thing, get blocked, or have to come back and ask?
 Ignore cosmetic nitpicks and anything under a listed non-goal.
 
-Do NOT count anything already listed under the spec's `## Open Decisions` heading —
-those are known and deliberately escalated to the user; treat them as resolved
-for the purposes of this check.
+Do NOT count anything already listed under the spec's `## Open Decisions` heading,
+or any spec section named in an Open Decision's **Governs** line — those are known
+and deliberately escalated to the user; treat them as resolved for the purposes of
+this check.
 
 If nothing substantive remains (outside `## Open Decisions`), return exactly: CLEAN.
 Otherwise return a short list, one line each:
@@ -250,14 +270,14 @@ The orchestrator keeps **nothing durable in its own context**:
 
 ## On convergence
 
-Present a **briefing**, in order:
-1. **Auto-decisions taken this run** — from `CHANGELOG` (`[decision-take]` entries); for each, point at the `### Dn:` block it wrote/repaired so the user can review the reasoning. These were taken autonomously — invite override.
-2. **Open Decisions** — read the `## Open Decisions` section of `WORKING` and present each framed choice (question / options / recommendation). These need the user.
+Present a **briefing**, in order. Write every decision at product altitude — a reader with high-level product knowledge, not the code, must be able to follow it; keep code identifiers out of the summary lines.
+1. **Auto-decisions taken this run** — from `CHANGELOG` (`[decision-take]` entries). Give each a **compact** memo (~3-4 lines): one line of situation + problem, the option chosen and the single reason it won, and the main rejected alternative. Point at the `### Dn:` block for the full reasoning. These were taken autonomously — invite override.
+2. **Open Decisions** — read the `## Open Decisions` section of `WORKING` and present each in **full**: situation → problem → the real options with their tradeoffs → your recommendation. The user has to act on these, so they earn the length — do not compress them.
 3. **Mechanical fixes** — summarize the run's `[fix]` entries.
 4. **Scorecard** (see below).
 
 Then the approval flow (fixes approved independently of non-goals, as `spec-improve`):
-- **Accept** → `improve_files.py approve <target>` (+ `append-non-goal <target> "<text>"` per accepted proposed non-goal). The user then typically resolves the Open Decisions — either editing them into the spec directly, or answering here so you apply them, then optionally re-running for another pass. Acceptance ends the session.
+- **Accept** → `improve_files.py approve <target>` (+ `append-non-goal <target> "<text>"` per accepted proposed non-goal). The user then typically resolves the Open Decisions — either editing them into the spec directly, or answering here by option letter (e.g. `OD1 = b, OD2 = a`) so you apply them, then optionally re-running for another pass. Acceptance ends the session.
 - **Override an auto-decision** → the user says which; re-open it (Edit `WORKING` to back it out / adjust) and re-run.
 - **Reject** → `improve_files.py reject <target>` (discards the working copy; original untouched).
 
