@@ -76,7 +76,7 @@ Checks script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
    - `WORKING` = `auto_improve` (every edit lands here)
    - `NON_GOALS` = `non_goals` (may not exist yet; `non_goals_exists` tells you)
    - `CHANGELOG` = `changelog`
-   - `RUN` = `next_run`
+   - `RUN` = `current_run` — the resume-aware run number. **Not `next_run`**: that is cold-start-only (highest history run + 1), so once the in-progress run has snapshotted a round it over-counts by one; on a `--resume`, binding `next_run` would fork the round into a phantom `run-<N+1>` and break the eventual `approve`. `current_run` is the run that owns the live working copy (a `.spec-run` marker written by `init`; inferred from the latest un-sealed history dir if the marker is absent).
    - `HISTORY` = `history_dir`
 
    Also define, siblings of `WORKING` (derive by string, do not create yet):

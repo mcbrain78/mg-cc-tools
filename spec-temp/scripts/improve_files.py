@@ -136,6 +136,16 @@ def _scratch_root(source: Path) -> Path:
     return source.parent / ".spec-scratch"
 
 
+def _run_marker_path(source: Path) -> Path:
+    """The in-progress run-number marker next to the spec.
+
+    Present (holding the run number) exactly while a working copy is live —
+    written by ``init``, removed by ``approve``/``reject``. Lets a resume bind
+    the CURRENT run rather than ``_next_run``, which over-counts by one once the
+    in-progress run has snapshotted a round. Sibling of ``.spec-scratch``."""
+    return source.parent / ".spec-run"
+
+
 # Canonical archive names inside history/run-N/ (un-prefixed, per the concept tree).
 _ARCHIVE_NAMES: list[tuple] = [
     (_changelog_path, "CHANGELOG.md"),
@@ -172,6 +182,32 @@ def _latest_run_dir(source: Path) -> Path | None:
     if not nums:
         return None
     return _history_dir(source) / f"run-{nums[-1]}"
+
+
+def _current_run(source: Path) -> int:
+    """Run number for THIS invocation's rounds — resume-aware.
+
+    Unlike ``_next_run`` (cold-start semantics: highest history run + 1), this
+    returns the run that OWNS the live working copy on a resume. The number is
+    recorded in the ``.spec-run`` marker (authoritative); if the marker is
+    absent (a run predating markers) it is inferred from the latest *un-sealed*
+    history dir (a completed run archives its CHANGELOG into its dir). With no
+    working copy there is no run in progress, so it falls back to ``_next_run``."""
+    if not _auto_improve_path(source).is_file():
+        return _next_run(source)
+    marker = _run_marker_path(source)
+    if marker.is_file():
+        try:
+            return int(marker.read_text().strip())
+        except ValueError:
+            pass
+    nums = _run_numbers(source)
+    if nums:
+        latest_dir = _history_dir(source) / f"run-{nums[-1]}"
+        sealed = (latest_dir / _ARCHIVE_NAMES[0][1]).is_file()
+        if not sealed:
+            return nums[-1]
+    return _next_run(source)
 
 
 def _archive_sidecars(source: Path, *, include_notes: bool) -> int:
@@ -218,6 +254,7 @@ def _resolve_paths(source: Path) -> dict:
         "original_backup": str(backup),
         "history_dir": str(_history_dir(source)),
         "next_run": _next_run(source),
+        "current_run": _current_run(source),
     }
 
 
@@ -309,6 +346,7 @@ def cmd_init(source: Path, fresh: bool) -> int:
         backup_created = True
 
     shutil.copy2(source, working)
+    _run_marker_path(source).write_text(f"{_next_run(source)}\n")
 
     result = _resolve_paths(source)
     result["backup_created"] = backup_created
@@ -332,6 +370,7 @@ def cmd_approve(source: Path) -> int:
     shutil.copy2(working, source)
     working.unlink()
     moved = _archive_sidecars(source, include_notes=False)
+    _run_marker_path(source).unlink(missing_ok=True)
     print(f"Approved: {working} → {source} (archived {moved} sidecar(s))")
     return 0
 
@@ -343,6 +382,7 @@ def cmd_reject(source: Path) -> int:
         return _fail(f"working copy not found: {working}")
     working.unlink()
     moved = _archive_sidecars(source, include_notes=False)
+    _run_marker_path(source).unlink(missing_ok=True)
     print(f"Rejected: deleted {working} (archived {moved} sidecar(s))")
     return 0
 
