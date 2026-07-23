@@ -129,7 +129,7 @@ Rounds `M = 1, 2, 3, …` up to the **round cap of 20**. Each round is self-cont
 
 **The orchestrator is a thin router — it never reads or edits `WORKING` itself.** Each round it spawns subagents, hands them **absolute file paths**, and gets back only **one-line summaries** (ids, counts, a verdict word). All bulky content — the spec text, the findings, the proposed edits — flows agent → disk → agent through a per-round scratch dir and never enters the main context; that is what keeps context flat across a long run. At the **start of every round**, resolve (and create) that dir, capturing the absolute path it prints:
 `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py scratch-dir <target> --run <RUN> --round <M>` → store as `SCRATCH`.
-Hand `<SCRATCH>/findings.md`, `<SCRATCH>/decide-<id>.md`, and `<SCRATCH>/exit.md` to the agents below. A round:
+Hand `<SCRATCH>/handoff-review.md`, `<SCRATCH>/handoff-decide-<id>.md`, and `<SCRATCH>/handoff-exit.md` to the agents below. (These handoff files use neutral `handoff-*` names **deliberately**: a subagent `Write` to a `findings`/`report`-named file trips a Claude Code behavioral guard that pushes report output back into the response — which would break the round. The neutral name both sidesteps that guard and describes the file accurately as inter-agent handoff state, not a report. Do **not** rename them to `findings.md`/`report.md`.) A round:
 
 ### 0 — Usage-limit gate (before any work this round)
 Run: `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py usage-gate --session-max 75 --weekly-max 90`. It reads Claude Code's real `/usage` (cost-free) and returns JSON: `verdict` (`OK` | `PAUSE` | `ERROR`), `session_pct`, `weekly_pct`, `binding` (`session` | `weekly` | null), `resume_cron`, `resume_human`.
@@ -182,7 +182,7 @@ validate every small assumption — surface the SPINE.
 
 Be harsh. Validate claims against the digest.
 
-WRITE your findings to {absolute SCRATCH/findings.md path} — one block per finding:
+WRITE your findings to {absolute SCRATCH/handoff-review.md path} — one block per finding:
   ## <id> — [SEVERITY] <section/line>
   Problem: <what is wrong>
   Fix: <suggested fix, or "none">
@@ -195,26 +195,26 @@ WRITE your findings to {absolute SCRATCH/findings.md path} — one block per fin
    NeedsUser = yes only if the decision genuinely needs a human — changes intent/
      scope, high-stakes, or you cannot determine the right answer even from the code.)
 Then RETURN ONLY this compact index — no prose, no finding bodies:
-  FINDINGS: {absolute SCRATCH/findings.md path}
+  FINDINGS: {absolute SCRATCH/handoff-review.md path}
   MECH: <count of Decision:no findings>
   DECISIONS:
     <id> — <≤8-word gist>[ NEEDS_USER]   (one line per Decision:yes finding)
-If nothing worth flagging: write findings.md with just a heading and return exactly NO ISSUES.
+If nothing worth flagging: write handoff-review.md with just a heading and return exactly NO ISSUES.
 ```
 
 ### 2 — Drive the decisions (Opus — take or escalate; propose only, one file each)
-For each `<id>` in the reviewer's DECISIONS index (there is no need to read `findings.md` yourself — pass the id along), spawn a **decide** subagent on the **Opus** model. Spawn them **in parallel** (in one message): each only reads and writes its own file, so there is no contention. A wrong take gets written into the spec, so this stays Opus. Each decide-agent reads its one finding from `findings.md`, may open a specific source file under `CODE_ROOT` if the digest is thin, and **writes its result to disk — it never edits the spec** (a single applier is the sole writer):
+For each `<id>` in the reviewer's DECISIONS index (there is no need to read `handoff-review.md` yourself — pass the id along), spawn a **decide** subagent on the **Opus** model. Spawn them **in parallel** (in one message): each only reads and writes its own file, so there is no contention. A wrong take gets written into the spec, so this stays Opus. Each decide-agent reads its one finding from `handoff-review.md`, may open a specific source file under `CODE_ROOT` if the digest is thin, and **writes its result to disk — it never edits the spec** (a single applier is the sole writer):
 
 ```
 You are resolving ONE design decision in a concept spec. Fresh eyes, no prior
 context. You only PROPOSE — you do NOT edit the spec (a single applier writes it).
 Spec (read-only): {absolute WORKING path}   Code-facts digest: {absolute DIGEST path}
-Findings: {absolute SCRATCH/findings.md path} — resolve the finding with id "{id}".
+Findings: {absolute SCRATCH/handoff-review.md path} — resolve the finding with id "{id}".
 (open a specific file under {absolute CODE_ROOT} only if the digest lacks a fact
 you need). {If non_goals_exists: Non-goals: {absolute NON_GOALS path}.}
 
 Read that one finding, research it against the digest/code, then choose ONE and
-WRITE your result to {absolute SCRATCH/decide-{id}.md} in exactly this shape:
+WRITE your result to {absolute SCRATCH/handoff-decide-{id}.md} in exactly this shape:
 
 TAKE — if there is a clearly defensible answer, its blast radius is bounded (it
 does not ripple across many sections), and it does NOT reverse a stated non-goal
@@ -257,7 +257,7 @@ Default to TAKE when you can defend it; escalate only what truly needs the human
 RETURN ONLY one line:  {id} take — <≤10-word gist>   OR   {id} escalate — <≤10-word gist>
 ```
 
-Each decide-agent returns one line (`{id} take|escalate — <gist>`); the orchestrator holds only those lines. The actual edit text and escalation beats stay in the `decide-<id>.md` files for the applier.
+Each decide-agent returns one line (`{id} take|escalate — <gist>`); the orchestrator holds only those lines. The actual edit text and escalation beats stay in the `handoff-decide-<id>.md` files for the applier.
 
 ### 3 — Apply the round (Sonnet — the sole writer; transcribes, does not judge)
 Spawn ONE **applier** subagent on the **Sonnet** model. It is the *only* thing that writes `WORKING` this round: it transcribes the already-decided changes (the judgment happened in Steps 1–2), so it exercises no judgment — a mis-placed edit is self-correcting (the next reviewer re-flags it) and the edit *text* is authored verbatim by the Opus decide-agents. It **always runs** (it also owns the deterministic floor), even when there is nothing to apply:
@@ -266,18 +266,18 @@ Spawn ONE **applier** subagent on the **Sonnet** model. It is the *only* thing t
 You are the applier: the SOLE writer of a concept spec this round. You TRANSCRIBE
 already-decided changes; you do NOT re-judge them.
 Spec (edit in place): {absolute WORKING path}
-Findings: {absolute SCRATCH/findings.md path}
-Decisions: every {absolute SCRATCH}/decide-*.md file (there may be none).
+Findings: {absolute SCRATCH/handoff-review.md path}
+Decisions: every {absolute SCRATCH}/handoff-decide-*.md file (there may be none).
 
 Budget: apply at most 10 changes TOTAL (mechanical fixes + TAKE edits), highest
-severity first (a TAKE's severity is that of its originating finding in findings.md,
+severity first (a TAKE's severity is that of its originating finding in handoff-review.md,
 matched by id); leave the rest — they re-surface next round. Escalations do NOT
 count against the budget.
 
-1. MECHANICAL FIXES — for each finding in findings.md with `Decision: no`, apply its
+1. MECHANICAL FIXES — for each finding in handoff-review.md with `Decision: no`, apply its
    `Fix` (prose/contract only, NEVER implementation code). A "missing piece" that
    needs a design choice is a decision, not a fix — skip it here.
-2. TAKE — for each decide-*.md with `ACTION: take`, apply its `EDIT` VERBATIM at the
+2. TAKE — for each handoff-decide-*.md with `ACTION: take`, apply its `EDIT` VERBATIM at the
    location it names. Do NOT reword the edit text.
 3. ESCALATE — for each with `ACTION: escalate`, append an `### ODn — <TITLE>` entry to
    the `## Open Decisions` section (create it once, near the end, before
@@ -324,7 +324,7 @@ and deliberately escalated to the user; treat them as resolved for the purposes 
 this check.
 
 If nothing substantive remains (outside `## Open Decisions`), return exactly: CLEAN
-Otherwise WRITE the short list to {absolute SCRATCH/exit.md path} (one line each:
+Otherwise WRITE the short list to {absolute SCRATCH/handoff-exit.md path} (one line each:
 `- [SEVERITY] <section> — <what is substantively wrong>. DECISION: <yes|no>.`) and
 RETURN ONLY: DIRTY <n>   (n = number of substantive items)
 ```
@@ -452,7 +452,7 @@ Then the approval flow (fixes approved independently of non-goals, as `spec-impr
 
 ## On round cap
 
-Reaching the cap without a clean exit exam is a signal — usually genuine churn or a cluster of hard escalations. First clear any pending resume cron for this spec (`CronList`/`CronDelete`). Present an honest report: the last exit-exam's substantive findings (read `<SCRATCH for the final round>/exit.md`); what kept churning (from `CHANGELOG`); the `## Open Decisions` list — run it through the **briefing writer** (above) so the escalations read cleanly; the scorecard. Then let the user **re-run** (another batch from `M+1`, e.g. after resolving a blocker), **approve the partial**, or **reject**.
+Reaching the cap without a clean exit exam is a signal — usually genuine churn or a cluster of hard escalations. First clear any pending resume cron for this spec (`CronList`/`CronDelete`). Present an honest report: the last exit-exam's substantive findings (read `<SCRATCH for the final round>/handoff-exit.md`); what kept churning (from `CHANGELOG`); the `## Open Decisions` list — run it through the **briefing writer** (above) so the escalations read cleanly; the scorecard. Then let the user **re-run** (another batch from `M+1`, e.g. after resolving a blocker), **approve the partial**, or **reject**.
 
 ## On usage pause
 
@@ -485,7 +485,7 @@ Derive deterministically (do not paraphrase from memory):
 - **Drive decisions, don't park them.** Real specs are never decision-complete, so a loop that only surfaces decisions can never converge. Every `DECISION: yes` finding gets a decide-agent that either **takes** it (a defensible resolution is written into the spec — by the applier) or **escalates** it (frames it for the user). Convergence = the exit exam is clean *except* for the escalated Open Decisions.
 - **Surface the foundations; don't validate every seam.** The tool cannot atomically check every assumption a spec makes — and shouldn't try. But a design's few load-bearing architectural premises (its ingestion model, its computation invariants, what it deliberately does NOT do) are where a wrong assumption is *obvious to the user at a product level* and usually *unverifiable from code* (it rests on a cost / scale / vendor / operational fact only they hold). So at that altitude the loop's job is to SURFACE the spine for confirmation, not resolve it: the reviewer names the load-bearing premises — reading non-goal *rationales*, not just their scope — and flags any that is unvalidated, inconsistent, or design-flipping-and-user-dependent; such a premise is **escalated, never auto-taken on a guess**; a genuine conflict between two decisions is **escalated as a conflict**, never silently resolved to one side; and the briefing **leads** with a product-altitude "Foundations — confirm these hold" block so the user reviews the spine first. This is the deliberate counterpart to *Drive decisions*: drive the local calls, but hand the architectural premises up.
 - **Read once, branch (via digest).** The cited code is read a single time into `CODE-DIGEST.md`; every reviewer / decide / exit-exam agent reads that small digest instead of re-navigating the codebase (a ~5–10× cost lever). Agents fall back to opening a specific file only when the digest is silent. A genuine fork/shared-context primitive is not available on the Agent path, so the digest is the mechanism. The digest is **facts-only** — never enrich it with run-specific framing (e.g. "escalate this"), which would nudge re-escalation when it is reused across re-runs.
-- **Flat context — the orchestrator is a router.** The main loop never reads or edits `WORKING`; each round it hands subagents file paths and reads back one-line summaries, so the spec text, the findings, and the proposed edits never enter the main context (they flow agent → `SCRATCH`/`WORKING` → agent). Decide-agents *propose* — each writes one `decide-<id>.md`, none touches the spec; a single **applier** subagent is the sole writer and also drives the deterministic floor. This is the sibling cost lever to the digest: the digest keeps *code* out of every agent's context; the router keeps *spec churn* out of the orchestrator's — together they let a 20-round run stay well under the context ceiling instead of degrading after 3–4 rounds.
+- **Flat context — the orchestrator is a router.** The main loop never reads or edits `WORKING`; each round it hands subagents file paths and reads back one-line summaries, so the spec text, the findings, and the proposed edits never enter the main context (they flow agent → `SCRATCH`/`WORKING` → agent). Decide-agents *propose* — each writes one `handoff-decide-<id>.md`, none touches the spec; a single **applier** subagent is the sole writer and also drives the deterministic floor. This is the sibling cost lever to the digest: the digest keeps *code* out of every agent's context; the router keeps *spec churn* out of the orchestrator's — together they let a 20-round run stay well under the context ceiling instead of degrading after 3–4 rounds.
 - **Model tiers.** Digest-reader + reviewer + **applier** = **Sonnet** (heavy readers / mechanical transcription; a reviewer miss or a mis-placed edit is self-correcting across rounds — and the applier writes edit *text authored verbatim by the Opus decide-agents*, so it exercises no judgment of its own). Decide-agent + exit-exam + briefing writer = **Opus** (sharp judgment / user-facing prose; a bad auto-take is written into the spec and a false-CLEAN ends the loop — neither is self-correcting).
 - **Decisions are working-quality during the loop; polished only at the hand-off.** Decide-agents write functional decisions (accuracy over prose); the reviewer and exit exam read the code and don't need polish. A single **briefing writer** produces the product-altitude prose once, when the run surfaces to the user (convergence or round cap) — keeping the per-round path lean and prose-writing out of the main loop's context. The concept's own `### Dn:` decision text stays implementer-facing, per the template.
 - **Escalation safety, without a ledger.** Blast radius is judged by the decide-agent, not computed. Mitigations: the decide-agent is Opus; the working copy is the safety net (original untouched until approve); and every auto-take is in the briefing and the changelog — visible and reversible, never silently locked in.

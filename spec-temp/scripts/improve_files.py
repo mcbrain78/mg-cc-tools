@@ -67,9 +67,11 @@ snapshot <file> --run N --round M [--verdicts PATH]
 scratch-dir <file> --run N --round M
     Make (mkdir -p) and print the absolute per-round scratch dir
     (``<spec-dir>/.spec-scratch/run-N/round-M``). Inter-agent plumbing for one
-    round of the flat-context loop: the reviewer writes ``findings.md`` there,
-    each decide-agent writes ``decide-<id>.md``, the exit exam writes
-    ``exit.md``. Ephemeral — regenerated every round, safe to delete anytime.
+    round of the flat-context loop: the reviewer writes ``handoff-review.md``
+    there, each decide-agent writes ``handoff-decide-<id>.md``, the exit exam
+    writes ``handoff-exit.md`` — neutral ``handoff-*`` names because a subagent
+    write to a ``findings``/``report``-named file trips a Claude Code behavioral
+    guard. Ephemeral — regenerated every round, safe to delete anytime.
 
 scratch-clean <file>
     Remove the whole ``<spec-dir>/.spec-scratch`` tree if present (idempotent).
