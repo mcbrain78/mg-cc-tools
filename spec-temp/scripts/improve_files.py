@@ -64,6 +64,17 @@ snapshot <file> --run N --round M [--verdicts PATH]
     log. Idempotent when the target already byte-matches; a MISMATCHING
     existing round-M.md is a reused run number (exit 1).
 
+scratch-dir <file> --run N --round M
+    Make (mkdir -p) and print the absolute per-round scratch dir
+    (``<spec-dir>/.spec-scratch/run-N/round-M``). Inter-agent plumbing for one
+    round of the flat-context loop: the reviewer writes ``findings.md`` there,
+    each decide-agent writes ``decide-<id>.md``, the exit exam writes
+    ``exit.md``. Ephemeral — regenerated every round, safe to delete anytime.
+
+scratch-clean <file>
+    Remove the whole ``<spec-dir>/.spec-scratch`` tree if present (idempotent).
+    Called at terminal states (approve / reject / discard).
+
 Exit codes: 0 = success, 1 = error (details on stderr).
 """
 from __future__ import annotations
@@ -116,6 +127,11 @@ def _decisions_path(source: Path) -> Path:
 def _history_dir(source: Path) -> Path:
     """The run-archive directory next to the spec."""
     return source.parent / "history"
+
+
+def _scratch_root(source: Path) -> Path:
+    """The ephemeral per-round inter-agent scratch tree next to the spec."""
+    return source.parent / ".spec-scratch"
 
 
 # Canonical archive names inside history/run-N/ (un-prefixed, per the concept tree).
@@ -510,6 +526,29 @@ def cmd_snapshot(source: Path, argv: list[str]) -> int:
     return 0
 
 
+def cmd_scratch_dir(source: Path, argv: list[str]) -> int:
+    """Make + print the absolute per-round inter-agent scratch dir."""
+    run, argv = _flag(argv, "--run")
+    rnd, argv = _flag(argv, "--round")
+    if not run or not rnd:
+        return _fail("scratch-dir requires --run N --round M")
+    d = _scratch_root(source) / f"run-{run}" / f"round-{rnd}"
+    d.mkdir(parents=True, exist_ok=True)
+    print(str(d.resolve()))
+    return 0
+
+
+def cmd_scratch_clean(source: Path) -> int:
+    """Remove the whole .spec-scratch tree (idempotent — ephemeral plumbing)."""
+    root = _scratch_root(source)
+    if root.exists():
+        shutil.rmtree(root)
+        print(f"scratch-clean: removed {root}")
+    else:
+        print("scratch-clean: nothing to remove")
+    return 0
+
+
 # ── CLI dispatch ────────────────────────────────────────────────────────────
 
 USAGE = """\
@@ -529,6 +568,8 @@ Sidecars:
   append-decision  <file> --kind decision|non-goal-proposal --title T --finding F [--finding-atoms JSON]
   update-decision  <file> --id Rn --set JSON
   snapshot         <file> --run N --round M [--verdicts PATH]
+  scratch-dir      <file> --run N --round M               Make + print per-round scratch dir
+  scratch-clean    <file>                                 Remove the .spec-scratch tree
 """
 
 
@@ -568,6 +609,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_update_decision(source, rest)
     if command == "snapshot":
         return cmd_snapshot(source, rest)
+    if command == "scratch-dir":
+        return cmd_scratch_dir(source, rest)
+    if command == "scratch-clean":
+        return cmd_scratch_clean(source)
 
     print(f"Error: unknown command: {command}", file=sys.stderr)
     print(USAGE, file=sys.stderr)

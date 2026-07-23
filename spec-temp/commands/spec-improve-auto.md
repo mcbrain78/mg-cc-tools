@@ -68,7 +68,7 @@ Checks script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
    - **On success (exit 0):** capture the emitted resolved-paths JSON. Store it as `PATHS_JSON`. If `backup_created` is true, report: `Backed up original to <original_backup>`.
    - **On guard-fail (exit 1):** an in-progress working copy from a prior session exists (the D7 guard). Do **not** overwrite it. **If `--resume` or `--force` is set** (a scheduled or manual resume), auto-**Resume**: run the read-only `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py paths <target-file-path>`, use its JSON as `PATHS_JSON`, and skip the question. **Otherwise** run `paths`, surface the leftover state, and use **AskUserQuestion** for the binary choice:
      - **Resume** — continue with the existing working copy. Use the `paths` JSON as `PATHS_JSON`.
-     - **Discard and restart** — run `improve_files.py init <target-file-path> --fresh`, then use its JSON.
+     - **Discard and restart** — run `improve_files.py init <target-file-path> --fresh` (then `improve_files.py scratch-clean <target-file-path>` to clear any stale scratch), and use the init JSON.
 
      This AskUserQuestion is the **only** picker before convergence (a `--resume`/`--force` invocation skips even this). The loop is otherwise autonomous.
 
@@ -90,7 +90,7 @@ Checks script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
 
 4. **Get cwd** with a Bash `pwd`. Set `CODE_ROOT` = cwd (see Context).
 
-5. **Absolutize the paths handed to subagents** — `WORKING`, `NON_GOALS`, `DIGEST`, `{MG_INSTALL_CONCEPT_TEMPLATE}`, `CODE_ROOT`. Rule: if a path does not begin with `/`, prepend `<cwd>/`. Subagent cwd is not guaranteed, so every path in an agent prompt is absolute. The command's own `uv run` / `Read` / `Edit` calls stay relative to `WORKING`.
+5. **Absolutize the paths handed to subagents** — `WORKING`, `NON_GOALS`, `DIGEST`, the **target file** (as `TARGET_ABS`, for the applier's `append-changelog` calls), `{MG_INSTALL_CONCEPT_TEMPLATE}`, `CODE_ROOT`. Rule: if a path does not begin with `/`, prepend `<cwd>/`. Subagent cwd is not guaranteed, so every path in an agent prompt is absolute (the per-round `SCRATCH` path is already absolute — `scratch-dir` prints it resolved). The command's own `uv run` calls stay relative to `WORKING`.
 
 ## Step 0 — Code digest (once per run; the "read once")
 
@@ -125,7 +125,11 @@ Return one line: the digest path + entity count.
 
 ## The auto-loop
 
-Rounds `M = 1, 2, 3, …` up to the **round cap of 20**. Each round is self-contained (see **State discipline**). A round:
+Rounds `M = 1, 2, 3, …` up to the **round cap of 20**. Each round is self-contained (see **State discipline**).
+
+**The orchestrator is a thin router — it never reads or edits `WORKING` itself.** Each round it spawns subagents, hands them **absolute file paths**, and gets back only **one-line summaries** (ids, counts, a verdict word). All bulky content — the spec text, the findings, the proposed edits — flows agent → disk → agent through a per-round scratch dir and never enters the main context; that is what keeps context flat across a long run. At the **start of every round**, resolve (and create) that dir, capturing the absolute path it prints:
+`uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py scratch-dir <target> --run <RUN> --round <M>` → store as `SCRATCH`.
+Hand `<SCRATCH>/findings.md`, `<SCRATCH>/decide-<id>.md`, and `<SCRATCH>/exit.md` to the agents below. A round:
 
 ### 0 — Usage-limit gate (before any work this round)
 Run: `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py usage-gate --session-max 75 --weekly-max 90`. It reads Claude Code's real `/usage` (cost-free) and returns JSON: `verdict` (`OK` | `PAUSE` | `ERROR`), `session_pct`, `weekly_pct`, `binding` (`session` | `weekly` | null), `resume_cron`, `resume_human`.
@@ -170,76 +174,120 @@ in `### What gets built` must cite `(Dx)` referencing a real `### Dn:` block.
 
 Be harsh. Validate claims against the digest.
 
-Return findings as a compact list, one entry each, exactly:
-  - [SEVERITY] <section/line> — <what is wrong>. FIX: <suggested fix, or "none">. DECISION: <yes|no>. NEEDS_USER: <yes|no>.
-  SEVERITY = critical | major | minor.
-  DECISION = yes if resolving it is a design decision (a choice among alternatives,
-    a premise to correct, an open question/deferral to close), no if it is a
-    mechanical/clarity fix.
-  NEEDS_USER = yes only if the decision genuinely needs a human (changes intent/
-    scope, high-stakes, or you cannot determine the right answer even from the
-    code). Otherwise no.
-If nothing worth flagging: return exactly NO ISSUES.
+WRITE your findings to {absolute SCRATCH/findings.md path} — one block per finding:
+  ## <id> — [SEVERITY] <section/line>
+  Problem: <what is wrong>
+  Fix: <suggested fix, or "none">
+  Decision: <yes|no>
+  NeedsUser: <yes|no>
+  (<id> = F1, F2, …; SEVERITY = critical | major | minor.
+   Decision = yes if resolving it is a design decision — a choice among
+     alternatives, a premise to correct, an open question/deferral to close;
+     no if it is a mechanical/clarity fix.
+   NeedsUser = yes only if the decision genuinely needs a human — changes intent/
+     scope, high-stakes, or you cannot determine the right answer even from the code.)
+Then RETURN ONLY this compact index — no prose, no finding bodies:
+  FINDINGS: {absolute SCRATCH/findings.md path}
+  MECH: <count of Decision:no findings>
+  DECISIONS:
+    <id> — <≤8-word gist>[ NEEDS_USER]   (one line per Decision:yes finding)
+If nothing worth flagging: write findings.md with just a heading and return exactly NO ISSUES.
 ```
 
-### 2 — Triage the mechanical fixes
-Apply, on `WORKING`, every `DECISION: no` finding you are confident resolves the issue without changing intent/scope (Read `WORKING`, then `Edit`). Resolve "missing piece" findings by specifying the contract in prose — never implementation code. Log each: `improve_files.py append-changelog <target> --run <RUN> --round <M> --kind fix "<desc>"`.
-
-### 3 — Drive the decisions (Opus — take or escalate)
-For each `DECISION: yes` finding (skip any whose subject already appears under `## Open Decisions`), spawn a **decide** subagent on the **Opus** model (sharp — a wrong take gets written into the spec). Give it the one finding, the digest, and permission to open specific source files under `CODE_ROOT` if the digest is thin:
+### 2 — Drive the decisions (Opus — take or escalate; propose only, one file each)
+For each `<id>` in the reviewer's DECISIONS index (there is no need to read `findings.md` yourself — pass the id along), spawn a **decide** subagent on the **Opus** model. Spawn them **in parallel** (in one message): each only reads and writes its own file, so there is no contention. A wrong take gets written into the spec, so this stays Opus. Each decide-agent reads its one finding from `findings.md`, may open a specific source file under `CODE_ROOT` if the digest is thin, and **writes its result to disk — it never edits the spec** (a single applier is the sole writer):
 
 ```
 You are resolving ONE design decision in a concept spec. Fresh eyes, no prior
-context.
-Spec: {absolute WORKING path}   Code-facts digest: {absolute DIGEST path}
+context. You only PROPOSE — you do NOT edit the spec (a single applier writes it).
+Spec (read-only): {absolute WORKING path}   Code-facts digest: {absolute DIGEST path}
+Findings: {absolute SCRATCH/findings.md path} — resolve the finding with id "{id}".
 (open a specific file under {absolute CODE_ROOT} only if the digest lacks a fact
 you need). {If non_goals_exists: Non-goals: {absolute NON_GOALS path}.}
 
-The decision to resolve:
-{paste the one finding: severity, location, what's wrong, suggested fix}
-
-Research it against the digest/code, then choose ONE:
+Read that one finding, research it against the digest/code, then choose ONE and
+WRITE your result to {absolute SCRATCH/decide-{id}.md} in exactly this shape:
 
 TAKE — if there is a clearly defensible answer, its blast radius is bounded (it
 does not ripple across many sections), and it does NOT reverse a stated non-goal
-or the spec's evident intent. Return:
-  VERDICT: TAKE
-  RATIONALE: <why this answer, with the evidence>
-  ALTERNATIVES_REJECTED: <the main alternative(s) and why not>
-  EDIT: <the exact new/replacement spec text and where it goes — a repaired or
-        new `### Dn:` decision block (Choice / Why / Alternatives rejected, per the
-        template), a corrected premise, a resolved open item. Contracts/prose,
-        never implementation code. Write it FUNCTIONALLY — accuracy over polish;
-        the product-altitude prose is produced later by the briefing writer.>
+or the spec's evident intent:
+  ACTION: take
+  CHANGELOG: <one line: what was decided>
+  EDIT:
+  <the exact new/replacement spec text AND where it goes — a repaired or new
+   `### Dn:` decision block (Choice / Why / Alternatives rejected, per the
+   template), a corrected premise, a resolved open item. Contracts/prose, never
+   implementation code. Name the anchor precisely (e.g. 'replace the paragraph
+   starting "…"' or 'append as a new ### D9 under ## Design Decisions'). Write it
+   FUNCTIONALLY — accuracy over polish; the briefing writer polishes later.>
 
 ESCALATE — if the answer is genuinely ambiguous, high-stakes, wide-blast-radius,
-or would reverse intent/a non-goal. Return the SUBSTANCE (functional notes are
-fine — the briefing writer polishes the prose later; just be accurate and
-complete):
-  VERDICT: ESCALATE
+or would reverse intent/a non-goal (functional notes are fine — the briefing writer
+polishes the prose later; just be accurate and complete):
+  ACTION: escalate
+  TITLE: <short title>
   SITUATION: <the relevant state of the world, 1-2 sentences>
   PROBLEM: <the tension that forces a choice, and why you cannot just take it
            (genuinely ambiguous / high-stakes / would reverse intent)>
-  OPTIONS: <the REAL options — usually 2-4; do NOT pad to a fixed count. Label each
-           with a sequential lowercase letter a, b, c, … and give its tradeoff
-           (pros/cons). The letters are what the user types back.>
+  OPTIONS:
+  - a — <tradeoff (pros/cons)>
+  - b — <tradeoff>
+  - c — <tradeoff>
+  (the REAL options — usually 2-4; do NOT pad to a fixed count. The lowercase
+   letters are what the user types back.)
   RECOMMENDATION: <your lean named by its letter (e.g. "b") + confidence, and the
                   one reason it wins>
   GOVERNS: <the spec sections/decisions this choice controls, so review skips them
            until it is resolved — e.g. "the WASO solution section, D1, D8, D10">
 
 Default to TAKE when you can defend it; escalate only what truly needs the human.
+RETURN ONLY one line:  {id} take — <≤10-word gist>   OR   {id} escalate — <≤10-word gist>
 ```
 
-For each result:
-- **TAKE** → apply `EDIT` to `WORKING` (Read then Edit), and log: `append-changelog <target> --run <RUN> --round <M> --kind decision-take "<one-line: what was decided>"`.
-- **ESCALATE** → append the decision to the `## Open Decisions` section of `WORKING` (create the section once, near the end, before `## Verification` if present, else at end) as an `### ODn — <title>` entry carrying the agent's functional beats — **Situation**, **Problem**, lettered **Options** (a, b, c …) with tradeoffs, **Recommendation** — and closing with a **Governs (skip in review until resolved):** line listing its `GOVERNS` sections. Keep it functional; the briefing writer produces the user-facing prose at convergence. Being in the doc — including the Governs list — it is invisible to the sections future reviewers would otherwise re-flag.
+Each decide-agent returns one line (`{id} take|escalate — <gist>`); the orchestrator holds only those lines. The actual edit text and escalation beats stay in the `decide-<id>.md` files for the applier.
 
-**Round budget:** apply at most **10 changes** (fixes + takes) to `WORKING` per round. If more clear the bar, take the 10 highest-severity; the rest re-surface next round. Escalations do not count against the budget (they are cheap appends).
+### 3 — Apply the round (Sonnet — the sole writer; transcribes, does not judge)
+Spawn ONE **applier** subagent on the **Sonnet** model. It is the *only* thing that writes `WORKING` this round: it transcribes the already-decided changes (the judgment happened in Steps 1–2), so it exercises no judgment — a mis-placed edit is self-correcting (the next reviewer re-flags it) and the edit *text* is authored verbatim by the Opus decide-agents. It **always runs** (it also owns the deterministic floor), even when there is nothing to apply:
 
-### 4 — Deterministic floor + snapshot
-`uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py floor <WORKING>` must pass. On exit 1, its findings (missing required headings, uncited bullets) are safe mechanical fixes — apply, log, re-run until it passes. Then:
-`uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py snapshot <target> --run <RUN> --round <M>` (writes `history/run-<RUN>/round-<M>.md`; do not read it back).
+```
+You are the applier: the SOLE writer of a concept spec this round. You TRANSCRIBE
+already-decided changes; you do NOT re-judge them.
+Spec (edit in place): {absolute WORKING path}
+Findings: {absolute SCRATCH/findings.md path}
+Decisions: every {absolute SCRATCH}/decide-*.md file (there may be none).
+
+Budget: apply at most 10 changes TOTAL (mechanical fixes + TAKE edits), highest
+severity first (a TAKE's severity is that of its originating finding in findings.md,
+matched by id); leave the rest — they re-surface next round. Escalations do NOT
+count against the budget.
+
+1. MECHANICAL FIXES — for each finding in findings.md with `Decision: no`, apply its
+   `Fix` (prose/contract only, NEVER implementation code). A "missing piece" that
+   needs a design choice is a decision, not a fix — skip it here.
+2. TAKE — for each decide-*.md with `ACTION: take`, apply its `EDIT` VERBATIM at the
+   location it names. Do NOT reword the edit text.
+3. ESCALATE — for each with `ACTION: escalate`, append an `### ODn — <TITLE>` entry to
+   the `## Open Decisions` section (create it once, near the end, before
+   `## Verification` if present, else at end) from the fields: **Situation**,
+   **Problem**, lettered **Options** (keep the a/b/c letters exactly) with tradeoffs,
+   **Recommendation**, then a closing `Governs (skip in review until resolved): <GOVERNS>`
+   line. Number `ODn` after any existing OD entries. Keep it functional.
+4. If an edit does NOT apply cleanly (anchor missing / conflict), SKIP it and report
+   it — never improvise.
+5. FLOOR — run `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py floor {absolute WORKING path}`;
+   its findings (missing required headings, uncited bullets) are safe mechanical
+   fixes — apply and re-run until it exits 0.
+6. LOG — one call per applied change:
+   `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py append-changelog {TARGET_ABS} --run {RUN} --round {M} --kind fix|decision-take "<one line>"`
+   (use the decide-agent's CHANGELOG line for takes; the finding's Problem for fixes).
+
+RETURN ONLY:
+  APPLIED fixes=<a> takes=<b> escalations=<c> skipped=<s>
+  (if s>0, one extra line per skip:  SKIP <id> — <why>)
+```
+
+### 4 — Snapshot
+`uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py snapshot <target> --run <RUN> --round <M>` (writes `history/run-<RUN>/round-<M>.md`; do not read it back). This is the round's resume anchor; the floor already passed inside the applier.
 
 ### 5 — Exit exam (Opus — drives termination)
 Spawn ONE exit-exam subagent on the **Opus** model — a higher, substantive-only bar than Step 1:
@@ -259,23 +307,27 @@ or any spec section named in an Open Decision's **Governs** line — those are k
 and deliberately escalated to the user; treat them as resolved for the purposes of
 this check.
 
-If nothing substantive remains (outside `## Open Decisions`), return exactly: CLEAN.
-Otherwise return a short list, one line each:
-  - [SEVERITY] <section> — <what is substantively wrong>. DECISION: <yes|no>.
+If nothing substantive remains (outside `## Open Decisions`), return exactly: CLEAN
+Otherwise WRITE the short list to {absolute SCRATCH/exit.md path} (one line each:
+`- [SEVERITY] <section> — <what is substantively wrong>. DECISION: <yes|no>.`) and
+RETURN ONLY: DIRTY <n>   (n = number of substantive items)
 ```
 
 ### 6 — Converge or continue
-- **Exit exam `CLEAN` AND floor passed → CONVERGED.** Go to **On convergence**.
-- **Otherwise → next round.** Do not carry findings in context — the next round's fresh agents re-derive from the updated `WORKING` + the digest.
+Branch on the exit-exam's one-line verdict alone — you hold no round content:
+- **`CLEAN` (and the floor passed — the applier drove it to 0) → CONVERGED.** Go to **On convergence**.
+- **`DIRTY <n>` → next round.** Carry nothing in context; the next round's fresh agents re-derive from the updated `WORKING` + the digest. Increment `M`.
 - **`M` reaches 20 without converging → STOP at cap.** Go to **On round cap**.
 
 ## State discipline (load-bearing)
 
-The orchestrator keeps **nothing durable in its own context**:
+The orchestrator keeps **nothing durable in its own context** — and, in the flat-context loop, almost nothing *transient* either:
+- **The orchestrator never reads or edits `WORKING`.** Every round it only spawns agents with paths and reads back one-line summaries. All spec text, findings, and proposed edits live in files (the per-round `SCRATCH` dir and `WORKING`), read and written by subagents whose context is discarded on return. This is what holds the main context flat over a 20-round run.
 - **`WORKING` on disk is the state.** Unresolved issues persist because they are still in the doc; the reviewer re-derives the canonical live list each round. Never filter a finding using memory of a prior round.
 - **`## Open Decisions` in `WORKING` is the escalation memory** — an escalated decision lives there, so future reviewers skip it and it is not re-researched (the same mechanism as `NON_GOALS`). This is the one durable cross-round record, and it lives in the doc, not your context.
 - **`DIGEST` is computed once and reused** every round and across re-runs (code is static).
-- If compacted mid-loop, resume from disk: `M` = (count of `round-*.md` in `history/run-<RUN>/`) + 1; re-read paths via `improve_files.py paths <target>`; the digest and `## Open Decisions` are already on disk. Continue.
+- **`SCRATCH` (`<dir-of-WORKING>/.spec-scratch/run-<RUN>/round-<M>/`) is ephemeral inter-agent plumbing** — regenerated every round, never a source of truth. Safe to delete anytime; cleaned at terminal states.
+- If compacted mid-loop, resume from disk: `M` = (count of `round-*.md` in `history/run-<RUN>/`) + 1; re-read paths via `improve_files.py paths <target>`; the digest and `## Open Decisions` are already on disk; the interrupted round simply re-runs (its `SCRATCH` files are overwritten). Continue.
 
 ## Briefing writer
 
@@ -355,14 +407,14 @@ Then the approval flow (fixes approved independently of non-goals, as `spec-impr
   1. **Apply each resolution as settled design.** Fold the chosen option into the section(s) named by that OD's `Governs` line (removing the "OPEN / see ODn" pointers). For a *substantial* resolution (a new mechanism/design), draft it faithfully with a decide/writer agent grounded in the digest + code, then re-run the exit exam over the touched sections; for a *trivial* one (status quo / removal), edit directly. Log each: `improve_files.py append-changelog <target> --run <RUN> --round resolved --kind resolution "ODn = <letter>: <one line of what was folded in>"`.
   2. **Delete each `### ODn` memo** once its resolution is folded in; when all are resolved, **remove the `## Open Decisions` heading entirely.** **Invariant: an accepted spec contains no `## Open Decisions` heading and no `Governs (skip …)` lines** — that is exactly what lets a later re-run *review* the settled content instead of skipping or re-litigating it. (The memos + resolutions live on in `history/run-<RUN>/` snapshots and the archived CHANGELOG, so deleting them from the doc loses no audit trail.)
   3. **Snapshot the finalized copy:** `improve_files.py snapshot <target> --run <RUN> --round resolved` — captures the resolved state in `history/run-<RUN>/` for hindsight analysis.
-  4. **Approve:** `improve_files.py approve <target>` (+ `append-non-goal <target> "<text>"` per accepted proposed non-goal). Copies the finalized working copy over the original and archives the CHANGELOG (now carrying the `[resolution]` entries) into `history/run-<RUN>/`.
+  4. **Approve:** `improve_files.py approve <target>` (+ `append-non-goal <target> "<text>"` per accepted proposed non-goal). Copies the finalized working copy over the original and archives the CHANGELOG (now carrying the `[resolution]` entries) into `history/run-<RUN>/`. Then `improve_files.py scratch-clean <target>` to remove the ephemeral `.spec-scratch` tree.
   5. **To verify the resolutions**, re-run `/mg-temp:spec-improve-auto <target>`: it cold-starts on the clean settled spec as the next run (history continues), and the reviewer now *reads* the settled content — no skip-lists — to confirm the new design holds.
 - **Override an auto-decision** → the user names it by its `AD` number (e.g. `AD3`); map it to the underlying `### Dn:` block via the briefing, re-open it (Edit `WORKING` to back it out / adjust), and re-run.
-- **Reject** → `improve_files.py reject <target>` (discards the working copy; the original is untouched — reject never reverts to the pristine `concept.original.md`).
+- **Reject** → `improve_files.py reject <target>` then `improve_files.py scratch-clean <target>` (discards the working copy and the ephemeral scratch tree; the original is untouched — reject never reverts to the pristine `concept.original.md`).
 
 ## On round cap
 
-Reaching the cap without a clean exit exam is a signal — usually genuine churn or a cluster of hard escalations. First clear any pending resume cron for this spec (`CronList`/`CronDelete`). Present an honest report: the last exit-exam's substantive findings; what kept churning (from `CHANGELOG`); the `## Open Decisions` list — run it through the **briefing writer** (above) so the escalations read cleanly; the scorecard. Then let the user **re-run** (another batch from `M+1`, e.g. after resolving a blocker), **approve the partial**, or **reject**.
+Reaching the cap without a clean exit exam is a signal — usually genuine churn or a cluster of hard escalations. First clear any pending resume cron for this spec (`CronList`/`CronDelete`). Present an honest report: the last exit-exam's substantive findings (read `<SCRATCH for the final round>/exit.md`); what kept churning (from `CHANGELOG`); the `## Open Decisions` list — run it through the **briefing writer** (above) so the escalations read cleanly; the scorecard. Then let the user **re-run** (another batch from `M+1`, e.g. after resolving a blocker), **approve the partial**, or **reject**.
 
 ## On usage pause
 
@@ -392,13 +444,14 @@ Derive deterministically (do not paraphrase from memory):
 
 <important_notes>
 - **This is a main-session loop, not the Workflow tool.** No `.js` drain, no atom ledger, no verification pyramid, no block-gate, no `DECISIONS.json`. Coverage comes from fresh agents over cheap rounds; decisions are driven by scoped decide-agents; termination by the exit exam. See `docs/work-queue/todo/spec-improve-auto/AUTO2-DESIGN.md`.
-- **Drive decisions, don't park them.** Real specs are never decision-complete, so a loop that only surfaces decisions can never converge. Every `DECISION: yes` finding gets a decide-agent that either **takes** it (writes a defensible resolution into the spec) or **escalates** it (frames it for the user). Convergence = the exit exam is clean *except* for the escalated Open Decisions.
+- **Drive decisions, don't park them.** Real specs are never decision-complete, so a loop that only surfaces decisions can never converge. Every `DECISION: yes` finding gets a decide-agent that either **takes** it (a defensible resolution is written into the spec — by the applier) or **escalates** it (frames it for the user). Convergence = the exit exam is clean *except* for the escalated Open Decisions.
 - **Read once, branch (via digest).** The cited code is read a single time into `CODE-DIGEST.md`; every reviewer / decide / exit-exam agent reads that small digest instead of re-navigating the codebase (a ~5–10× cost lever). Agents fall back to opening a specific file only when the digest is silent. A genuine fork/shared-context primitive is not available on the Agent path, so the digest is the mechanism. The digest is **facts-only** — never enrich it with run-specific framing (e.g. "escalate this"), which would nudge re-escalation when it is reused across re-runs.
-- **Model tiers.** Digest-reader + reviewer = **Sonnet** (heavy readers; a reviewer miss is self-correcting across rounds). Decide-agent + exit-exam + briefing writer = **Opus** (sharp judgment / user-facing prose; a bad auto-take is written into the spec and a false-CLEAN ends the loop — neither is self-correcting).
+- **Flat context — the orchestrator is a router.** The main loop never reads or edits `WORKING`; each round it hands subagents file paths and reads back one-line summaries, so the spec text, the findings, and the proposed edits never enter the main context (they flow agent → `SCRATCH`/`WORKING` → agent). Decide-agents *propose* — each writes one `decide-<id>.md`, none touches the spec; a single **applier** subagent is the sole writer and also drives the deterministic floor. This is the sibling cost lever to the digest: the digest keeps *code* out of every agent's context; the router keeps *spec churn* out of the orchestrator's — together they let a 20-round run stay well under the context ceiling instead of degrading after 3–4 rounds.
+- **Model tiers.** Digest-reader + reviewer + **applier** = **Sonnet** (heavy readers / mechanical transcription; a reviewer miss or a mis-placed edit is self-correcting across rounds — and the applier writes edit *text authored verbatim by the Opus decide-agents*, so it exercises no judgment of its own). Decide-agent + exit-exam + briefing writer = **Opus** (sharp judgment / user-facing prose; a bad auto-take is written into the spec and a false-CLEAN ends the loop — neither is self-correcting).
 - **Decisions are working-quality during the loop; polished only at the hand-off.** Decide-agents write functional decisions (accuracy over prose); the reviewer and exit exam read the code and don't need polish. A single **briefing writer** produces the product-altitude prose once, when the run surfaces to the user (convergence or round cap) — keeping the per-round path lean and prose-writing out of the main loop's context. The concept's own `### Dn:` decision text stays implementer-facing, per the template.
 - **Escalation safety, without a ledger.** Blast radius is judged by the decide-agent, not computed. Mitigations: the decide-agent is Opus; the working copy is the safety net (original untouched until approve); and every auto-take is in the briefing and the changelog — visible and reversible, never silently locked in.
 - **`## Open Decisions` is loop-owned and lives in the working copy.** It is the escalation record and the reviewers' skip-list (like non-goals). On approval the user resolves it; it is not meant to ship unresolved.
 - **Asymmetric bars.** The Step-1 reviewer is deliberately harsh and wide; the Step-5 exit exam holds a high, substantive-only bar. That asymmetry is what lets the loop converge when substantive issues (and their decisions) are handled, even if a harsh reviewer could always find one more nitpick.
-- **The working copy is the safety net and the only state.** The orchestrator holds no durable round state; it re-reads from disk and is resilient to mid-loop compaction.
+- **The working copy is the safety net and the only durable state.** The orchestrator holds no durable round state — and, per **Flat context**, no round *content* either; it routes paths, re-reads from disk, and is resilient to mid-loop compaction. `SCRATCH` is ephemeral plumbing, never a source of truth.
 - **Usage-limit gate + self-scheduled resume.** Round step 0 reads the real Claude Code `/usage` (cost-free) and **pauses** the run when session > 75% or weekly > 90%, scheduling its own `--resume` at the binding window's reset via a one-shot `CronCreate` (session-only — it needs this session to stay alive, which a persistent terminal/multiplexer session provides). `--force` grants exactly one over-threshold round (via the `FORCE_MARKER` token), then the loop pauses again. Whenever the loop ends for any *other* reason — convergence, round cap, approve, reject — clear any pending resume cron for this spec (`CronList`/`CronDelete`) so a stale resume can't fire.
 </important_notes>
