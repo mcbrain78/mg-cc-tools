@@ -36,6 +36,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -239,6 +240,107 @@ def cmd_floor(spec: Path) -> int:
     status = "pass" if not findings else "fail"
     _emit({"check": "floor", "status": status, "findings": findings})
     return 0 if status == "pass" else 1
+
+
+# ── usage-gate (session/weekly usage-limit guard for the auto-loop) ──────────
+#
+# Reads the REAL subscription limits via Claude Code's own `/usage` (cost-free —
+# num_turns:0), so the loop can pause before a mid-round cutoff and schedule its
+# own resume at the reset. NOT a wall-clock proxy: the percentages and reset
+# timestamps come straight from `/usage`.
+
+
+def _parse_usage_line(line: str) -> tuple[int | None, str | None]:
+    pm = re.search(r"(\d+)%\s*used", line)
+    rm = re.search(r"resets\s+(.+?)\s*(?:\(|$)", line)
+    return (int(pm.group(1)) if pm else None,
+            rm.group(1).strip() if rm else None)
+
+
+def _parse_reset(s: str | None) -> datetime | None:
+    """'Jul 22, 1:49pm' → a future naive-local datetime (the reset instant).
+    `/usage` prints local time and cron runs in local time, so no tz math."""
+    if not s:
+        return None
+    s2 = re.sub(r"(?i)\b(am|pm)\b", lambda m: m.group(1).upper(), s.strip().rstrip("."))
+    now = datetime.now()
+    d: datetime | None = None
+    for fmt in ("%b %d, %I:%M%p", "%b %d %I:%M%p", "%B %d, %I:%M%p"):
+        try:
+            d = datetime.strptime(s2, fmt).replace(year=now.year)
+            break
+        except ValueError:
+            d = None
+    if d is None:
+        return None
+    while d < now - timedelta(hours=1):        # a reset is always ahead; fix a year underflow
+        d = d.replace(year=d.year + 1)
+    return d
+
+
+def cmd_usage_gate(session_max: int, weekly_max: int, buffer_min: int) -> int:
+    """PAUSE if session% > session_max OR weekly% > weekly_max, and emit the
+    binding reset as a one-shot cron string the loop hands to CronCreate. Any
+    failure to read /usage returns verdict ERROR (the loop proceeds, degrading
+    to pre-feature behaviour rather than halting on a monitoring hiccup)."""
+    try:
+        proc = subprocess.run(
+            ["claude", "-p", "/usage", "--output-format", "json"],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        _emit({"check": "usage-gate", "verdict": "ERROR", "detail": f"could not run /usage: {e}"})
+        return 0
+    if proc.returncode != 0:
+        _emit({"check": "usage-gate", "verdict": "ERROR", "detail": f"/usage exited {proc.returncode}"})
+        return 0
+    try:
+        body = json.loads(proc.stdout).get("result", "")
+    except (json.JSONDecodeError, AttributeError):
+        body = proc.stdout
+
+    session_pct = weekly_pct = None
+    session_reset = weekly_reset = None
+    for line in body.splitlines():
+        ls = line.strip()
+        if ls.startswith("Current session:"):
+            session_pct, session_reset = _parse_usage_line(ls)
+        elif ls.startswith("Current week (all models):"):
+            weekly_pct, weekly_reset = _parse_usage_line(ls)
+    if session_pct is None or weekly_pct is None:
+        _emit({"check": "usage-gate", "verdict": "ERROR",
+               "detail": "could not parse session/weekly lines from /usage output"})
+        return 0
+
+    session_over = session_pct > session_max
+    weekly_over = weekly_pct > weekly_max
+    verdict = "PAUSE" if (session_over or weekly_over) else "OK"
+    # Weekly binds longer than session (a session reset won't clear a weekly cap),
+    # so when weekly is over we wait for the weekly reset.
+    binding = "weekly" if weekly_over else ("session" if session_over else None)
+    resume_src = weekly_reset if binding == "weekly" else session_reset if binding == "session" else None
+
+    resume_cron = resume_human = None
+    resume_dt = _parse_reset(resume_src)
+    if resume_dt is not None:
+        resume_dt += timedelta(minutes=buffer_min)          # fire just after the window resets
+        resume_cron = f"{resume_dt.minute} {resume_dt.hour} {resume_dt.day} {resume_dt.month} *"
+        resume_human = resume_dt.strftime("%b %d, %H:%M")
+
+    _emit({
+        "check": "usage-gate",
+        "verdict": verdict,
+        "binding": binding,
+        "session_pct": session_pct,
+        "weekly_pct": weekly_pct,
+        "session_max": session_max,
+        "weekly_max": weekly_max,
+        "session_reset": session_reset,
+        "weekly_reset": weekly_reset,
+        "resume_cron": resume_cron,
+        "resume_human": resume_human,
+    })
+    return 0
 
 
 # ── Decision records: shared load + dependency computation (D9) ──────────────
@@ -1085,6 +1187,8 @@ Usage: spec_checks.py <command> [args]
   tally [--head-to-head] <votes-file>  Gate vote math / competitive-rewrite winner
   block-gate <inputs-file>             D5 take-vs-block (takeable | blocked)
   floor <spec>                         citations + structure → one relay verdict
+  usage-gate [--session-max N] [--weekly-max N] [--buffer-min N]
+                                       Read /usage; PAUSE|OK + resume cron string
   briefing <decisions-file>            Deterministic human render of decisions
   decisions summary <decisions-file>   Thin decision projection (JSON)
   atoms extract <doc> [--ledger P --write]           Mechanical atom extraction
@@ -1124,6 +1228,17 @@ def main(argv: list[str] | None = None) -> int:
         if len(args) < 2:
             return _fail("floor requires <spec>")
         return cmd_floor(Path(args[1]))
+    if command == "usage-gate":
+        rest = args[1:]
+        smax, rest = _flag(rest, "--session-max")
+        wmax, rest = _flag(rest, "--weekly-max")
+        buf, rest = _flag(rest, "--buffer-min")
+        try:
+            return cmd_usage_gate(int(smax) if smax else 75,
+                                  int(wmax) if wmax else 90,
+                                  int(buf) if buf else 2)
+        except ValueError:
+            return _fail("usage-gate flags must be integers")
     if command == "briefing":
         if len(args) < 2:
             return _fail("briefing requires <decisions-file>")

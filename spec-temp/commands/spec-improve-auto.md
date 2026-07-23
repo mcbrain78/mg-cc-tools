@@ -13,6 +13,9 @@ allowed-tools:
   - Grep
   - Agent
   - AskUserQuestion
+  - CronCreate
+  - CronList
+  - CronDelete
 ---
 
 <objective>
@@ -41,16 +44,20 @@ Checks script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
 
 ## Setup (cold-start entry only)
 
-1. Parse `$ARGUMENTS` to get the target file path. If missing:
+1. Parse `$ARGUMENTS` for the target file path plus optional flags `--resume` and `--force` (order-independent; the path is the non-flag argument). If the path is missing:
    ```
    ERROR: File path required.
 
-   Usage: /mg-temp:spec-improve-auto <file-path>
+   Usage: /mg-temp:spec-improve-auto <file-path> [--resume] [--force]
 
    Example:
      /mg-temp:spec-improve-auto docs/work-queue/todo/worktrees/concept.md
    ```
    Exit.
+
+   **Flags** (parsed from `$ARGUMENTS`, order-independent):
+   - `--resume` — a scheduled or manual resume: at the D7 guard (step 3) auto-**Resume** the existing working copy with no AskUserQuestion. If no working copy exists, fall through to a normal cold start.
+   - `--force` — a one-round usage-gate override (implies `--resume`): after binding paths, write an empty `FORCE_MARKER`; the next usage gate (round step 0) consumes it to run exactly one round past the soft limit, then normal gating resumes.
 
 2. Read the target file. If it doesn't exist or is empty, report the error and exit.
 
@@ -59,11 +66,11 @@ Checks script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
    uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py init <target-file-path>
    ```
    - **On success (exit 0):** capture the emitted resolved-paths JSON. Store it as `PATHS_JSON`. If `backup_created` is true, report: `Backed up original to <original_backup>`.
-   - **On guard-fail (exit 1):** an in-progress working copy from a prior session exists (the D7 guard). Do **not** overwrite it. Run the read-only `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py paths <target-file-path>`, surface the leftover state, then use **AskUserQuestion** for the binary choice:
+   - **On guard-fail (exit 1):** an in-progress working copy from a prior session exists (the D7 guard). Do **not** overwrite it. **If `--resume` or `--force` is set** (a scheduled or manual resume), auto-**Resume**: run the read-only `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py paths <target-file-path>`, use its JSON as `PATHS_JSON`, and skip the question. **Otherwise** run `paths`, surface the leftover state, and use **AskUserQuestion** for the binary choice:
      - **Resume** — continue with the existing working copy. Use the `paths` JSON as `PATHS_JSON`.
      - **Discard and restart** — run `improve_files.py init <target-file-path> --fresh`, then use its JSON.
 
-     This AskUserQuestion is the **only** picker before convergence. The loop is otherwise autonomous.
+     This AskUserQuestion is the **only** picker before convergence (a `--resume`/`--force` invocation skips even this). The loop is otherwise autonomous.
 
    Bind from `PATHS_JSON`:
    - `WORKING` = `auto_improve` (every edit lands here)
@@ -72,8 +79,9 @@ Checks script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
    - `RUN` = `next_run`
    - `HISTORY` = `history_dir`
 
-   Also define, both siblings of `WORKING` (derive by string, do not create yet):
+   Also define, siblings of `WORKING` (derive by string, do not create yet):
    - `DIGEST` = `<dir-of-WORKING>/CODE-DIGEST.md` — the shared code facts (Step 0)
+   - `FORCE_MARKER` = `<dir-of-WORKING>/.usage-force` — the one-round usage-gate override token. **If `--force` was passed, write this file now** (empty); the first usage gate consumes it.
    - The escalation store is **in-document**: a loop-owned `## Open Decisions` section inside `WORKING` (see **Escalations**), not a sidecar.
 
 **CRITICAL: All modifications happen exclusively on `WORKING`. The original is never touched until the user explicitly approves via `improve_files.py approve`.**
@@ -119,6 +127,13 @@ Return one line: the digest path + entity count.
 
 Rounds `M = 1, 2, 3, …` up to the **round cap of 20**. Each round is self-contained (see **State discipline**). A round:
 
+### 0 — Usage-limit gate (before any work this round)
+Run: `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py usage-gate --session-max 75 --weekly-max 90`. It reads Claude Code's real `/usage` (cost-free) and returns JSON: `verdict` (`OK` | `PAUSE` | `ERROR`), `session_pct`, `weekly_pct`, `binding` (`session` | `weekly` | null), `resume_cron`, `resume_human`.
+- **If `FORCE_MARKER` exists** → delete it and proceed to step 1 regardless of the verdict — the one-round override; note "usage gate overridden — one round" in the run output, and the next round gates normally.
+- **`OK`** → proceed to step 1.
+- **`ERROR`** (could not read `/usage`) → proceed to step 1; a monitoring hiccup must not halt the loop.
+- **`PAUSE`** → do NOT run the round; go to **On usage pause**.
+
 ### 1 — Fresh review (Sonnet — drives fixes + finds decisions)
 Spawn ONE reviewer subagent on the **Sonnet** model. It reads the spec + the digest (not the whole codebase), and is the harsh, wide-net pass:
 
@@ -146,7 +161,7 @@ pieces that block implementation; (3) unstated/unvalidated assumptions; (4) over
 under-engineering; (5) examples that don't match the text; (6) decision quality —
 open questions, thin decisions (a choice with no reasoning/tradeoffs/evidence),
 and deferred commitments ("future work", "later phase") are NOT real decisions,
-flag them (explicit scope exclusions are fine); also flag as a MINOR fix any `### Dn:` block that does not open with a plain-language **Context:** line (situation + problem in product terms, no code identifiers) — a decision a reader cannot follow without the code in front of them fails the readability bar; (7) a concrete simpler
+flag them (explicit scope exclusions are fine); (7) a concrete simpler
 alternative, if you can name one and say why; (8) over-specification — flag
 implementation code (function bodies/algorithms); a concept defines contracts,
 not bodies; (9) verification coverage — every `### What gets built` bullet needs
@@ -192,30 +207,24 @@ or the spec's evident intent. Return:
   RATIONALE: <why this answer, with the evidence>
   ALTERNATIVES_REJECTED: <the main alternative(s) and why not>
   EDIT: <the exact new/replacement spec text and where it goes — a repaired or
-        new `### Dn:` decision block, a corrected premise, a resolved open item.
-        Contracts/prose, never implementation code. A `### Dn:` block MUST open
-        with a **Context:** line — the situation and the problem it resolves, in
-        plain product language with NO code identifiers (those go in Why) — then
-        **Choice** / **Why** / **Alternatives rejected** as in the template, so a
-        reviewer can judge it without reverse-engineering it from the answer.>
+        new `### Dn:` decision block (Choice / Why / Alternatives rejected, per the
+        template), a corrected premise, a resolved open item. Contracts/prose,
+        never implementation code. Write it FUNCTIONALLY — accuracy over polish;
+        the product-altitude prose is produced later by the briefing writer.>
 
 ESCALATE — if the answer is genuinely ambiguous, high-stakes, wide-blast-radius,
-or would reverse intent/a non-goal. Frame it as a decision memo a reader with
-high-level product knowledge (not the code) can act on: plain language, with
-code specifics only in a clearly-marked tail. Return:
+or would reverse intent/a non-goal. Return the SUBSTANCE (functional notes are
+fine — the briefing writer polishes the prose later; just be accurate and
+complete):
   VERDICT: ESCALATE
-  SITUATION: <the relevant state of the world in plain product terms, 1-2 sentences>
+  SITUATION: <the relevant state of the world, 1-2 sentences>
   PROBLEM: <the tension that forces a choice, and why you cannot just take it
-           (genuinely ambiguous / high-stakes / would reverse intent), 1-2 sentences>
-  OPTIONS: <the REAL options — usually 2-4; do NOT pad to a fixed count. Open with
-           one line naming the axis they trade on. Label each option with a
-           sequential lowercase letter — **a**, **b**, **c**, … — then a short
-           name, then its pros and its cons. The letters give the user something
-           short to type back. Unavoidable code specifics go in a trailing
-           "(impl: …)" clause, never in the framing.>
-  RECOMMENDATION: <your lean named by its letter (e.g. "b") + confidence (e.g.
-                  "moderate"), the one reason it wins, and what would flip you to
-                  another option>
+           (genuinely ambiguous / high-stakes / would reverse intent)>
+  OPTIONS: <the REAL options — usually 2-4; do NOT pad to a fixed count. Label each
+           with a sequential lowercase letter a, b, c, … and give its tradeoff
+           (pros/cons). The letters are what the user types back.>
+  RECOMMENDATION: <your lean named by its letter (e.g. "b") + confidence, and the
+                  one reason it wins>
   GOVERNS: <the spec sections/decisions this choice controls, so review skips them
            until it is resolved — e.g. "the WASO solution section, D1, D8, D10">
 
@@ -224,7 +233,7 @@ Default to TAKE when you can defend it; escalate only what truly needs the human
 
 For each result:
 - **TAKE** → apply `EDIT` to `WORKING` (Read then Edit), and log: `append-changelog <target> --run <RUN> --round <M> --kind decision-take "<one-line: what was decided>"`.
-- **ESCALATE** → append the framed decision to the `## Open Decisions` section of `WORKING` (create the section once, near the end, before `## Verification` if present, else at end) as an `### ODn — <title>` entry. Render the escalation's own beats as a decision memo: **Situation** → **Problem** → **Options** (the axis line, then each lettered option — **a**, **b**, **c**, … — with its pros/cons) → **Recommendation** (naming its pick by letter), closing with a **Governs (skip in review until resolved):** line carrying its `GOVERNS` list. Product-altitude prose; code specifics only in the `(impl: …)` tails. This makes it surfaced-to-user and, being in the doc — including the Governs list — invisible to the sections future reviewers would otherwise re-flag.
+- **ESCALATE** → append the decision to the `## Open Decisions` section of `WORKING` (create the section once, near the end, before `## Verification` if present, else at end) as an `### ODn — <title>` entry carrying the agent's functional beats — **Situation**, **Problem**, lettered **Options** (a, b, c …) with tradeoffs, **Recommendation** — and closing with a **Governs (skip in review until resolved):** line listing its `GOVERNS` sections. Keep it functional; the briefing writer produces the user-facing prose at convergence. Being in the doc — including the Governs list — it is invisible to the sections future reviewers would otherwise re-flag.
 
 **Round budget:** apply at most **10 changes** (fixes + takes) to `WORKING` per round. If more clear the bar, take the 10 highest-severity; the rest re-surface next round. Escalations do not count against the budget (they are cheap appends).
 
@@ -268,22 +277,107 @@ The orchestrator keeps **nothing durable in its own context**:
 - **`DIGEST` is computed once and reused** every round and across re-runs (code is static).
 - If compacted mid-loop, resume from disk: `M` = (count of `round-*.md` in `history/run-<RUN>/`) + 1; re-read paths via `improve_files.py paths <target>`; the digest and `## Open Decisions` are already on disk. Continue.
 
+## Briefing writer
+
+Product-altitude prose is produced ONLY here, at the hand-off — never during the loop (while the loop runs, decisions stay working-quality; the reviewer and exit exam read the code and don't need polish). Spawn ONE **briefing-writer** subagent on the **Opus** model and present its output verbatim. It reads the working copy's decisions and TRANSLATES the engineer-written notes for a reader who knows the product but not the code:
+
+```
+You are writing the user-facing review of a concept spec's decisions. Fresh eyes.
+Read the spec at {absolute WORKING path} — specifically its `## Design Decisions`
+(`### Dn:` blocks) and `## Open Decisions` (`### ODn` entries). Treat every line
+as raw, engineer-written notes to be TRANSLATED, not copied.
+
+Write for a reader who knows the PRODUCT but not the code. Every function, column,
+or internal coinage goes in a trailing `(impl: …)` clause or is said in plain
+words — never in the framing. Produce two markdown lists:
+
+1. AUTO-DECISIONS TAKEN — one COMPACT entry per `### Dn:` block, numbered **AD1,
+   AD2, …** in order, each tagged with the underlying `Dn` so an override maps back:
+   a bold `**ADk — <title>** (Dn)` lead, then 1-3 sentences of what was decided and
+   why, plus the main rejected alternative. Scannable.
+2. OPEN DECISIONS — one FULL entry per `### ODn`, in this shape:
+   **Situation** (what's true today) -> **Problem** (the tension + what breaks if
+   it's wrong, and why it needs the user) -> **Options** (open with a one-line axis,
+   then each lettered option — keep the source's a/b/c letters exactly — with its
+   pros and cons) -> **Recommendation** (the pick by letter + confidence).
+   Keep Situation and Problem as SEPARATE beats.
+
+Do not invent decisions that are not in the spec. Preserve option letters exactly.
+
+WORKED EXAMPLE — meta / domain-neutral; mimic the FORM and the raw->polished move,
+never the content:
+
+  Open decision — raw notes in the spec:
+    Situation: in-proc LRU session cache. Problem: multi-node scale, sticky routing
+    breaks on node drain, rebalance cost not knowable from code. Options: a) shared
+    Redis store — correct under drain, +1 network hop, new infra dep; b) LB affinity
+    — no code change, breaks on drain; c) signed client cookie — no store, size cap,
+    no revoke. Recommendation: a (moderate), needs infra sign-off.
+  -> what you write:
+    **OD2 — Where a logged-in user's session lives once we run on more than one server**
+    **Situation.** Today each server keeps sessions in its own memory and the load
+    balancer pins each user to one server; we're about to run several servers.
+    **Problem.** Pinning holds until a server is drained for maintenance — then those
+    users get logged out and load skews. Fixing it means relocating session storage,
+    and that move's cost can't be read off the code — the part that needs your call.
+    **Options** — *correctness-under-failure vs. new infrastructure:*
+    - **a — Shared session store** *(recommended)* — survives a server going down and
+      balances load; adds a small per-request delay and one new service to operate.
+      *(impl: Redis-backed store.)*
+    - **b — Pin harder to one server** — no code change, but maintenance still logs
+      users out and load stays uneven. *(impl: LB affinity.)*
+    - **c — Keep session state in the browser** — nothing to operate, but limited
+      size and no forced logout. *(impl: signed cookie.)*
+    **Recommendation.** **a**, moderate — escalated only for sign-off on operating
+    the new store.
+
+  Taken decision — raw notes -> compact entry:
+    Choice: retry transient 5xx, exponential backoff, max 3. Why: clears most flake,
+    bounded load. Alternative rejected: infinite retry (thundering herd).
+  -> **AD1 — Retry a failed call a few times before giving up** *(D4)*. Transient
+    server errors usually clear on a second try; up to 3 retries with growing gaps
+    remove most flakiness without hammering a service already struggling (why not
+    forever). *(impl: exponential backoff, max 3.)*
+
+Return the two lists as markdown.
+```
+
 ## On convergence
 
-Present a **briefing**, in order. Write every decision at product altitude — a reader with high-level product knowledge, not the code, must be able to follow it; keep code identifiers out of the summary lines.
-1. **Auto-decisions taken this run** — from `CHANGELOG` (`[decision-take]` entries). Give each a **compact** memo (~3-4 lines): one line of situation + problem, the option chosen and the single reason it won, and the main rejected alternative. Point at the `### Dn:` block for the full reasoning. These were taken autonomously — invite override.
-2. **Open Decisions** — read the `## Open Decisions` section of `WORKING` and present each in **full**: situation → problem → the real options with their tradeoffs → your recommendation. The user has to act on these, so they earn the length — do not compress them.
+First clear any pending resume cron for this spec (`CronList` → `CronDelete` the job whose prompt names this target). Then spawn the **briefing writer** (above) and present its output as the **briefing**, in order:
+1. **Auto-decisions taken this run** — the writer's compact entries, numbered `AD1, AD2, …` (each tagged with its underlying `Dn`), one per `### Dn:` written this run (cross-check the count against `CHANGELOG` `[decision-take]` lines). Taken autonomously — invite override by AD number.
+2. **Open Decisions** — the writer's full entries (one per `### ODn`). These need the user; they resolve by option letter (e.g. `OD1 = b`) or by editing the spec.
 3. **Mechanical fixes** — summarize the run's `[fix]` entries.
 4. **Scorecard** (see below).
 
 Then the approval flow (fixes approved independently of non-goals, as `spec-improve`):
-- **Accept** → `improve_files.py approve <target>` (+ `append-non-goal <target> "<text>"` per accepted proposed non-goal). The user then typically resolves the Open Decisions — either editing them into the spec directly, or answering here by option letter (e.g. `OD1 = b, OD2 = a`) so you apply them, then optionally re-running for another pass. Acceptance ends the session.
-- **Override an auto-decision** → the user says which; re-open it (Edit `WORKING` to back it out / adjust) and re-run.
-- **Reject** → `improve_files.py reject <target>` (discards the working copy; original untouched).
+- **Accept** → the user has confirmed the auto-decisions and answered the Open Decisions (by option letter, e.g. `OD1 = b`). Finalize the spec so it is **clean and re-runnable**:
+  1. **Apply each resolution as settled design.** Fold the chosen option into the section(s) named by that OD's `Governs` line (removing the "OPEN / see ODn" pointers). For a *substantial* resolution (a new mechanism/design), draft it faithfully with a decide/writer agent grounded in the digest + code, then re-run the exit exam over the touched sections; for a *trivial* one (status quo / removal), edit directly. Log each: `improve_files.py append-changelog <target> --run <RUN> --round resolved --kind resolution "ODn = <letter>: <one line of what was folded in>"`.
+  2. **Delete each `### ODn` memo** once its resolution is folded in; when all are resolved, **remove the `## Open Decisions` heading entirely.** **Invariant: an accepted spec contains no `## Open Decisions` heading and no `Governs (skip …)` lines** — that is exactly what lets a later re-run *review* the settled content instead of skipping or re-litigating it. (The memos + resolutions live on in `history/run-<RUN>/` snapshots and the archived CHANGELOG, so deleting them from the doc loses no audit trail.)
+  3. **Snapshot the finalized copy:** `improve_files.py snapshot <target> --run <RUN> --round resolved` — captures the resolved state in `history/run-<RUN>/` for hindsight analysis.
+  4. **Approve:** `improve_files.py approve <target>` (+ `append-non-goal <target> "<text>"` per accepted proposed non-goal). Copies the finalized working copy over the original and archives the CHANGELOG (now carrying the `[resolution]` entries) into `history/run-<RUN>/`.
+  5. **To verify the resolutions**, re-run `/mg-temp:spec-improve-auto <target>`: it cold-starts on the clean settled spec as the next run (history continues), and the reviewer now *reads* the settled content — no skip-lists — to confirm the new design holds.
+- **Override an auto-decision** → the user names it by its `AD` number (e.g. `AD3`); map it to the underlying `### Dn:` block via the briefing, re-open it (Edit `WORKING` to back it out / adjust), and re-run.
+- **Reject** → `improve_files.py reject <target>` (discards the working copy; the original is untouched — reject never reverts to the pristine `concept.original.md`).
 
 ## On round cap
 
-Reaching the cap without a clean exit exam is a signal — usually genuine churn or a cluster of hard escalations. Present an honest report: the last exit-exam's substantive findings; what kept churning (from `CHANGELOG`); the `## Open Decisions` list; the scorecard. Then let the user **re-run** (another batch from `M+1`, e.g. after resolving a blocker), **approve the partial**, or **reject**.
+Reaching the cap without a clean exit exam is a signal — usually genuine churn or a cluster of hard escalations. First clear any pending resume cron for this spec (`CronList`/`CronDelete`). Present an honest report: the last exit-exam's substantive findings; what kept churning (from `CHANGELOG`); the `## Open Decisions` list — run it through the **briefing writer** (above) so the escalations read cleanly; the scorecard. Then let the user **re-run** (another batch from `M+1`, e.g. after resolving a blocker), **approve the partial**, or **reject**.
+
+## On usage pause
+
+The round-step-0 gate hit a soft usage limit — stop cleanly and let the run resume itself when the window resets. The working copy is already at a round boundary (nothing was edited this round; the previous round's snapshot stands), so no work is at risk and the original is untouched.
+
+1. **Clear any stale resume** for this spec: `CronList`; `CronDelete` any job whose prompt contains this target path (prevents stacked resumes).
+2. **Schedule the resume**: `CronCreate` with `cron` = the gate's `resume_cron`, `recurring` = false, `prompt` = `/mg-temp:spec-improve-auto <absolute target path> --resume`. It fires once, just after the binding window resets, and resumes from disk (digest, working copy, and `## Open Decisions` all persist). This relies on the Claude session staying alive until then — it fires while the session is idle (a persistent terminal/multiplexer session is the assumption).
+3. **Report and stop** (do NOT present the convergence briefing — the run is not done):
+   ```
+   ⏸ Usage pause — session <session_pct>% / weekly <weekly_pct>% (binding: <binding>).
+      Auto-resume scheduled for <resume_human>, when the <binding> window resets.
+      Work is checkpointed; the original spec is untouched.
+      To push now instead: /mg-temp:spec-improve-auto <target> --force
+      (runs one more round, then pauses again.)
+   ```
 
 ## The scorecard
 
@@ -299,10 +393,12 @@ Derive deterministically (do not paraphrase from memory):
 <important_notes>
 - **This is a main-session loop, not the Workflow tool.** No `.js` drain, no atom ledger, no verification pyramid, no block-gate, no `DECISIONS.json`. Coverage comes from fresh agents over cheap rounds; decisions are driven by scoped decide-agents; termination by the exit exam. See `docs/work-queue/todo/spec-improve-auto/AUTO2-DESIGN.md`.
 - **Drive decisions, don't park them.** Real specs are never decision-complete, so a loop that only surfaces decisions can never converge. Every `DECISION: yes` finding gets a decide-agent that either **takes** it (writes a defensible resolution into the spec) or **escalates** it (frames it for the user). Convergence = the exit exam is clean *except* for the escalated Open Decisions.
-- **Read once, branch (via digest).** The cited code is read a single time into `CODE-DIGEST.md`; every reviewer / decide / exit-exam agent reads that small digest instead of re-navigating the codebase (a ~5–10× cost lever). Agents fall back to opening a specific file only when the digest is silent. A genuine fork/shared-context primitive is not available on the Agent path, so the digest is the mechanism.
-- **Model tiers.** Digest-reader + reviewer = **Sonnet** (heavy readers; a reviewer miss is self-correcting across rounds). Decide-agent + exit-exam = **Opus** (sharp; a bad auto-take is written into the spec, and a false-CLEAN ends the loop — neither is self-correcting).
+- **Read once, branch (via digest).** The cited code is read a single time into `CODE-DIGEST.md`; every reviewer / decide / exit-exam agent reads that small digest instead of re-navigating the codebase (a ~5–10× cost lever). Agents fall back to opening a specific file only when the digest is silent. A genuine fork/shared-context primitive is not available on the Agent path, so the digest is the mechanism. The digest is **facts-only** — never enrich it with run-specific framing (e.g. "escalate this"), which would nudge re-escalation when it is reused across re-runs.
+- **Model tiers.** Digest-reader + reviewer = **Sonnet** (heavy readers; a reviewer miss is self-correcting across rounds). Decide-agent + exit-exam + briefing writer = **Opus** (sharp judgment / user-facing prose; a bad auto-take is written into the spec and a false-CLEAN ends the loop — neither is self-correcting).
+- **Decisions are working-quality during the loop; polished only at the hand-off.** Decide-agents write functional decisions (accuracy over prose); the reviewer and exit exam read the code and don't need polish. A single **briefing writer** produces the product-altitude prose once, when the run surfaces to the user (convergence or round cap) — keeping the per-round path lean and prose-writing out of the main loop's context. The concept's own `### Dn:` decision text stays implementer-facing, per the template.
 - **Escalation safety, without a ledger.** Blast radius is judged by the decide-agent, not computed. Mitigations: the decide-agent is Opus; the working copy is the safety net (original untouched until approve); and every auto-take is in the briefing and the changelog — visible and reversible, never silently locked in.
 - **`## Open Decisions` is loop-owned and lives in the working copy.** It is the escalation record and the reviewers' skip-list (like non-goals). On approval the user resolves it; it is not meant to ship unresolved.
 - **Asymmetric bars.** The Step-1 reviewer is deliberately harsh and wide; the Step-5 exit exam holds a high, substantive-only bar. That asymmetry is what lets the loop converge when substantive issues (and their decisions) are handled, even if a harsh reviewer could always find one more nitpick.
 - **The working copy is the safety net and the only state.** The orchestrator holds no durable round state; it re-reads from disk and is resilient to mid-loop compaction.
+- **Usage-limit gate + self-scheduled resume.** Round step 0 reads the real Claude Code `/usage` (cost-free) and **pauses** the run when session > 75% or weekly > 90%, scheduling its own `--resume` at the binding window's reset via a one-shot `CronCreate` (session-only — it needs this session to stay alive, which a persistent terminal/multiplexer session provides). `--force` grants exactly one over-threshold round (via the `FORCE_MARKER` token), then the loop pauses again. Whenever the loop ends for any *other* reason — convergence, round cap, approve, reject — clear any pending resume cron for this spec (`CronList`/`CronDelete`) so a stale resume can't fire.
 </important_notes>

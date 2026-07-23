@@ -36,11 +36,9 @@ Numbered D1, D2, etc. Each decision captures a choice that was non-obvious, cont
 
 ### D1: {Decision title}
 
-**Context:** The situation and the problem this decision resolves, in plain product language a reader without the code in front of them can follow — what is going on, and what tension forces a choice. One to three sentences. Keep code identifiers out of this line; they belong in Why. This is what lets a reviewer judge the decision instead of reverse-engineering it from the answer.
-
 **Choice:** What was decided.
 
-**Why:** The reasoning — what constraints or tradeoffs drove this choice. Include evidence if it exists (measurements, observed behavior, prior experience). "Because it's simpler" is a valid reason when true, but say what it's simpler than. Implementation specifics (file/function/column names, line refs) live here, beneath the plain-language Context.
+**Why:** The reasoning — what constraints or tradeoffs drove this choice. Include evidence if it exists (measurements, observed behavior, prior experience). "Because it's simpler" is a valid reason when true, but say what it's simpler than.
 
 **Alternatives rejected:** What else was considered and why it lost. Skip this line if there were no real alternatives (the choice was forced by constraints).
 

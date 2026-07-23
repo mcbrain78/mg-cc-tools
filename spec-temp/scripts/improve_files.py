@@ -47,8 +47,9 @@ note-ids <file>
     Emit (JSON list on stdout) the finding-ids recorded in implementer-notes;
     empty list when the file is absent.
 
-append-changelog <file> --run N --round M --kind fix|decision-take <text>
-    Append one tagged audit entry per applied fix or decision-take.
+append-changelog <file> --run N --round M --kind fix|decision-take|resolution <text>
+    Append one tagged audit entry per applied fix, decision-take, or (on Accept)
+    a user resolution of an escalated Open Decision.
 
 append-decision <file> --kind decision|non-goal-proposal --title T --finding F [--finding-atoms JSON]
     Create one record in DECISIONS.json, allocating the next R{n} id itself
@@ -379,8 +380,8 @@ def cmd_append_changelog(source: Path, argv: list[str]) -> int:
     rnd, argv = _flag(argv, "--round")
     kind, argv = _flag(argv, "--kind")
     text = " ".join(argv).strip()
-    if kind not in ("fix", "decision-take"):
-        return _fail("append-changelog --kind must be fix|decision-take")
+    if kind not in ("fix", "decision-take", "resolution"):
+        return _fail("append-changelog --kind must be fix|decision-take|resolution")
     if not text:
         return _fail("append-changelog requires <text>")
     changelog = _changelog_path(source)
@@ -524,7 +525,7 @@ Sidecars:
   append-non-goal <file> <text>                          Append to non-goals
   append-note     <file> [--finding-id ID] <text>        Append below-bar note (gate memory)
   note-ids        <file>                                 Emit recorded note finding-ids (JSON)
-  append-changelog <file> --run N --round M --kind fix|decision-take <text>
+  append-changelog <file> --run N --round M --kind fix|decision-take|resolution <text>
   append-decision  <file> --kind decision|non-goal-proposal --title T --finding F [--finding-atoms JSON]
   update-decision  <file> --id Rn --set JSON
   snapshot         <file> --run N --round M [--verdicts PATH]
