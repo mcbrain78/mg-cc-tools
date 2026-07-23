@@ -150,8 +150,10 @@ Read the code-facts digest at: {absolute DIGEST path} — use it as ground truth
 about the cited code instead of re-reading the codebase. Only open a specific
 source file (under {absolute CODE_ROOT}) if the digest is silent on a fact you
 need.
-{If non_goals_exists: Also read {absolute NON_GOALS path} — do not flag issues
-that fall under a listed non-goal (severe bugs excepted).}
+{If non_goals_exists: Also read {absolute NON_GOALS path}. A listed non-goal's
+SCOPE is exempt — do not flag work it excludes. But its RATIONALE is NOT: if a
+non-goal's stated justification rests on a false or unvalidated premise, flag that
+(a foundational premise often hides inside a non-goal). Severe bugs excepted.}
 Also read the concept spec template at: {absolute template path} — assess whether
 expected sections are present and adequately filled.
 
@@ -170,7 +172,13 @@ alternative, if you can name one and say why; (8) over-specification — flag
 implementation code (function bodies/algorithms); a concept defines contracts,
 not bodies; (9) verification coverage — every `### What gets built` bullet needs
 a matching Verification item; (10) citation discipline — every top-level bullet
-in `### What gets built` must cite `(Dx)` referencing a real `### Dn:` block.
+in `### What gets built` must cite `(Dx)` referencing a real `### Dn:` block;
+(11) FOUNDATIONS — name the design's few load-bearing architectural premises (the
+cross-cutting commitments/invariants implied by the decisions AND the non-goals) and
+flag any that is unvalidated, contradicts the digest, is applied inconsistently
+across decisions, or would FLIP the design if a fact only the user holds turned out
+different (a cost / scale / vendor-limit / operational assumption). Do NOT try to
+validate every small assumption — surface the SPINE.
 
 Be harsh. Validate claims against the digest.
 
@@ -222,7 +230,12 @@ or the spec's evident intent:
    FUNCTIONALLY — accuracy over polish; the briefing writer polishes later.>
 
 ESCALATE — if the answer is genuinely ambiguous, high-stakes, wide-blast-radius,
-or would reverse intent/a non-goal (functional notes are fine — the briefing writer
+or would reverse intent/a non-goal. This INCLUDES a FOUNDATIONAL premise where a
+fact only the user holds (a product / operational / cost / scale / vendor-limit
+assumption you cannot verify from code) would FLIP the design if it differs — frame
+the real alternatives as options and let the user decide; never guess the fact. And
+if two existing decisions genuinely CONFLICT, escalate the conflict as its own item
+— do NOT silently pick a side. (Functional notes are fine — the briefing writer
 polishes the prose later; just be accurate and complete):
   ACTION: escalate
   TITLE: <short title>
@@ -300,7 +313,10 @@ Spec: {absolute WORKING path}   Code-facts digest: {absolute DIGEST path}
 
 Is anything SUBSTANTIVE still wrong or missing — something that would make an
 implementer build the wrong thing, get blocked, or have to come back and ask?
-Ignore cosmetic nitpicks and anything under a listed non-goal.
+Ignore cosmetic nitpicks, and work a listed non-goal excludes (its scope) — but a
+non-goal's RATIONALE is in scope: a non-goal resting on a false/unvalidated premise
+IS substantive. Also substantive: a foundational premise applied inconsistently, or
+two design decisions that disagree.
 
 Do NOT count anything already listed under the spec's `## Open Decisions` heading,
 or any spec section named in an Open Decision's **Governs** line — those are known
@@ -336,28 +352,49 @@ Product-altitude prose is produced ONLY here, at the hand-off — never during t
 ```
 You are writing the user-facing review of a concept spec's decisions. Fresh eyes.
 Read the spec at {absolute WORKING path} — specifically its `## Design Decisions`
-(`### Dn:` blocks) and `## Open Decisions` (`### ODn` entries). Treat every line
-as raw, engineer-written notes to be TRANSLATED, not copied.
+(`### Dn:` blocks) and `## Open Decisions` (`### ODn` entries){If non_goals_exists:,
+plus the non-goals at {absolute NON_GOALS path}} — the non-goals matter because a
+foundational premise often hides in one. Treat every line as raw, engineer-written
+notes to be TRANSLATED, not copied.
 
 Write for a reader who knows the PRODUCT but not the code. Every function, column,
 or internal coinage goes in a trailing `(impl: …)` clause or is said in plain
-words — never in the framing. Produce two markdown lists:
+words — never in the framing. Produce three markdown lists:
 
-1. AUTO-DECISIONS TAKEN — one COMPACT entry per `### Dn:` block, numbered **AD1,
+1. FOUNDATIONS — CONFIRM THESE HOLD — the design's few load-bearing architectural
+   premises: the cross-cutting commitments and invariants the whole design rests on,
+   read off the `### Dn:` decisions AND the non-goals. State each at PRODUCT altitude
+   in one or two plain sentences, spelling out its consequence; where it rests on a
+   fact only the user can confirm (a cost / scale / vendor-limit / operational
+   assumption), end with an explicit *"⚠ rests on: <the assumption> — only you can
+   confirm this."* Keep to the genuine SPINE (a handful), not every small choice. If
+   a foundational premise is itself an open choice, it also appears in OPEN DECISIONS
+   below — reference it ("see OD2"). Number **F1, F2, …**.
+2. AUTO-DECISIONS TAKEN — one COMPACT entry per `### Dn:` block, numbered **AD1,
    AD2, …** in order, each tagged with the underlying `Dn` so an override maps back:
    a bold `**ADk — <title>** (Dn)` lead, then 1-3 sentences of what was decided and
    why, plus the main rejected alternative. Scannable.
-2. OPEN DECISIONS — one FULL entry per `### ODn`, in this shape:
+3. OPEN DECISIONS — one FULL entry per `### ODn`, in this shape:
    **Situation** (what's true today) -> **Problem** (the tension + what breaks if
    it's wrong, and why it needs the user) -> **Options** (open with a one-line axis,
    then each lettered option — keep the source's a/b/c letters exactly — with its
    pros and cons) -> **Recommendation** (the pick by letter + confidence).
    Keep Situation and Problem as SEPARATE beats.
 
-Do not invent decisions that are not in the spec. Preserve option letters exactly.
+Do not invent decisions or premises that are not in the spec. Preserve option letters exactly.
 
 WORKED EXAMPLE — meta / domain-neutral; mimic the FORM and the raw->polished move,
 never the content:
+
+  Foundation — raw signals in the spec (a non-goal + a decision's rationale):
+    Non-goal: "session data is not shared across servers." Decision D2: in-process
+    cache; rationale notes a shared store is "too much infra to run."
+  -> what you write:
+    **F1 — Each server keeps its own copy of session data; nothing is shared.** A user
+    pinned to a server that gets drained loses their session — there is no shared store
+    to fall back to. *⚠ rests on: a shared store being too much infrastructure to
+    operate — only you can confirm that.* *(impl: in-process cache, no cross-node
+    sharing.)*
 
   Open decision — raw notes in the spec:
     Situation: in-proc LRU session cache. Problem: multi-node scale, sticky routing
@@ -391,16 +428,17 @@ never the content:
     remove most flakiness without hammering a service already struggling (why not
     forever). *(impl: exponential backoff, max 3.)*
 
-Return the two lists as markdown.
+Return the three lists as markdown.
 ```
 
 ## On convergence
 
 First clear any pending resume cron for this spec (`CronList` → `CronDelete` the job whose prompt names this target). Then spawn the **briefing writer** (above) and present its output as the **briefing**, in order:
-1. **Auto-decisions taken this run** — the writer's compact entries, numbered `AD1, AD2, …` (each tagged with its underlying `Dn`), one per `### Dn:` written this run (cross-check the count against `CHANGELOG` `[decision-take]` lines). Taken autonomously — invite override by AD number.
-2. **Open Decisions** — the writer's full entries (one per `### ODn`). These need the user; they resolve by option letter (e.g. `OD1 = b`) or by editing the spec.
-3. **Mechanical fixes** — summarize the run's `[fix]` entries.
-4. **Scorecard** (see below).
+1. **Foundations — confirm these hold** — the writer's `F1, F2, …` block: the design's load-bearing architectural premises at product altitude, each with its consequence and, where relevant, the *"⚠ rests on … only you can confirm"* flag. Present these **first** — they are the spine; if one is wrong, the decisions beneath it don't matter. The user confirms them, or flags one (`Fn`) to re-open.
+2. **Auto-decisions taken this run** — the writer's compact entries, numbered `AD1, AD2, …` (each tagged with its underlying `Dn`), one per `### Dn:` written this run (cross-check the count against `CHANGELOG` `[decision-take]` lines). Taken autonomously — invite override by AD number.
+3. **Open Decisions** — the writer's full entries (one per `### ODn`). These need the user; they resolve by option letter (e.g. `OD1 = b`) or by editing the spec.
+4. **Mechanical fixes** — summarize the run's `[fix]` entries.
+5. **Scorecard** (see below).
 
 Then the approval flow (fixes approved independently of non-goals, as `spec-improve`):
 - **Accept** → the user has confirmed the auto-decisions and answered the Open Decisions (by option letter, e.g. `OD1 = b`). Finalize the spec so it is **clean and re-runnable**:
@@ -409,7 +447,7 @@ Then the approval flow (fixes approved independently of non-goals, as `spec-impr
   3. **Snapshot the finalized copy:** `improve_files.py snapshot <target> --run <RUN> --round resolved` — captures the resolved state in `history/run-<RUN>/` for hindsight analysis.
   4. **Approve:** `improve_files.py approve <target>` (+ `append-non-goal <target> "<text>"` per accepted proposed non-goal). Copies the finalized working copy over the original and archives the CHANGELOG (now carrying the `[resolution]` entries) into `history/run-<RUN>/`. Then `improve_files.py scratch-clean <target>` to remove the ephemeral `.spec-scratch` tree.
   5. **To verify the resolutions**, re-run `/mg-temp:spec-improve-auto <target>`: it cold-starts on the clean settled spec as the next run (history continues), and the reviewer now *reads* the settled content — no skip-lists — to confirm the new design holds.
-- **Override an auto-decision** → the user names it by its `AD` number (e.g. `AD3`); map it to the underlying `### Dn:` block via the briefing, re-open it (Edit `WORKING` to back it out / adjust), and re-run.
+- **Override an auto-decision, or reject a foundation** → the user names it by its `AD` number (e.g. `AD3`) or a foundation `Fn`; map it to the underlying `### Dn:` block(s) / non-goal via the briefing, re-open it (Edit `WORKING` to back it out / adjust — for a rejected foundation, correct the premise and let the dependent decisions re-derive next round), and re-run.
 - **Reject** → `improve_files.py reject <target>` then `improve_files.py scratch-clean <target>` (discards the working copy and the ephemeral scratch tree; the original is untouched — reject never reverts to the pristine `concept.original.md`).
 
 ## On round cap
@@ -445,6 +483,7 @@ Derive deterministically (do not paraphrase from memory):
 <important_notes>
 - **This is a main-session loop, not the Workflow tool.** No `.js` drain, no atom ledger, no verification pyramid, no block-gate, no `DECISIONS.json`. Coverage comes from fresh agents over cheap rounds; decisions are driven by scoped decide-agents; termination by the exit exam. See `docs/work-queue/todo/spec-improve-auto/AUTO2-DESIGN.md`.
 - **Drive decisions, don't park them.** Real specs are never decision-complete, so a loop that only surfaces decisions can never converge. Every `DECISION: yes` finding gets a decide-agent that either **takes** it (a defensible resolution is written into the spec — by the applier) or **escalates** it (frames it for the user). Convergence = the exit exam is clean *except* for the escalated Open Decisions.
+- **Surface the foundations; don't validate every seam.** The tool cannot atomically check every assumption a spec makes — and shouldn't try. But a design's few load-bearing architectural premises (its ingestion model, its computation invariants, what it deliberately does NOT do) are where a wrong assumption is *obvious to the user at a product level* and usually *unverifiable from code* (it rests on a cost / scale / vendor / operational fact only they hold). So at that altitude the loop's job is to SURFACE the spine for confirmation, not resolve it: the reviewer names the load-bearing premises — reading non-goal *rationales*, not just their scope — and flags any that is unvalidated, inconsistent, or design-flipping-and-user-dependent; such a premise is **escalated, never auto-taken on a guess**; a genuine conflict between two decisions is **escalated as a conflict**, never silently resolved to one side; and the briefing **leads** with a product-altitude "Foundations — confirm these hold" block so the user reviews the spine first. This is the deliberate counterpart to *Drive decisions*: drive the local calls, but hand the architectural premises up.
 - **Read once, branch (via digest).** The cited code is read a single time into `CODE-DIGEST.md`; every reviewer / decide / exit-exam agent reads that small digest instead of re-navigating the codebase (a ~5–10× cost lever). Agents fall back to opening a specific file only when the digest is silent. A genuine fork/shared-context primitive is not available on the Agent path, so the digest is the mechanism. The digest is **facts-only** — never enrich it with run-specific framing (e.g. "escalate this"), which would nudge re-escalation when it is reused across re-runs.
 - **Flat context — the orchestrator is a router.** The main loop never reads or edits `WORKING`; each round it hands subagents file paths and reads back one-line summaries, so the spec text, the findings, and the proposed edits never enter the main context (they flow agent → `SCRATCH`/`WORKING` → agent). Decide-agents *propose* — each writes one `decide-<id>.md`, none touches the spec; a single **applier** subagent is the sole writer and also drives the deterministic floor. This is the sibling cost lever to the digest: the digest keeps *code* out of every agent's context; the router keeps *spec churn* out of the orchestrator's — together they let a 20-round run stay well under the context ceiling instead of degrading after 3–4 rounds.
 - **Model tiers.** Digest-reader + reviewer + **applier** = **Sonnet** (heavy readers / mechanical transcription; a reviewer miss or a mis-placed edit is self-correcting across rounds — and the applier writes edit *text authored verbatim by the Opus decide-agents*, so it exercises no judgment of its own). Decide-agent + exit-exam + briefing writer = **Opus** (sharp judgment / user-facing prose; a bad auto-take is written into the spec and a false-CLEAN ends the loop — neither is self-correcting).
