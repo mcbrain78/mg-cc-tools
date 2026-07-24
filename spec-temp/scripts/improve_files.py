@@ -77,6 +77,16 @@ scratch-clean <file>
     Remove the whole ``<spec-dir>/.spec-scratch`` tree if present (idempotent).
     Called at terminal states (approve / reject / discard).
 
+reconcile-audit <file>
+    Read-only deterministic check of ONE markdown file — pass the working copy's
+    path at finalize (or any spec path). Reports decision-heading numbering
+    (``### Dn:`` contiguous 1..N, in document order, no duplicates) and
+    cross-reference integrity (every ``Dn`` / ``ODn`` token in the prose resolves
+    to a heading). Emits a JSON report; ``clean`` is true when both hold. The
+    reconcile agent consumes it and re-runs it to confirm ``clean`` before finalize
+    proceeds — the guard for its one destructive edit (renumbering). Audits the
+    path AS GIVEN — no sidecar derivation (a content check, not a session op).
+
 Exit codes: 0 = success, 1 = error (details on stderr).
 """
 from __future__ import annotations
@@ -591,6 +601,100 @@ def cmd_scratch_clean(source: Path) -> int:
     return 0
 
 
+# ── reconcile-audit (deterministic finalize guard) ──────────────────────────
+
+# A decision heading is `### Dn: <title>`; an Open Decision heading is `### ODn …`.
+# A reference is a bare `Dn` / `ODn` token in prose. The negative look-behind keeps
+# the `D` in `ODn` (and in `wordDn`) from being mis-read as a decision reference.
+_DEC_HEADING = re.compile(r"^###\s+D(\d+):")
+_OD_HEADING = re.compile(r"^###\s+OD(\d+)\b")
+_DEC_REF = re.compile(r"(?<![A-Za-z0-9_])D(\d+)\b")
+_OD_REF = re.compile(r"(?<![A-Za-z0-9_])OD(\d+)\b")
+
+
+def cmd_reconcile_audit(source: Path) -> int:
+    """Deterministic pre-finalize audit of decision numbering + cross-references.
+
+    Audits the file at ``source`` DIRECTLY — no working-copy derivation; pass the
+    working copy's path during finalize, or any spec path standalone. Read-only.
+    Emits a JSON report. ``clean`` is true when the ``### Dn:`` headings are
+    contiguous ``1..N`` in document order with no duplicates AND every ``Dn`` /
+    ``ODn`` token in the prose resolves to a heading. The reconcile agent consumes
+    this and re-runs it to confirm ``clean`` before finalize proceeds — the guard
+    for its one destructive edit (renumbering). Always exits 0 when it runs; the
+    verdict is the ``clean`` field, not the return code."""
+    if not source.is_file():
+        return _fail(f"file to audit not found: {source}")
+    lines = source.read_text().splitlines()
+
+    d_nums: list[int] = []
+    od_nums: list[int] = []
+    heading_lines: set[int] = set()
+    for i, line in enumerate(lines):
+        md = _DEC_HEADING.match(line)
+        if md:
+            d_nums.append(int(md.group(1)))
+            heading_lines.add(i)
+            continue
+        mo = _OD_HEADING.match(line)
+        if mo:
+            od_nums.append(int(mo.group(1)))
+            heading_lines.add(i)
+
+    numbering_issues: list[str] = []
+    if len(d_nums) != len(set(d_nums)):
+        dupes = sorted({n for n in d_nums if d_nums.count(n) > 1})
+        numbering_issues.append("duplicate decision heading(s): " + ", ".join(f"D{n}" for n in dupes))
+    if d_nums and d_nums != sorted(d_nums):
+        numbering_issues.append("decision headings out of document order: " + ", ".join(f"D{n}" for n in d_nums))
+    d_set = set(d_nums)
+    if d_set:
+        missing = sorted(set(range(1, max(d_set) + 1)) - d_set)
+        if missing:
+            numbering_issues.append(
+                "non-contiguous numbering — missing "
+                + ", ".join(f"D{n}" for n in missing)
+                + f" (highest heading is D{max(d_set)}, {len(d_set)} decisions present)"
+            )
+
+    dec_refs: dict[int, int] = {}
+    od_refs: dict[int, int] = {}
+    for i, line in enumerate(lines):
+        if i in heading_lines:
+            continue
+        for m in _OD_REF.finditer(line):
+            n = int(m.group(1))
+            od_refs[n] = od_refs.get(n, 0) + 1
+        for m in _DEC_REF.finditer(line):
+            n = int(m.group(1))
+            dec_refs[n] = dec_refs.get(n, 0) + 1
+
+    dangling: list[str] = []
+    for n in sorted(dec_refs):
+        if n not in d_set:
+            dangling.append(f"D{n} (referenced {dec_refs[n]}x, no such ### Dn: heading)")
+    od_set = set(od_nums)
+    for n in sorted(od_refs):
+        if n not in od_set:
+            dangling.append(
+                f"OD{n} (referenced {od_refs[n]}x, no such ### ODn heading — "
+                "stale pointer left after finalize removed the Open Decisions?)"
+            )
+
+    report = {
+        "file": str(source),
+        "decisions": [f"D{n}" for n in d_nums],
+        "open_decisions": [f"OD{n}" for n in od_nums],
+        "decision_numbering_ok": not numbering_issues,
+        "numbering_issues": numbering_issues,
+        "dangling_references": dangling,
+        "reference_counts": {f"D{n}": dec_refs[n] for n in sorted(dec_refs)},
+        "clean": not numbering_issues and not dangling,
+    }
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 # ── CLI dispatch ────────────────────────────────────────────────────────────
 
 USAGE = """\
@@ -612,6 +716,9 @@ Sidecars:
   snapshot         <file> --run N --round M [--verdicts PATH]
   scratch-dir      <file> --run N --round M               Make + print per-round scratch dir
   scratch-clean    <file>                                 Remove the .spec-scratch tree
+
+Finalize:
+  reconcile-audit  <file>                                 Audit decision numbering + xrefs (JSON; clean=finalize guard)
 """
 
 
@@ -655,6 +762,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_scratch_dir(source, rest)
     if command == "scratch-clean":
         return cmd_scratch_clean(source)
+    if command == "reconcile-audit":
+        return cmd_reconcile_audit(source)
 
     print(f"Error: unknown command: {command}", file=sys.stderr)
     print(USAGE, file=sys.stderr)
