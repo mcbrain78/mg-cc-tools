@@ -43,26 +43,33 @@
     },
     "spec": {
       "version": "0.1.0",
-      "installed_at": "2026-04-28T12:17:03.905022+00:00",
+      "installed_at": "2026-07-28T15:45:02.987143+00:00",
       "commands": [
         "spec-create-context.md",
+        "spec-create-milestone.md",
         "spec-draft.md",
         "spec-gsd-phases.md",
         "spec-help.md",
+        "spec-improve-auto.md",
         "spec-improve.md",
         "spec-prepare-context.md"
       ],
       "source_checksums": {
+        "agents/spec-reconcile.md": "sha256:f660e625d18621e09ab876b84eb01e2a1702846a470fa213e30a04f48d3fac47",
         "commands/spec-create-context.md": "sha256:48064c9ba66660f1376ddfe007d2f7fdc48e2a1d99cfc6214236c15fe984ae35",
-        "commands/spec-draft.md": "sha256:467a07c6eb122dd7b47d7530355185c46bc22e2442eb6ba1915a7a2e7bf61ff8",
+        "commands/spec-create-milestone.md": "sha256:c846ba88830caa450b12c50c4ec7218f066b5cb95d48e4879a09ef0a33484e68",
+        "commands/spec-draft.md": "sha256:00708bf2881ab8939f43b77b530570ba643ecb74fd9e614a657e66605f761a97",
         "commands/spec-gsd-phases.md": "sha256:20a1005f058986bd181c29de7ac18a69239b0645927a008f3c60492a012432ac",
-        "commands/spec-help.md": "sha256:b96efca5a02a7fdd82de293db9975347266baf089ab05dd5acf5872ab4b2fc64",
-        "commands/spec-improve.md": "sha256:d8a9ff95594f87df41feea7ac818e7dfbd94a2be7f975b249ceaca84756174a7",
+        "commands/spec-help.md": "sha256:96995f33dbcf89d602220e38081366730ab0e181f718e41fd1f3894f66fe9c18",
+        "commands/spec-improve-auto.md": "sha256:33adbaede4ae6ebe11b1c56612dcba3808b43f64139121a1b1e0619a47940977",
+        "commands/spec-improve.md": "sha256:c7dbd2c229999d68ec31a9f9a7428c63b8cb7cf827207a166dfef9adb589b1b3",
         "commands/spec-prepare-context.md": "sha256:e9b67366eeb4f20b3f31ebb8f068b9c5154b53078ca2ec05964217ac5c23f355",
-        "install.sh": "sha256:888d025d0c94b609f22e4234154fa763e40c6d7f0997b8238873cffec6ce0eba",
-        "references/concept-spec-template.md": "sha256:d2af0abd56f568d6a7370e9fe46d6d29be1240201840f36aaea6a065803411dd",
+        "install.sh": "sha256:e0723669ff9a4d741aa64b60cd711884de21b4e78d451027f39d1b24f6799ca5",
+        "references/concept-spec-template.md": "sha256:d018cb0c990038156599a3c71b84b16964527ddd96e181e8a926e80e273d3694",
         "scripts/__init__.py": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "scripts/improve_files.py": "sha256:16ef92f5df849de8939a4d1590b89fb4e7aeeb02617bf2d6595b23a3ef10a378"
+        "scripts/improve_files.py": "sha256:17af989e22c809c40c3a48bae60759ae6c22123b3ed92786d173227ca83ed1ac",
+        "scripts/milestone_checks.py": "sha256:4997f13c21415130e0e0cb41130cd231dc917c916bd6f569365c29719c0d05cf",
+        "scripts/spec_checks.py": "sha256:9987777db1dd6b139e1ea6810f2985427c08616dde04439414690b892b145925"
       }
     },
     "gsd-patches": {
@@ -221,6 +228,6 @@
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
-  "last_updated": "2026-06-24T14:30:37.991819+00:00",
+  "last_updated": "2026-07-28T15:45:02.983855+00:00",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools"
 }

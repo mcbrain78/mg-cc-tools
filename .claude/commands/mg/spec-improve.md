@@ -47,23 +47,33 @@ File operations script: `.claude/spec/scripts/improve_files.py`
 
 2. Read the target file. If it doesn't exist or is empty, report the error and exit.
 
-3. Initialize the working session by running:
+3. **Guarded init.** Initialize the working session by running:
    ```
    uv run .claude/spec/scripts/improve_files.py init <target-file-path>
    ```
-   This backs up the original (once), creates the working copy, and outputs JSON with all resolved paths:
-   ```json
-   {
-     "auto_improve": "...-auto-improve.md",
-     "non_goals": "...-NON-GOALS.md",
-     "non_goals_exists": true/false,
-     "original_backup": "....original.md",
-     "backup_created": true/false
-   }
-   ```
-   If `backup_created` is true, report: `Backed up original to <original_backup>`
+   `init` backs up the original (once) and creates the working copy. It is **guarded** (concept D7): if a working copy from a prior, unfinished session already exists, it refuses to overwrite it and exits 1 — strictly safer than silently resetting in-progress work. Branch on the exit code:
 
-   Store the paths from the JSON output — use them for all subsequent file references:
+   - **On success (exit 0):** capture the emitted resolved-paths JSON:
+     ```json
+     {
+       "auto_improve": "...-auto-improve.md",
+       "non_goals": "...-NON-GOALS.md",
+       "non_goals_exists": true/false,
+       "original_backup": "....original.md",
+       "backup_created": true/false
+     }
+     ```
+     If `backup_created` is true, report: `Backed up original to <original_backup>`.
+
+   - **On guard-fail (exit 1):** an in-progress working copy from a prior session exists. Do **not** overwrite it blindly. Get the resolved paths read-only:
+     ```
+     uv run .claude/spec/scripts/improve_files.py paths <target-file-path>
+     ```
+     (same JSON shape, minus `backup_created`). Surface the leftover state to the user, then use **AskUserQuestion** for the binary choice:
+     - **Resume** — keep the existing working copy and continue reviewing it. Use the `paths` JSON.
+     - **Discard and restart** — run `uv run .claude/spec/scripts/improve_files.py init <target-file-path> --fresh` (archives the prior session's sidecars, then re-creates a clean working copy from the original). Use its JSON.
+
+   Store the paths from whichever JSON you ended up with — use them for all subsequent file references:
    - `AUTO_IMPROVE_FILE` = `auto_improve`
    - `NON_GOALS_FILE` = `non_goals` (may not exist yet; `non_goals_exists` tells you)
 
@@ -131,6 +141,15 @@ Provide a critical review focused on:
    least one corresponding item in the Verification section. A deliverable
    with no way to verify it is either untestable (rethink the deliverable)
    or under-specified (add the verification criterion).
+10. Citation discipline — in `### What gets built`, every top-level bullet (a
+    line starting at column 0 with `- ` in that section) must cite the design
+    decision(s) it realizes as `(Dx)` / `(Dx, Dy)`, referencing `### Dn:`
+    headings. Flag any top-level bullet with no citation, or citing a decision
+    number that has no matching D-block. Indented sub-bullets, prose, code
+    blocks, and file-tree diagrams are illustration and need no citation. A
+    deliverable no decision motivates is a spec smell: recommend adding the
+    decision or dropping the deliverable. (This keeps the spec projectable into
+    a GSD milestone via mg:spec-create-milestone.)
 
 Be harsh. Flag everything that seems off.
 Validate claims against actual data or code where possible.
@@ -242,6 +261,7 @@ After delivering the report, **stop and wait for the user**. Do not proceed unti
 - The concept spec template at `.claude/spec/references/concept-spec-template.md` is included in the reviewer prompt so it can assess structural completeness — whether expected sections are present and adequately filled.
 - The 10-issue cap per round prevents scope creep and keeps each round focused. If the reviewer finds 15 issues, the 10 most severe get fixed first. The rest surface in subsequent rounds.
 - AUTO_IMPROVE_FILE is the safety net. The original is never touched until explicit approval. This allows the user to reject changes cleanly.
+- `init` is **guarded** (concept D7, inherited from `improve_files.py` and shared with `mg:spec-improve-auto`): it refuses to overwrite an in-progress working copy, prompting resume-or-restart instead of silently discarding a prior session's work. `--fresh` is the explicit discard-and-restart path.
 - NON_GOALS_FILE accumulates across rounds. Once a non-goal is approved, future reviewers skip it, preventing the same intentional exclusion from being flagged repeatedly.
 - When running multiple rounds, each round starts fresh — the reviewer re-reads the file and produces a new list. Do not carry state from previous rounds except for the NON_GOALS_FILE.
 - All file operations (backup, copy, delete, approve, reject, non-goal append) are handled by `.claude/spec/scripts/improve_files.py`. Do not perform these operations manually.
