@@ -1,22 +1,11 @@
-"""Tests for the ``reconcile-audit`` subcommand of the spec-improve-auto fork.
-
-The fork lives in the hyphenated ``spec-temp/`` directory, which is not importable
-as a package (unlike canonical ``spec/``), so ``improve_files`` is loaded by path.
-AT PORT to canonical, replace the loader block with the package import the sibling
-suite uses: ``from spec.scripts.improve_files import main``.
-"""
+"""Tests for the ``reconcile-audit`` subcommand used by the spec-improve-auto
+finalize pass."""
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 
-_MOD = Path(__file__).resolve().parents[1] / "improve_files.py"
-_spec = importlib.util.spec_from_file_location("improve_files_fork", _MOD)
-assert _spec and _spec.loader, f"cannot load {_MOD}"
-improve_files = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(improve_files)
-main = improve_files.main
+from spec.scripts.improve_files import main
 
 
 def _audit(capsys, path: Path) -> dict:

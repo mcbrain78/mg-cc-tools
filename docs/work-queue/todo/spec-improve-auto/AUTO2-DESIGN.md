@@ -1,6 +1,8 @@
-# `mg-temp:spec-improve-auto` (auto2) — Lightweight-Loop Design & Implementation Spec
+# `mg:spec-improve-auto` (auto2) — Lightweight-Loop Design & Implementation Spec
 
-**Status:** design → ready to implement. Isolated fork `spec-temp/` (namespace `/mg-temp:`), created + verified 2026-07-21. Existing `spec/` + `spec-improve-auto` are UNTOUCHED. Model = **promote-or-delete** (if auto2 wins → delete `spec/`, promote the fork; else delete the fork).
+**Status: PROMOTED (2026-07-28).** auto2 won the promote-or-delete bet. The fork's content now *is* canonical `spec/` on namespace `/mg:`; `spec-temp/` and the Workflow drain (`spec/workflows/spec-improve-auto.js`) are deleted. The port carried over `spec-improve-auto.md`, `spec_checks.py`, `improve_files.py`, `agents/spec-reconcile.md`, `test_reconcile_audit.py`, and the `spec-help` blurb, and wired `agents/` + `{MG_INSTALL_RECONCILE_AGENT}` into `spec/install.sh`. Everything below describes that design — read `spec-temp/`/`mg-temp:` as `spec/`/`mg:`.
+
+**Original framing (historical):** design → ready to implement. Isolated fork `spec-temp/` (namespace `/mg-temp:`), created + verified 2026-07-21. Existing `spec/` + `spec-improve-auto` are UNTOUCHED. Model = **promote-or-delete** (if auto2 wins → delete `spec/`, promote the fork; else delete the fork).
 
 **This doc is the resume anchor for implementation after a context compaction.** It is self-contained: read it + the memory `project_spec_improve_auto_status` (PIVOT entry) and you can build without the prior conversation.
 

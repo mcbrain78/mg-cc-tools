@@ -47,8 +47,9 @@ note-ids <file>
     Emit (JSON list on stdout) the finding-ids recorded in implementer-notes;
     empty list when the file is absent.
 
-append-changelog <file> --run N --round M --kind fix|decision-take <text>
-    Append one tagged audit entry per applied fix or decision-take.
+append-changelog <file> --run N --round M --kind fix|decision-take|resolution <text>
+    Append one tagged audit entry per applied fix, decision-take, or (on Accept)
+    a user resolution of an escalated Open Decision.
 
 append-decision <file> --kind decision|non-goal-proposal --title T --finding F [--finding-atoms JSON]
     Create one record in DECISIONS.json, allocating the next R{n} id itself
@@ -62,6 +63,29 @@ snapshot <file> --run N --round M [--verdicts PATH]
     Copy the working copy to history/run-N/round-M.md and store the verdict
     log. Idempotent when the target already byte-matches; a MISMATCHING
     existing round-M.md is a reused run number (exit 1).
+
+scratch-dir <file> --run N --round M
+    Make (mkdir -p) and print the absolute per-round scratch dir
+    (``<spec-dir>/.spec-scratch/run-N/round-M``). Inter-agent plumbing for one
+    round of the flat-context loop: the reviewer writes ``handoff-review.md``
+    there, each decide-agent writes ``handoff-decide-<id>.md``, the exit exam
+    writes ``handoff-exit.md`` — neutral ``handoff-*`` names because a subagent
+    write to a ``findings``/``report``-named file trips a Claude Code behavioral
+    guard. Ephemeral — regenerated every round, safe to delete anytime.
+
+scratch-clean <file>
+    Remove the whole ``<spec-dir>/.spec-scratch`` tree if present (idempotent).
+    Called at terminal states (approve / reject / discard).
+
+reconcile-audit <file>
+    Read-only deterministic check of ONE markdown file — pass the working copy's
+    path at finalize (or any spec path). Reports decision-heading numbering
+    (``### Dn:`` contiguous 1..N, in document order, no duplicates) and
+    cross-reference integrity (every ``Dn`` / ``ODn`` token in the prose resolves
+    to a heading). Emits a JSON report; ``clean`` is true when both hold. The
+    reconcile agent consumes it and re-runs it to confirm ``clean`` before finalize
+    proceeds — the guard for its one destructive edit (renumbering). Audits the
+    path AS GIVEN — no sidecar derivation (a content check, not a session op).
 
 Exit codes: 0 = success, 1 = error (details on stderr).
 """
@@ -117,6 +141,21 @@ def _history_dir(source: Path) -> Path:
     return source.parent / "history"
 
 
+def _scratch_root(source: Path) -> Path:
+    """The ephemeral per-round inter-agent scratch tree next to the spec."""
+    return source.parent / ".spec-scratch"
+
+
+def _run_marker_path(source: Path) -> Path:
+    """The in-progress run-number marker next to the spec.
+
+    Present (holding the run number) exactly while a working copy is live —
+    written by ``init``, removed by ``approve``/``reject``. Lets a resume bind
+    the CURRENT run rather than ``_next_run``, which over-counts by one once the
+    in-progress run has snapshotted a round. Sibling of ``.spec-scratch``."""
+    return source.parent / ".spec-run"
+
+
 # Canonical archive names inside history/run-N/ (un-prefixed, per the concept tree).
 _ARCHIVE_NAMES: list[tuple] = [
     (_changelog_path, "CHANGELOG.md"),
@@ -153,6 +192,32 @@ def _latest_run_dir(source: Path) -> Path | None:
     if not nums:
         return None
     return _history_dir(source) / f"run-{nums[-1]}"
+
+
+def _current_run(source: Path) -> int:
+    """Run number for THIS invocation's rounds — resume-aware.
+
+    Unlike ``_next_run`` (cold-start semantics: highest history run + 1), this
+    returns the run that OWNS the live working copy on a resume. The number is
+    recorded in the ``.spec-run`` marker (authoritative); if the marker is
+    absent (a run predating markers) it is inferred from the latest *un-sealed*
+    history dir (a completed run archives its CHANGELOG into its dir). With no
+    working copy there is no run in progress, so it falls back to ``_next_run``."""
+    if not _auto_improve_path(source).is_file():
+        return _next_run(source)
+    marker = _run_marker_path(source)
+    if marker.is_file():
+        try:
+            return int(marker.read_text().strip())
+        except ValueError:
+            pass
+    nums = _run_numbers(source)
+    if nums:
+        latest_dir = _history_dir(source) / f"run-{nums[-1]}"
+        sealed = (latest_dir / _ARCHIVE_NAMES[0][1]).is_file()
+        if not sealed:
+            return nums[-1]
+    return _next_run(source)
 
 
 def _archive_sidecars(source: Path, *, include_notes: bool) -> int:
@@ -199,6 +264,7 @@ def _resolve_paths(source: Path) -> dict:
         "original_backup": str(backup),
         "history_dir": str(_history_dir(source)),
         "next_run": _next_run(source),
+        "current_run": _current_run(source),
     }
 
 
@@ -290,6 +356,7 @@ def cmd_init(source: Path, fresh: bool) -> int:
         backup_created = True
 
     shutil.copy2(source, working)
+    _run_marker_path(source).write_text(f"{_next_run(source)}\n")
 
     result = _resolve_paths(source)
     result["backup_created"] = backup_created
@@ -313,6 +380,7 @@ def cmd_approve(source: Path) -> int:
     shutil.copy2(working, source)
     working.unlink()
     moved = _archive_sidecars(source, include_notes=False)
+    _run_marker_path(source).unlink(missing_ok=True)
     print(f"Approved: {working} → {source} (archived {moved} sidecar(s))")
     return 0
 
@@ -324,6 +392,7 @@ def cmd_reject(source: Path) -> int:
         return _fail(f"working copy not found: {working}")
     working.unlink()
     moved = _archive_sidecars(source, include_notes=False)
+    _run_marker_path(source).unlink(missing_ok=True)
     print(f"Rejected: deleted {working} (archived {moved} sidecar(s))")
     return 0
 
@@ -379,8 +448,8 @@ def cmd_append_changelog(source: Path, argv: list[str]) -> int:
     rnd, argv = _flag(argv, "--round")
     kind, argv = _flag(argv, "--kind")
     text = " ".join(argv).strip()
-    if kind not in ("fix", "decision-take"):
-        return _fail("append-changelog --kind must be fix|decision-take")
+    if kind not in ("fix", "decision-take", "resolution"):
+        return _fail("append-changelog --kind must be fix|decision-take|resolution")
     if not text:
         return _fail("append-changelog requires <text>")
     changelog = _changelog_path(source)
@@ -509,6 +578,123 @@ def cmd_snapshot(source: Path, argv: list[str]) -> int:
     return 0
 
 
+def cmd_scratch_dir(source: Path, argv: list[str]) -> int:
+    """Make + print the absolute per-round inter-agent scratch dir."""
+    run, argv = _flag(argv, "--run")
+    rnd, argv = _flag(argv, "--round")
+    if not run or not rnd:
+        return _fail("scratch-dir requires --run N --round M")
+    d = _scratch_root(source) / f"run-{run}" / f"round-{rnd}"
+    d.mkdir(parents=True, exist_ok=True)
+    print(str(d.resolve()))
+    return 0
+
+
+def cmd_scratch_clean(source: Path) -> int:
+    """Remove the whole .spec-scratch tree (idempotent — ephemeral plumbing)."""
+    root = _scratch_root(source)
+    if root.exists():
+        shutil.rmtree(root)
+        print(f"scratch-clean: removed {root}")
+    else:
+        print("scratch-clean: nothing to remove")
+    return 0
+
+
+# ── reconcile-audit (deterministic finalize guard) ──────────────────────────
+
+# A decision heading is `### Dn: <title>`; an Open Decision heading is `### ODn …`.
+# A reference is a bare `Dn` / `ODn` token in prose. The negative look-behind keeps
+# the `D` in `ODn` (and in `wordDn`) from being mis-read as a decision reference.
+_DEC_HEADING = re.compile(r"^###\s+D(\d+):")
+_OD_HEADING = re.compile(r"^###\s+OD(\d+)\b")
+_DEC_REF = re.compile(r"(?<![A-Za-z0-9_])D(\d+)\b")
+_OD_REF = re.compile(r"(?<![A-Za-z0-9_])OD(\d+)\b")
+
+
+def cmd_reconcile_audit(source: Path) -> int:
+    """Deterministic pre-finalize audit of decision numbering + cross-references.
+
+    Audits the file at ``source`` DIRECTLY — no working-copy derivation; pass the
+    working copy's path during finalize, or any spec path standalone. Read-only.
+    Emits a JSON report. ``clean`` is true when the ``### Dn:`` headings are
+    contiguous ``1..N`` in document order with no duplicates AND every ``Dn`` /
+    ``ODn`` token in the prose resolves to a heading. The reconcile agent consumes
+    this and re-runs it to confirm ``clean`` before finalize proceeds — the guard
+    for its one destructive edit (renumbering). Always exits 0 when it runs; the
+    verdict is the ``clean`` field, not the return code."""
+    if not source.is_file():
+        return _fail(f"file to audit not found: {source}")
+    lines = source.read_text().splitlines()
+
+    d_nums: list[int] = []
+    od_nums: list[int] = []
+    heading_lines: set[int] = set()
+    for i, line in enumerate(lines):
+        md = _DEC_HEADING.match(line)
+        if md:
+            d_nums.append(int(md.group(1)))
+            heading_lines.add(i)
+            continue
+        mo = _OD_HEADING.match(line)
+        if mo:
+            od_nums.append(int(mo.group(1)))
+            heading_lines.add(i)
+
+    numbering_issues: list[str] = []
+    if len(d_nums) != len(set(d_nums)):
+        dupes = sorted({n for n in d_nums if d_nums.count(n) > 1})
+        numbering_issues.append("duplicate decision heading(s): " + ", ".join(f"D{n}" for n in dupes))
+    if d_nums and d_nums != sorted(d_nums):
+        numbering_issues.append("decision headings out of document order: " + ", ".join(f"D{n}" for n in d_nums))
+    d_set = set(d_nums)
+    if d_set:
+        missing = sorted(set(range(1, max(d_set) + 1)) - d_set)
+        if missing:
+            numbering_issues.append(
+                "non-contiguous numbering — missing "
+                + ", ".join(f"D{n}" for n in missing)
+                + f" (highest heading is D{max(d_set)}, {len(d_set)} decisions present)"
+            )
+
+    dec_refs: dict[int, int] = {}
+    od_refs: dict[int, int] = {}
+    for i, line in enumerate(lines):
+        if i in heading_lines:
+            continue
+        for m in _OD_REF.finditer(line):
+            n = int(m.group(1))
+            od_refs[n] = od_refs.get(n, 0) + 1
+        for m in _DEC_REF.finditer(line):
+            n = int(m.group(1))
+            dec_refs[n] = dec_refs.get(n, 0) + 1
+
+    dangling: list[str] = []
+    for n in sorted(dec_refs):
+        if n not in d_set:
+            dangling.append(f"D{n} (referenced {dec_refs[n]}x, no such ### Dn: heading)")
+    od_set = set(od_nums)
+    for n in sorted(od_refs):
+        if n not in od_set:
+            dangling.append(
+                f"OD{n} (referenced {od_refs[n]}x, no such ### ODn heading — "
+                "stale pointer left after finalize removed the Open Decisions?)"
+            )
+
+    report = {
+        "file": str(source),
+        "decisions": [f"D{n}" for n in d_nums],
+        "open_decisions": [f"OD{n}" for n in od_nums],
+        "decision_numbering_ok": not numbering_issues,
+        "numbering_issues": numbering_issues,
+        "dangling_references": dangling,
+        "reference_counts": {f"D{n}": dec_refs[n] for n in sorted(dec_refs)},
+        "clean": not numbering_issues and not dangling,
+    }
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 # ── CLI dispatch ────────────────────────────────────────────────────────────
 
 USAGE = """\
@@ -524,10 +710,15 @@ Sidecars:
   append-non-goal <file> <text>                          Append to non-goals
   append-note     <file> [--finding-id ID] <text>        Append below-bar note (gate memory)
   note-ids        <file>                                 Emit recorded note finding-ids (JSON)
-  append-changelog <file> --run N --round M --kind fix|decision-take <text>
+  append-changelog <file> --run N --round M --kind fix|decision-take|resolution <text>
   append-decision  <file> --kind decision|non-goal-proposal --title T --finding F [--finding-atoms JSON]
   update-decision  <file> --id Rn --set JSON
   snapshot         <file> --run N --round M [--verdicts PATH]
+  scratch-dir      <file> --run N --round M               Make + print per-round scratch dir
+  scratch-clean    <file>                                 Remove the .spec-scratch tree
+
+Finalize:
+  reconcile-audit  <file>                                 Audit decision numbering + xrefs (JSON; clean=finalize guard)
 """
 
 
@@ -567,6 +758,12 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_update_decision(source, rest)
     if command == "snapshot":
         return cmd_snapshot(source, rest)
+    if command == "scratch-dir":
+        return cmd_scratch_dir(source, rest)
+    if command == "scratch-clean":
+        return cmd_scratch_clean(source)
+    if command == "reconcile-audit":
+        return cmd_reconcile_audit(source)
 
     print(f"Error: unknown command: {command}", file=sys.stderr)
     print(USAGE, file=sys.stderr)

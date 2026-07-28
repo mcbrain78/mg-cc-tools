@@ -20,8 +20,10 @@ Spec Pipeline
                                  └─ spec-gsd-phases ───────┘
                                     (add phases to an open milestone)
 
-  spec-improve has an autonomous sibling, spec-improve-auto: it drives the same
-  refinement through a workflow and surfaces decisions (not rounds) for review.
+  spec-improve has an autonomous sibling, spec-improve-auto: it loops fresh-eyes
+  review automatically, resolves the decisions it can defend and escalates the ones
+  that need you, until a substantive exit exam is clean — then you review the
+  auto-decisions + the escalated ones, not each round.
 
 Entry points
 ------------
@@ -49,8 +51,8 @@ Commands
                                               Asks questions on gray areas, contradictions, gaps.
   /mg:spec-improve <file>                     Review and refine an existing concept spec.
                                               Uses fresh-eyes subagents to surface blind spots.
-  /mg:spec-improve-auto <file>                Autonomous refinement of a concept spec via a workflow.
-                                              Auto-takes decisions; you review a decision briefing, not rounds.
+  /mg:spec-improve-auto <file>                Autonomous refinement: loops review, takes the decisions
+                                              it can defend + escalates the rest, until an exit exam is clean.
   /mg:spec-create-milestone <version> <file>  Project a frozen concept spec into a GSD milestone:
                                               PROJECT.md section, gated REQUIREMENTS.md, ROADMAP.md
   /mg:spec-gsd-phases <file>                  Analyze concept, propose and create GSD phases

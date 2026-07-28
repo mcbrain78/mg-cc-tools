@@ -8,7 +8,7 @@ set -euo pipefail
 # Commands:
 #   mg:spec-draft            Formalize ideas into concept specs
 #   mg:spec-improve          Iterative subagent-review improvement
-#   mg:spec-improve-auto     Autonomous workflow-driven refinement
+#   mg:spec-improve-auto     Autonomous main-session review+fix loop
 #   mg:spec-create-context   Convert concept spec to GSD CONTEXT.md
 #   mg:spec-create-milestone Project a frozen concept spec into a GSD milestone
 #   mg:spec-prepare-context  Split multi-phase doc into per-phase files
@@ -38,6 +38,12 @@ REFERENCES=(
   concept-spec-template.md
   context-template.snapshot
   requirements-template.snapshot
+)
+
+# Agent instruction files spawned by commands at runtime (handed to a subagent by
+# path). They get the same placeholder pass as the command files.
+AGENTS=(
+  spec-reconcile
 )
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
@@ -116,11 +122,12 @@ for ref in "${REFERENCES[@]}"; do
   fi
 done
 
-# The drain workflow(s) — copied verbatim (no sed pass), so validate the source exists.
-if ! ls "${SCRIPT_DIR}/workflows/"*.js >/dev/null 2>&1; then
-  echo "Error: no workflow .js files in source directory (${SCRIPT_DIR}/workflows)"
-  exit 1
-fi
+for agent in "${AGENTS[@]}"; do
+  if [[ ! -f "${SCRIPT_DIR}/agents/${agent}.md" ]]; then
+    echo "Error: missing agents/${agent}.md in source directory (${SCRIPT_DIR})"
+    exit 1
+  fi
+done
 
 # ── Check for python3 ────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
@@ -170,11 +177,17 @@ cp "${SCRIPT_DIR}/scripts/"*.py "$SCRIPTS_DIR/"
 chmod +x "$SCRIPTS_DIR/"*.py
 echo "  Scripts → ${SCRIPTS_DIR}/"
 
-# Workflows (drain orchestrator — copied verbatim, no placeholder pass)
-WORKFLOWS_DIR="${TARGET_DIR}/spec/workflows"
-mkdir -p "$WORKFLOWS_DIR"
-cp "${SCRIPT_DIR}/workflows/"*.js "$WORKFLOWS_DIR/"
-echo "  Workflows → ${WORKFLOWS_DIR}/"
+# Agents
+AGENTS_DIR="${TARGET_DIR}/spec/agents"
+mkdir -p "$AGENTS_DIR"
+for agent in "${AGENTS[@]}"; do
+  cp "${SCRIPT_DIR}/agents/${agent}.md" "${AGENTS_DIR}/${agent}.md"
+done
+echo "  Agents → ${AGENTS_DIR}/"
+
+# Retire the drain workflow from prior installs (spec-improve-auto is now a
+# main-session loop — no Workflow script).
+rm -rf "${TARGET_DIR}/spec/workflows"
 
 # References
 REFS_DIR="${TARGET_DIR}/spec/references"
@@ -195,13 +208,13 @@ if [[ "$MODE" == "project" ]]; then
   REQ_SNAPSHOT_PATH=".claude/spec/references/requirements-template.snapshot"
   TEMPLATE_PATH=".claude/spec/references/concept-spec-template.md"
   SCRIPTS_PATH=".claude/spec/scripts"
-  WORKFLOWS_PATH=".claude/spec/workflows"
+  RECONCILE_AGENT_PATH=".claude/spec/agents/spec-reconcile.md"
 else
   SNAPSHOT_PATH="${REFS_DIR}/context-template.snapshot"
   REQ_SNAPSHOT_PATH="${REFS_DIR}/requirements-template.snapshot"
   TEMPLATE_PATH="${REFS_DIR}/concept-spec-template.md"
   SCRIPTS_PATH="${SCRIPTS_DIR}"
-  WORKFLOWS_PATH="${WORKFLOWS_DIR}"
+  RECONCILE_AGENT_PATH="${AGENTS_DIR}/spec-reconcile.md"
 fi
 
 for cmd in "${COMMANDS[@]}"; do
@@ -212,9 +225,26 @@ for cmd in "${COMMANDS[@]}"; do
   sed -i "s|{MG_INSTALL_REQUIREMENTS_SNAPSHOT}|${REQ_SNAPSHOT_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_CONCEPT_TEMPLATE}|${TEMPLATE_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
-  sed -i "s|{MG_INSTALL_WORKFLOWS_DIR}|${WORKFLOWS_PATH}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_RECONCILE_AGENT}|${RECONCILE_AGENT_PATH}|g" "$cmd_file"
+done
+
+# Agent files get the same script-path substitution the commands get — they call
+# improve_files.py themselves.
+for agent in "${AGENTS[@]}"; do
+  agent_file="${AGENTS_DIR}/${agent}.md"
+  [[ -f "$agent_file" ]] || continue
+
+  sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$agent_file"
 done
 echo "  Placeholders resolved"
+
+# Fail loudly rather than shipping a command that points at a literal placeholder.
+LEFTOVER=$(grep -l "{MG_INSTALL_" "${COMMANDS_DIR}"/spec-*.md "${AGENTS_DIR}"/*.md 2>/dev/null || true)
+if [[ -n "$LEFTOVER" ]]; then
+  echo "Error: unresolved {MG_INSTALL_*} placeholders remain in:"
+  echo "$LEFTOVER" | sed 's/^/    /'
+  exit 1
+fi
 
 # ── Update manifest ──────────────────────────────────────────────────────────
 TOOL_SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -236,6 +266,10 @@ done
 echo "  References:"
 for ref in "${REFERENCES[@]}"; do
   echo "    ${REFS_DIR}/${ref}"
+done
+echo "  Agents:"
+for agent in "${AGENTS[@]}"; do
+  echo "    ${AGENTS_DIR}/${agent}.md"
 done
 echo ""
 echo "Invoke with:"
