@@ -16,6 +16,9 @@ Type=simple
 ExecStart=/usr/bin/python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/scripts/usage-watch.py --session-max 93 --weekly-max 98 --interval 600
 Restart=always
 RestartSec=30
+# Exit 2 means another publisher holds the lock — one per machine is the design,
+# so a second unit must stay stopped instead of restart-looping every 30s.
+RestartPreventExitStatus=2
 # `claude` lives in ~/.local/bin, which a user unit does not inherit.
 Environment=PATH=%h/.local/bin:%h/.local/share/claude:/usr/local/bin:/usr/bin:/bin
 StandardOutput=journal

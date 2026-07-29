@@ -21,7 +21,7 @@
     },
     "permission-hooks": {
       "version": "0.1.0",
-      "installed_at": "2026-07-29T17:02:23.027920+00:00",
+      "installed_at": "2026-07-29T17:05:56.329541+00:00",
       "commands": [
         "auto-approve-session.md",
         "auto-approve.md",
@@ -230,6 +230,6 @@
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
-  "last_updated": "2026-07-29T17:02:23.025173+00:00",
+  "last_updated": "2026-07-29T17:05:56.326868+00:00",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools"
 }
