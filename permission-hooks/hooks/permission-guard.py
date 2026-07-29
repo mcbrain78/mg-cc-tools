@@ -769,13 +769,24 @@ def _find_claude_cli():
 
 
 def _call_haiku(prompt):
-    """Call the claude CLI with Haiku model. Returns response text or None."""
+    """Call the claude CLI with Haiku model. Returns response text or None.
+
+    ``--no-session-persistence`` matters twice over here, since this runs inside
+    the latency path of a tool call: without it every evaluator check persists a
+    throwaway session transcript under ~/.claude/projects/ (which session
+    pickers scanning that directory then read as a real session), and pays the
+    session-setup cost — measured at ~3s of the call. Should a CLI ever reject
+    the flag, the non-zero exit lands on the ``return None`` below, which the
+    evaluator layer treats as "no verdict" and falls through to asking — more
+    prompts, never fewer.
+    """
     claude_bin = _find_claude_cli()
     if not claude_bin:
         return None
     try:
         result = subprocess.run(
-            [claude_bin, "-p", "--model", HAIKU_MODEL, "--output-format", "json"],
+            [claude_bin, "-p", "--model", HAIKU_MODEL, "--output-format", "json",
+             "--no-session-persistence"],
             input=prompt,
             capture_output=True,
             text=True,

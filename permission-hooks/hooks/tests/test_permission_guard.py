@@ -1475,6 +1475,56 @@ class TestParseVerdict:
         assert _parse_verdict(resp) == "DENY"
 
 
+# ── _call_haiku invocation ────────────────────────────────────────────────────
+
+class TestCallHaikuInvocation:
+    """The CLI argv itself — this runs inside the latency path of a tool call."""
+
+    class _Proc:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    def _capture(self, monkeypatch, proc=None):
+        seen = []
+
+        def fake_run(argv, **kwargs):
+            seen.append((argv, kwargs))
+            return proc or self._Proc(json.dumps({"result": "SAFE", "is_error": False}))
+
+        monkeypatch.setattr(guard, "_find_claude_cli", lambda: "/usr/bin/claude")
+        monkeypatch.setattr(guard.subprocess, "run", fake_run)
+        return seen
+
+    def test_does_not_persist_a_session(self, monkeypatch):
+        """Otherwise every evaluator check leaves a transcript behind and pays
+        session setup — both on the critical path of a guarded tool call."""
+        seen = self._capture(monkeypatch)
+        assert guard._call_haiku("prompt") == "SAFE"
+        argv = seen[0][0]
+        assert "--no-session-persistence" in argv
+        assert argv[:2] == ["/usr/bin/claude", "-p"]
+        assert "--model" in argv and guard.HAIKU_MODEL in argv
+
+    def test_prompt_goes_on_stdin_under_timeout(self, monkeypatch):
+        seen = self._capture(monkeypatch)
+        guard._call_haiku("the prompt")
+        kwargs = seen[0][1]
+        assert kwargs["input"] == "the prompt"
+        assert kwargs["timeout"] == guard.HAIKU_TIMEOUT_S
+
+    def test_nonzero_exit_yields_no_verdict(self, monkeypatch):
+        """A CLI that rejects the flag degrades to asking, never to allowing."""
+        class _Fail:
+            returncode = 1
+            stdout = ""
+            stderr = "unknown option"
+        self._capture(monkeypatch, proc=_Fail())
+        assert guard._call_haiku("prompt") is None
+
+
 # ── run_evaluators integration ────────────────────────────────────────────────
 
 class TestRunEvaluators:
