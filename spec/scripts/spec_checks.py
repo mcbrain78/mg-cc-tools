@@ -265,13 +265,18 @@ def _parse_usage_line(line: str) -> tuple[int | None, str | None]:
 
 def _parse_reset(s: str | None) -> datetime | None:
     """'Jul 22, 1:49pm' → a future naive-local datetime (the reset instant).
-    `/usage` prints local time and cron runs in local time, so no tz math."""
+    `/usage` prints local time and cron runs in local time, so no tz math.
+
+    On the hour the minutes are omitted — 'Aug 3, 9pm' — so the minuteless formats
+    are required: without them such a reset yields no resume_cron and the loop
+    pauses with nothing scheduled to wake it."""
     if not s:
         return None
     s2 = re.sub(r"(?i)\b(am|pm)\b", lambda m: m.group(1).upper(), s.strip().rstrip("."))
     now = datetime.now()
     d: datetime | None = None
-    for fmt in ("%b %d, %I:%M%p", "%b %d %I:%M%p", "%B %d, %I:%M%p"):
+    for fmt in ("%b %d, %I:%M%p", "%b %d %I:%M%p", "%B %d, %I:%M%p",
+                "%b %d, %I%p", "%b %d %I%p", "%B %d, %I%p"):
         try:
             d = datetime.strptime(s2, fmt).replace(year=now.year)
             break

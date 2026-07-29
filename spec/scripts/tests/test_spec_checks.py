@@ -774,6 +774,15 @@ class TestUsageGate:
         assert main(["usage-gate"]) == 0
         assert _out(capsys)["verdict"] == "ERROR"
 
+    def test_reset_on_the_hour_still_schedules_a_resume(self, monkeypatch, capsys) -> None:
+        """Observed live: 'Aug 3, 9pm'. Failing to parse it pauses with no wake-up."""
+        body = USAGE_OUTPUT.replace("resets Jul 29, 6:49pm", "resets Jul 29, 7pm")
+        self._stub(monkeypatch, body=body)
+        assert main(["usage-gate", "--session-max", "75"]) == 0
+        out = _out(capsys)
+        assert out["verdict"] == "PAUSE" and out["binding"] == "session"
+        assert out["resume_cron"] and out["resume_human"]
+
 
 # ── CLI dispatch ─────────────────────────────────────────────────────────────
 
