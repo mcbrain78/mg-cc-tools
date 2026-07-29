@@ -81,6 +81,126 @@ def test_disarm(tmp_path, monkeypatch):
     assert aas.disarm_session("d1") is False
 
 
+# ── pause latch ──────────────────────────────────────────────────────────────
+
+def test_pause_writes_latch_with_note(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    aas.pause_session("p1", "check the migration first")
+    p = tmp_path / "sc" / "mg-session-p1" / aas.PAUSE_FILENAME
+    data = json.loads(p.read_text())
+    assert data["note"] == "check the migration first"
+    assert isinstance(data["paused_at_ms"], int)
+    assert aas.is_paused("p1")
+
+
+def test_pause_without_note_omits_field(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    aas.pause_session("p2")
+    p = tmp_path / "sc" / "mg-session-p2" / aas.PAUSE_FILENAME
+    assert "note" not in json.loads(p.read_text())
+
+
+def test_unpause_clears_latch(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    aas.pause_session("p3")
+    assert aas.unpause_session("p3") is True
+    assert not aas.is_paused("p3")
+    assert aas.unpause_session("p3") is False
+
+
+def test_pause_and_arm_are_independent(tmp_path, monkeypatch):
+    """Separate sidecars: neither control may disturb the other."""
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    aas.arm_session("p4")
+    aas.pause_session("p4")
+    assert aas.is_armed("p4") and aas.is_paused("p4")
+    aas.unpause_session("p4")
+    assert aas.is_armed("p4")
+    aas.pause_session("p4")
+    aas.disarm_session("p4")
+    assert aas.is_paused("p4")
+
+
+def test_pause_latch_never_expires(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    p = tmp_path / "sc" / "mg-session-p5" / aas.PAUSE_FILENAME
+    p.parent.mkdir(parents=True)
+    ancient = int((time.time() - 30 * 24 * 3600) * 1000)
+    p.write_text(json.dumps({"paused_at_ms": ancient}))
+    assert aas.is_paused("p5")
+
+
+# ── guard activity ───────────────────────────────────────────────────────────
+
+def _write_bridge(tmp_path, sid, mtime):
+    p = tmp_path / "sc" / f"mg-session-{sid}" / aas.BRIDGE_FILENAME
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"state": "ON", "ts": int(mtime)}))
+    os.utime(p, (mtime, mtime))
+    return p
+
+
+def test_guard_state_never_without_bridge(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    assert aas.guard_state("g0", time.time()) == "never"
+
+
+def test_guard_state_active_when_bridge_keeps_pace(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    now = time.time()
+    _write_bridge(tmp_path, "g1", now - 10)
+    assert aas.guard_state("g1", now) == "active"
+
+
+def test_guard_state_active_when_session_idle(tmp_path, monkeypatch):
+    """Both stale is not 'deferring' — the guard was active as of last activity."""
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    old = time.time() - 6 * 3600
+    _write_bridge(tmp_path, "g2", old)
+    assert aas.guard_state("g2", old + 5) == "active"
+
+
+def test_guard_state_deferring_when_bridge_lags_activity(tmp_path, monkeypatch):
+    """Session demonstrably working while the guard writes nothing → CC-vetted mode."""
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    now = time.time()
+    _write_bridge(tmp_path, "g3", now - aas.GUARD_LAG_S - 120)
+    assert aas.guard_state("g3", now) == "deferring"
+
+
+# ── last activity (parent + subagent transcripts) ────────────────────────────
+
+def test_last_activity_uses_newest_subagent(tmp_path):
+    projects = tmp_path / "projects"
+    path = _write_session(projects, "p", "sub-0001", [_user("hi")])
+    base = time.time() - 3600
+    os.utime(path, (base, base))
+    subdir = path.parent / "sub-0001" / "subagents"
+    subdir.mkdir(parents=True)
+    agent = subdir / "agent-abc.jsonl"
+    agent.write_text("{}\n")
+    os.utime(agent, (base + 3000, base + 3000))
+    assert aas.last_activity(path) == base + 3000
+
+
+def test_picker_order_follows_subagent_activity(tmp_path, monkeypatch):
+    """A session working through subagents must not sort below an idle one."""
+    projects = tmp_path / "projects"
+    monkeypatch.setenv("MG_CLAUDE_PROJECTS_DIR", str(projects))
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    base = time.time() - 3600
+    busy = _write_session(projects, "p", "busy-0001", [_user("run it")])
+    idle = _write_session(projects, "p", "idle-0002", [_user("nothing")])
+    os.utime(busy, (base, base))
+    os.utime(idle, (base + 600, base + 600))
+    subdir = busy.parent / "busy-0001" / "subagents"
+    subdir.mkdir(parents=True)
+    agent = subdir / "agent-xyz.jsonl"
+    agent.write_text("{}\n")
+    os.utime(agent, (base + 3000, base + 3000))
+    assert [f.stem for f in aas.all_session_files()] == ["busy-0001", "idle-0002"]
+
+
 # ── session resolution ───────────────────────────────────────────────────────
 
 def test_resolve_exact_and_prefix(tmp_path, monkeypatch):
@@ -195,8 +315,12 @@ def test_session_info(tmp_path, monkeypatch):
     assert info["project"] == "road_runner"
     assert info["armed"] is False
     assert "/gsd:execute-phase" in info["commands"]["first"][0]
+    assert info["paused"] is False
+    assert info["guard"] == "never"  # no bridge → guard has never run there
     aas.arm_session("deadbeef-0001")
     assert aas.session_info(path)["armed"] is True
+    aas.pause_session("deadbeef-0001")
+    assert aas.session_info(path)["paused"] is True
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -232,6 +356,33 @@ def test_cli_arm_and_off(tmp_path, monkeypatch, capsys):
     res = json.loads(capsys.readouterr().out)
     assert res["ok"] and res["was_armed"] is True
     assert not aas.is_armed("feedface-9999")
+
+
+def test_cli_pause_and_unpause(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    projects = tmp_path / "projects"
+    monkeypatch.setenv("MG_CLAUDE_PROJECTS_DIR", str(projects))
+    _write_session(projects, "-home-u-proj", "cafe0000-1111", [_user("hi")], cwd="/home/u/proj")
+
+    assert aas.main(["pause", "cafe", "look", "at", "the", "plan"]) == 0
+    res = json.loads(capsys.readouterr().out)
+    assert res["ok"] and res["action"] == "paused" and res["id"] == "cafe0000-1111"
+    assert res["note"] == "look at the plan"
+    assert res["guard"] == "never"  # surfaced so the caller can warn
+    assert aas.is_paused("cafe0000-1111")
+
+    assert aas.main(["unpause", "cafe"]) == 0
+    res = json.loads(capsys.readouterr().out)
+    assert res["ok"] and res["action"] == "unpaused" and res["was_paused"] is True
+    assert not aas.is_paused("cafe0000-1111")
+
+
+def test_cli_pause_no_match(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MG_CLAUDE_PROJECTS_DIR", str(tmp_path / "projects"))
+    (tmp_path / "projects").mkdir()
+    assert aas.main(["pause", "ghost"]) == 1
+    res = json.loads(capsys.readouterr().out)
+    assert res["ok"] is False and "no session" in res["error"]
 
 
 def test_cli_arm_no_match(tmp_path, monkeypatch, capsys):

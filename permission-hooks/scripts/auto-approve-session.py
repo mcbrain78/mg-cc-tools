@@ -7,11 +7,15 @@ arm the auto-approval flag for a session that is stuck on a permission prompt
 and therefore can't run a command itself.
 
 Subcommands:
-    list                 Print up to 10 recent sessions as JSON, each with the
-                         first/last user commands so the caller can recognise
-                         which one to arm.
-    arm   <id-prefix>    Write the auto-approve sidecar for the matched session.
-    off   <id-prefix>    Clear the auto-approve sidecar for the matched session.
+    list                    Print up to 10 recent sessions as JSON, each with
+                            the first/last user commands so the caller can
+                            recognise which one to act on.
+    arm     <id-prefix>     Write the auto-approve sidecar for the session.
+    off     <id-prefix>     Clear the auto-approve sidecar for the session.
+    pause   <id-prefix>     Latch the session: every guarded tool call asks for
+                            approval until released, which stops a whole wave of
+                            parallel subagents rather than only the next call.
+    unpause <id-prefix>     Release the latch.
 
 Stdlib-only on purpose: the /mg: command invokes this via plain ``python3`` in
 arbitrary target projects, which may have no virtualenv.
@@ -40,6 +44,17 @@ AUTO_APPROVE_COMMAND = "AUTO-APPROVE"
 # Not "context.json" — the GSD statusline owns that name in the same session
 # dir and would clobber the sidecar on every render. See permission-guard.py.
 SIDECAR_FILENAME = "auto-approve.json"
+# Pause latch. Written here, read (never written) by the hook, removed only by
+# `unpause` — so a TTL bump on the sidecar can never drop a pause request.
+PAUSE_FILENAME = "pause.json"
+# Edit-guard bridge. The hook writes it on every invocation that clears its
+# permission-mode gate, which makes its freshness a proxy for "is the guard
+# actually running in that session" — see guard_state().
+BRIDGE_FILENAME = "edit-guard.json"
+# How far the bridge may lag a session's latest activity while still counting as
+# an active guard. Generous: a stretch of WebFetch/Task calls advances the
+# transcript without producing a guarded tool call.
+GUARD_LAG_S = 300
 
 # Entry types the transcript tool skips entirely (non-conversation noise).
 SKIP_TYPES = {
@@ -118,7 +133,77 @@ def disarm_session(session_id):
         return False
 
 
+# ── Pause latch ──────────────────────────────────────────────────────────────
+
+def _pause_path(session_id):
+    return Path(_session_base()) / f"mg-session-{session_id}" / PAUSE_FILENAME
+
+
+def is_paused(session_id):
+    """True while the latch exists — it has no TTL and the hook never clears it."""
+    return _pause_path(session_id).exists()
+
+
+def pause_session(session_id, note=None):
+    path = _pause_path(session_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"paused_at_ms": int(time.time() * 1000)}
+    if note:
+        payload["note"] = note
+    with open(path, "w") as f:
+        json.dump(payload, f)
+
+
+def unpause_session(session_id):
+    try:
+        _pause_path(session_id).unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+# ── Guard activity (does the hook even run in that session?) ─────────────────
+
+def _bridge_path(session_id):
+    return Path(_session_base()) / f"mg-session-{session_id}" / BRIDGE_FILENAME
+
+
+def guard_state(session_id, last_activity):
+    """Return 'active', 'deferring' or 'never' for the guard in that session.
+
+    The hook writes the edit-guard bridge on every invocation that clears its
+    permission-mode gate, so a bridge that keeps pace with the session's latest
+    activity means the guard is running there (bypassPermissions). A session
+    that is demonstrably working while the bridge lags is in one of the modes
+    the guard defers to — where arming and pausing write files nobody reads.
+    """
+    try:
+        bridge_mtime = _bridge_path(session_id).stat().st_mtime
+    except OSError:
+        return "never"
+    if last_activity is None:
+        return "active"
+    return "active" if last_activity - bridge_mtime <= GUARD_LAG_S else "deferring"
+
+
 # ── Session discovery / resolution ───────────────────────────────────────────
+
+def last_activity(path):
+    """Newest mtime across a session transcript and its subagent transcripts.
+
+    A session running subagents can leave its own transcript untouched for
+    minutes while all the work lands in .../<uuid>/subagents/agent-*.jsonl.
+    Going by the parent mtime alone makes a busy session read as idle — and
+    sorts it in the picker below sessions that are doing nothing.
+    """
+    newest = path.stat().st_mtime
+    try:
+        for sub in (path.parent / path.stem / "subagents").glob("*.jsonl"):
+            newest = max(newest, sub.stat().st_mtime)
+    except OSError:
+        pass
+    return newest
+
 
 def all_session_files():
     pdir = _projects_dir()
@@ -128,7 +213,7 @@ def all_session_files():
     for proj in pdir.iterdir():
         if proj.is_dir():
             files.extend(proj.glob("*.jsonl"))
-    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    files.sort(key=last_activity, reverse=True)
     return files
 
 
@@ -296,13 +381,16 @@ def _relative_time(mtime, now=None):
 def session_info(path, now=None):
     sid = path.stem
     cwd = _session_cwd(path)
+    activity = last_activity(path)
     return {
         "id": sid,
         "short_id": sid[:8],
         "project": os.path.basename(cwd.rstrip("/")) if cwd else "",
         "cwd": cwd,
-        "last_active": _relative_time(path.stat().st_mtime, now),
+        "last_active": _relative_time(activity, now),
         "armed": is_armed(sid, now),
+        "paused": is_paused(sid),
+        "guard": guard_state(sid, activity),
         "commands": session_commands(path),
     }
 
@@ -342,6 +430,35 @@ def cmd_off(args):
     return 0
 
 
+def cmd_pause(args):
+    path, err = resolve_session_file(args.session)
+    if path is None:
+        print(json.dumps({"ok": False, "error": err}))
+        return 1
+    sid = path.stem
+    note = " ".join(args.note).strip() if args.note else None
+    pause_session(sid, note)
+    print(json.dumps({
+        "ok": True, "action": "paused", "id": sid, "short_id": sid[:8],
+        "project": os.path.basename(_session_cwd(path).rstrip("/")),
+        "guard": guard_state(sid, last_activity(path)),
+        "note": note,
+    }))
+    return 0
+
+
+def cmd_unpause(args):
+    path, err = resolve_session_file(args.session)
+    if path is None:
+        print(json.dumps({"ok": False, "error": err}))
+        return 1
+    sid = path.stem
+    existed = unpause_session(sid)
+    print(json.dumps({"ok": True, "action": "unpaused", "id": sid,
+                      "short_id": sid[:8], "was_paused": existed}))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -357,6 +474,15 @@ def main(argv=None):
     p_off = sub.add_parser("off", help="clear auto-approval for a session")
     p_off.add_argument("session", help="session id or prefix")
     p_off.set_defaults(func=cmd_off)
+
+    p_pause = sub.add_parser("pause", help="latch a session's next guarded calls to ask")
+    p_pause.add_argument("session", help="session id or prefix")
+    p_pause.add_argument("note", nargs="*", help="optional note shown in the prompt")
+    p_pause.set_defaults(func=cmd_pause)
+
+    p_unpause = sub.add_parser("unpause", help="release a paused session")
+    p_unpause.add_argument("session", help="session id or prefix")
+    p_unpause.set_defaults(func=cmd_unpause)
 
     args = parser.parse_args(argv)
     return args.func(args)

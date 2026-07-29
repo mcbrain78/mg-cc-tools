@@ -25,6 +25,8 @@ check_edit_guard = guard.check_edit_guard
 _emitter_follows_command = guard._emitter_follows_command
 CONTEXT_TTL_S = guard.CONTEXT_TTL_S
 SIDECAR_FILENAME = guard.SIDECAR_FILENAME
+PAUSE_FILENAME = guard.PAUSE_FILENAME
+check_pause = guard.check_pause
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -2491,6 +2493,170 @@ class TestSessionContext:
         with open(os.path.join(self._session_dir(sid), SIDECAR_FILENAME)) as f:
             data = json.load(f)
         assert abs(time.time() - data["timestamp_ms"] / 1000) < 5
+
+
+# ── Pause latch tests ───────────────────────────────────────────────────────
+
+class TestPauseLatch:
+    """check_pause reads the sticky pause latch (read-only, never expires)."""
+
+    SESSION_PREFIX = f"test-pause-{os.getpid()}"
+
+    def _session_dir(self, session_id):
+        return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
+
+    def _write_latch(self, session_id, payload):
+        sdir = self._session_dir(session_id)
+        os.makedirs(sdir, exist_ok=True)
+        with open(os.path.join(sdir, PAUSE_FILENAME), "w") as f:
+            if isinstance(payload, str):
+                f.write(payload)
+            else:
+                json.dump(payload, f)
+        return f"/tmp/{session_id}.jsonl"
+
+    def teardown_method(self):
+        for d in _glob.glob(f"/tmp/claude-code/mg-session-{self.SESSION_PREFIX}-*"):
+            _shutil.rmtree(d, ignore_errors=True)
+
+    def test_no_transcript_returns_none(self):
+        assert check_pause("") is None
+        assert check_pause(None) is None
+
+    def test_missing_latch_returns_none(self):
+        assert check_pause("/nonexistent/transcript.jsonl") is None
+
+    def test_latch_returns_info(self):
+        sid = f"{self.SESSION_PREFIX}-basic"
+        now_ms = int(time.time() * 1000)
+        path = self._write_latch(sid, {"paused_at_ms": now_ms, "note": "check the plan"})
+        latch = check_pause(path)
+        assert latch == {"paused_at_ms": now_ms, "note": "check the plan"}
+
+    def test_blank_note_normalised_away(self):
+        sid = f"{self.SESSION_PREFIX}-blanknote"
+        path = self._write_latch(sid, {"paused_at_ms": 1, "note": "   "})
+        assert check_pause(path)["note"] is None
+
+    def test_never_expires(self):
+        """Unlike the auto-approve window, the latch has no TTL."""
+        sid = f"{self.SESSION_PREFIX}-ancient"
+        ancient_ms = int((time.time() - 30 * 24 * 3600) * 1000)
+        path = self._write_latch(sid, {"paused_at_ms": ancient_ms})
+        assert check_pause(path) is not None
+
+    def test_corrupt_latch_still_pauses(self):
+        """A latch withholds privilege — ignoring an unreadable one fails unsafe."""
+        sid = f"{self.SESSION_PREFIX}-corrupt"
+        path = self._write_latch(sid, "not-json{{{")
+        assert check_pause(path) == {"paused_at_ms": None, "note": None}
+
+    def test_non_dict_latch_still_pauses(self):
+        sid = f"{self.SESSION_PREFIX}-list"
+        path = self._write_latch(sid, ["paused"])
+        assert check_pause(path) == {"paused_at_ms": None, "note": None}
+
+    def test_subagent_resolves_parent_latch(self):
+        """A latch on the parent session pauses its subagents too."""
+        sid = f"{self.SESSION_PREFIX}-subagent"
+        self._write_latch(sid, {"paused_at_ms": int(time.time() * 1000)})
+        subagent_path = f"/tmp/{sid}/subagents/agent-adb2f4c2f0b616d7d.jsonl"
+        assert check_pause(subagent_path) is not None
+
+    def test_reason_omits_release_command(self):
+        """The reason reaches the agent on a deny — it must not teach it to unlatch."""
+        reason = guard._pause_reason({"paused_at_ms": int(time.time() * 1000), "note": None})
+        assert "PAUSED by user" in reason
+        assert "unpause" not in reason.lower()
+        assert "auto-approve-session" not in reason
+
+
+class TestPauseLatchInMain:
+    """main() asks while the latch exists, ahead of every other verdict."""
+
+    SESSION_PREFIX = f"test-pause-main-{os.getpid()}"
+
+    def _session_dir(self, session_id):
+        return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
+
+    def _latch(self, session_id, **payload):
+        sdir = self._session_dir(session_id)
+        os.makedirs(sdir, exist_ok=True)
+        payload.setdefault("paused_at_ms", int(time.time() * 1000))
+        with open(os.path.join(sdir, PAUSE_FILENAME), "w") as f:
+            json.dump(payload, f)
+
+    def _arm(self, session_id):
+        sdir = self._session_dir(session_id)
+        os.makedirs(sdir, exist_ok=True)
+        with open(os.path.join(sdir, SIDECAR_FILENAME), "w") as f:
+            json.dump({"command": "AUTO-APPROVE",
+                       "timestamp_ms": int(time.time() * 1000)}, f)
+
+    def teardown_method(self):
+        for d in _glob.glob(f"/tmp/claude-code/mg-session-{self.SESSION_PREFIX}-*"):
+            _shutil.rmtree(d, ignore_errors=True)
+
+    def _run(self, monkeypatch, event):
+        decisions = []
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+        guard.main()
+        return decisions
+
+    def _event(self, sid, **over):
+        event = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": os.path.join(os.getcwd(), "README.md")},
+            "transcript_path": f"/tmp/{sid}.jsonl",
+        }
+        event.update(over)
+        return event
+
+    def test_paused_session_asks(self, monkeypatch):
+        sid = f"{self.SESSION_PREFIX}-asks"
+        self._latch(sid, note="look at the migration first")
+        decisions = self._run(monkeypatch, self._event(sid))
+        assert len(decisions) == 1
+        reason, decision = decisions[0]
+        assert decision == "ask"
+        assert "PAUSED by user" in reason
+        assert "look at the migration first" in reason
+
+    def test_latch_survives_the_ask(self, monkeypatch):
+        """Sticky: the hook must not consume the latch, or siblings sail past."""
+        sid = f"{self.SESSION_PREFIX}-sticky"
+        self._latch(sid)
+        self._run(monkeypatch, self._event(sid))
+        assert os.path.exists(os.path.join(self._session_dir(sid), PAUSE_FILENAME))
+        # A second call (e.g. a sibling subagent) still asks.
+        decisions = self._run(monkeypatch, self._event(sid))
+        assert decisions[0][1] == "ask"
+
+    def test_latch_beats_armed_window(self, monkeypatch):
+        """An armed window returns allow — the latch must be checked first."""
+        sid = f"{self.SESSION_PREFIX}-beats-arm"
+        self._arm(sid)
+        self._latch(sid)
+        decisions = self._run(monkeypatch, self._event(sid))
+        assert decisions[0][1] == "ask"
+        assert "PAUSED by user" in decisions[0][0]
+
+    def test_latch_ignored_in_deferred_mode(self, monkeypatch):
+        """The permission-mode gate still wins: CC-vetted modes see no output."""
+        sid = f"{self.SESSION_PREFIX}-deferred"
+        self._latch(sid)
+        decisions = self._run(monkeypatch, self._event(sid, permission_mode="auto"))
+        assert decisions == []
+
+    def test_unpaused_session_unaffected(self, monkeypatch):
+        sid = f"{self.SESSION_PREFIX}-clean"
+        decisions = self._run(monkeypatch, self._event(sid))
+        assert decisions[0][1] == "allow"
 
 
 # ── Edit guard toggle tests ─────────────────────────────────────────────────

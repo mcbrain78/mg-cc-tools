@@ -129,6 +129,15 @@ CONTEXT_TTL_S = 30 * 60  # 30 minutes
 # scripts/auto-approve-session.py.
 SIDECAR_FILENAME = "auto-approve.json"
 
+# Pause latch, written by scripts/auto-approve-session.py (usually from another
+# session) and cleared only by its `unpause` subcommand. Kept in its own file
+# rather than merged into SIDECAR_FILENAME: this hook is a read-only consumer of
+# the latch, so a concurrent TTL bump on the auto-approve sidecar can never drop
+# a pause request. The latch is sticky on purpose — every guarded call asks for
+# as long as it exists, so a whole wave of parallel subagents stops, not just
+# whichever one happened to make the next tool call.
+PAUSE_FILENAME = "pause.json"
+
 # Number of trailing JSONL lines to inspect for recent command invocation.
 # Needs to be large enough to span the full slash-command load: <command-name>
 # tag + body + attachments (one line each) + last-prompt + assistant thinking/
@@ -258,6 +267,60 @@ def check_session_context(transcript_path):
     if age_s > CONTEXT_TTL_S or age_s < 0:
         return None
     return command
+
+
+def check_pause(transcript_path):
+    """Return latch info if the session is paused, else None.
+
+    This hook is a read-only consumer: the latch is created by the ``pause``
+    subcommand of scripts/auto-approve-session.py and removed only by
+    ``unpause``. It never expires — it is a request that holds until cleared.
+
+    A latch we cannot parse still counts as paused. Unlike the auto-approve
+    sidecar, this marker *withholds* privilege, so ignoring an unreadable one
+    would fail in the unsafe direction: a run the user asked to stop would keep
+    going. ``unpause`` removes a corrupt latch as readily as a valid one.
+    """
+    if not transcript_path:
+        return None
+    session = _session_id(transcript_path)
+    if not session:
+        return None
+    path = os.path.join("/tmp/claude-code", f"mg-session-{session}", PAUSE_FILENAME)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError, IOError):
+        return {"paused_at_ms": None, "note": None}
+    if not isinstance(data, dict):
+        return {"paused_at_ms": None, "note": None}
+    paused_at_ms = data.get("paused_at_ms")
+    note = data.get("note")
+    return {
+        "paused_at_ms": paused_at_ms if isinstance(paused_at_ms, (int, float)) else None,
+        "note": note.strip() if isinstance(note, str) and note.strip() else None,
+    }
+
+
+def _pause_reason(latch):
+    """Build the ask reason shown for a paused session.
+
+    Deliberately does not name the command that clears the latch: on a deny the
+    reason text is fed back to the agent, and it must not read as instructions
+    for unlatching its own gate.
+    """
+    age = ""
+    paused_at_ms = latch.get("paused_at_ms")
+    if paused_at_ms:
+        secs = max(0, int(time.time() - paused_at_ms / 1000))
+        age = f" {secs}s ago" if secs < 60 else f" {secs // 60}m ago"
+    note = f" — note: {latch['note']}" if latch.get("note") else ""
+    return (
+        f"[permission-guard] PAUSED by user{age} — this run stays paused until "
+        f"the user resumes it; approving lets only this one call through" + note
+    )
 
 
 # ── Edit guard (manual toggle for Edit/Write/NotebookEdit) ──────────────────
@@ -964,6 +1027,16 @@ def main():
 
     # Best-effort: write edit guard state for statusline badge
     _write_edit_guard_bridge(event)
+
+    # ── Pause latch ─────────────────────────────────────────────────────
+    # Checked ahead of stage 0 and of the auto-approve window: an armed window
+    # returns "allow", which would otherwise swallow the pause. Sticky, so
+    # every guarded call in the session tree asks — including calls from
+    # sibling subagents that would sail past a one-shot marker.
+    latch = check_pause(event.get("transcript_path", ""))
+    if latch:
+        _ask(_pause_reason(latch))
+        return
 
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {})
