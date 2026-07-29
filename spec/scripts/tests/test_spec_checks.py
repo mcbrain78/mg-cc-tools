@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from spec.scripts import improve_files
+from spec.scripts import improve_files, spec_checks
 from spec.scripts.spec_checks import main
 
 
@@ -713,6 +713,66 @@ class TestDblockTyping:
         atoms = _out(capsys)["atoms"]
         dblocks = [a for a in atoms if a["type"] == "d-block"]
         assert any("### D1:" in a["text"] for a in dblocks)  # ### Dn: is a checkable d-block, not a plain heading
+
+
+# ── usage-gate ───────────────────────────────────────────────────────────────
+
+USAGE_OUTPUT = """\
+You are currently using your subscription to power your Claude Code usage
+
+Current session: 93% used · resets Jul 29, 6:49pm (Europe/Berlin)
+Current week (all models): 28% used · resets Aug 3, 8:59pm (Europe/Berlin)
+Current week (Fable): 0% used
+"""
+
+
+class _Proc:
+    returncode = 0
+
+    def __init__(self, stdout: str) -> None:
+        self.stdout = stdout
+        self.stderr = ""
+
+
+class TestUsageGate:
+    def _stub(self, monkeypatch, body: str = USAGE_OUTPUT) -> list:
+        """Capture the argv the gate would run, returning a canned /usage body."""
+        seen: list = []
+
+        def fake_run(argv, **kwargs):
+            seen.append(argv)
+            return _Proc(json.dumps({"result": body, "num_turns": 0}))
+
+        monkeypatch.setattr(spec_checks.subprocess, "run", fake_run)
+        return seen
+
+    def test_runs_without_persisting_a_session(self, monkeypatch) -> None:
+        """Without the flag, every check leaves a /usage transcript that then
+        surfaces as a phantom row in pickers scanning ~/.claude/projects."""
+        seen = self._stub(monkeypatch)
+        assert main(["usage-gate"]) == 0
+        assert "--no-session-persistence" in seen[0]
+        assert seen[0][:4] == ["claude", "-p", "/usage", "--output-format"]
+
+    def test_pause_when_session_over_max(self, monkeypatch, capsys) -> None:
+        self._stub(monkeypatch)
+        assert main(["usage-gate", "--session-max", "75"]) == 0
+        out = _out(capsys)
+        assert out["verdict"] == "PAUSE"
+        assert out["binding"] == "session"
+        assert out["session_pct"] == 93
+        assert out["resume_cron"] and out["resume_human"]
+
+    def test_ok_when_under_max(self, monkeypatch, capsys) -> None:
+        self._stub(monkeypatch)
+        assert main(["usage-gate", "--session-max", "95"]) == 0
+        out = _out(capsys)
+        assert out["verdict"] == "OK" and out["binding"] is None
+
+    def test_unparseable_output_degrades_to_error(self, monkeypatch, capsys) -> None:
+        self._stub(monkeypatch, body="nothing useful here")
+        assert main(["usage-gate"]) == 0
+        assert _out(capsys)["verdict"] == "ERROR"
 
 
 # ── CLI dispatch ─────────────────────────────────────────────────────────────

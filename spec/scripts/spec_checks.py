@@ -248,6 +248,12 @@ def cmd_floor(spec: Path) -> int:
 # num_turns:0), so the loop can pause before a mid-round cutoff and schedule its
 # own resume at the reset. NOT a wall-clock proxy: the percentages and reset
 # timestamps come straight from `/usage`.
+#
+# `--no-session-persistence` is required, not cosmetic. Without it every gate
+# check persists a throwaway session transcript whose only user entry is
+# `/usage`, which then shows up as a phantom row in session pickers that scan
+# ~/.claude/projects (e.g. /mg:auto-approve-session). It also cuts the call from
+# ~4.7s to ~1.7s, since the flag skips session setup entirely.
 
 
 def _parse_usage_line(line: str) -> tuple[int | None, str | None]:
@@ -285,7 +291,8 @@ def cmd_usage_gate(session_max: int, weekly_max: int, buffer_min: int) -> int:
     to pre-feature behaviour rather than halting on a monitoring hiccup)."""
     try:
         proc = subprocess.run(
-            ["claude", "-p", "/usage", "--output-format", "json"],
+            ["claude", "-p", "/usage", "--output-format", "json",
+             "--no-session-persistence"],
             capture_output=True, text=True, timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
