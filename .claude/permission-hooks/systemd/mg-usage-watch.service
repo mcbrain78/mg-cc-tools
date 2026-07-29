@@ -1,0 +1,25 @@
+[Unit]
+Description=mg-cc-tools usage watch — publish Claude Code usage limits for the permission guard
+Documentation=file:///home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/scripts/usage-watch.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Thresholds are late by design: the risk is walking into a rate-limit error
+# mid-task, so the gate lands shortly before the cutoff. Still above
+# /mg:spec-improve-auto's own 75/90 round-boundary gate, so that loop always
+# shuts itself down first (its gate check and CronCreate are tool calls a gate
+# would block). This is the single place the thresholds live — the guard reads
+# them from the published file, so changing them needs no reinstall:
+#   systemctl --user daemon-reload && systemctl --user restart mg-usage-watch
+ExecStart=/usr/bin/python3 /home/mcbrain/mg_projects/mg-cc-tools/.claude/permission-hooks/scripts/usage-watch.py --session-max 93 --weekly-max 98 --interval 600
+Restart=always
+RestartSec=30
+# `claude` lives in ~/.local/bin, which a user unit does not inherit.
+Environment=PATH=%h/.local/bin:%h/.local/share/claude:/usr/local/bin:/usr/bin:/bin
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

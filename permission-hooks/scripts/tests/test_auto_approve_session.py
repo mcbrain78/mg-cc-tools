@@ -130,6 +130,123 @@ def test_pause_latch_never_expires(tmp_path, monkeypatch):
     assert aas.is_paused("p5")
 
 
+# ── session-limit mute ───────────────────────────────────────────────────────
+
+def _publish(tmp_path, over=True, binding="session", age_s=0,
+             session_iso="2026-07-29T18:49:00", weekly_iso="2026-08-03T20:59:00",
+             ok=True):
+    p = tmp_path / "sc" / aas.USAGE_FILENAME
+    p.parent.mkdir(parents=True, exist_ok=True)
+    window = session_iso if binding == "session" else weekly_iso
+    p.write_text(json.dumps({
+        "ok": ok, "over": over, "binding": binding, "pct": 94,
+        "window_iso": window, "window_human": "Jul 29, 6:49pm",
+        "session_reset_iso": session_iso, "weekly_reset_iso": weekly_iso,
+        "read_at_ms": int((time.time() - age_s) * 1000),
+    }))
+    return p
+
+
+def test_usage_state_reports_gated_then_muted(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    reading = json.loads(_publish(tmp_path).read_text())
+    assert aas.usage_state("s1") == "gated"
+    aas.mute_session_limit("s1", reading)
+    assert aas.usage_state("s1") == "muted"
+    aas.unmute_session_limit("s1")
+    assert aas.usage_state("s1") == "gated"
+
+
+def test_usage_state_clear_when_under_the_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    _publish(tmp_path, over=False)
+    assert aas.usage_state("s1") == "clear"
+
+
+def test_usage_state_unknown_without_a_publisher(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    assert aas.usage_state("s1") == "unknown"
+    _publish(tmp_path, age_s=aas.USAGE_STALE_S + 600)
+    assert aas.usage_state("s1") == "unknown"      # stale reading is not a gate
+
+
+def test_mute_covers_whichever_limit_binds(tmp_path, monkeypatch):
+    """A pre-emptive mute records both windows, so a weekly bind is covered too."""
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    reading = json.loads(_publish(tmp_path, over=False).read_text())
+    aas.mute_session_limit("s1", reading)
+    _publish(tmp_path, binding="weekly")
+    assert aas.usage_state("s1") == "muted"
+
+
+def test_mute_expires_with_its_window(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    reading = json.loads(_publish(tmp_path).read_text())
+    aas.mute_session_limit("s1", reading)
+    _publish(tmp_path, session_iso="2026-07-29T23:49:00")   # next window
+    assert aas.usage_state("s1") == "gated"
+
+
+def test_mute_tolerates_reported_drift(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    reading = json.loads(_publish(tmp_path).read_text())
+    aas.mute_session_limit("s1", reading)
+    _publish(tmp_path, session_iso="2026-07-29T18:50:00")   # same window, 1 min drift
+    assert aas.usage_state("s1") == "muted"
+
+
+def test_corrupt_mute_does_not_silence(tmp_path, monkeypatch):
+    """A mute grants silence, so an unparseable one must fail toward warning."""
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    _publish(tmp_path)
+    p = tmp_path / "sc" / "mg-session-s1" / aas.USAGE_MUTE_FILENAME
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("not-json{{{")
+    assert aas.usage_state("s1") == "gated"
+
+
+def test_unmute_missing_reports_false(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    assert aas.unmute_session_limit("nope") is False
+
+
+def test_mute_and_pause_are_independent(tmp_path, monkeypatch):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    reading = json.loads(_publish(tmp_path).read_text())
+    aas.pause_session("s1", "manual")
+    aas.mute_session_limit("s1", reading)
+    aas.unmute_session_limit("s1")
+    assert aas.is_paused("s1")
+
+
+def test_cli_mute_and_unmute(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    projects = tmp_path / "projects"
+    monkeypatch.setenv("MG_CLAUDE_PROJECTS_DIR", str(projects))
+    _write_session(projects, "-home-u-proj", "beefcafe-0001", [_user("hi")], cwd="/home/u/proj")
+    _publish(tmp_path)
+
+    assert aas.main(["mute-session-limit", "beefcafe"]) == 0
+    res = json.loads(capsys.readouterr().out)
+    assert res["ok"] and res["action"] == "muted" and res["usage"] == "muted"
+    assert res["windows"]["session"] == "2026-07-29T18:49:00"
+
+    assert aas.main(["unmute-session-limit", "beefcafe"]) == 0
+    res = json.loads(capsys.readouterr().out)
+    assert res["ok"] and res["was_muted"] is True and res["usage"] == "gated"
+
+
+def test_cli_mute_without_a_reading_refuses(tmp_path, monkeypatch, capsys):
+    """Writing a mute with no window would silence nothing — say so instead."""
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    projects = tmp_path / "projects"
+    monkeypatch.setenv("MG_CLAUDE_PROJECTS_DIR", str(projects))
+    _write_session(projects, "p", "dead0000-0001", [_user("hi")])
+    assert aas.main(["mute-session-limit", "dead0000"]) == 1
+    res = json.loads(capsys.readouterr().out)
+    assert res["ok"] is False and "mg-usage-watch" in res["error"]
+
+
 # ── guard activity ───────────────────────────────────────────────────────────
 
 def _write_bridge(tmp_path, sid, mtime):

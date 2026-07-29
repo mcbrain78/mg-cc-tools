@@ -16,6 +16,9 @@ Subcommands:
                             approval until released, which stops a whole wave of
                             parallel subagents rather than only the next call.
     unpause <id-prefix>     Release the latch.
+    mute-session-limit   <id-prefix>   Silence the usage-limit warning for the
+                            current window (it warns again in the next one).
+    unmute-session-limit <id-prefix>   Restore the warning.
 
 Stdlib-only on purpose: the /mg: command invokes this via plain ``python3`` in
 arbitrary target projects, which may have no virtualenv.
@@ -31,6 +34,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 # ── Sidecar contract — MUST stay in sync with permission-guard.py ────────────
@@ -51,6 +55,12 @@ PAUSE_FILENAME = "pause.json"
 # permission-mode gate, which makes its freshness a proxy for "is the guard
 # actually running in that session" — see guard_state().
 BRIDGE_FILENAME = "edit-guard.json"
+# Account-wide usage reading published by usage-watch.py (base dir, not per
+# session) and the per-session mute that silences its warning for one window.
+USAGE_FILENAME = "usage.json"
+USAGE_MUTE_FILENAME = "usage-mute.json"
+USAGE_STALE_S = 30 * 60
+USAGE_WINDOW_TOL_MIN = 10
 # How far the bridge may lag a session's latest activity while still counting as
 # an active guard. Generous: a stretch of WebFetch/Task calls advances the
 # transcript without producing a guarded tool call.
@@ -160,6 +170,82 @@ def unpause_session(session_id):
         return True
     except FileNotFoundError:
         return False
+
+
+# ── Session-limit mute (silences the usage gate for one window) ──────────────
+
+def _usage_mute_path(session_id):
+    return Path(_session_base()) / f"mg-session-{session_id}" / USAGE_MUTE_FILENAME
+
+
+def read_published_usage(now=None):
+    """The daemon's latest reading, or None when missing/unparseable/stale."""
+    try:
+        with open(Path(_session_base()) / USAGE_FILENAME) as f:
+            reading = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(reading, dict):
+        return None
+    ts = reading.get("read_at_ms")
+    if not isinstance(ts, (int, float)):
+        return None
+    now = time.time() if now is None else now
+    age = now - ts / 1000
+    return reading if 0 <= age <= USAGE_STALE_S else None
+
+
+def mute_session_limit(session_id, reading):
+    """Record both current windows, so the mute holds whichever limit binds.
+
+    Muting is window-scoped on purpose: it expires with the window it was taken
+    out for, and the next window warns again.
+    """
+    path = _usage_mute_path(session_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "muted_at_ms": int(time.time() * 1000),
+        "windows": {"session": reading.get("session_reset_iso"),
+                    "weekly": reading.get("weekly_reset_iso")},
+    }
+    with open(path, "w") as f:
+        json.dump(payload, f)
+    return payload
+
+
+def unmute_session_limit(session_id):
+    try:
+        _usage_mute_path(session_id).unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def _windows_match(a_iso, b_iso):
+    if not a_iso or not b_iso:
+        return False
+    try:
+        a, b = datetime.fromisoformat(a_iso), datetime.fromisoformat(b_iso)
+    except (TypeError, ValueError):
+        return False
+    return abs((a - b).total_seconds()) <= USAGE_WINDOW_TOL_MIN * 60
+
+
+def usage_state(session_id, now=None):
+    """'muted' | 'gated' | 'clear' | 'unknown' for the picker's usage column."""
+    reading = read_published_usage(now)
+    if reading is None or not reading.get("ok"):
+        return "unknown"          # nobody publishing → the guard does not gate
+    if not reading.get("over"):
+        return "clear"
+    try:
+        with open(_usage_mute_path(session_id)) as f:
+            mute = json.load(f)
+        windows = mute.get("windows") or {}
+    except (OSError, ValueError, AttributeError):
+        return "gated"
+    return "muted" if _windows_match(windows.get(reading.get("binding")),
+                                     reading.get("window_iso")) else "gated"
 
 
 # ── Guard activity (does the hook even run in that session?) ─────────────────
@@ -391,6 +477,7 @@ def session_info(path, now=None):
         "armed": is_armed(sid, now),
         "paused": is_paused(sid),
         "guard": guard_state(sid, activity),
+        "usage": usage_state(sid, now),
         "commands": session_commands(path),
     }
 
@@ -459,6 +546,41 @@ def cmd_unpause(args):
     return 0
 
 
+def cmd_mute_session_limit(args):
+    path, err = resolve_session_file(args.session)
+    if path is None:
+        print(json.dumps({"ok": False, "error": err}))
+        return 1
+    reading = read_published_usage()
+    if reading is None or not reading.get("ok"):
+        # Muting without a window would silence nothing, so say so rather than
+        # write a file that quietly never matches.
+        print(json.dumps({"ok": False, "error": "no current usage reading to mute — "
+                                                "is mg-usage-watch running?"}))
+        return 1
+    sid = path.stem
+    payload = mute_session_limit(sid, reading)
+    print(json.dumps({
+        "ok": True, "action": "muted", "id": sid, "short_id": sid[:8],
+        "project": os.path.basename(_session_cwd(path).rstrip("/")),
+        "windows": payload["windows"], "usage": usage_state(sid),
+    }))
+    return 0
+
+
+def cmd_unmute_session_limit(args):
+    path, err = resolve_session_file(args.session)
+    if path is None:
+        print(json.dumps({"ok": False, "error": err}))
+        return 1
+    sid = path.stem
+    existed = unmute_session_limit(sid)
+    print(json.dumps({"ok": True, "action": "unmuted", "id": sid,
+                      "short_id": sid[:8], "was_muted": existed,
+                      "usage": usage_state(sid)}))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -483,6 +605,16 @@ def main(argv=None):
     p_unpause = sub.add_parser("unpause", help="release a paused session")
     p_unpause.add_argument("session", help="session id or prefix")
     p_unpause.set_defaults(func=cmd_unpause)
+
+    p_mute = sub.add_parser("mute-session-limit",
+                            help="silence the usage-limit warning for this window")
+    p_mute.add_argument("session", help="session id or prefix")
+    p_mute.set_defaults(func=cmd_mute_session_limit)
+
+    p_unmute = sub.add_parser("unmute-session-limit",
+                              help="restore the usage-limit warning")
+    p_unmute.add_argument("session", help="session id or prefix")
+    p_unmute.set_defaults(func=cmd_unmute_session_limit)
 
     args = parser.parse_args(argv)
     return args.func(args)

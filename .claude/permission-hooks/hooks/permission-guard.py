@@ -25,6 +25,7 @@ import subprocess
 import sys
 import time
 from collections import namedtuple
+from datetime import datetime
 
 PROJECT_ROOT = "{MG_INSTALL_PROJECT_ROOT}"
 
@@ -138,6 +139,36 @@ SIDECAR_FILENAME = "auto-approve.json"
 # whichever one happened to make the next tool call.
 PAUSE_FILENAME = "pause.json"
 
+# ── Usage gate ──────────────────────────────────────────────────────────────
+# scripts/usage-watch.py publishes one account-wide reading (the daemon owns the
+# thresholds and precomputes the verdict, so this hook stays a cheap file read on
+# every tool call). A session silences it for the current window with
+# `mute-session-limit`, which writes USAGE_MUTE_FILENAME into its session dir.
+#
+# Fail directions are deliberately opposite. An unreadable or stale reading must
+# NOT gate work: a monitoring hiccup blocking every tool call is worse than the
+# limit itself, which merely cuts off and resets. An unreadable mute must NOT
+# grant silence: a corrupt file that happens to disable a warning is the bad
+# direction.
+USAGE_FILENAME = "usage.json"                 # account-wide, in the base dir
+USAGE_MUTE_FILENAME = "usage-mute.json"       # per session
+# Three missed ticks (the daemon's default interval is 10 min).
+USAGE_STALE_S = 30 * 60
+# Reported reset instants drift ~a minute between reads, so window identity is
+# fuzzy — mirrored in scripts/auto-approve-session.py.
+USAGE_WINDOW_TOL_MIN = 10
+
+_DEFAULT_SESSION_BASE = "/tmp/claude-code"
+
+
+def _session_base():
+    """Base dir for session sidecars. Overridable so tests never touch the real one."""
+    return os.environ.get("MG_SESSION_BASE", _DEFAULT_SESSION_BASE)
+
+
+def _session_dir(session):
+    return os.path.join(_session_base(), f"mg-session-{session}")
+
 # Number of trailing JSONL lines to inspect for recent command invocation.
 # Needs to be large enough to span the full slash-command load: <command-name>
 # tag + body + attachments (one line each) + last-prompt + assistant thinking/
@@ -174,7 +205,7 @@ def _write_context_sidecar(transcript_path, command):
         session = _session_id(transcript_path)
         if not session:
             return
-        session_dir = os.path.join("/tmp/claude-code", f"mg-session-{session}")
+        session_dir = _session_dir(session)
         os.makedirs(session_dir, exist_ok=True)
         path = os.path.join(session_dir, SIDECAR_FILENAME)
         with open(path, "w") as f:
@@ -189,7 +220,7 @@ def _update_context_timestamp(transcript_path):
         session = _session_id(transcript_path)
         if not session:
             return
-        path = os.path.join("/tmp/claude-code", f"mg-session-{session}", SIDECAR_FILENAME)
+        path = os.path.join(_session_dir(session), SIDECAR_FILENAME)
         with open(path) as f:
             data = json.load(f)
         data["timestamp_ms"] = int(time.time() * 1000)
@@ -251,7 +282,7 @@ def check_session_context(transcript_path):
     session = _session_id(transcript_path)
     if not session:
         return None
-    path = os.path.join("/tmp/claude-code", f"mg-session-{session}", SIDECAR_FILENAME)
+    path = os.path.join(_session_dir(session), SIDECAR_FILENAME)
     try:
         with open(path) as f:
             data = json.load(f)
@@ -286,7 +317,7 @@ def check_pause(transcript_path):
     session = _session_id(transcript_path)
     if not session:
         return None
-    path = os.path.join("/tmp/claude-code", f"mg-session-{session}", PAUSE_FILENAME)
+    path = os.path.join(_session_dir(session), PAUSE_FILENAME)
     if not os.path.exists(path):
         return None
     try:
@@ -302,6 +333,89 @@ def check_pause(transcript_path):
         "paused_at_ms": paused_at_ms if isinstance(paused_at_ms, (int, float)) else None,
         "note": note.strip() if isinstance(note, str) and note.strip() else None,
     }
+
+
+def _usage_windows_match(mute_iso, verdict_iso):
+    """True when a mute was taken out for the window the verdict is about."""
+    if not mute_iso or not verdict_iso:
+        return False        # a mute with no window silences nothing
+    try:
+        a = datetime.fromisoformat(mute_iso)
+        b = datetime.fromisoformat(verdict_iso)
+    except (TypeError, ValueError):
+        return False
+    return abs((a - b).total_seconds()) <= USAGE_WINDOW_TOL_MIN * 60
+
+
+def check_usage_gate(transcript_path):
+    """Return the published usage verdict if this call should ask, else None.
+
+    The daemon owns the thresholds and precomputes ``over``/``binding``, so this
+    is a file read and two comparisons — cheap enough for every tool call.
+
+    Returns None (no gate) when the reading is missing, unparseable, stale, not
+    over the limit, or muted by this session for the window in question.
+    """
+    path = os.path.join(_session_base(), USAGE_FILENAME)
+    try:
+        with open(path) as f:
+            reading = json.load(f)
+    except (OSError, json.JSONDecodeError, IOError):
+        return None
+    if not isinstance(reading, dict) or not reading.get("ok") or not reading.get("over"):
+        return None
+
+    read_at_ms = reading.get("read_at_ms")
+    if not isinstance(read_at_ms, (int, float)):
+        return None
+    age_s = time.time() - read_at_ms / 1000
+    if age_s > USAGE_STALE_S or age_s < 0:
+        return None                     # nobody is publishing; don't gate on guesses
+
+    binding = reading.get("binding")
+    verdict_window = reading.get("window_iso")
+    if not _muted(transcript_path, binding, verdict_window):
+        return reading
+    return None
+
+
+def _muted(transcript_path, binding, verdict_window):
+    """True when this session muted the limit warning for this window.
+
+    A mute records the window of *each* limit at the time it was taken out, so a
+    pre-emptive mute works whichever limit later binds. Unlike the pause latch, an
+    unreadable mute grants nothing: a corrupt file must not silence a warning.
+    """
+    session = _session_id(transcript_path)
+    if not session:
+        return False
+    try:
+        with open(os.path.join(_session_dir(session), USAGE_MUTE_FILENAME)) as f:
+            mute = json.load(f)
+    except (OSError, json.JSONDecodeError, IOError):
+        return False
+    if not isinstance(mute, dict):
+        return False
+    windows = mute.get("windows")
+    if not isinstance(windows, dict):
+        return False
+    return _usage_windows_match(windows.get(binding), verdict_window)
+
+
+def _usage_reason(reading):
+    """Build the ask reason for a call made close to the usage limit.
+
+    Like the pause latch, this deliberately does not name the command that
+    silences it: on a deny the text is fed back to the agent, and it must not read
+    as instructions for switching off its own warning.
+    """
+    kind = reading.get("binding") or "usage"
+    pct = reading.get("pct")
+    human = reading.get("window_human")
+    pct_txt = f"{pct}% " if pct is not None else ""
+    resets = f", resets {human}" if human else ""
+    return (f"[permission-guard] {kind} limit at {pct_txt}used{resets} — close to a "
+            f"rate-limit cutoff; approving continues this call")
 
 
 def _pause_reason(latch):
@@ -380,7 +494,7 @@ def _write_edit_guard_bridge(event):
             return
         blocked = check_edit_guard(transcript_path)
         state = "OFF" if blocked else "ON"
-        session_dir = os.path.join("/tmp/claude-code", f"mg-session-{session}")
+        session_dir = _session_dir(session)
         os.makedirs(session_dir, exist_ok=True)
         bridge_path = os.path.join(session_dir, "edit-guard.json")
         with open(bridge_path, "w") as f:
@@ -1047,6 +1161,14 @@ def main():
     latch = check_pause(event.get("transcript_path", ""))
     if latch:
         _ask(_pause_reason(latch))
+        return
+
+    # ── Usage gate ──────────────────────────────────────────────────────
+    # Also ahead of the auto-approve window: an armed unattended run is exactly
+    # the thing that would otherwise burn the last of a window unsupervised.
+    usage = check_usage_gate(event.get("transcript_path", ""))
+    if usage:
+        _ask(_usage_reason(usage))
         return
 
     tool_name = event.get("tool_name", "")

@@ -107,6 +107,21 @@ if [[ ! -f "${SCRIPT_DIR}/scripts/auto-approve-session.py" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${SCRIPT_DIR}/scripts/usage-read.py" ]]; then
+  echo "Error: missing scripts/usage-read.py"
+  exit 1
+fi
+
+if [[ ! -f "${SCRIPT_DIR}/scripts/usage-watch.py" ]]; then
+  echo "Error: missing scripts/usage-watch.py"
+  exit 1
+fi
+
+if [[ ! -f "${SCRIPT_DIR}/systemd/mg-usage-watch.service" ]]; then
+  echo "Error: missing systemd/mg-usage-watch.service"
+  exit 1
+fi
+
 # ── Check for python3 ───────────────────────────────────────────────────────
 
 if ! command -v python3 &>/dev/null; then
@@ -132,10 +147,21 @@ mkdir -p "${SUPPORT_DIR}/scripts"
 cp "${SCRIPT_DIR}/scripts/emit-context.py" "${SUPPORT_DIR}/scripts/"
 cp "${SCRIPT_DIR}/scripts/emit-edit-guard.py" "${SUPPORT_DIR}/scripts/"
 cp "${SCRIPT_DIR}/scripts/auto-approve-session.py" "${SUPPORT_DIR}/scripts/"
+cp "${SCRIPT_DIR}/scripts/usage-read.py" "${SUPPORT_DIR}/scripts/"
+cp "${SCRIPT_DIR}/scripts/usage-watch.py" "${SUPPORT_DIR}/scripts/"
 chmod +x "${SUPPORT_DIR}/scripts/emit-context.py"
 chmod +x "${SUPPORT_DIR}/scripts/emit-edit-guard.py"
 chmod +x "${SUPPORT_DIR}/scripts/auto-approve-session.py"
+chmod +x "${SUPPORT_DIR}/scripts/usage-read.py"
+chmod +x "${SUPPORT_DIR}/scripts/usage-watch.py"
 echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
+
+# systemd unit template for the usage watcher. Copied and path-resolved only —
+# never enabled by the installer; starting a machine-level service is the user's
+# call (and at high usage it would latch armed sessions immediately).
+mkdir -p "${SUPPORT_DIR}/systemd"
+cp "${SCRIPT_DIR}/systemd/mg-usage-watch.service" "${SUPPORT_DIR}/systemd/"
+echo "  systemd  → ${SUPPORT_DIR}/systemd/ (template, not enabled)"
 
 # Commands
 mkdir -p "${COMMANDS_DIR}"
@@ -191,6 +217,13 @@ sed -i "s|{MG_INSTALL_EMIT_CONTEXT_SCRIPT}|${EMIT_CONTEXT_PATH}|g" "${COMMANDS_D
 # Command file: {MG_INSTALL_AUTO_APPROVE_SESSION_SCRIPT}
 sed -i "s|{MG_INSTALL_AUTO_APPROVE_SESSION_SCRIPT}|${AUTO_APPROVE_SESSION_PATH}|g" "${COMMANDS_DIR}/auto-approve-session.md"
 
+# systemd unit: {MG_INSTALL_USAGE_WATCH_SCRIPT}
+# Baked absolute even in project mode — a unit file cannot expand
+# $(git rev-parse), and a machine-level service is machine-specific anyway.
+USAGE_WATCH_ABS="$(cd "${SUPPORT_DIR}/scripts" && pwd)/usage-watch.py"
+sed -i "s|{MG_INSTALL_USAGE_WATCH_SCRIPT}|${USAGE_WATCH_ABS}|g" \
+  "${SUPPORT_DIR}/systemd/mg-usage-watch.service"
+
 # ── Clean up stale files ───────────────────────────────────────────────────
 
 # Clean up stale command from v1.0
@@ -230,6 +263,12 @@ elif [[ -n "$PROJECT_ROOT" ]]; then
 else
   echo "    PROJECT_ROOT: (empty — falls back to cwd from hook event)"
 fi
+echo ""
+echo "  Usage watch (optional, set-and-forget):"
+echo "    cp ${SUPPORT_DIR}/systemd/mg-usage-watch.service ~/.config/systemd/user/"
+echo "    systemctl --user daemon-reload && systemctl --user enable --now mg-usage-watch"
+echo "    loginctl enable-linger \$USER    # keep it running after logout"
+echo "    journalctl --user -u mg-usage-watch -f"
 echo ""
 echo "Next step:"
 echo "  Post-install subagent will register the hook in settings.json"

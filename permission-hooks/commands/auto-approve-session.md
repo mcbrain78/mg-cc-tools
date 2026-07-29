@@ -11,32 +11,41 @@ GSD run that is blocked on a permission prompt and so can't run a command
 itself, or a long autonomous run you want to interrupt for a check-in. Run this
 from a second, unblocked CC session and pick the target.
 
-Two independent controls, each with its own sidecar:
+Three independent controls, each with its own sidecar:
 
 - **arm / off** — a 30-minute sliding auto-approval window (suppresses prompts).
 - **pause / unpause** — a sticky latch that makes *every* guarded tool call in
   that session ask for approval until released. Sticky on purpose: a one-shot
   marker would be consumed by whichever parallel subagent happened to call a
   tool first, leaving its siblings running.
+- **mute-session-limit / unmute-session-limit** — silences the usage-limit
+  warning for the *current* window only. The `mg-usage-watch` daemon publishes
+  the real limits and the guard asks on every call once they are close, so a run
+  stops before walking into a rate-limit cutoff. Muting is how you say "seen it,
+  let this window finish"; the next window warns again.
 
-`$ARGUMENTS` may be empty, a session id / prefix, or `off`, `pause`, `unpause`
-followed by an id/prefix (`pause` also takes an optional free-text note).
+`$ARGUMENTS` may be empty, a session id / prefix, or `off`, `pause`, `unpause`,
+`mute-session-limit`, `unmute-session-limit` followed by an id/prefix (`pause`
+also takes an optional free-text note).
 
 The script is invoked with plain `python3` (stdlib-only, no venv needed):
 `python3 "{MG_INSTALL_AUTO_APPROVE_SESSION_SCRIPT}" <subcommand> [args]`
 
 ## Step 1 — Direct path (an id/prefix was given in `$ARGUMENTS`)
 
-Route on the first word: `off`, `pause` or `unpause` → that subcommand on the
-remaining id/prefix (for `pause`, pass any remaining words as the note).
-Anything else → treat `$ARGUMENTS` as an id/prefix and run `arm`.
+Route on the first word: `off`, `pause`, `unpause`, `mute-session-limit` or
+`unmute-session-limit` → that subcommand on the remaining id/prefix (for `pause`,
+pass any remaining words as the note). Anything else → treat `$ARGUMENTS` as an
+id/prefix and run `arm`.
 
 Parse the JSON result:
 - `ok: true` → tell the user which session was armed / disarmed / paused /
-  released (`short_id` + `project`). For `arm`, mention auto-approval slides for
-  `ttl_minutes` of activity. For `pause`, mention the run stays paused until
-  `unpause`. If `guard` is not `active`, warn (see Step 2). **Done.**
-- `ok: false` → show `error` (e.g. an ambiguous prefix lists the candidates) and stop.
+  released / muted / unmuted (`short_id` + `project`). For `arm`, mention
+  auto-approval slides for `ttl_minutes` of activity. For `pause`, mention the run
+  stays paused until `unpause`. For `mute-session-limit`, mention it covers only
+  the current window. If `guard` is not `active`, warn (see Step 2). **Done.**
+- `ok: false` → show `error` (e.g. an ambiguous prefix lists the candidates, or no
+  usage reading is being published) and stop.
 
 ## Step 2 — Picker (no `$ARGUMENTS`)
 
@@ -45,8 +54,8 @@ Run the `list` subcommand and parse the JSON `sessions` array (newest first, ≤
 If the array is empty, tell the user no other sessions were found and stop.
 
 Otherwise render a numbered list so the user can recognise the target. For each
-session show the number, `short_id`, `project`, `last_active`, `armed`, `paused`
-and `guard`, then its user commands:
+session show the number, `short_id`, `project`, `last_active`, `armed`, `paused`,
+`guard` and `usage`, then its user commands:
 - if `commands.condensed` is true → show the single `commands.first` list (the whole
   short session), joined with ` · `;
 - otherwise → show `first:` (`commands.first`) and `last:` (`commands.last`) on two
@@ -57,13 +66,18 @@ When `guard` is not `active`, add a warning line under that session:
   stands down there and arming or pausing it would write a file nobody reads.
 - `never` → the guard has never run in that session at all.
 
+`usage` is the session's standing with the limit gate: `clear` (under the
+thresholds), `gated` (over them, so this session is being asked on every call),
+`muted` (over them but silenced for this window), or `unknown` (no fresh reading
+— the daemon is not running, so the guard is not gating).
+
 Example rendering:
 
 ```
-[1] a1b2c3d4 · road_runner · 12s ago · armed: yes · paused: no · guard: active
+[1] a1b2c3d4 · road_runner · 12s ago · armed: yes · paused: no · guard: active · usage: gated
      first: /gsd:new-milestone · set up the retrieval eval harness · /gsd:plan-phase
      last:  why is DATABASE_URL on prod? · grep eval_extractor · /gsd:execute-phase
-[2] 9f8e7d6c · mg-cc-tools · 3m ago · armed: no · paused: no · guard: deferring
+[2] 9f8e7d6c · mg-cc-tools · 3m ago · armed: no · paused: no · guard: deferring · usage: clear
      ⚠ CC-vetted permission mode — arm/pause will not fire in this session
      /mg:auto-approve-session · could we improve auto-approve
 ```
@@ -72,9 +86,10 @@ Example rendering:
 run you mean.)
 
 Then ask the user to reply with **the number** to arm, **`p<number>`** to pause,
-**`u<number>`** to release a pause (or `q` to cancel), and **stop — do not
-choose for them.** When the user replies, map it to that session's `id` from the
-list above, run the matching subcommand, and confirm as in Step 1.
+**`u<number>`** to release a pause, **`m<number>`** to mute the session limit,
+**`M<number>`** to unmute it (or `q` to cancel), and **stop — do not choose for
+them.** When the user replies, map it to that session's `id` from the list above,
+run the matching subcommand, and confirm as in Step 1.
 
 ## Notes
 
@@ -86,6 +101,11 @@ list above, run the matching subcommand, and confirm as in Step 1.
 - While a session is paused, approving a prompt lets **only that one call**
   through — the next call asks again. Resuming the run means `unpause`, not
   approving. Expect one prompt per active subagent.
-- `arm`/`off` and `pause`/`unpause` are independent: pausing leaves an armed
-  window in place (the latch is checked first), and releasing a pause does not
-  disarm anything.
+- `arm`/`off`, `pause`/`unpause` and the mute are independent: pausing leaves an
+  armed window in place (the latch is checked first), releasing a pause does not
+  disarm anything, and muting the limit warning touches neither.
+- The limit gate is checked ahead of the auto-approve window on purpose — an
+  armed unattended run is exactly what should not burn the last of a window
+  unsupervised. So `arm` does not exempt a session from it; only the mute does.
+- Muting needs a fresh reading to key itself to, so `mute-session-limit` fails
+  when `mg-usage-watch` is not running. Nothing is gating in that state either.

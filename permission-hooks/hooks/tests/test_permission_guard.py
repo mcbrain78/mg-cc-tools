@@ -2709,6 +2709,215 @@ class TestPauseLatchInMain:
         assert decisions[0][1] == "allow"
 
 
+# ── Usage gate tests ────────────────────────────────────────────────────────
+
+class TestUsageGate:
+    """check_usage_gate reads the daemon's published verdict and the session mute.
+
+    MG_SESSION_BASE is redirected at every test so nothing here can touch the real
+    /tmp/claude-code — a stray over-the-limit reading there would gate live work.
+    """
+
+    def _base(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        (tmp_path / "sc").mkdir(parents=True, exist_ok=True)
+        return tmp_path / "sc"
+
+    def _publish(self, base, over=True, binding="session", age_s=0, ok=True,
+                 window="2026-07-29T18:49:00", raw=None):
+        payload = raw if raw is not None else {
+            "ok": ok, "over": over, "binding": binding, "pct": 94,
+            "window_iso": window, "window_human": "Jul 29, 6:49pm",
+            "read_at_ms": int((time.time() - age_s) * 1000),
+        }
+        with open(base / guard.USAGE_FILENAME, "w") as f:
+            if isinstance(payload, str):
+                f.write(payload)
+            else:
+                json.dump(payload, f)
+
+    def _mute(self, base, sid, session_window="2026-07-29T18:49:00",
+              weekly_window="2026-08-03T20:59:00", raw=None):
+        sdir = base / f"mg-session-{sid}"
+        sdir.mkdir(parents=True, exist_ok=True)
+        with open(sdir / guard.USAGE_MUTE_FILENAME, "w") as f:
+            if raw is not None:
+                f.write(raw)
+            else:
+                json.dump({"muted_at_ms": int(time.time() * 1000),
+                           "windows": {"session": session_window,
+                                       "weekly": weekly_window}}, f)
+
+    def test_no_reading_means_no_gate(self, tmp_path, monkeypatch):
+        self._base(tmp_path, monkeypatch)
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_over_the_limit_gates(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        reading = guard.check_usage_gate("/tmp/s1.jsonl")
+        assert reading is not None and reading["binding"] == "session"
+
+    def test_under_the_limit_does_not_gate(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, over=False)
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_stale_reading_does_not_gate(self, tmp_path, monkeypatch):
+        """Nobody publishing must not mean every tool call asks forever."""
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, age_s=guard.USAGE_STALE_S + 600)
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_future_reading_does_not_gate(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, age_s=-3600)
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_unreadable_reading_does_not_gate(self, tmp_path, monkeypatch):
+        """Opposite fail direction to the pause latch: a hiccup must not block work."""
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, raw="not-json{{{")
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_not_ok_reading_does_not_gate(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, ok=False)
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_mute_silences_the_matching_window(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        self._mute(base, "s1")
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_mute_from_a_previous_window_still_gates(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, window="2026-07-29T23:49:00")
+        self._mute(base, "s1", session_window="2026-07-29T18:49:00")
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is not None
+
+    def test_mute_tolerates_reported_drift(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, window="2026-07-29T18:50:00")
+        self._mute(base, "s1", session_window="2026-07-29T18:49:00")
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_mute_covers_a_weekly_bind(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, binding="weekly", window="2026-08-03T20:59:00")
+        self._mute(base, "s1")
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is None
+
+    def test_corrupt_mute_does_not_silence(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        self._mute(base, "s1", raw="not-json{{{")
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is not None
+
+    def test_mute_without_windows_does_not_silence(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        self._mute(base, "s1", session_window="", weekly_window="")
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is not None
+
+    def test_another_sessions_mute_does_not_apply(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        self._mute(base, "other")
+        assert guard.check_usage_gate("/tmp/s1.jsonl") is not None
+
+    def test_subagent_inherits_the_parent_mute(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        self._mute(base, "s1")
+        assert guard.check_usage_gate("/tmp/s1/subagents/agent-abc.jsonl") is None
+
+    def test_reason_omits_the_mute_command(self):
+        """The reason reaches the agent on a deny — no self-silencing instructions."""
+        reason = guard._usage_reason({"binding": "session", "pct": 94,
+                                      "window_human": "Jul 29, 6:49pm"})
+        assert "session limit at 94% used" in reason
+        assert "mute" not in reason.lower()
+        assert "auto-approve-session" not in reason
+
+
+class TestUsageGateInMain:
+    """main() asks on the usage gate, after the pause latch and before auto-approve."""
+
+    def _base(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        (tmp_path / "sc").mkdir(parents=True, exist_ok=True)
+        return tmp_path / "sc"
+
+    def _publish(self, base, over=True):
+        with open(base / guard.USAGE_FILENAME, "w") as f:
+            json.dump({"ok": True, "over": over, "binding": "session", "pct": 94,
+                       "window_iso": "2026-07-29T18:49:00",
+                       "window_human": "Jul 29, 6:49pm",
+                       "read_at_ms": int(time.time() * 1000)}, f)
+
+    def _run(self, monkeypatch, event):
+        decisions = []
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+        guard.main()
+        return decisions
+
+    def _event(self, sid, **over):
+        event = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": os.path.join(os.getcwd(), "README.md")},
+            "transcript_path": f"/tmp/{sid}.jsonl",
+        }
+        event.update(over)
+        return event
+
+    def test_gate_asks(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        decisions = self._run(monkeypatch, self._event("s1"))
+        assert decisions[0][1] == "ask"
+        assert "session limit at 94% used" in decisions[0][0]
+
+    def test_gate_beats_an_armed_window(self, tmp_path, monkeypatch):
+        """An armed unattended run is exactly what must not burn the last of a window."""
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        sdir = base / "mg-session-s1"
+        sdir.mkdir(parents=True, exist_ok=True)
+        with open(sdir / guard.SIDECAR_FILENAME, "w") as f:
+            json.dump({"command": "AUTO-APPROVE",
+                       "timestamp_ms": int(time.time() * 1000)}, f)
+        decisions = self._run(monkeypatch, self._event("s1"))
+        assert decisions[0][1] == "ask" and "session limit" in decisions[0][0]
+
+    def test_pause_latch_is_reported_ahead_of_the_gate(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        sdir = base / "mg-session-s1"
+        sdir.mkdir(parents=True, exist_ok=True)
+        with open(sdir / guard.PAUSE_FILENAME, "w") as f:
+            json.dump({"paused_at_ms": int(time.time() * 1000)}, f)
+        decisions = self._run(monkeypatch, self._event("s1"))
+        assert "PAUSED by user" in decisions[0][0]
+
+    def test_gate_ignored_in_deferred_mode(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base)
+        assert self._run(monkeypatch, self._event("s1", permission_mode="auto")) == []
+
+    def test_below_the_limit_proceeds_normally(self, tmp_path, monkeypatch):
+        base = self._base(tmp_path, monkeypatch)
+        self._publish(base, over=False)
+        decisions = self._run(monkeypatch, self._event("s1"))
+        assert decisions[0][1] == "allow"
+
+
 # ── Edit guard toggle tests ─────────────────────────────────────────────────
 
 class TestEditGuard:
