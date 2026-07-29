@@ -24,6 +24,7 @@ _EMIT_SCRIPT_RE = guard._EMIT_SCRIPT_RE
 check_edit_guard = guard.check_edit_guard
 _emitter_follows_command = guard._emitter_follows_command
 CONTEXT_TTL_S = guard.CONTEXT_TTL_S
+SIDECAR_FILENAME = guard.SIDECAR_FILENAME
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -2363,7 +2364,7 @@ class TestWriteContextSidecar:
         return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
 
     def _sidecar_path(self, session_id):
-        return os.path.join(self._session_dir(session_id), "context.json")
+        return os.path.join(self._session_dir(session_id), SIDECAR_FILENAME)
 
     def teardown_method(self):
         for d in _glob.glob(f"/tmp/claude-code/mg-session-{self.SESSION_PREFIX}-*"):
@@ -2394,7 +2395,7 @@ class TestSessionContext:
         """Write a context sidecar and return the transcript path."""
         sdir = self._session_dir(session_id)
         os.makedirs(sdir, exist_ok=True)
-        with open(os.path.join(sdir, "context.json"), "w") as f:
+        with open(os.path.join(sdir, SIDECAR_FILENAME), "w") as f:
             json.dump({"command": command, "timestamp_ms": timestamp_ms}, f)
         return f"/tmp/{session_id}.jsonl"
 
@@ -2431,7 +2432,7 @@ class TestSessionContext:
         sid = f"{self.SESSION_PREFIX}-corrupt"
         sdir = self._session_dir(sid)
         os.makedirs(sdir, exist_ok=True)
-        with open(os.path.join(sdir, "context.json"), "w") as f:
+        with open(os.path.join(sdir, SIDECAR_FILENAME), "w") as f:
             f.write("not-json{{{")
         path = f"/tmp/{sid}.jsonl"
         assert check_session_context(path) is None
@@ -2452,10 +2453,25 @@ class TestSessionContext:
         # Bump timestamp
         _update_context_timestamp(path)
         # Read back — timestamp should now be current
-        with open(os.path.join(self._session_dir(sid), "context.json")) as f:
+        with open(os.path.join(self._session_dir(sid), SIDECAR_FILENAME)) as f:
             data = json.load(f)
         assert abs(time.time() - data["timestamp_ms"] / 1000) < 5
         assert data["command"] == "AUTO-DOC"
+
+    def test_statusline_context_json_does_not_disarm(self):
+        """A statusline context.json in the same dir must not affect the window.
+
+        The GSD statusline caches {remaining, ts} to <session-dir>/context.json
+        on every render. The sidecar deliberately lives under a different name
+        so the two coexist instead of the statusline silently disarming
+        auto-approval.
+        """
+        sid = f"{self.SESSION_PREFIX}-statusline"
+        now_ms = int(time.time() * 1000)
+        path = self._write_sidecar(sid, "AUTO-APPROVE", now_ms)
+        with open(os.path.join(self._session_dir(sid), "context.json"), "w") as f:
+            json.dump({"remaining": 91, "ts": now_ms}, f)
+        assert check_session_context(path) == "AUTO-APPROVE"
 
     def test_subagent_resolves_parent_sidecar(self):
         """Subagent transcript path finds sidecar written under parent UUID."""
@@ -2472,7 +2488,7 @@ class TestSessionContext:
         self._write_sidecar(sid, "AUTO-DOC", old_ms)
         subagent_path = f"/tmp/{sid}/subagents/agent-xyz.jsonl"
         _update_context_timestamp(subagent_path)
-        with open(os.path.join(self._session_dir(sid), "context.json")) as f:
+        with open(os.path.join(self._session_dir(sid), SIDECAR_FILENAME)) as f:
             data = json.load(f)
         assert abs(time.time() - data["timestamp_ms"] / 1000) < 5
 
@@ -2747,7 +2763,7 @@ class TestStage0WritesSidecar:
         return os.path.join("/tmp/claude-code", f"mg-session-{session_id}")
 
     def _sidecar_path(self, session_id):
-        return os.path.join(self._session_dir(session_id), "context.json")
+        return os.path.join(self._session_dir(session_id), SIDECAR_FILENAME)
 
     def teardown_method(self):
         for d in _glob.glob(f"/tmp/claude-code/mg-session-{self.SESSION_PREFIX}-*"):

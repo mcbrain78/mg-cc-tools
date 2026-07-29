@@ -47,7 +47,7 @@ def _write_session(projects_dir, project_name, sid, entries, cwd="/home/u/proj")
 def test_arm_writes_sidecar(tmp_path, monkeypatch):
     monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
     aas.arm_session("abc123")
-    p = tmp_path / "sc" / "mg-session-abc123" / "context.json"
+    p = tmp_path / "sc" / "mg-session-abc123" / aas.SIDECAR_FILENAME
     assert p.exists()
     data = json.loads(p.read_text())
     assert data["command"] == "AUTO-APPROVE"
@@ -62,7 +62,7 @@ def test_is_armed_stale_and_future(tmp_path, monkeypatch):
     assert aas.is_armed("s1", now=now)
     assert not aas.is_armed("s1", now=now + aas.CONTEXT_TTL_S + 5)
     # future timestamp (clock skew) is not "armed"
-    p = tmp_path / "sc" / "mg-session-s1" / "context.json"
+    p = tmp_path / "sc" / "mg-session-s1" / aas.SIDECAR_FILENAME
     p.write_text(json.dumps({"command": "AUTO-APPROVE",
                              "timestamp_ms": int((now + 100) * 1000)}))
     assert not aas.is_armed("s1", now=now)

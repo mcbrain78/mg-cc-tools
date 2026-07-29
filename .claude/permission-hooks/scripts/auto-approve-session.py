@@ -37,6 +37,9 @@ from pathlib import Path
 _DEFAULT_SESSION_BASE = "/tmp/claude-code"
 CONTEXT_TTL_S = 30 * 60  # 30 minutes
 AUTO_APPROVE_COMMAND = "AUTO-APPROVE"
+# Not "context.json" — the GSD statusline owns that name in the same session
+# dir and would clobber the sidecar on every render. See permission-guard.py.
+SIDECAR_FILENAME = "auto-approve.json"
 
 # Entry types the transcript tool skips entirely (non-conversation noise).
 SKIP_TYPES = {
@@ -76,7 +79,7 @@ def _projects_dir():
 # ── Sidecar (auto-approve flag) ──────────────────────────────────────────────
 
 def _sidecar_path(session_id):
-    return Path(_session_base()) / f"mg-session-{session_id}" / "context.json"
+    return Path(_session_base()) / f"mg-session-{session_id}" / SIDECAR_FILENAME
 
 
 def read_sidecar(session_id):

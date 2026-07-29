@@ -121,6 +121,14 @@ SAFE_ABSOLUTE_PATHS = ["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr", 
 _EMIT_SCRIPT_RE = re.compile(r"\bemit-(context|edit-guard)\.py\b")
 CONTEXT_TTL_S = 30 * 60  # 30 minutes
 
+# Sidecar filename inside the session dir. Deliberately NOT "context.json":
+# the GSD statusline caches its context-window percentage to
+# <session-dir>/context.json on every render, which would overwrite the
+# sidecar and silently disarm the window (fail-safe — the foreign payload has
+# no "command" key — but auto-approval would never stick). Mirrored by
+# scripts/auto-approve-session.py.
+SIDECAR_FILENAME = "auto-approve.json"
+
 # Number of trailing JSONL lines to inspect for recent command invocation.
 # Needs to be large enough to span the full slash-command load: <command-name>
 # tag + body + attachments (one line each) + last-prompt + assistant thinking/
@@ -159,7 +167,7 @@ def _write_context_sidecar(transcript_path, command):
             return
         session_dir = os.path.join("/tmp/claude-code", f"mg-session-{session}")
         os.makedirs(session_dir, exist_ok=True)
-        path = os.path.join(session_dir, "context.json")
+        path = os.path.join(session_dir, SIDECAR_FILENAME)
         with open(path, "w") as f:
             json.dump({"command": command, "timestamp_ms": int(time.time() * 1000)}, f)
     except Exception:
@@ -172,7 +180,7 @@ def _update_context_timestamp(transcript_path):
         session = _session_id(transcript_path)
         if not session:
             return
-        path = os.path.join("/tmp/claude-code", f"mg-session-{session}", "context.json")
+        path = os.path.join("/tmp/claude-code", f"mg-session-{session}", SIDECAR_FILENAME)
         with open(path) as f:
             data = json.load(f)
         data["timestamp_ms"] = int(time.time() * 1000)
@@ -234,7 +242,7 @@ def check_session_context(transcript_path):
     session = _session_id(transcript_path)
     if not session:
         return None
-    path = os.path.join("/tmp/claude-code", f"mg-session-{session}", "context.json")
+    path = os.path.join("/tmp/claude-code", f"mg-session-{session}", SIDECAR_FILENAME)
     try:
         with open(path) as f:
             data = json.load(f)
