@@ -494,9 +494,28 @@ def scan_status(source_dir, target_dir):
 
 
 def update_manifest(target_dir, tool_name, source_tool_dir):
-    """Update manifest entry for one tool after install."""
+    """Update manifest entry for one tool after install.
+
+    `source_tool_dir` is the tool's own directory -- the one holding tool.toml --
+    never the mg-cc-tools root. Every path below is derived from it: checksums walk
+    it recursively and `source_root` is its parent. Handed the root instead, the
+    function would happily checksum the whole repo into this tool's entry and
+    record `source_path` one level too high, so both invariants are asserted.
+    """
+    tool_path = os.path.abspath(source_tool_dir)
+    if not os.path.isfile(os.path.join(tool_path, "tool.toml")):
+        raise ValueError(
+            f"--source is not a tool directory (no tool.toml): {tool_path}\n"
+            f"Pass the tool's own directory, e.g. <mg-cc-tools>/{tool_name}"
+        )
+    if os.path.basename(tool_path) != tool_name:
+        raise ValueError(
+            f"--tool '{tool_name}' does not match --source directory "
+            f"'{os.path.basename(tool_path)}': {tool_path}"
+        )
+
     # Determine source root (parent of tool dir) for version
-    source_root = os.path.dirname(os.path.abspath(source_tool_dir))
+    source_root = os.path.dirname(tool_path)
     version = read_pyproject_version(source_root)
 
     manifest_path = os.path.join(
@@ -523,9 +542,9 @@ def update_manifest(target_dir, tool_name, source_tool_dir):
 
     # Compute entry for this tool
     # For execute_only tools (no install.sh), commands aren't deployed to target
-    has_install_sh = os.path.isfile(os.path.join(source_tool_dir, "install.sh"))
-    commands = get_tool_commands(source_tool_dir) if has_install_sh else []
-    checksums = compute_tool_checksums(source_tool_dir)
+    has_install_sh = os.path.isfile(os.path.join(tool_path, "install.sh"))
+    commands = get_tool_commands(tool_path) if has_install_sh else []
+    checksums = compute_tool_checksums(tool_path)
 
     manifest.setdefault("tools", {})[tool_name] = {
         "version": version,
@@ -1961,7 +1980,11 @@ def cmd_scan_status(args):
 
 def cmd_update_manifest(args):
     """CLI handler for update-manifest."""
-    update_manifest(args.target, args.tool, args.source)
+    try:
+        update_manifest(args.target, args.tool, args.source)
+    except ValueError as e:
+        sys.stderr.write(f"update-manifest: {e}\n")
+        sys.exit(2)
 
 
 def cmd_preflight(args):
@@ -2176,7 +2199,8 @@ def main():
     p_manifest.add_argument("--tool", required=True,
                             help="Tool name (directory name)")
     p_manifest.add_argument("--source", required=True,
-                            help="Path to the tool's source directory")
+                            help="Path to the tool's own source directory (the one "
+                                 "holding tool.toml), not the mg-cc-tools root")
     p_manifest.set_defaults(func=cmd_update_manifest)
 
     # preflight

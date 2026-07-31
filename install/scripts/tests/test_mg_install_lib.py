@@ -964,6 +964,52 @@ class TestUpdateManifest:
             assert "patches/foo.md" in checksums
             assert checksums["patches/foo.md"].startswith("sha256:")
 
+    def test_rejects_source_root_instead_of_tool_dir(self):
+        """--source pointing at the mg-cc-tools root fails instead of checksumming
+        the whole repo into the tool's entry."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+
+            _make_tool(source, "my-tool")
+            _make_pyproject(source)
+
+            result = _run([
+                "update-manifest",
+                "--target", target,
+                "--tool", "my-tool",
+                "--source", source,          # the root, not source/my-tool
+            ])
+            assert result.returncode == 2, result.stdout
+            assert "not a tool directory" in result.stderr
+
+            manifest_path = os.path.join(target, ".claude", "mg-cc-tools.manifest.json")
+            assert not os.path.exists(manifest_path)
+
+    def test_rejects_tool_name_mismatching_source_dir(self):
+        """--tool naming a different tool than --source points at is rejected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            os.makedirs(source)
+
+            _make_tool(source, "tool-a")
+            tool_b = _make_tool(source, "tool-b")
+            _make_pyproject(source)
+
+            result = _run([
+                "update-manifest",
+                "--target", target,
+                "--tool", "tool-a",
+                "--source", tool_b,
+            ])
+            assert result.returncode == 2, result.stdout
+            assert "does not match --source directory" in result.stderr
+
+            manifest_path = os.path.join(target, ".claude", "mg-cc-tools.manifest.json")
+            assert not os.path.exists(manifest_path)
+
 
 # ============================================================
 # preflight subcommand
