@@ -29,6 +29,23 @@ from datetime import datetime
 
 PROJECT_ROOT = "{MG_INSTALL_PROJECT_ROOT}"
 
+# ── Optional rule groups ────────────────────────────────────────────────────
+# .env files and environment dumps. Disabled by default: reading and writing
+# .env is routine work in this setup, so the ask-per-call cost outweighs the
+# guard. Flip to True and reinstall to restore both the file patterns and the
+# printenv/env dump rules. The tests gate on this same constant.
+ENV_PROTECTION = False
+
+_ENV_RULES = [
+    (r">\s*\S*\.env\b", "writing .env file"),
+    (r"\bprintenv\b", "environment dump"),
+    (r"\benv\s*($|[|;>])", "environment dump"),
+]
+
+_ENV_FILE_PATTERNS = [
+    (re.compile(r"(^|/)\.env(?!\.example|\.template|\.sample|\.test)(\b|$)"), ".env file"),
+]
+
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
@@ -79,12 +96,10 @@ CATEGORIES = {
         (r"(?:^|[;&|]\s*)dd\s", "raw disk operations"),
     ],
     "Secrets & Credentials": [
-        (r">\s*\S*\.env\b", "writing .env file"),
+        *(_ENV_RULES if ENV_PROTECTION else []),
         (r"\bexport\s+\w*(TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|API_KEY)=", "credential export"),
         (r"\b(curl|wget)\s+.*(-X\s*(POST|PUT|PATCH|DELETE)|-d\s|--data)", "HTTP data submission"),
         (r"\b(curl|wget)\s+.*\|\s*(bash|sh|zsh)\b", "pipe-to-shell"),
-        (r"\bprintenv\b", "environment dump"),
-        (r"\benv\s*($|[|;>])", "environment dump"),
     ],
     "System Operations": [
         (r"\bsudo\b", "sudo"),
@@ -601,7 +616,7 @@ def _is_safe_rm(command):
 
 SENSITIVE_FILE_PATTERNS = [
     (re.compile(r"~/\.\S*(ssh|aws|gnupg|kube)/"), "sensitive dotfile directory"),
-    (re.compile(r"(^|/)\.env(?!\.example|\.template|\.sample|\.test)(\b|$)"), ".env file"),
+    *(_ENV_FILE_PATTERNS if ENV_PROTECTION else []),
     (re.compile(r"(^|/)(\.netrc|\.npmrc|\.pypirc)$"), "credential file"),
     (re.compile(r"(^|/)id_(rsa|ed25519|ecdsa|dsa)(\.pub)?$"), "SSH key"),
     (re.compile(r"(^|/)credentials(\.json)?$"), "credentials file"),
