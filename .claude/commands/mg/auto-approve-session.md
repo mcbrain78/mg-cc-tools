@@ -55,11 +55,24 @@ If the array is empty, tell the user no other sessions were found and stop.
 
 Otherwise render a numbered list so the user can recognise the target. For each
 session show the number, `short_id`, `project`, `last_active`, `armed`, `paused`,
-`guard` and `usage`, then its user commands:
+`guard` and `usage`, then what is running now (`activity`, see below), then its
+user commands:
 - if `commands.condensed` is true → show the single `commands.first` list (the whole
   short session), joined with ` · `;
 - otherwise → show `first:` (`commands.first`) and `last:` (`commands.last`) on two
   lines, each joined with ` · `.
+
+`activity` is what the session is working on *right now* — the commands list only
+holds what the user typed, so a session whose blocked call comes from a subagent
+or a dynamic workflow shows nothing there but a prompt from twenty minutes ago.
+Under the header line, add one `▸` line per live thing, and nothing at all when
+there is none:
+- for each entry in `activity.workflows` → `▸ workflow <name> (<run>) · <agents_live>
+  live`. Workflow agents have no individual labels, so the run's name is all there
+  is; `agents_live: 0` means the run is between phases at a barrier.
+- if `activity.subagents_live` > 0 → `▸ <n> subagent(s) live: ` plus the
+  `description`s from `activity.subagents` (newest first, at most 3) joined with
+  ` · `. Fall back to `type` for an entry with an empty `description`.
 
 When `guard` is not `active`, add a warning line under that session:
 - `deferring` → the session is in a CC-vetted permission mode, so the guard
@@ -75,6 +88,8 @@ Example rendering:
 
 ```
 [1] a1b2c3d4 · road_runner · 12s ago · armed: yes · paused: no · guard: active · usage: gated
+     ▸ workflow connection-budget-redesign (wf_e94972d4-091) · 4 live
+     ▸ 2 subagents live: Research barrier count · Find the eval callers
      first: /gsd:new-milestone · set up the retrieval eval harness · /gsd:plan-phase
      last:  why is DATABASE_URL on prod? · grep eval_extractor · /gsd:execute-phase
 [2] 9f8e7d6c · mg-cc-tools · 3m ago · armed: no · paused: no · guard: deferring · usage: clear
@@ -100,7 +115,13 @@ run the matching subcommand, and confirm as in Step 1.
   after that, arming auto-approves and pausing asks again.
 - While a session is paused, approving a prompt lets **only that one call**
   through — the next call asks again. Resuming the run means `unpause`, not
-  approving. Expect one prompt per active subagent.
+  approving. Expect one prompt per active subagent — the `▸` lines are how many
+  that is likely to be.
+- The `▸` lines say what is *working*, not what is *blocked*: the guard decides in
+  process and records nothing, so a session sitting on a prompt shows whichever
+  siblings are still running around it. A run whose agents have all stopped
+  writing shows no `▸` line and a `last_active` that keeps ageing — that pairing
+  is the signal it is waiting on someone.
 - `arm`/`off`, `pause`/`unpause` and the mute are independent: pausing leaves an
   armed window in place (the latch is checked first), releasing a pause does not
   disarm anything, and muting the limit warning touches neither.

@@ -8,8 +8,9 @@ and therefore can't run a command itself.
 
 Subcommands:
     list                    Print up to 10 recent sessions as JSON, each with
-                            the first/last user commands so the caller can
-                            recognise which one to act on.
+                            the first/last user commands and what is running
+                            right now, so the caller can recognise which one to
+                            act on.
     arm     <id-prefix>     Write the auto-approve sidecar for the session.
     off     <id-prefix>     Clear the auto-approve sidecar for the session.
     pause   <id-prefix>     Latch the session: every guarded tool call asks for
@@ -73,6 +74,12 @@ SKIP_TYPES = {
 }
 
 DEFAULT_LIST_LIMIT = 10
+# An agent transcript written this recently counts as "working now" for the
+# activity block. Wide enough to survive one slow tool call, narrow enough that
+# a finished wave stops being reported as live.
+LIVE_WINDOW_S = 120
+# Subagents shown by name before the count carries the rest.
+_ACTIVITY_MAX_LABELS = 3
 # Sessions at/under this size are fully scanned (so we know the exact command
 # count and can de-duplicate first/last). Larger ones use bounded head/tail
 # reads — where the command count is high enough that overlap can't happen.
@@ -275,16 +282,21 @@ def guard_state(session_id, last_activity):
 # ── Session discovery / resolution ───────────────────────────────────────────
 
 def last_activity(path):
-    """Newest mtime across a session transcript and its subagent transcripts.
+    """Newest mtime across a session transcript and every nested agent transcript.
 
     A session running subagents can leave its own transcript untouched for
     minutes while all the work lands in .../<uuid>/subagents/agent-*.jsonl.
     Going by the parent mtime alone makes a busy session read as idle — and
     sorts it in the picker below sessions that are doing nothing.
+
+    Walks the whole session directory rather than one glob because workflow
+    agents sit a level deeper, in .../subagents/workflows/wf_<runid>/. A single
+    ``subagents/*.jsonl`` glob misses them entirely, so a session in the middle
+    of a dynamic workflow used to read as idle for the whole run.
     """
     newest = path.stat().st_mtime
     try:
-        for sub in (path.parent / path.stem / "subagents").glob("*.jsonl"):
+        for sub in (path.parent / path.stem).rglob("*.jsonl"):
             newest = max(newest, sub.stat().st_mtime)
     except OSError:
         pass
@@ -442,6 +454,115 @@ def session_commands(path):
             "condensed": False}
 
 
+# ── Live activity (what is running right now, not what was typed) ────────────
+# The command list only ever shows genuine user input — user_command_label()
+# drops sidechain entries on purpose. So a session whose guarded call comes from
+# subagent #9 of a workflow shows nothing but a prompt typed twenty minutes ago.
+# This reads the agent transcripts themselves to say what is working now.
+
+def _is_live(mtime, now):
+    return 0 <= now - mtime <= LIVE_WINDOW_S
+
+
+def _agent_meta(jsonl_path):
+    """The sidecar next to an agent transcript, or {}.
+
+    CC writes agent-<id>.meta.json alongside agent-<id>.jsonl with agentType and
+    (for Task subagents) the description passed at spawn time.
+    """
+    try:
+        with open(jsonl_path.with_suffix(".meta.json")) as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _live_agents(directory, now):
+    """[(mtime, path)] for agent transcripts in *directory* touched recently."""
+    out = []
+    try:
+        entries = list(directory.glob("agent-*.jsonl"))
+    except OSError:
+        return out
+    for agent in entries:
+        try:
+            mtime = agent.stat().st_mtime
+        except OSError:
+            continue
+        if _is_live(mtime, now):
+            out.append((mtime, agent))
+    out.sort(key=lambda t: t[0], reverse=True)
+    return out
+
+
+def _workflow_name(session_dir, run_id):
+    """Recover the script's meta.name from its persisted filename.
+
+    Every Workflow invocation saves its script as
+    ``workflows/scripts/<meta.name>-<runid>.js`` — the only place the run's
+    human-readable name is on disk (the per-agent meta says only
+    ``workflow-subagent``).
+    """
+    suffix = f"-{run_id}.js"
+    try:
+        for script in (session_dir / "workflows" / "scripts").glob(f"*{suffix}"):
+            return script.name[: -len(suffix)]
+    except OSError:
+        pass
+    return ""
+
+
+def _live_workflow_runs(subagents_dir, session_dir, now):
+    """One entry per workflow run with recent writes, newest run last.
+
+    A run mid-barrier has no agent writing, so the journal counts as evidence of
+    life too — otherwise a workflow between phases vanishes from the picker.
+    """
+    runs = []
+    try:
+        candidates = sorted((subagents_dir / "workflows").iterdir())
+    except OSError:
+        return runs
+    for run in candidates:
+        if not run.is_dir():
+            continue
+        live = _live_agents(run, now)
+        try:
+            journal_live = _is_live((run / "journal.jsonl").stat().st_mtime, now)
+        except OSError:
+            journal_live = False
+        if live or journal_live:
+            runs.append({"name": _workflow_name(session_dir, run.name) or run.name,
+                         "run": run.name, "agents_live": len(live)})
+    return runs
+
+
+def session_activity(path, now=None):
+    """What is running in the session right now.
+
+    Stat-first: only the handful of agents that wrote inside LIVE_WINDOW_S get
+    their (tiny) meta sidecar read, so this stays cheap across ten sessions.
+    Workflow agents carry no individual label, so a run is summarised by name and
+    live-agent count; Task subagents get their spawn description.
+    """
+    now = time.time() if now is None else now
+    session_dir = path.parent / path.stem
+    subagents_dir = session_dir / "subagents"
+
+    live = _live_agents(subagents_dir, now)
+    labels = []
+    for _, agent in live[:_ACTIVITY_MAX_LABELS]:
+        meta = _agent_meta(agent)
+        labels.append({"type": meta.get("agentType") or "",
+                       "description": _truncate(str(meta.get("description") or ""))})
+    return {
+        "workflows": _live_workflow_runs(subagents_dir, session_dir, now),
+        "subagents_live": len(live),
+        "subagents": labels,
+    }
+
+
 # ── Session info ─────────────────────────────────────────────────────────────
 
 def _session_cwd(path):
@@ -478,6 +599,7 @@ def session_info(path, now=None):
         "paused": is_paused(sid),
         "guard": guard_state(sid, activity),
         "usage": usage_state(sid, now),
+        "activity": session_activity(path, now),
         "commands": session_commands(path),
     }
 

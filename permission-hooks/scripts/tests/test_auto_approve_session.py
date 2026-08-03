@@ -42,6 +42,48 @@ def _write_session(projects_dir, project_name, sid, entries, cwd="/home/u/proj")
     return path
 
 
+def _write_agent(directory, name, mtime, meta=None):
+    """An agent-<id>.jsonl (+ optional .meta.json) as CC writes them."""
+    directory.mkdir(parents=True, exist_ok=True)
+    agent = directory / f"{name}.jsonl"
+    agent.write_text("{}\n")
+    os.utime(agent, (mtime, mtime))
+    if meta is not None:
+        (directory / f"{name}.meta.json").write_text(json.dumps(meta))
+    return agent
+
+
+def _write_subagent(session_path, name, mtime, meta=None):
+    """A Task subagent: <session>/subagents/agent-<id>.jsonl"""
+    subdir = session_path.parent / session_path.stem / "subagents"
+    return _write_agent(subdir, name, mtime, meta)
+
+
+def _write_workflow_agent(session_path, run_id, name, mtime,
+                          meta={"agentType": "workflow-subagent", "spawnDepth": 1}):
+    """A workflow agent: <session>/subagents/workflows/<run_id>/agent-<id>.jsonl"""
+    run = session_path.parent / session_path.stem / "subagents" / "workflows" / run_id
+    return _write_agent(run, name, mtime, meta)
+
+
+def _write_workflow_journal(session_path, run_id, mtime):
+    run = session_path.parent / session_path.stem / "subagents" / "workflows" / run_id
+    run.mkdir(parents=True, exist_ok=True)
+    journal = run / "journal.jsonl"
+    journal.write_text('{"type":"started","agentId":"a1"}\n')
+    os.utime(journal, (mtime, mtime))
+    return journal
+
+
+def _write_workflow_script(session_path, run_id, wf_name):
+    """The persisted script — the only on-disk source of the workflow's name."""
+    sdir = session_path.parent / session_path.stem / "workflows" / "scripts"
+    sdir.mkdir(parents=True, exist_ok=True)
+    path = sdir / f"{wf_name}-{run_id}.js"
+    path.write_text(f"export const meta = {{ name: '{wf_name}' }}\n")
+    return path
+
+
 # ── sidecar arm / is_armed / disarm ──────────────────────────────────────────
 
 def test_arm_writes_sidecar(tmp_path, monkeypatch):
@@ -318,6 +360,153 @@ def test_picker_order_follows_subagent_activity(tmp_path, monkeypatch):
     assert [f.stem for f in aas.all_session_files()] == ["busy-0001", "idle-0002"]
 
 
+def test_last_activity_sees_workflow_agents(tmp_path):
+    """Workflow agents live a level below subagents/ — a flat glob missed them."""
+    projects = tmp_path / "projects"
+    path = _write_session(projects, "p", "wf-0001", [_user("hi")])
+    base = time.time() - 3600
+    os.utime(path, (base, base))
+    _write_workflow_agent(path, "wf_abc123-def", "agent-a1", base + 3400)
+    assert aas.last_activity(path) == base + 3400
+
+
+def test_picker_order_follows_workflow_activity(tmp_path, monkeypatch):
+    """A session in the middle of a dynamic workflow must sort as busy."""
+    projects = tmp_path / "projects"
+    monkeypatch.setenv("MG_CLAUDE_PROJECTS_DIR", str(projects))
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    base = time.time() - 3600
+    busy = _write_session(projects, "p", "wbusy-001", [_user("ultracode this")])
+    idle = _write_session(projects, "p", "widle-002", [_user("nothing")])
+    os.utime(busy, (base, base))
+    os.utime(idle, (base + 600, base + 600))
+    _write_workflow_agent(busy, "wf_run-001", "agent-a1", base + 3000)
+    assert [f.stem for f in aas.all_session_files()] == ["wbusy-001", "widle-002"]
+
+
+# ── live activity (what is running now) ──────────────────────────────────────
+
+def test_activity_empty_when_nothing_runs(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "quiet-001", [_user("hi")])
+    assert aas.session_activity(path) == {"workflows": [], "subagents_live": 0,
+                                          "subagents": []}
+
+
+def test_activity_names_live_subagents_newest_first(tmp_path):
+    """The picker's real gap: a guarded call from subagent #9 had no label."""
+    path = _write_session(tmp_path / "projects", "p", "sub-live", [_user("go")])
+    now = time.time()
+    _write_subagent(path, "agent-a1", now - 90,
+                    {"agentType": "general-purpose", "description": "Research barrier count"})
+    _write_subagent(path, "agent-a2", now - 5,
+                    {"agentType": "Explore", "description": "Find the callers"})
+    act = aas.session_activity(path, now)
+    assert act["subagents_live"] == 2
+    assert act["subagents"] == [{"type": "Explore", "description": "Find the callers"},
+                                {"type": "general-purpose",
+                                 "description": "Research barrier count"}]
+
+
+def test_activity_ignores_finished_subagents(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "sub-old", [_user("go")])
+    now = time.time()
+    _write_subagent(path, "agent-done", now - aas.LIVE_WINDOW_S - 60,
+                    {"agentType": "general-purpose", "description": "Long gone"})
+    act = aas.session_activity(path, now)
+    assert act["subagents_live"] == 0 and act["subagents"] == []
+
+
+def test_activity_caps_labels_but_not_the_count(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "sub-many", [_user("go")])
+    now = time.time()
+    for i in range(7):
+        _write_subagent(path, f"agent-a{i}", now - i,
+                        {"agentType": "general-purpose", "description": f"task {i}"})
+    act = aas.session_activity(path, now)
+    assert act["subagents_live"] == 7
+    assert [s["description"] for s in act["subagents"]] == ["task 0", "task 1", "task 2"]
+
+
+def test_activity_survives_missing_and_corrupt_meta(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "sub-nometa", [_user("go")])
+    now = time.time()
+    _write_subagent(path, "agent-bare", now - 1)                 # no meta sidecar
+    bad = _write_subagent(path, "agent-bad", now - 2, {"agentType": "x"})
+    bad.with_suffix(".meta.json").write_text("not-json{{{")
+    act = aas.session_activity(path, now)
+    assert act["subagents_live"] == 2
+    assert act["subagents"] == [{"type": "", "description": ""},
+                                {"type": "", "description": ""}]
+
+
+def test_activity_reports_workflow_run_by_name(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "wf-live", [_user("ultracode")])
+    now = time.time()
+    _write_workflow_script(path, "wf_e94972d4-091", "connection-budget-redesign")
+    _write_workflow_agent(path, "wf_e94972d4-091", "agent-a1", now - 3)
+    _write_workflow_agent(path, "wf_e94972d4-091", "agent-a2", now - 20)
+    _write_workflow_agent(path, "wf_e94972d4-091", "agent-a3",
+                          now - aas.LIVE_WINDOW_S - 60)          # already finished
+    act = aas.session_activity(path, now)
+    assert act["workflows"] == [{"name": "connection-budget-redesign",
+                                 "run": "wf_e94972d4-091", "agents_live": 2}]
+    # workflow agents are not double-counted as plain subagents
+    assert act["subagents_live"] == 0
+
+
+def test_activity_keeps_a_workflow_between_phases(tmp_path):
+    """At a barrier no agent is writing — the journal is the proof of life."""
+    path = _write_session(tmp_path / "projects", "p", "wf-barrier", [_user("go")])
+    now = time.time()
+    _write_workflow_script(path, "wf_run-002", "review-changes")
+    _write_workflow_agent(path, "wf_run-002", "agent-a1", now - aas.LIVE_WINDOW_S - 60)
+    _write_workflow_journal(path, "wf_run-002", now - 4)
+    assert aas.session_activity(path, now)["workflows"] == [
+        {"name": "review-changes", "run": "wf_run-002", "agents_live": 0}]
+
+
+def test_activity_drops_a_finished_workflow(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "wf-done", [_user("go")])
+    now = time.time()
+    old = now - aas.LIVE_WINDOW_S - 60
+    _write_workflow_script(path, "wf_run-003", "old-run")
+    _write_workflow_agent(path, "wf_run-003", "agent-a1", old)
+    _write_workflow_journal(path, "wf_run-003", old)
+    assert aas.session_activity(path, now)["workflows"] == []
+
+
+def test_activity_falls_back_to_run_id_without_a_script(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "wf-noscript", [_user("go")])
+    now = time.time()
+    _write_workflow_agent(path, "wf_run-004", "agent-a1", now - 2)
+    assert aas.session_activity(path, now)["workflows"] == [
+        {"name": "wf_run-004", "run": "wf_run-004", "agents_live": 1}]
+
+
+def test_activity_reports_concurrent_runs_and_subagents(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "wf-both", [_user("go")])
+    now = time.time()
+    _write_workflow_script(path, "wf_run-005", "first-run")
+    _write_workflow_script(path, "wf_run-006", "second-run")
+    _write_workflow_agent(path, "wf_run-005", "agent-a1", now - 2)
+    _write_workflow_agent(path, "wf_run-006", "agent-a2", now - 3)
+    _write_subagent(path, "agent-plain", now - 1,
+                    {"agentType": "general-purpose", "description": "Side quest"})
+    act = aas.session_activity(path, now)
+    assert [w["name"] for w in act["workflows"]] == ["first-run", "second-run"]
+    assert act["subagents_live"] == 1
+    assert act["subagents"][0]["description"] == "Side quest"
+
+
+def test_activity_truncates_a_long_description(tmp_path):
+    path = _write_session(tmp_path / "projects", "p", "sub-long", [_user("go")])
+    now = time.time()
+    _write_subagent(path, "agent-a1", now - 1,
+                    {"agentType": "general-purpose", "description": "x" * 200})
+    desc = aas.session_activity(path, now)["subagents"][0]["description"]
+    assert len(desc) <= aas._LABEL_MAX_LEN and desc.endswith("…")
+
+
 # ── session resolution ───────────────────────────────────────────────────────
 
 def test_resolve_exact_and_prefix(tmp_path, monkeypatch):
@@ -434,6 +623,7 @@ def test_session_info(tmp_path, monkeypatch):
     assert "/gsd:execute-phase" in info["commands"]["first"][0]
     assert info["paused"] is False
     assert info["guard"] == "never"  # no bridge → guard has never run there
+    assert info["activity"] == {"workflows": [], "subagents_live": 0, "subagents": []}
     aas.arm_session("deadbeef-0001")
     assert aas.session_info(path)["armed"] is True
     aas.pause_session("deadbeef-0001")
@@ -455,6 +645,26 @@ def test_cli_list_limit_and_order(tmp_path, monkeypatch, capsys):
     assert len(sessions) == 10
     assert sessions[0]["id"] == "sess-11"
     assert sessions[-1]["id"] == "sess-02"
+
+
+def test_cli_list_carries_activity(tmp_path, monkeypatch, capsys):
+    """The picker renders straight from this — a live run must reach the caller."""
+    monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+    projects = tmp_path / "projects"
+    monkeypatch.setenv("MG_CLAUDE_PROJECTS_DIR", str(projects))
+    path = _write_session(projects, "p", "live-0001", [_user("ultracode this")])
+    now = time.time()
+    _write_workflow_script(path, "wf_run-007", "find-flaky-tests")
+    _write_workflow_agent(path, "wf_run-007", "agent-a1", now - 2)
+    _write_subagent(path, "agent-plain", now - 2,
+                    {"agentType": "Explore", "description": "Sweep the callers"})
+
+    assert aas.main(["list"]) == 0
+    session = json.loads(capsys.readouterr().out)["sessions"][0]
+    assert session["id"] == "live-0001"
+    assert session["last_active"].endswith("s ago")
+    assert session["activity"]["workflows"][0]["name"] == "find-flaky-tests"
+    assert session["activity"]["subagents"][0]["description"] == "Sweep the callers"
 
 
 def test_cli_arm_and_off(tmp_path, monkeypatch, capsys):
