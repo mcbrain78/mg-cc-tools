@@ -419,7 +419,11 @@ def cmd_resolve(argv: list[str]) -> int:
     state = _load(run_dir).as_json()
     state.update({
         "run_dir": str(run_dir.resolve()),
-        "digest_path": str((run_dir / "digest.md").resolve()),
+        # Must be the digest step's OWN payload path, not a prettier name: the digest
+        # agent writes wherever `claim` sent it, and every later agent is handed
+        # `digest_path`. Two different names here means every research agent is
+        # pointed at a file that does not exist.
+        "digest_path": str(_payload_path(run_dir, "digest").resolve()),
         "summary_path": str((run_dir / "summary.md").resolve()),
         "status": "new" if fresh else "resumed",
         "invocation": manifest["invocations"],

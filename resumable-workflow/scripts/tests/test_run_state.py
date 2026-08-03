@@ -469,6 +469,16 @@ class TestResolve:
         assert state["digest_path"].endswith("digest.md")
         assert state["summary_path"].endswith("summary.md")
 
+    def test_digest_path_is_the_digest_steps_own_payload_path(self, tmp_path, out):
+        """Regression: these were two different files. The digest agent writes where
+        `claim` sends it, and every later agent is handed `digest_path` — so a
+        mismatch points the whole run at a digest that does not exist."""
+        d = tmp_path / "r"
+        run_state.main(["resolve", "--task", "t", "--run-dir", str(d)])
+        assert out()["digest_path"] == str(
+            run_state._payload_path(d, "digest").resolve()
+        )
+
 
 # ── CLI contract ────────────────────────────────────────────────────────────
 
