@@ -341,6 +341,25 @@ class TestAppendChangelog:
         # The --kind tag lets a cumulative-fix recount exclude decision-takes.
         assert text.count("[fix]") == 1
 
+    def test_exit_kind_records_a_readable_trend(self, tmp_path: Path) -> None:
+        """`exit` entries are the stall check's whole input — one grep, in order."""
+        src = tmp_path / "concept.md"
+        src.write_text("content")
+
+        for rnd, count in ((1, 8), (2, 6), (3, 6), (4, 6)):
+            assert main(["append-changelog", str(src), "--run", "2",
+                         "--round", str(rnd), "--kind", "exit",
+                         f"DIRTY {count}"]) == 0
+
+        lines = [ln for ln in (tmp_path / "concept-CHANGELOG.md").read_text().splitlines()
+                 if "[exit]" in ln]
+        assert [ln.rsplit(" ", 1)[-1] for ln in lines] == ["8", "6", "6", "6"]
+        # An exit entry is not an applied change: it must not inflate either
+        # scorecard count.
+        text = (tmp_path / "concept-CHANGELOG.md").read_text()
+        assert text.count("[fix]") == 0
+        assert text.count("[decision-take]") == 0
+
     def test_bad_kind(self, tmp_path: Path) -> None:
         src = tmp_path / "concept.md"
         src.write_text("content")

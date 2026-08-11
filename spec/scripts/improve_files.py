@@ -443,13 +443,19 @@ def cmd_note_ids(source: Path) -> int:
 
 
 def cmd_append_changelog(source: Path, argv: list[str]) -> int:
-    """Append one tagged audit entry per applied fix or decision-take."""
+    """Append one tagged audit entry per applied fix or decision-take.
+
+    ``--kind exit`` is not an applied change — it records the round's exit-exam
+    count so the loop can read its own convergence trend off disk. That makes the
+    stall check deterministic and compaction-proof without a second state file:
+    ``grep '\\[exit\\]' <changelog>`` is the whole series.
+    """
     run, argv = _flag(argv, "--run")
     rnd, argv = _flag(argv, "--round")
     kind, argv = _flag(argv, "--kind")
     text = " ".join(argv).strip()
-    if kind not in ("fix", "decision-take", "resolution"):
-        return _fail("append-changelog --kind must be fix|decision-take|resolution")
+    if kind not in ("fix", "decision-take", "resolution", "exit"):
+        return _fail("append-changelog --kind must be fix|decision-take|resolution|exit")
     if not text:
         return _fail("append-changelog requires <text>")
     changelog = _changelog_path(source)
@@ -710,7 +716,7 @@ Sidecars:
   append-non-goal <file> <text>                          Append to non-goals
   append-note     <file> [--finding-id ID] <text>        Append below-bar note (gate memory)
   note-ids        <file>                                 Emit recorded note finding-ids (JSON)
-  append-changelog <file> --run N --round M --kind fix|decision-take|resolution <text>
+  append-changelog <file> --run N --round M --kind fix|decision-take|resolution|exit <text>
   append-decision  <file> --kind decision|non-goal-proposal --title T --finding F [--finding-atoms JSON]
   update-decision  <file> --id Rn --set JSON
   snapshot         <file> --run N --round M [--verdicts PATH]
