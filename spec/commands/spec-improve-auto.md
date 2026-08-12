@@ -58,7 +58,7 @@ Checks script: `{MG_INSTALL_SCRIPTS_DIR}/spec_checks.py`
    **Flags** (parsed from `$ARGUMENTS`, order-independent):
    - `--resume` — a scheduled or manual resume: at the D7 guard (step 3) auto-**Resume** the existing working copy with no AskUserQuestion. If no working copy exists, fall through to a normal cold start.
    - `--force` — a one-round usage-gate override (implies `--resume`): after binding paths, write an empty `FORCE_MARKER`; the next usage gate (round step 0) consumes it to run exactly one round past the soft limit, then normal gating resumes.
-   - `--force-continue` — suppress the stall check (round step 8) for this invocation, so the loop runs to the cap on a flat exit-exam trend. The user passes it after a stall report to say they want the remaining rounds anyway. It does not imply `--resume`; combine the flags if both apply.
+   - `--force-continue` — suppress the stall check (round step 8) for this invocation, so the loop runs to the cap even while the same items keep carrying. The user passes it after a stall report to say they want the remaining rounds anyway. It does not imply `--resume`; combine the flags if both apply.
 
 2. Read the target file. If it doesn't exist or is empty, report the error and exit.
 
@@ -119,10 +119,19 @@ contradicts the spec. Group by file. Facts only — no spec critique. Note any
 citation you could not resolve (missing file / wrong line). Keep it as short as
 fidelity allows.
 
-Return one line: the digest path + entity count.
+DECLARE YOUR OWN GAPS. Other agents treat this file as ground truth, so a hole in
+it reads to them as a fact about the code. End the digest with a `## Not deep-read`
+section naming every cited file you did NOT read in full — one line each with the
+reason (too large, skimmed, resolved by name only). A file you read partially
+belongs in that list even though its citation resolved: "resolved" and "read" are
+different claims. If the list would be empty, write `## Not deep-read` then `none`.
+
+Return one line: the digest path + entity count + the not-deep-read file count.
 ```
 
    If `DIGEST` already exists (a re-run, or a resumed session), **reuse it** — code is static across a refinement run. (Only refresh if the user says the code changed: delete `DIGEST` and re-run Step 0.)
+
+   **The digest is evidence of presence, never of absence.** It is a partial read by construction — which is why it must declare its own gaps — so its silence on a symbol is a fact about the digest, not about the code. No agent may conclude that a cited function, column, table or file does not exist because the digest omits it; that claim requires opening the file under `CODE_ROOT`, and a cited file listed under `## Not deep-read` must be opened rather than trusted. This rule is not theoretical: a round once deleted a real function from a spec as a "mechanical fix" on the strength of digest silence, replacing it with a similarly-named function that reads a different table, and the three rounds after it carried the wrong citation. Every agent prompt below restates the rule.
 
 ## The auto-loop
 
@@ -130,7 +139,9 @@ Rounds `M = 1, 2, 3, …` up to the **round cap of 20**. Each round is self-cont
 
 **The orchestrator is a thin router — it never reads or edits `WORKING` itself.** Each round it spawns subagents, hands them **absolute file paths**, and gets back only **one-line summaries** (ids, counts, a verdict word). All bulky content — the spec text, the findings, the proposed edits — flows agent → disk → agent through a per-round scratch dir and never enters the main context; that is what keeps context flat across a long run. At the **start of every round**, resolve (and create) that dir, capturing the absolute path it prints:
 `uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py scratch-dir <target> --run <RUN> --round <M>` → store as `SCRATCH`.
-Hand `<SCRATCH>/handoff-review.md`, `<SCRATCH>/handoff-decide-<cluster>.md`, and `<SCRATCH>/handoff-exit.md` to the agents below. (These handoff files use neutral `handoff-*` names **deliberately**: a subagent `Write` to a `findings`/`report`-named file trips a Claude Code behavioral guard that pushes report output back into the response — which would break the round. The neutral name both sidesteps that guard and describes the file accurately as inter-agent handoff state, not a report. Do **not** rename them to `findings.md`/`report.md`.) A round:
+Hand `<SCRATCH>/handoff-review.md`, `<SCRATCH>/handoff-decide-<cluster>.md`, and `<SCRATCH>/handoff-exit.md` to the agents below. (These handoff files use neutral `handoff-*` names **deliberately**: a subagent `Write` to a `findings`/`report`-named file trips a Claude Code behavioral guard that pushes report output back into the response — which would break the round. The neutral name both sidesteps that guard and describes the file accurately as inter-agent handoff state, not a report. Do **not** rename them to `findings.md`/`report.md`.)
+
+Also derive, by string, the run's **exit-carry file** — `EXIT_CARRY` = `<parent-of-SCRATCH>/exit-carry.md`, i.e. `.spec-scratch/run-<RUN>/exit-carry.md`. It is per-RUN, not per-round: the exit exam rewrites it every round and the next round's reviewer reads it, so a substantive item the exit exam names is **routed to a resolver instead of resampled**. Without it the exit exam is write-only — it holds the loop's highest bar and the widest evidence base (it may open code), and every item it finds is discarded at the end of the round, so the loop's own termination signal measures nothing but what one agent chose to list. Sitting at the run root, it is removed by the existing `scratch-clean` at a terminal state and needs no new subcommand. A round:
 
 ### 0 — Usage-limit gate (before any work this round)
 Run: `uv run {MG_INSTALL_SCRIPTS_DIR}/spec_checks.py usage-gate --session-max 75 --weekly-max 90`. It reads Claude Code's real `/usage` (cost-free) and returns JSON: `verdict` (`OK` | `PAUSE` | `ERROR`), `session_pct`, `weekly_pct`, `binding` (`session` | `weekly` | null), `resume_cron`, `resume_human`.
@@ -150,13 +161,30 @@ Read the spec at: {absolute WORKING path}
 Read the code-facts digest at: {absolute DIGEST path} — use it as ground truth
 about the cited code instead of re-reading the codebase. Only open a specific
 source file (under {absolute CODE_ROOT}) if the digest is silent on a fact you
-need.
+need. THE DIGEST IS EVIDENCE OF PRESENCE, NEVER OF ABSENCE: it is a partial read
+and declares its own gaps under `## Not deep-read`. Never conclude that a cited
+function, column, table or file does not exist because the digest omits it — open
+the file and look. A cited file named under `## Not deep-read` must be opened
+rather than trusted.
 {If non_goals_exists: Also read {absolute NON_GOALS path}. A listed non-goal's
 SCOPE is exempt — do not flag work it excludes. But its RATIONALE is NOT: if a
 non-goal's stated justification rests on a false or unvalidated premise, flag that
 (a foundational premise often hides inside a non-goal). Severe bugs excepted.}
 Also read the concept spec template at: {absolute template path} — assess whether
 expected sections are present and adequately filled.
+
+{If M > 1 and EXIT_CARRY exists: Read the previous round's unresolved substantive
+items at {absolute EXIT_CARRY path}. The exit exam named them at a higher,
+substantive-only bar than yours, with permission to open code, and nothing has
+resolved them yet. They are a SEED LIST you must account for, not background
+reading. For EACH item do exactly one of:
+  - re-raise it as one of your own findings with `Touches` filled in, so it reaches
+    a resolver this round — the normal case, since an item is on that list
+    precisely because nothing has fixed it; or
+  - record it as gone: a finding with `Decision: no`, `Fix: none`, and a Problem
+    reading `CARRIED ITEM RESOLVED: <the item> — <what in the spec now answers it>`.
+Silently dropping a carried item is the single failure this list exists to prevent.
+A re-raised item is still subject to the `## Open Decisions` skip rule below.}
 
 IGNORE anything already listed under a `## Open Decisions` heading in the spec —
 those are known, already escalated to the user; do not re-flag them. Also skip
@@ -194,7 +222,11 @@ WRITE your findings to {absolute SCRATCH/handoff-review.md path} — one block p
   (<id> = F1, F2, …; SEVERITY = critical | major | minor.
    Decision = yes if resolving it is a design decision — a choice among
      alternatives, a premise to correct, an open question/deferral to close;
-     no if it is a mechanical/clarity fix.
+     no if it is a mechanical/clarity fix. ALWAYS yes if the fix would delete,
+     rename or re-point a code citation, or rests on a cited symbol not existing:
+     that is a factual claim about the codebase, not a wording change, and it must
+     reach an agent allowed to open the file. A "mechanical" citation edit applied
+     on digest silence is exactly how a real function gets deleted from a spec.
    NeedsUser = yes only if the decision genuinely needs a human — changes intent/
      scope, high-stakes, or you cannot determine the right answer even from the code.
    Conflict = yes if the finding is that two things in the spec DISAGREE — two
@@ -238,6 +270,10 @@ before you decide anything: a resolution that contradicts a decision you did not
 read is this loop's most expensive failure mode.
 (open a specific file under {absolute CODE_ROOT} only if the digest lacks a fact
 you need). {If non_goals_exists: Non-goals: {absolute NON_GOALS path}.}
+THE DIGEST IS EVIDENCE OF PRESENCE, NEVER OF ABSENCE — it is a partial read and
+declares its gaps under `## Not deep-read`. If your resolution turns on a cited
+symbol not existing, or on which of two similarly-named functions a claim is about,
+OPEN THE FILE. Do not resolve that from digest silence.
 
 Research the cluster against the digest/code, then WRITE your result to
 {absolute SCRATCH/handoff-decide-{cluster}.md}. The file holds one or more RESULT
@@ -338,7 +374,13 @@ do NOT count against the budget.
 
 1. MECHANICAL FIXES — for each finding in handoff-review.md with `Decision: no`, apply its
    `Fix` (prose/contract only, NEVER implementation code). A "missing piece" that
-   needs a design choice is a decision, not a fix — skip it here.
+   needs a design choice is a decision, not a fix — skip it here. REFUSE one shape:
+   a `Decision: no` fix that DELETES, RENAMES or RE-POINTS a code citation, or rests
+   on a cited symbol not existing. Skip it and report it — it was misclassified and
+   belongs with a decide-agent that can open the file. Digest silence is not evidence
+   of absence, and you are not the agent that checks. A finding whose Problem begins
+   `CARRIED ITEM RESOLVED:` needs no edit at all — it is a bookkeeping note from the
+   reviewer; do not count it against the budget and do not log it.
 2. TAKE — for each RESULT block with `ACTION: take`, apply its `EDIT` VERBATIM at the
    location it names, then apply every line of its `IMPACT` list. Do NOT reword the
    edit text. If an IMPACT line's target no longer says what the line quotes, apply
@@ -416,36 +458,57 @@ or any spec section named in an Open Decision's **Governs** line — those are k
 and deliberately escalated to the user; treat them as resolved for the purposes of
 this check.
 
+{If EXIT_CARRY exists: FIRST read your own previous verdict at {absolute EXIT_CARRY
+path} — the items the last exit exam left open. Re-check each one against the spec
+as it now stands: it is CARRIED if it is still true, and closed if the spec now
+answers it. Then look for what is NEW. You are not bound by that list — a carried
+item you judge closed is closed — but you must decide each one deliberately rather
+than by not noticing it.}
+
+Your list is the loop's termination signal, so its LENGTH must mean something. List
+EVERY substantive item you find, most severe first, up to 12; do not stop at a
+comfortable number. If you hit 12 with more to say, say so — a truncated list read
+as a falling count is how this loop convinces itself it is converging.
+
+ALWAYS WRITE {absolute EXIT_CARRY path}, even when clean (empty file), and write the
+same list to {absolute SCRATCH/handoff-exit.md path}. One line per item:
+`- [SEVERITY] [CARRIED|NEW] <section> — <what is substantively wrong>. DECISION: <yes|no>.`
+Anchor each item on quoted spec text or a code path, NOT on a decision number —
+decisions get renumbered, so a `Dn` reference goes stale between rounds.
+
 If nothing substantive remains (outside `## Open Decisions`), return exactly: CLEAN
-Otherwise WRITE the short list to {absolute SCRATCH/handoff-exit.md path} (one line each:
-`- [SEVERITY] <section> — <what is substantively wrong>. DECISION: <yes|no>.`) and
-RETURN ONLY: DIRTY <n>   (n = number of substantive items)
+Otherwise RETURN ONLY: DIRTY <n> CARRIED <k> TRUNCATED <yes|no>
+  (n = substantive items listed; k = how many of them are CARRIED; TRUNCATED yes if
+   you had more than 12.)
 ```
 
 ### 7 — Record the verdict
 Log the round's result so the loop can read its own trend off disk instead of your memory:
 ```
 uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py append-changelog {TARGET_ABS} \
-  --run {RUN} --round {M} --kind exit "<CLEAN, or DIRTY n>"
+  --run {RUN} --round {M} --kind exit "<CLEAN, or the whole DIRTY n CARRIED k TRUNCATED x line>"
 ```
-`exit` entries are not applied changes and do not enter the scorecard's fix/take counts.
+Log the verdict line **verbatim**, `CARRIED` and `TRUNCATED` included — the stall check reads `CARRIED`, and a bare count is what made an earlier version of this loop stop on the wrong signal. `exit` entries are not applied changes and do not enter the scorecard's fix/take counts.
 
 ### 8 — Converge, stall, or continue
 Branch on the exit-exam's one-line verdict alone — you hold no round content:
 - **`CLEAN` (and the floor passed — the applier drove it to 0) → CONVERGED.** Go to **On convergence**.
 - **`M` reaches 20 without converging → STOP at cap.** Go to **On round cap**.
-- **`DIRTY <n>` → check the trend, then continue.** From `M >= 4`, and unless `--force-continue` was passed, read the series with
-  `grep '\[exit\]' <CHANGELOG> | tail -4`. If the newest count is **not below** the oldest of those four — the loop has spent three rounds without reducing what remains — **STOP: stalled.** Go to **On stall**. Otherwise carry nothing in context; the next round's fresh agents re-derive from the updated `WORKING` + the digest. Increment `M`.
+- **`DIRTY …` → check the trend, then continue.** From `M >= 4`, and unless `--force-continue` was passed, read the series with
+  `grep '\[exit\]' <CHANGELOG> | tail -3`. **STOP: stalled** only if all three lines carry `CARRIED 2` or higher — the same two-or-more items have now survived three consecutive rounds *after* being routed to a resolver. Go to **On stall**. Otherwise carry nothing in context; the next round's fresh agents re-derive from the updated `WORKING` + the digest and the carry file. Increment `M`.
 
-  A flat or rising series means the rounds are producing as much substance as they close, and more rounds of the same shape will not change that. Stopping is the informative outcome: it hands back a spec plus a named reason, days earlier than the round cap would.
+  **Stall on identity, not on the count.** A count that holds steady is the normal shape of a large spec: each round the exit exam samples the most substantive things it can see, closes some, and reaches items the previous pass had no room for, so `4 → 6 → 5 → 5` can be four rounds of real progress over eighteen different items. What is NOT progress is the same item surviving round after round having been handed to a resolver — that means the loop cannot resolve it, and more rounds of the same shape will not. `CARRIED` measures exactly that; the count measures the exit exam's output discipline. Report both at the stall, and never present the count as the reason.
+
+  Note the interaction with the carry file: `CARRIED` is only meaningful because step 1 routes every carried item to a resolver. If that routing is removed, this check degrades into the count check it replaced.
 
 ## State discipline (load-bearing)
 
 The orchestrator keeps **nothing durable in its own context** — and, in the flat-context loop, almost nothing *transient* either:
 - **The orchestrator never reads or edits `WORKING`.** Every round it only spawns agents with paths and reads back one-line summaries. All spec text, findings, and proposed edits live in files (the per-round `SCRATCH` dir and `WORKING`), read and written by subagents whose context is discarded on return. This is what holds the main context flat over a 20-round run.
 - **`WORKING` on disk is the state.** Unresolved issues persist because they are still in the doc; the reviewer re-derives the canonical live list each round. Never filter a finding using memory of a prior round.
-- **`## Open Decisions` in `WORKING` is the escalation memory** — an escalated decision lives there, so future reviewers skip it and it is not re-researched (the same mechanism as `NON_GOALS`). This is the one durable cross-round record, and it lives in the doc, not your context.
-- **`DIGEST` is computed once and reused** every round and across re-runs (code is static).
+- **`## Open Decisions` in `WORKING` is the escalation memory** — an escalated decision lives there, so future reviewers skip it and it is not re-researched (the same mechanism as `NON_GOALS`). It is the durable cross-round record of what the USER owes an answer on, and it lives in the doc, not your context.
+- **`EXIT_CARRY` (`.spec-scratch/run-<RUN>/exit-carry.md`) is the cross-round record of what the LOOP still owes** — the exit exam's unresolved items, rewritten every round and read by the next round's reviewer, which must route or explicitly close each one. It is the counterpart to `## Open Decisions`: one carries the human's queue, the other the loop's. Unlike the per-round handoffs it is genuinely cross-round state, so it lives at the run root rather than inside a round dir; it is still ephemeral in the sense that matters (regenerated every round, removed by `scratch-clean` at a terminal state, and a missing one just means the round runs unseeded).
+- **`DIGEST` is computed once and reused** every round and across re-runs (code is static) — and it is **evidence of presence, never of absence**: it is a partial read that declares its own gaps under `## Not deep-read`, so no agent may infer from its silence that a cited symbol does not exist.
 - **`SCRATCH` (`<dir-of-WORKING>/.spec-scratch/run-<RUN>/round-<M>/`) is ephemeral inter-agent plumbing** — regenerated every round, never a source of truth. Safe to delete anytime; cleaned at terminal states.
 - If compacted mid-loop, resume from disk: `M` = (count of `round-*.md` in `history/run-<RUN>/`) + 1; re-read paths via `improve_files.py paths <target>`; the digest and `## Open Decisions` are already on disk; the interrupted round simply re-runs (its `SCRATCH` files are overwritten). Continue.
 
@@ -557,15 +620,15 @@ Then the approval flow (fixes approved independently of non-goals, as `spec-impr
 
 ## On round cap
 
-Reaching the cap without a clean exit exam is a signal — usually genuine churn or a cluster of hard escalations. First clear any pending resume cron for this spec (`CronList`/`CronDelete`). Present an honest report: the last exit-exam's substantive findings (read `<SCRATCH for the final round>/handoff-exit.md`); what kept churning (from `CHANGELOG`); the `## Open Decisions` list — run it through the **briefing writer** (above) so the escalations read cleanly; the scorecard. Then let the user **re-run** (another batch from `M+1`, e.g. after resolving a blocker), **approve the partial**, or **reject**. Approving a partial runs the same **reconcile pass** (Accept step 3) before `snapshot` + `approve`; a partial keeps its `## Open Decisions`, so their `ODn` references stay live and the audit stays clean.
+Reaching the cap without a clean exit exam is a signal — usually genuine churn or a cluster of hard escalations. First clear any pending resume cron for this spec (`CronList`/`CronDelete`). Present an honest report: the last exit-exam's substantive findings (read `EXIT_CARRY`, `.spec-scratch/run-<RUN>/exit-carry.md`); what kept churning (from `CHANGELOG`); the `## Open Decisions` list — run it through the **briefing writer** (above) so the escalations read cleanly; the scorecard. Then let the user **re-run** (another batch from `M+1`, e.g. after resolving a blocker), **approve the partial**, or **reject**. Approving a partial runs the same **reconcile pass** (Accept step 3) before `snapshot` + `approve`; a partial keeps its `## Open Decisions`, so their `ODn` references stay live and the audit stays clean.
 
 ## On stall
 
-Three rounds passed without the exit-exam count going down. That is a different signal from the round cap: the loop is not slowly finishing, it is holding steady — closing about as much substance per round as it opens. More rounds of the same shape will not converge, and the honest move is to say so now rather than at round 20.
+The same two-or-more substantive items survived three consecutive rounds after being routed to a resolver. That is a different signal from the round cap: the loop is not slowly finishing and it is not merely holding steady — it is failing on specific, identified items, and more rounds of the same shape will not resolve them.
 
 First clear any pending resume cron for this spec (`CronList`/`CronDelete`). Then report:
-1. **The series** — the `[exit]` counts by round, so the flat trend is visible rather than asserted.
-2. **What remains** — the last exit exam's substantive findings (read `<SCRATCH for the final round>/handoff-exit.md`).
+1. **Which items are stuck, and for how long** — the `CARRIED` items by name from `EXIT_CARRY`, cross-referenced against `CHANGELOG` for what was attempted on each. This is the finding; lead with it.
+2. **The series** — the `[exit]` lines by round (`DIRTY n CARRIED k`). Present `n` as context, never as the reason: a steady count with low `CARRIED` is progress over changing items, and saying otherwise misreads the instrument.
 3. **What the rounds have been doing** — from `CHANGELOG`, whether the recent entries are new ground or repairs of earlier rounds' edits. Repairs dominating is the diagnostic worth naming.
 4. **The `## Open Decisions` list**, through the **briefing writer** (above), plus the scorecard.
 
@@ -593,7 +656,7 @@ Derive deterministically (do not paraphrase from memory):
 - **Mechanical fixes** = `grep -c '\[fix\]' <CHANGELOG>`.
 - **Auto-decisions taken** = `grep -c '\[decision-take\]' <CHANGELOG>`.
 - **Escalated (need you)** = count of entries under `## Open Decisions` in `WORKING`.
-- **Exit-exam trend** = `grep '\[exit\]' <CHANGELOG>` — the counts by round, in order. A run that ends flat is a different result from one that ends falling, and the series is the only place that shows it.
+- **Exit-exam trend** = `grep '\[exit\]' <CHANGELOG>` — the full `DIRTY n CARRIED k TRUNCATED x` line per round, in order. Report `CARRIED` alongside `n`: a run whose count holds steady while `CARRIED` stays at 0-1 is closing real ground over changing items, which is a different result from one where the same items carry every round, and only `CARRIED` distinguishes them. Note any round where `TRUNCATED` was `yes` — its `n` is a floor, not a measurement.
 - **Outcome** = `converged`, `stalled`, or `round-cap`.
 
 </process>
@@ -606,8 +669,10 @@ Derive deterministically (do not paraphrase from memory):
 - **A conflict is either stale text or a real fork, and they route differently.** Most "two decisions disagree" findings are DRAFTING inconsistencies: one fact stated in two places, updated in one. There is no design question in those, and escalating them buries a typo in the user's queue while the contradiction stays in the doc. The cluster agent **takes** them — states the fact once and lists every other site in `IMPACT`. Only a genuine **design fork**, where picking a side changes what gets built, is escalated, and then as one item covering the whole conflict. What is never allowed is resolving half of one.
 - **Every take carries its blast radius; the applier applies both as one change.** A decide-agent must search the working copy for every number, count, step label, condition letter and name its edit invalidates, and list them in `IMPACT`. Without that, changing a decision that 100+ other lines restate leaves 100+ stale lines, which the next reviewer reports as fresh contradictions — the loop then spends its rounds repairing its own edits and the exit-exam count stops falling. `EDIT` + `IMPACT` counts as **one** change against the round budget: the impact sites carry no judgment, they are the same fact restated, and applying an edit without them is never the cheaper option.
 - **Proposers never allocate identifiers.** Decide-agents write `<NEW-D>` / `<NEW-OPEN-ITEM>` / `<NEW-STEP>` / `<NEW-CONDITION>` placeholders; the applier — already the sole writer — is the sole allocator, assigning numbers across all of a round's proposals at once. Parallel agents all read the same highest existing number, so any number a proposer picks is a number another proposer is also picking. This is the whole fix for duplicate `D9`s and two proposals both claiming "Open Item 8", and it works no matter how many agents a round spawns.
-- **Stop on a flat trend, not only at the cap.** Each round's exit-exam verdict is appended to `CHANGELOG` as an `[exit]` entry, so the loop reads its own convergence off disk (compaction-proof, no second state file). Three rounds without the count going down means the rounds are opening as much substance as they close; the loop stops and says so instead of spending the rest of the cap arriving somewhere no better. `--force-continue` overrides it when the user has looked and disagrees.
+- **The exit exam feeds the next round; it is not a write-only judge.** Its verdict is the loop's termination signal, it holds the highest bar, and it may open code — so it routinely names substance the Sonnet reviewer structurally cannot reach. Its items therefore land in `EXIT_CARRY` at the run root, and step 1's reviewer must **route or explicitly close every one**. Without that path the exam's findings are discarded at the end of each round and the loop resamples from scratch every time: items leave the list without being repaired, the same defect reappears rounds later, and the verdict count stops meaning anything. That failure was measured on a real 8,400-line spec — 18 distinct items across 20 item-slots in four rounds, 8 of them dropped with no repair, one recurring — and it is what the carry file exists to fix.
+- **Stop on identity, not on a flat count.** Each round's exit verdict is appended to `CHANGELOG` as an `[exit]` entry (compaction-proof, no second state file), carrying `DIRTY n CARRIED k TRUNCATED x`. The stall trigger is `CARRIED >= 2` for three consecutive rounds: two or more items routed to a resolver and still standing means the loop cannot resolve them, and more rounds of the same shape will not. A steady `n` is NOT that — on a large spec each round closes some items and reaches others the last pass had no room for, so a flat count is the normal shape of progress, and the exam's `TRUNCATED` flag is there because a capped list read as a falling count is how the loop would otherwise convince itself it was converging. `--force-continue` overrides the trigger when the user has looked and disagrees.
 - **Read once, branch (via digest).** The cited code is read a single time into `CODE-DIGEST.md`; every reviewer / decide / exit-exam agent reads that small digest instead of re-navigating the codebase (a ~5–10× cost lever). Agents fall back to opening a specific file only when the digest is silent. A genuine fork/shared-context primitive is not available on the Agent path, so the digest is the mechanism. The digest is **facts-only** — never enrich it with run-specific framing (e.g. "escalate this"), which would nudge re-escalation when it is reused across re-runs.
+- **Digest silence is not a fact about the code.** The digest is a partial read of the cited surface, so it must declare its gaps under `## Not deep-read`, and no agent may conclude from its silence that a cited function / column / table / file does not exist — that claim needs the file opened. Two rules enforce it where it bites: a fix that deletes, renames or re-points a code citation is `Decision: yes` (it is a factual claim, not a wording change, so it reaches an agent allowed to look), and the applier refuses such a fix if it arrives labelled mechanical. Without them a "mechanical" one-word rename can delete a real function from the spec and substitute a similarly-named one that reads a different table — measured, and it survived three further rounds because nothing routed the exit exam's catch.
 - **Flat context — the orchestrator is a router.** The main loop never reads or edits `WORKING`; each round it hands subagents file paths and reads back one-line summaries, so the spec text, the findings, and the proposed edits never enter the main context (they flow agent → `SCRATCH`/`WORKING` → agent). Decide-agents *propose* — each writes one `handoff-decide-<cluster>.md`, none touches the spec; a single **applier** subagent is the sole writer, the sole allocator of identifiers, and also drives the deterministic floor. This is the sibling cost lever to the digest: the digest keeps *code* out of every agent's context; the router keeps *spec churn* out of the orchestrator's — together they let a 20-round run stay well under the context ceiling instead of degrading after 3–4 rounds.
 - **Model tiers.** Digest-reader + reviewer + **applier** = **Sonnet** (heavy readers / mechanical transcription; a reviewer miss or a mis-placed edit is self-correcting across rounds — and the applier writes edit *text authored verbatim by the Opus decide-agents*, so it exercises no design judgment of its own: allocating a number is highest-plus-one, and its one refusal rule — two takes editing the same anchor incompatibly — resolves to *defer both*, never to pick). Decide-agent + exit-exam + reconcile + briefing writer = **Opus** (sharp judgment / user-facing prose; a bad auto-take is written into the spec and a false-CLEAN ends the loop — neither is self-correcting).
 - **Decisions are working-quality during the loop; polished only at the hand-off.** Decide-agents write functional decisions (accuracy over prose); the reviewer and exit exam read the code and don't need polish. A single **briefing writer** produces the product-altitude prose once, when the run surfaces to the user (convergence or round cap) — keeping the per-round path lean and prose-writing out of the main loop's context. The concept's own `### Dn:` decision text stays implementer-facing, per the template.
