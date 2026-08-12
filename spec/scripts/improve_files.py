@@ -20,11 +20,14 @@ Naming conventions (given ``concept.md``):
 Subcommands
 -----------
 init <file> [--fresh]
-    Back up the original (once) and create the working copy. Refuses to
-    overwrite an existing working copy (exit 1) unless ``--fresh`` is given,
-    which first archives the session sidecars (changelog, ledger, decisions,
-    AND implementer-notes) into history/ then resets. Emits the resolved-paths
-    JSON (see ``paths``) plus ``backup_created``.
+    Back up the original (once), create the working copy, and write this run's
+    baseline to ``history/run-N/baseline.md`` — the target exactly as the run
+    found it, since every other file in that dir is a POST-edit snapshot and
+    ``<name>.original.md`` is only ever run 1's. Refuses to overwrite an
+    existing working copy (exit 1) unless ``--fresh`` is given, which first
+    archives the session sidecars (changelog, ledger, decisions, AND
+    implementer-notes) into history/ then resets. Emits the resolved-paths JSON
+    (see ``paths``) plus ``backup_created`` and ``baseline``.
 
 paths <file>
     Emit the same resolved-paths JSON as ``init`` WITHOUT touching any file —
@@ -326,7 +329,7 @@ def _fail(msg: str) -> int:
 
 
 def cmd_init(source: Path, fresh: bool) -> int:
-    """Back up the original (once), create the working copy, emit paths JSON.
+    """Back up the original (once), create the working copy + run baseline, emit paths JSON.
 
     Guards against silently destroying an in-progress session: refuses to
     overwrite an existing working copy unless ``--fresh`` (which archives the
@@ -356,10 +359,32 @@ def cmd_init(source: Path, fresh: bool) -> int:
         backup_created = True
 
     shutil.copy2(source, working)
-    _run_marker_path(source).write_text(f"{_next_run(source)}\n")
+    run = _next_run(source)
+    _run_marker_path(source).write_text(f"{run}\n")
+
+    # Per-run baseline — the target EXACTLY as this run found it.
+    #
+    # history/run-N/ otherwise holds only POST-edit round snapshots, so a run's
+    # starting state was recoverable only as the PREVIOUS run's
+    # round-resolved.md. That anchor is missing whenever a run is rejected or
+    # abandoned (reject archives sidecars and deletes the working copy; it
+    # writes no snapshot), and it never existed for a run whose predecessor did
+    # not reach Accept. ``<name>.original.md`` does not close the gap either: it
+    # is written once, on the FIRST init, and never refreshed — it is the run-1
+    # baseline, which after a few runs is many hundreds of KB out of date and
+    # invites being misread as the current one.
+    #
+    # Deliberately NOT named round-*.md: the compaction-resume path derives the
+    # round number from the count of round-*.md files in the run dir, so a
+    # baseline matching that glob would silently skip a round.
+    run_dir = _history_dir(source) / f"run-{run}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    baseline = run_dir / "baseline.md"
+    shutil.copy2(source, baseline)
 
     result = _resolve_paths(source)
     result["backup_created"] = backup_created
+    result["baseline"] = str(baseline)
     print(json.dumps(result, indent=2))
     return 0
 
@@ -707,7 +732,7 @@ USAGE = """\
 Usage: improve_files.py <command> <file> [args...]
 
 Session:
-  init            <file> [--fresh]     Back up original + create working copy (guarded)
+  init            <file> [--fresh]     Back up original + working copy + run baseline (guarded)
   paths           <file>               Emit resolved-paths JSON (read-only; resume entry)
   approve         <file>               Copy working copy over original; archive sidecars
   reject          <file>               Delete working copy; archive sidecars

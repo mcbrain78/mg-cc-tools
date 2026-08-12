@@ -83,7 +83,13 @@ class TestInit:
         assert result["changelog"] == str(tmp_path / "concept-CHANGELOG.md")
         assert result["atoms"] == str(tmp_path / "concept-ATOMS.json")
         assert result["decisions"] == str(tmp_path / "concept-DECISIONS.json")
-        assert result["next_run"] == 1
+        # `init` writes history/run-1/baseline.md, so run 1 now EXISTS in history
+        # and `next_run` ("highest history run + 1") is 2 from here on. The run
+        # whose rounds this invocation owns is `current_run`, which is what the
+        # commands bind; `next_run` is cold-start-only and has no consumer.
+        assert result["current_run"] == 1
+        assert result["next_run"] == 2
+        assert result["baseline"] == str(tmp_path / "history" / "run-1" / "baseline.md")
         assert result["atoms_exists"] is False
 
     def test_skips_backup_if_exists(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -106,6 +112,44 @@ class TestInit:
         main(["init", str(src)])
         result = _out(capsys)
         assert result["non_goals_exists"] is True
+
+    def test_writes_run_baseline(self, tmp_path: Path) -> None:
+        """Every run gets a copy of the target as it FOUND it, not just git."""
+        src = tmp_path / "concept.md"
+        src.write_text("v1 as this run found it\n")
+
+        assert main(["init", str(src)]) == 0
+
+        baseline = tmp_path / "history" / "run-1" / "baseline.md"
+        assert baseline.read_text() == "v1 as this run found it\n"
+
+    def test_baseline_is_not_counted_as_a_round(self, tmp_path: Path) -> None:
+        """The compaction-resume path derives the round number from the count of
+        round-*.md in the run dir, so the baseline must not match that glob —
+        otherwise every resumed run silently skips a round."""
+        src = tmp_path / "concept.md"
+        src.write_text("content")
+        main(["init", str(src)])
+        main(["snapshot", str(src), "--run", "1", "--round", "1"])
+
+        run1 = tmp_path / "history" / "run-1"
+        assert (run1 / "baseline.md").is_file()
+        assert len(list(run1.glob("round-*.md"))) == 1
+
+    def test_second_run_baseline_is_the_first_run_output(self, tmp_path: Path) -> None:
+        """run-N/baseline.md is the anchor `<name>.original.md` cannot be: that
+        one is written on the first init only, so it stays at run 1 forever."""
+        src = tmp_path / "concept.md"
+        src.write_text("v1\n")
+        main(["init", str(src)])
+        (tmp_path / "concept-auto-improve.md").write_text("v2 after run 1\n")
+        main(["approve", str(src)])
+
+        assert main(["init", str(src)]) == 0
+
+        assert (tmp_path / "history" / "run-1" / "baseline.md").read_text() == "v1\n"
+        assert (tmp_path / "history" / "run-2" / "baseline.md").read_text() == "v2 after run 1\n"
+        assert (tmp_path / "concept.original.md").read_text() == "v1\n"  # still run 1's
 
     def test_missing_source(self, tmp_path: Path) -> None:
         assert main(["init", str(tmp_path / "nope.md")]) == 1

@@ -51,7 +51,7 @@ File operations script: `{MG_INSTALL_SCRIPTS_DIR}/improve_files.py`
    ```
    uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py init <target-file-path>
    ```
-   `init` backs up the original (once) and creates the working copy. It is **guarded** (concept D7): if a working copy from a prior, unfinished session already exists, it refuses to overwrite it and exits 1 — strictly safer than silently resetting in-progress work. Branch on the exit code:
+   `init` backs up the original (once), creates the working copy, and writes this run's baseline to `history/run-<N>/baseline.md` — the target exactly as the run found it, so where a run started is recorded in-tree and not only in git. (`<name>.original.md` does not cover this: it is written on the first `init` only and never refreshed, so it stays run 1's baseline forever.) `init` is **guarded** (concept D7): if a working copy from a prior, unfinished session already exists, it refuses to overwrite it and exits 1 — strictly safer than silently resetting in-progress work. Branch on the exit code:
 
    - **On success (exit 0):** capture the emitted resolved-paths JSON:
      ```json
@@ -60,10 +60,11 @@ File operations script: `{MG_INSTALL_SCRIPTS_DIR}/improve_files.py`
        "non_goals": "...-NON-GOALS.md",
        "non_goals_exists": true/false,
        "original_backup": "....original.md",
-       "backup_created": true/false
+       "backup_created": true/false,
+       "baseline": "history/run-N/baseline.md"
      }
      ```
-     If `backup_created` is true, report: `Backed up original to <original_backup>`.
+     If `backup_created` is true, report: `Backed up original to <original_backup>`. Report the `baseline` path once.
 
    - **On guard-fail (exit 1):** an in-progress working copy from a prior session exists. Do **not** overwrite it blindly. Get the resolved paths read-only:
      ```
