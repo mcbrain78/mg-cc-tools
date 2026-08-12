@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -173,6 +174,18 @@ class TestInit:
         assert main(["init", str(src), "--fresh"]) == 0
         assert working.read_text() == "current"
 
+    def test_fresh_over_a_read_only_working_copy(self, tmp_path: Path) -> None:
+        """"Discard and restart" is what an operator reaches for after a run dies
+        inside the step-2 write window, so it must not be the thing that fails."""
+        src = tmp_path / "concept.md"
+        src.write_text("current")
+        working = tmp_path / "concept-auto-improve.md"
+        working.write_text("stale")
+        working.chmod(0o444)
+
+        assert main(["init", str(src), "--fresh"]) == 0
+        assert working.read_text() == "current"
+
     def test_fresh_archives_all_sidecars_including_notes(self, tmp_path: Path) -> None:
         src = tmp_path / "concept.md"
         src.write_text("current")
@@ -241,6 +254,20 @@ class TestApprove:
         src = tmp_path / "concept.md"
         src.write_text("content")
         assert main(["approve", str(src)]) == 1
+
+    def test_hands_back_a_writable_original(self, tmp_path: Path) -> None:
+        """A run killed inside the step-2 write window leaves the working copy at
+        444, and shutil.copy2 carries the mode across — so approve would hand the
+        operator a read-only concept.md."""
+        src = tmp_path / "concept.md"
+        src.write_text("old")
+        working = tmp_path / "concept-auto-improve.md"
+        working.write_text("improved")
+        working.chmod(0o444)
+
+        assert main(["approve", str(src)]) == 0
+        assert src.read_text() == "improved"
+        assert os.access(src, os.W_OK)
 
     def test_no_sidecars_creates_no_history(self, tmp_path: Path) -> None:
         """Plain spec-improve path: approve archives nothing and errors on nothing."""

@@ -97,6 +97,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -351,6 +352,10 @@ def cmd_init(source: Path, fresh: bool) -> int:
         # Discard the session: archive changelog + ledger + decisions + notes,
         # then reset. A stale ledger/decisions would poison the next run.
         _archive_sidecars(source, include_notes=True)
+        # A run killed inside the step-2 write window leaves the working copy at
+        # 444, and "discard and restart" is exactly what an operator reaches for
+        # after that. Overwriting it must not be the thing that fails.
+        _clear_read_only(working)
 
     backup = _original_path(source)
     backup_created = False
@@ -397,12 +402,33 @@ def cmd_paths(source: Path) -> int:
     return 0
 
 
+def _clear_read_only(path: Path) -> None:
+    """Restore the owner's write bit, if the step-2 write window left it clear.
+
+    The auto-loop chmods the working copy to 444 while the decide-agents run:
+    they PROPOSE and only the applier writes, and a prompt-level prohibition is
+    not enough when the agent holds Edit (measured — four agents edited one
+    8,500-line spec concurrently). The loop restores the bit at step 3, but a
+    round that dies inside the window leaves the file read-only, and
+    ``shutil.copy2`` propagates the mode to whatever it writes. So the two paths
+    that can inherit or collide with that bit clear it explicitly, rather than
+    raising PermissionError -- or silently handing back a read-only original --
+    at the moment the operator is trying to recover."""
+    if not path.exists():
+        return
+    mode = path.stat().st_mode
+    if not mode & stat.S_IWUSR:
+        path.chmod(mode | stat.S_IWUSR)
+
+
 def cmd_approve(source: Path) -> int:
     """Copy working copy over original, delete it, archive session sidecars."""
     working = _auto_improve_path(source)
     if not working.is_file():
         return _fail(f"working copy not found: {working}")
+    _clear_read_only(source)
     shutil.copy2(working, source)
+    _clear_read_only(source)  # copy2 carries the working copy's mode across
     working.unlink()
     moved = _archive_sidecars(source, include_notes=False)
     _run_marker_path(source).unlink(missing_ok=True)
