@@ -199,7 +199,8 @@ and deferred commitments ("future work", "later phase") are NOT real decisions,
 flag them (explicit scope exclusions are fine); (7) a concrete simpler
 alternative, if you can name one and say why; (8) over-specification — flag
 implementation code (function bodies/algorithms); a concept defines contracts,
-not bodies; (9) verification coverage — every `### What gets built` bullet needs
+not bodies. Also flag NUMERIC over-specification, per MEASUREMENTS below;
+(9) verification coverage — every `### What gets built` bullet needs
 a matching Verification item; (10) citation discipline — every top-level bullet
 in `### What gets built` must cite `(Dx)` referencing a real `### Dn:` block;
 (11) FOUNDATIONS — name the design's few load-bearing architectural premises (the
@@ -208,6 +209,34 @@ flag any that is unvalidated, contradicts the digest, is applied inconsistently
 across decisions, or would FLIP the design if a fact only the user holds turned out
 different (a cost / scale / vendor-limit / operational assumption). Do NOT try to
 validate every small assumption — surface the SPINE.
+
+MEASUREMENTS vs DESIGN PARAMETERS — governs criteria (1), (5) and (8). Every number
+in the spec is one of two things, and they are reviewed differently:
+  - A DESIGN PARAMETER is a value the spec CHOOSES — a threshold, window, limit,
+    retry count, or the input set the work is defined over. It IS functionality:
+    change it and what gets built changes. Exactness and cross-document consistency
+    are load-bearing. Two design parameters that disagree is a critical internal
+    contradiction under (1); one that contradicts the digest is a critical finding.
+    Nothing below softens this.
+  - A MEASUREMENT is a value the spec OBSERVED about the world or the data at some
+    past moment — a count, a census, a row total, a share of a population. It is
+    EVIDENCE FOR a decision, not the decision. Only its MAGNITUDE relative to the
+    threshold that drove that decision is load-bearing ("most", "a clear majority",
+    "a small minority") — never its exact digits. You cannot re-derive one: the
+    digest is code facts, and a measurement comes from data. Therefore:
+      * Do NOT flag drift between two restatements of a measurement as an internal
+        contradiction, and never ask for one to be recomputed, re-run or bounded.
+      * DO flag it ONCE under (8) — a measurement restated in more than one place,
+        or stated to a precision the decision it grounds does not need. Emit ONE
+        finding for that measurement, never one per disagreeing site, with
+        `Decision: no` and `Fix:` = state it once at the magnitude the decision
+        needs, with its provenance (what it was measured over, and roughly when),
+        and delete the restatements.
+      * ONE case is a real finding: the decision a measurement grounds would FLIP
+        at a plausible different value AND the spec does not record what the
+        measurement was taken over. That is an unvalidated assumption — (3),
+        `Decision: yes` — and it is a question for the user, not a number to go
+        recompute.
 
 Be harsh. Validate claims against the digest.
 
@@ -457,6 +486,20 @@ non-goal's RATIONALE is in scope: a non-goal resting on a false/unvalidated prem
 IS substantive. Also substantive: a foundational premise applied inconsistently, or
 two design decisions that disagree.
 
+NOT substantive: an imprecise, slightly stale, or inconsistently restated
+MEASUREMENT — a count, census, row total or population share the spec OBSERVED
+about the data at some past moment, as opposed to a DESIGN PARAMETER the spec
+CHOOSES (a threshold, window, limit, or the input set the work is defined over).
+A measurement is evidence for a decision; only its magnitude relative to the
+threshold that drove that decision is load-bearing. You cannot re-derive one — the
+digest is code facts and a measurement comes from data — so NEVER list one as an
+item to go recompute, re-run or bound; an item nothing in this loop can resolve
+carries forever and reads as a stall. A DESIGN PARAMETER that is wrong, or that two
+sections state differently, remains fully substantive. The one substantive case for
+a measurement is a DECISION, not a number: the decision it grounds would FLIP at a
+plausible different value AND the spec does not record what it was measured over.
+List that with `DECISION: yes`.
+
 Do NOT count anything already listed under the spec's `## Open Decisions` heading,
 or any spec section named in an Open Decision's **Governs** line — those are known
 and deliberately escalated to the user; treat them as resolved for the purposes of
@@ -678,6 +721,7 @@ Derive deterministically (do not paraphrase from memory):
 - **Stop on identity, not on a flat count.** Each round's exit verdict is appended to `CHANGELOG` as an `[exit]` entry (compaction-proof, no second state file), carrying `DIRTY n CARRIED k TRUNCATED x`. The stall trigger is `CARRIED >= 2` for three consecutive rounds: two or more items routed to a resolver and still standing means the loop cannot resolve them, and more rounds of the same shape will not. A steady `n` is NOT that — on a large spec each round closes some items and reaches others the last pass had no room for, so a flat count is the normal shape of progress, and the exam's `TRUNCATED` flag is there because a capped list read as a falling count is how the loop would otherwise convince itself it was converging. `--force-continue` overrides the trigger when the user has looked and disagrees.
 - **Read once, branch (via digest).** The cited code is read a single time into `CODE-DIGEST.md`; every reviewer / decide / exit-exam agent reads that small digest instead of re-navigating the codebase (a ~5–10× cost lever). Agents fall back to opening a specific file only when the digest is silent. A genuine fork/shared-context primitive is not available on the Agent path, so the digest is the mechanism. The digest is **facts-only** — never enrich it with run-specific framing (e.g. "escalate this"), which would nudge re-escalation when it is reused across re-runs.
 - **Digest silence is not a fact about the code.** The digest is a partial read of the cited surface, so it must declare its gaps under `## Not deep-read`, and no agent may conclude from its silence that a cited function / column / table / file does not exist — that claim needs the file opened. Two rules enforce it where it bites: a fix that deletes, renames or re-points a code citation is `Decision: yes` (it is a factual claim, not a wording change, so it reaches an agent allowed to look), and the applier refuses such a fix if it arrives labelled mechanical. Without them a "mechanical" one-word rename can delete a real function from the spec and substitute a similarly-named one that reads a different table — measured, and it survived three further rounds because nothing routed the exit exam's catch.
+- **Measurements are evidence; design parameters are functionality.** A spec's numbers split in two, and only one half is the loop's business. A **design parameter** is a value the spec *chooses* — a threshold, window, limit, retry count, the input set the work is defined over; it *is* what gets built, so exactness and cross-document consistency stay fully load-bearing and nothing here softens them. A **measurement** is a value the spec *observed* about the data at some past moment — `104 of 162`, `2,174 pairs`, a row total; it is evidence *for* a decision, and what carries weight is its magnitude against the threshold that drove that decision, never its digits. The loop has no oracle for the second kind: `DIGEST` is code facts, and a measurement comes from data, so no agent in the loop can re-derive one. That asymmetry is why the split has to be written into the prompts rather than left to judgment. Three mechanisms were otherwise pulling hard toward the digits — the reviewer's `(1) internal contradictions` / `(5) examples that don't match the text` make a drifted restatement the cheapest finding in the document; and the exit exam's substantive bar admitted a wrong count, so an item *nothing in the loop can resolve* entered `EXIT_CARRY`, got routed back to a resolver every round, and accumulated `CARRIED` — manufacturing the exact stall signature the stall check exists to detect. So: the reviewer emits **one** `Decision: no` finding per over-stated measurement (state it once at magnitude, with provenance — what it was measured over and roughly when — and delete the restatements), never one contradiction per disagreeing site; and the exit exam does not count measurement imprecision at all. The single substantive case is a *decision*, not a number: the choice a measurement grounds would flip at a plausible different value and the spec never recorded what it was taken over — that is an unvalidated assumption for the user, not arithmetic to go redo. Provenance is what keeps the softened form falsifiable: "~2/3 of the universe, measured 2026-06 over ~160 tickers" can still be checked and dates itself; a bare `104 of 162` cannot.
 - **Flat context — the orchestrator is a router.** The main loop never reads or edits `WORKING`; each round it hands subagents file paths and reads back one-line summaries, so the spec text, the findings, and the proposed edits never enter the main context (they flow agent → `SCRATCH`/`WORKING` → agent). Decide-agents *propose* — each writes one `handoff-decide-<cluster>.md`, none touches the spec; a single **applier** subagent is the sole writer, the sole allocator of identifiers, and also drives the deterministic floor. This is the sibling cost lever to the digest: the digest keeps *code* out of every agent's context; the router keeps *spec churn* out of the orchestrator's — together they let a 20-round run stay well under the context ceiling instead of degrading after 3–4 rounds.
 - **Model tiers.** Digest-reader + reviewer + **applier** = **Sonnet** (heavy readers / mechanical transcription; a reviewer miss or a mis-placed edit is self-correcting across rounds — and the applier writes edit *text authored verbatim by the Opus decide-agents*, so it exercises no design judgment of its own: allocating a number is highest-plus-one, and its one refusal rule — two takes editing the same anchor incompatibly — resolves to *defer both*, never to pick). Decide-agent + exit-exam + reconcile + briefing writer = **Opus** (sharp judgment / user-facing prose; a bad auto-take is written into the spec and a false-CLEAN ends the loop — neither is self-correcting).
 - **Decisions are working-quality during the loop; polished only at the hand-off.** Decide-agents write functional decisions (accuracy over prose); the reviewer and exit exam read the code and don't need polish. A single **briefing writer** produces the product-altitude prose once, when the run surfaces to the user (convergence or round cap) — keeping the per-round path lean and prose-writing out of the main loop's context. The concept's own `### Dn:` decision text stays implementer-facing, per the template.
