@@ -60,6 +60,38 @@ _PGPASS_FILE_PATTERNS = [
     (re.compile(r"(^|/)\.pgpass$"), "PostgreSQL password file"),
 ]
 
+# ── git config ──────────────────────────────────────────────────────────────
+# `git config` needs more than one pattern's worth of care: scope and format
+# options sit between the subcommand and the operands, a key with no value is
+# a read, and both spellings of the command are in the wild (`git config
+# --unset x` and the newer `git config unset x`). Matching write intent
+# directly beats listing read flags to exempt — the old exemption list ended
+# in a bare `--`, which quietly spared every long option including
+# `git config --global user.name "x"`.
+
+# Options that may precede the operands. Consumed so they can't hide a write.
+# The four that take a value swallow it too, whether attached or separate.
+_GIT_CONFIG_OPTS = (
+    r"(?:\s+(?:--(?:global|local|system|worktree|includes|no-includes|null"
+    r"|name-only|show-origin|show-scope|fixed-value)"
+    r"|--(?:file|blob|type|default)(?:=\S+|\s+\S+)"
+    r"|-f\s+\S+|-z))*"
+)
+
+# A write is a mutating flag, a mutating subcommand, or a key with a value
+# after it. The value cannot be a redirect or a shell terminator — those end
+# the command, leaving a bare-key read.
+_GIT_CONFIG_WRITE = (
+    r"\bgit\s+config(?!\s+(?:get|list)\b)"
+    + _GIT_CONFIG_OPTS
+    + r"\s+(?:"
+    r"--(?:add|unset|unset-all|replace-all|rename-section|remove-section|edit)\b"
+    r"|-e\b"
+    r"|(?:set|unset|edit|rename-section|remove-section)\b"
+    r"|[\w.][\w.-]*[ \t]+[^\s)`;&|<>]"
+    r")"
+)
+
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
@@ -82,7 +114,7 @@ CATEGORIES = {
         (r"\bgit\s+push\s+\S+\s+:", "remote branch deletion (colon syntax)"),
         (r"\bgit\s+push\s+.*--tags\b", "pushing tags"),
         (r"\bgit\s+remote\s+(add|remove|rm|set-url)\b", "remote management"),
-        (r"\bgit\s+config\s+(?!--get\b|--list\b|-l\b|--)", "git config write"),
+        (_GIT_CONFIG_WRITE, "git config write"),
         (r"\bgit\s+submodule\s+(add|deinit)\b", "submodule management"),
     ],
     "GitHub CLI": [

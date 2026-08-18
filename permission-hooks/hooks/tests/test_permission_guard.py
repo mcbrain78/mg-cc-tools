@@ -195,11 +195,52 @@ class TestGitDestructiveRemote:
 
     def test_block_config_write(self):
         assert_blocked("git config user.name 'John'", self.CAT)
+        assert_blocked("git config user.email me@example.com", self.CAT)
+
+    def test_block_config_write_behind_options(self):
+        # Scope and format options must not hide the write behind them.
+        assert_blocked('git config --global user.name "John"', self.CAT)
+        assert_blocked("git config --local user.email me@example.com", self.CAT)
+        assert_blocked("git config --type=bool core.bare true", self.CAT)
+        assert_blocked("git config --file cfg user.name John", self.CAT)
+
+    def test_block_config_mutating_flags(self):
+        assert_blocked("git config --add core.gitproxy proxy", self.CAT)
+        assert_blocked("git config --unset user.name", self.CAT)
+        assert_blocked("git config --unset-all user.name", self.CAT)
+        assert_blocked("git config --replace-all user.name John", self.CAT)
+        assert_blocked("git config --remove-section core", self.CAT)
+        assert_blocked("git config --global --unset user.name", self.CAT)
+        assert_blocked("git config --edit", self.CAT)
+        assert_blocked("git config -e", self.CAT)
+
+    def test_block_config_write_subcommands(self):
+        # git 2.46+ spelling: `git config set|unset|edit`.
+        assert_blocked("git config set user.name John", self.CAT)
+        assert_blocked("git config unset user.name", self.CAT)
+        assert_blocked("git config edit", self.CAT)
 
     def test_allow_config_read(self):
         assert_allowed("git config --get user.name")
         assert_allowed("git config --list")
         assert_allowed("git config -l")
+        assert_allowed("git config --get-regexp '^user'")
+        assert_allowed("git config --global --get user.name")
+        assert_allowed("git config --file cfg --list")
+        # git 2.46+ spelling: `git config get|list`.
+        assert_allowed("git config get user.name")
+        assert_allowed("git config list")
+
+    def test_allow_bare_key_read(self):
+        # A key with no value is a read, whatever terminates it.
+        assert_allowed("git config user.name")
+        assert_allowed('git log --author="$(git config user.name)" -8')
+        assert_allowed("git config user.email; echo done")
+        assert_allowed("git config user.email | tr -d '\\n'")
+        assert_allowed("git config user.email && echo ok")
+        assert_allowed("git config user.name\necho done")
+        assert_allowed("git config --global user.name")
+        assert_allowed("git config user.name > /tmp/name.txt")
 
     def test_block_submodule_add(self):
         assert_blocked("git submodule add url", self.CAT)
