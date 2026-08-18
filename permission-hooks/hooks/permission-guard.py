@@ -46,6 +46,20 @@ _ENV_FILE_PATTERNS = [
     (re.compile(r"(^|/)\.env(?!\.example|\.template|\.sample|\.test)(\b|$)"), ".env file"),
 ]
 
+# PostgreSQL password file. Disabled by default for the same reason as
+# ENV_PROTECTION: reading ~/.pgpass — and inspecting its mtime, which the
+# path-based scan cannot tell apart from a read — is routine work in this
+# setup, so the ask-per-call cost outweighs the guard. Flip to True and
+# reinstall to restore it. Writes are unaffected: a redirect into ~/.pgpass
+# still asks via the out-of-project home-directory guard. SSH keys, .netrc,
+# .my.cnf and the rest of SENSITIVE_FILE_PATTERNS stay gated. The tests gate
+# on this same constant.
+PGPASS_PROTECTION = False
+
+_PGPASS_FILE_PATTERNS = [
+    (re.compile(r"(^|/)\.pgpass$"), "PostgreSQL password file"),
+]
+
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
@@ -675,7 +689,7 @@ SENSITIVE_FILE_PATTERNS = [
     (re.compile(r"(^|/)id_(rsa|ed25519|ecdsa|dsa)(\.pub)?$"), "SSH key"),
     (re.compile(r"(^|/)credentials(\.json)?$"), "credentials file"),
     (re.compile(r"(^|/)\.git-credentials$"), "git credentials"),
-    (re.compile(r"(^|/)\.pgpass$"), "PostgreSQL password file"),
+    *(_PGPASS_FILE_PATTERNS if PGPASS_PROTECTION else []),
     (re.compile(r"(^|/)\.my\.cnf$"), "MySQL config (may contain passwords)"),
     (re.compile(r"(^|/)\.docker/config\.json$"), "Docker registry credentials"),
     (re.compile(r"(^|/)\.htpasswd$"), "web server password file"),

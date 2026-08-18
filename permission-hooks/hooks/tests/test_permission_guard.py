@@ -35,6 +35,16 @@ requires_env_protection = pytest.mark.skipif(
     not guard.ENV_PROTECTION, reason="ENV_PROTECTION disabled"
 )
 
+# ~/.pgpass ships unguarded; see PGPASS_PROTECTION in the hook. Same deal as
+# above: the block-tests stay in the suite and come back with one flag flip.
+requires_pgpass_protection = pytest.mark.skipif(
+    not guard.PGPASS_PROTECTION, reason="PGPASS_PROTECTION disabled"
+)
+
+skip_if_pgpass_protection = pytest.mark.skipif(
+    guard.PGPASS_PROTECTION, reason="PGPASS_PROTECTION enabled"
+)
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -371,8 +381,23 @@ class TestSecretsCredentials:
 
     # ── New sensitive file patterns ─────────────────────────────────────
 
+    @requires_pgpass_protection
     def test_block_pgpass(self):
         assert_bash_blocked("cat .pgpass")
+
+    @skip_if_pgpass_protection
+    def test_allow_pgpass(self):
+        """pgpass access is deliberately ungated — reads and metadata alike."""
+        assert_bash_allowed("cat ~/.pgpass")
+        assert_bash_allowed("stat -c %y ~/.pgpass")
+
+    @skip_if_pgpass_protection
+    def test_pgpass_exemption_does_not_reach_ssh_keys(self):
+        """Dropping pgpass must leave every other credential file gated."""
+        assert_bash_blocked("cat ~/.ssh/id_rsa")
+        assert_bash_blocked("stat -c %y /home/user/.ssh/id_rsa")
+        assert_bash_blocked("cat ~/.my.cnf")
+        assert_bash_blocked("cat .netrc")
 
     def test_block_my_cnf(self):
         assert_bash_blocked("cat .my.cnf")
@@ -1029,8 +1054,13 @@ class TestSensitiveFilePaths:
     def test_allow_readme(self):
         assert check_file_path("/home/user/project/README.md") is None
 
+    @requires_pgpass_protection
     def test_block_pgpass(self):
         assert check_file_path("/home/user/.pgpass") is not None
+
+    @skip_if_pgpass_protection
+    def test_allow_pgpass(self):
+        assert check_file_path("/home/user/.pgpass") is None
 
     def test_block_my_cnf(self):
         assert check_file_path("/home/user/.my.cnf") is not None
