@@ -16,6 +16,7 @@ check_file_path = guard.check_file_path
 check_file_outside_project = guard.check_file_outside_project
 check_outside_project = guard.check_outside_project
 _candidate_write_targets = guard._candidate_write_targets
+_mask_quoted = guard._mask_quoted
 _is_safe_rm = guard._is_safe_rm
 _strip_heredocs = guard._strip_heredocs
 check_exit_code_masking = guard.check_exit_code_masking
@@ -820,6 +821,66 @@ class TestOutsideProject:
         )
         assert result is None
 
+    # ── Quoted shell punctuation ─────────────────────────────────────────
+    # A `>` or a file-modifying command inside a string literal is data, not
+    # shell syntax, and must not open the write gate.
+
+    def test_allow_sed_range_over_xml_tags(self):
+        """The reported false positive: the `>` closing an XML tag in a sed
+        range pattern was parsed as a redirect writing to '/,/'."""
+        result = check_outside_project(
+            r"""sed -n '/<objective>/,/<\/objective>/p' .planning/phases/40-x/PLAN.md""",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_allow_file_cmd_word_inside_quoted_text(self):
+        """'rm' inside a commit message is not a command being run."""
+        result = check_outside_project(
+            'git commit -m "rm /etc/foo from the installer"', self.PROJECT
+        )
+        assert result is None
+
+    def test_allow_quoted_separator_does_not_split_segments(self):
+        """A ';' inside quotes must not create a segment that looks like a
+        file-modifying command."""
+        result = check_outside_project(
+            'grep "a; cp /etc/shadow" notes.txt', self.PROJECT
+        )
+        assert result is None
+
+    def test_block_quoted_redirect_target_with_space(self):
+        """Masking must not lose a genuinely quoted write target."""
+        result = check_outside_project(
+            'echo data > "/etc/my dir/evil.conf"', self.PROJECT
+        )
+        assert result is not None
+        assert "/etc/my dir/evil.conf" in result[1]
+
+    def test_block_quoted_file_cmd_arg_with_space(self):
+        """A quoted rm target containing a space resolves to the full path."""
+        result = check_outside_project(
+            'rm "/etc/my dir/x"', self.PROJECT
+        )
+        assert result is not None
+        assert "/etc/my dir/x" in result[1]
+
+    def test_block_redirect_inside_nested_shell(self):
+        """bash -c quotes a command, not data — its redirect is still caught."""
+        result = check_outside_project(
+            'bash -c "cat x > /etc/passwd"', self.PROJECT
+        )
+        assert result is not None
+        assert "/etc/passwd" in result[1]
+
+    def test_block_file_cmd_inside_nested_shell(self):
+        """Same for a file-modifying command inside a nested shell."""
+        result = check_outside_project(
+            "bash -c 'rm /etc/foo'", self.PROJECT
+        )
+        assert result is not None
+        assert "/etc/foo" in result[1]
+
 
 class TestCandidateWriteTargets:
     """Unit tests for the write-target extractor."""
@@ -858,6 +919,51 @@ class TestCandidateWriteTargets:
         ))
         assert "/etc/b" in targets
         assert "/etc/c" not in targets
+
+    def test_quoted_angle_bracket_is_not_a_redirect(self):
+        # The `>` inside a quoted XML tag yields no target at all.
+        assert list(_candidate_write_targets(
+            r"""sed -n '/<objective>/,/<\/objective>/p' PLAN.md"""
+        )) == []
+
+    def test_quoted_redirect_target_kept_whole(self):
+        # A quoted target keeps its spaces instead of being split on them.
+        assert list(_candidate_write_targets('echo x > "/tmp/my file"')) == [
+            '"/tmp/my file"'
+        ]
+
+    def test_nested_shell_scanned_raw(self):
+        # bash -c quotes a command: masking is skipped so its redirect target
+        # is still extracted.
+        targets = list(_candidate_write_targets('bash -c "cat x > /etc/passwd"'))
+        assert any("/etc/passwd" in t for t in targets)
+
+
+class TestMaskQuoted:
+    """Unit tests for quote masking."""
+
+    def test_single_quoted_span_masked(self):
+        assert _mask_quoted("sed 'a>b' f") == "sed 'xxx' f"
+
+    def test_double_quoted_span_masked(self):
+        assert _mask_quoted('echo "a>b" f') == 'echo "xxx" f'
+
+    def test_unquoted_text_untouched(self):
+        assert _mask_quoted("echo a > /etc/x") == "echo a > /etc/x"
+
+    def test_offsets_preserved(self):
+        cmd = 'grep "rm /etc/x" log > out'
+        assert len(_mask_quoted(cmd)) == len(cmd)
+
+    def test_escaped_quote_inside_double_quotes(self):
+        # \" does not close the span, so the trailing > stays masked.
+        assert _mask_quoted('x "a\\"b>c" y') == 'x "xxxxxx" y'
+
+    def test_apostrophe_inside_double_quotes(self):
+        assert _mask_quoted('echo "it\'s" > out') == 'echo "xxxx" > out'
+
+    def test_unterminated_quote_masks_to_end(self):
+        assert _mask_quoted("echo 'abc") == "echo 'xxx"
 
 
 # ── Sensitive file path guard (Read/Edit/Write) ─────────────────────────────

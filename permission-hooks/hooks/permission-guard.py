@@ -562,6 +562,60 @@ def _strip_heredocs(command):
     return _HEREDOC_RE.sub("", command)
 
 
+# Quote masking — the contents of quoted spans are replaced by this filler so
+# shell punctuation inside a string literal (a `>` closing an XML tag in a sed
+# pattern, an `rm` inside a commit message) is not read as shell syntax.
+_MASK_CHAR = "x"
+
+# Nested shell invocations: the quoted argument IS a command, so masking it
+# would hide a real redirect or a real rm target. Those commands are scanned
+# raw instead — a spurious prompt beats a missed out-of-project write.
+_SHELL_INVOKER_RE = re.compile(
+    r"\b(?:bash|sh|zsh|ksh|dash)\s+(?:-\w+\s+)*-\w*c\b"  # bash -c, sh -lc, …
+    r"|\beval\b"
+    r"|\bxargs\b"
+    r"|\bssh\b"
+)
+
+# Shell segment (split points: newline ; | &) and whitespace-delimited token,
+# both applied to the masked command so quoted separators don't split.
+_SEGMENT_RE = re.compile(r"[^\n;|&]+")
+_TOKEN_RE = re.compile(r"\S+")
+
+
+def _mask_quoted(command):
+    """Return *command* with the contents of quoted spans replaced by filler.
+
+    Length and character offsets are preserved, so a match found in the masked
+    string can be sliced straight out of the original. The quote characters
+    themselves are kept — only what they enclose is masked, which is enough to
+    stop a quoted `>` from reading as a redirect while a genuinely quoted
+    write target (``> "/tmp/my file"``) still resolves to its real path.
+
+    Backslash escapes are honoured outside single quotes; an unterminated
+    quote masks to the end of the string, as the shell would keep reading.
+    """
+    out = list(command)
+    i, n = 0, len(command)
+    while i < n:
+        char = command[i]
+        if char == "\\":
+            i += 2  # escaped char outside quotes — nothing to mask
+            continue
+        if char in "'\"":
+            i += 1
+            while i < n and command[i] != char:
+                # Inside double quotes a backslash escapes the next char, so
+                # \" does not close the span.
+                width = 2 if (char == '"' and command[i] == "\\") else 1
+                out[i:i + width] = _MASK_CHAR * min(width, n - i)
+                i += width
+            i += 1  # skip the closing quote (or run past the end)
+            continue
+        i += 1
+    return "".join(out)
+
+
 # ── LLM evaluator constants ─────────────────────────────────────────────────
 HAIKU_TIMEOUT_S = 12
 HAIKU_MODEL = "haiku"
@@ -754,15 +808,25 @@ def _candidate_write_targets(command):
          scanned per shell-segment (split on ``; | & newline``) so only the
          segment that actually runs the command is examined — a path-pattern
          sitting in an unrelated segment is never treated as a write target.
+
+    Both sources match against the quote-masked command: shell punctuation
+    inside a string literal is not shell syntax, so ``sed '/<tag>/,/<\\/tag>/p'``
+    yields no redirect and ``git commit -m "rm /etc/x"`` runs no rm. Every
+    token is sliced back out of the original command by offset, so a quoted
+    write target keeps its real text (spaces included).
     """
+    masked = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
+
     # 1. Redirect targets (scanned across the whole command)
-    for match in _REDIRECT_TARGET_RE.finditer(command):
-        yield match.group(1)
+    for match in _REDIRECT_TARGET_RE.finditer(masked):
+        yield command[match.start(1):match.end(1)]
 
     # 2. File-modifying command arguments (per segment)
-    for segment in re.split(r'[\n;|&]+', command):
-        if FILE_MODIFYING_CMDS.search(segment):
-            yield from segment.split()
+    for segment in _SEGMENT_RE.finditer(masked):
+        if FILE_MODIFYING_CMDS.search(segment.group()):
+            for token in _TOKEN_RE.finditer(segment.group()):
+                start = segment.start() + token.start()
+                yield command[start:start + len(token.group())]
 
 
 def check_outside_project(command, project_root):
