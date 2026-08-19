@@ -21,7 +21,7 @@
     },
     "permission-hooks": {
       "version": "0.1.0",
-      "installed_at": "2026-08-18T13:24:00.811756+00:00",
+      "installed_at": "2026-08-19T07:36:21.868305+00:00",
       "commands": [
         "auto-approve-session.md",
         "auto-approve.md",
@@ -33,7 +33,7 @@
         "commands/auto-approve.md": "sha256:920e86c66a2cd82e090d60fbf88ae72838a5e9dae23277f0e5e94384737db690",
         "commands/edit-off.md": "sha256:3c8a32c155245e381a11c4dce3d0e3b2cb7e6a11b828a5a4312c15f4c0df478f",
         "commands/edit-on.md": "sha256:7c0b5717cb3cc4f66be36036092de1b690da09a46b2f2ec2fb5797b5c53958a3",
-        "hooks/permission-guard.py": "sha256:cccb1c0150a83781a4e60278a55cccdcde5afdea65df892a39ca53aab35830b4",
+        "hooks/permission-guard.py": "sha256:9a3758891ebab109d8a5b03d06ed9e24f0af9c6f403aab64de5d6d7c96b9a29e",
         "install.sh": "sha256:3e4119eacc72cf2a4ba992defe16ab9c3a7ee78bd77be7e3ac388f01bf15b4cb",
         "post-install.md": "sha256:f4403470bd2a2cc43714cd83f1960c4b8111dbf050d3e2afd9e43ea6214d4de8",
         "scripts/auto-approve-session.py": "sha256:f95670419c616da78fc56282e3b44fd6ae7a4dbfd9b763e4bee725802b9481d4",
@@ -230,6 +230,6 @@
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
-  "last_updated": "2026-08-18T13:24:00.808922+00:00",
+  "last_updated": "2026-08-19T07:36:21.865466+00:00",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools"
 }

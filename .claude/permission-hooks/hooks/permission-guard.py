@@ -60,6 +60,91 @@ _PGPASS_FILE_PATTERNS = [
     (re.compile(r"(^|/)\.pgpass$"), "PostgreSQL password file"),
 ]
 
+# ── git config ──────────────────────────────────────────────────────────────
+# `git config` needs more than one pattern's worth of care: scope and format
+# options sit between the subcommand and the operands, a key with no value is
+# a read, and both spellings of the command are in the wild (`git config
+# --unset x` and the newer `git config unset x`). Matching write intent
+# directly beats listing read flags to exempt — the old exemption list ended
+# in a bare `--`, which quietly spared every long option including
+# `git config --global user.name "x"`.
+
+# Options that may precede the operands. Consumed so they can't hide a write.
+# The four that take a value swallow it too, whether attached or separate.
+_GIT_CONFIG_OPTS = (
+    r"(?:\s+(?:--(?:global|local|system|worktree|includes|no-includes|null"
+    r"|name-only|show-origin|show-scope|fixed-value)"
+    r"|--(?:file|blob|type|default)(?:=\S+|\s+\S+)"
+    r"|-f\s+\S+|-z))*"
+)
+
+# A write is a mutating flag, a mutating subcommand, or a key with a value
+# after it. The value cannot be a redirect or a shell terminator — those end
+# the command, leaving a bare-key read. The key must carry its section dot:
+# git rejects a write to a sectionless key ("key does not contain a section"),
+# and the rules scan the raw command string, so an undotted key would flag
+# ordinary prose containing the words — `echo "=== git config rule ==="`. The
+# middle of the key stays permissive for URL subsections
+# (`url.https://github.com/.insteadOf`) but must end on a key character, so a
+# trailing-dot abbreviation ("git config e.g. foo") is not a write either.
+_GIT_CONFIG_WRITE = (
+    r"\bgit\s+config(?!\s+(?:get|list)\b)"
+    + _GIT_CONFIG_OPTS
+    + r"\s+(?:"
+    r"--(?:add|unset|unset-all|replace-all|rename-section|remove-section|edit)\b"
+    r"|-e\b"
+    r"|(?:set|unset|edit|rename-section|remove-section)\b"
+    r"|[\w-]+\.\S*[\w-][ \t]+[^\s)`;&|<>]"
+    r")"
+)
+
+# ── Command position ────────────────────────────────────────────────────────
+# Words like "service", "kill" and "systemctl" are common in prose, paths and
+# regex alternations, and these rules scan the command string with heredocs
+# stripped but quotes intact. Anchoring such a word to command position — start
+# of the string, or after a shell separator — is what keeps the text cases
+# quiet. `\n` belongs in the separator class because a multi-line Bash command
+# is a script: without it only its first line is guarded.
+_CMD_POS = r"(?:^|[;&\n]\s*)"
+
+# Same, plus after a pipe. Only for commands that are never a word you would
+# meet in text, so "| dd" can be read as syntax rather than as data.
+_CMD_POS_PIPE = r"(?:^|[;&|\n]\s*)"
+
+# ── systemctl ───────────────────────────────────────────────────────────────
+# systemctl is mostly introspection: is-enabled, list-timers, show and friends
+# report state and exit. Exempting the single literal `status` asked on every
+# one of those, and any global option before the subcommand (`systemctl --user
+# status foo`) defeated the exemption altogether.
+#
+# The read set is small and closed; the write set grows with systemd (freeze,
+# thaw, mount-image, …). So name the reads and flag the rest — that keeps a
+# subcommand systemd adds tomorrow on the asking side.
+
+# Global options that may sit between `systemctl` and the subcommand. The short
+# options that take a separate value swallow it, so the `service` in
+# `systemctl -t service list-units` can't be mistaken for a subcommand.
+_SYSTEMCTL_OPTS = r"(?:\s+(?:-[HMtpnosP]\s+\S+|--[\w-]+=\S+|--[\w-]+|-[A-Za-z]+))*"
+
+_SYSTEMCTL_READ = (
+    r"(?:status|show|show-environment|cat|help|get-default"
+    r"|is-active|is-enabled|is-failed|is-system-running"
+    r"|list-(?:units|unit-files|sockets|timers|jobs|dependencies|machines"
+    r"|paths|automounts))(?![\w-])"
+)
+
+# Two negative lookaheads, not one match-the-write pattern: a greedy option
+# group followed by a positive match backtracks until the option itself is
+# taken for the subcommand, which is how `--user status` would get flagged. A
+# lookahead that fails has nothing to backtrack into.
+_SYSTEMCTL_WRITE = (
+    _CMD_POS
+    + r"systemctl(?![\w-])"
+    # Bare `systemctl [options]`, redirected or not, just lists units.
+    + r"(?!" + _SYSTEMCTL_OPTS + r"\s*(?:$|[)\n;&|]|\d*[<>]))"
+    + r"(?!" + _SYSTEMCTL_OPTS + r"\s+" + _SYSTEMCTL_READ + r")"
+)
+
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
@@ -82,7 +167,7 @@ CATEGORIES = {
         (r"\bgit\s+push\s+\S+\s+:", "remote branch deletion (colon syntax)"),
         (r"\bgit\s+push\s+.*--tags\b", "pushing tags"),
         (r"\bgit\s+remote\s+(add|remove|rm|set-url)\b", "remote management"),
-        (r"\bgit\s+config\s+(?!--get\b|--list\b|-l\b|--)", "git config write"),
+        (_GIT_CONFIG_WRITE, "git config write"),
         (r"\bgit\s+submodule\s+(add|deinit)\b", "submodule management"),
     ],
     "GitHub CLI": [
@@ -105,9 +190,9 @@ CATEGORIES = {
     "Destructive Filesystem": [
         (r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
         (r"\b(chmod|chown)\b", "permission/ownership change"),
-        (r"(?:^|[;&|]\s*)ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
+        (_CMD_POS_PIPE + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
-        (r"(?:^|[;&|]\s*)dd\s", "raw disk operations"),
+        (_CMD_POS_PIPE + r"dd\s", "raw disk operations"),
     ],
     "Secrets & Credentials": [
         *(_ENV_RULES if ENV_PROTECTION else []),
@@ -119,18 +204,18 @@ CATEGORIES = {
         (r"\bsudo\b", "sudo"),
         (r"\b(apt|apt-get|brew|yum|dnf|pacman|apk)\s+(install|remove|purge|uninstall)\b", "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
-        (r"\bsystemctl\s+(?!status\b)", "systemctl (not status)"),
-        # Command-position only (start of command or after ; / & / &&), and must
-        # take an argument. NOT after a pipe: you never pipe into service/launchctl,
-        # but "|service" is common in TEXT (regex alternations, markdown tables) and
-        # the guard scans the raw command string, quotes/heredocs included.
-        (r"(?:^|[;&]\s*)(launchctl|service)\s+\S", "service manager"),
+        (_SYSTEMCTL_WRITE, "systemctl (not a read subcommand)"),
+        # Command-position only (see _CMD_POS), and must take an argument. NOT
+        # after a pipe: you never pipe into service/launchctl, but "|service" is
+        # common in TEXT (regex alternations, markdown tables) and the guard
+        # scans the raw command string with quotes intact.
+        (_CMD_POS + r"(launchctl|service)\s+\S", "service manager"),
         # Same command-position + argument anchoring as the service rule above:
         # these words are common in prose/paths ("kill the test", /etc/passwd,
         # "iptables rules"), so only flag them as an actual command invocation.
-        (r"(?:^|[;&]\s*)(useradd|userdel|usermod|passwd)\s+\S", "user management"),
-        (r"(?:^|[;&]\s*)(iptables|ufw)\s+\S", "firewall management"),
-        (r"(?:^|[;&]\s*)(kill|killall)\s+\S", "process termination"),
+        (_CMD_POS + r"(useradd|userdel|usermod|passwd)\s+\S", "user management"),
+        (_CMD_POS + r"(iptables|ufw)\s+\S", "firewall management"),
+        (_CMD_POS + r"(kill|killall)\s+\S", "process termination"),
     ],
 }
 
@@ -894,21 +979,75 @@ def check_outside_project(command, project_root):
 
 
 # ── Exit code masking detection ─────────────────────────────────────────────
-# Piping pytest output to tail/head/grep etc. masks the exit code.
-_PYTEST_PIPE_RE = re.compile(r"\bpytest\b.*\|")
+# A pipeline reports the status of its LAST stage, so `pytest | head` exits 0
+# however many tests failed. What makes that worth a deny is not the lost number
+# but the false green: the run is reported as passing. So the rule is scoped to
+# pipes that drop the output which would have shown the failure, in the pipeline
+# the pytest run actually belongs to.
+
+# Sinks that pass the stream through whole. The failure summary still reaches
+# the transcript, so the lost status hides nothing.
+_PASSTHROUGH_SINK = r"(?:tee|cat|less|more|bat)"
+
+# Commands whose arguments are patterns or paths rather than code to run:
+# `grep -rn pytest CLAUDE.md | head` searches for the word, it does not run
+# tests. Anchored to the head of a stage, the same command-position reasoning
+# as _CMD_POS, applied one pipeline stage at a time.
+_TEXT_TOOL = (
+    r"(?:grep|egrep|fgrep|rg|ag|ack|sed|awk|echo|printf|ls|find|cat|head|tail"
+    r"|git|jq|wc|sort|uniq|column|man)"
+)
+
+# Status kept by hand: `pipefail` makes $? the first failing stage, PIPESTATUS
+# reads the producer's status directly. A bare `echo $?` after a pipe is NOT an
+# escape — it reports the sink's status, which is the bug itself.
+_PIPESTATUS_RE = re.compile(r"\bpipefail\b|\bPIPESTATUS\b")
+
+# Pipeline boundaries. `||` and `&&` are consumed before the single-character
+# class so a lone `|` survives — it is the operator this rule is looking for.
+# The `&` of a redirect (`2>&1`, `&>log`) is not a separator; splitting there
+# would cut the producer off from its own pipe.
+_PIPELINE_SPLIT_RE = re.compile(r"\|\||&&|[;\n]|(?<![>&])&(?![>&])")
+
+_PYTEST_WORD_RE = re.compile(r"\bpytest\b")
+# A leading assignment prefix (`FOO=1 pytest`) belongs to the command that
+# follows it, so step over it before reading the stage's command word.
+_ASSIGN_PREFIX = r"^\s*(?:\w+=\S+\s+)*"
+_LEADING_TEXT_TOOL_RE = re.compile(_ASSIGN_PREFIX + _TEXT_TOOL + r"\b")
+_PASSTHROUGH_SINK_RE = re.compile(_ASSIGN_PREFIX + _PASSTHROUGH_SINK + r"\b")
 
 
 def check_exit_code_masking(command):
-    """Check if command pipes pytest output, masking exit codes.
+    """Check if a pytest run's output is piped into a stage that hides failures.
 
     Returns a reason string or None.
     """
     command = _strip_heredocs(command)
-    if _PYTEST_PIPE_RE.search(command):
-        return (
-            "Exit code masking — use instead: "
-            "pytest --tb=short -q --no-header"
-        )
+    # Quoted text is data: a commit message about this rule is not a test run.
+    # Nested shell invocations are the exception — there the quoted string IS
+    # the command, so scan it raw (same trade as check_write_targets).
+    if not _SHELL_INVOKER_RE.search(command):
+        command = _mask_quoted(command)
+
+    if _PIPESTATUS_RE.search(command):
+        return None
+
+    for pipeline in _PIPELINE_SPLIT_RE.split(command):
+        stages = pipeline.split("|")
+        # The last stage's status is the pipeline's own, so only a pytest with
+        # a pipe downstream of it loses anything.
+        for index, stage in enumerate(stages[:-1]):
+            if not _PYTEST_WORD_RE.search(stage):
+                continue
+            if _LEADING_TEXT_TOOL_RE.search(stage):
+                continue  # the word is an argument, not an invocation
+            downstream = stages[index + 1:]
+            if all(_PASSTHROUGH_SINK_RE.search(s) for s in downstream):
+                continue  # nothing dropped, so nothing hidden
+            return (
+                "Exit code masking — use instead: "
+                "pytest --tb=short -q --no-header"
+            )
     return None
 
 
