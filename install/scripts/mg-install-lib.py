@@ -559,6 +559,91 @@ def update_manifest(target_dir, tool_name, source_tool_dir):
 
 
 # ============================================================
+# Subcommand: set-standard-overrides
+# ============================================================
+
+
+def set_standard_overrides(source_dir, target_dir, toggle_names):
+    """Flip the standard-install flag for the named tools and persist the result.
+
+    Takes the tools to TOGGLE, not the override map to store. The command file
+    previously computed the map itself and pasted it in as a JSON literal, which
+    put three separable jobs in the prompt: knowing each tool's tool.toml default,
+    inverting the effective value, and dropping overrides that had returned to the
+    default. Only the third is even stated in the instructions, so an override
+    equal to the default was stored routinely -- harmless but permanent noise, and
+    it meant the file no longer distinguished "the user chose this" from "this is
+    just the default".
+
+    An override is stored only when it disagrees with the tool.toml default, and
+    removed when it agrees again, so the manifest records decisions rather than
+    duplicating defaults.
+
+    Excluded tools are rejected: they are out of every bulk operation by
+    definition, so a standard flag on one has no meaning to act on.
+
+    Returns (results, standard_map) where results maps each toggled tool to
+    ("on"|"off", "stored"|"cleared").
+    """
+    available = dict(discover_tools(source_dir))
+    if not available:
+        raise ValueError(f"no tools found under {source_dir}")
+
+    defaults = {}
+    excluded = set()
+    for name, tool_dir in available.items():
+        toml_data = read_tool_toml(tool_dir)
+        defaults[name] = toml_data["standard"]
+        if toml_data["exclude"]:
+            excluded.add(name)
+
+    unknown = [n for n in toggle_names if n not in available]
+    if unknown:
+        raise ValueError(
+            f"unknown tool(s): {', '.join(sorted(unknown))}\n"
+            f"Known tools: {', '.join(sorted(available))}"
+        )
+    hit_excluded = [n for n in toggle_names if n in excluded]
+    if hit_excluded:
+        raise ValueError(
+            f"tool(s) excluded from bulk operations, cannot be made standard: "
+            f"{', '.join(sorted(hit_excluded))}"
+        )
+
+    manifest_path = os.path.join(target_dir, ".claude", MANIFEST_FILENAME)
+    manifest: dict[str, Any]
+    if os.path.isfile(manifest_path):
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    else:
+        manifest = {"tools": {}, "capabilities": {}}
+
+    # setdefault, not assignment: every other key in the manifest -- tools,
+    # capabilities, version, source_path -- has to survive this write.
+    overrides = manifest.setdefault("standard_overrides", {})
+
+    results = {}
+    for name in toggle_names:
+        effective = overrides.get(name, defaults[name])
+        new_value = not effective
+        if new_value == defaults[name]:
+            overrides.pop(name, None)
+            results[name] = ("on" if new_value else "off", "cleared")
+        else:
+            overrides[name] = new_value
+            results[name] = ("on" if new_value else "off", "stored")
+
+    write_manifest_atomic(manifest_path, manifest)
+
+    standard_map = {
+        name: overrides.get(name, defaults[name])
+        for name in sorted(available)
+        if name not in excluded
+    }
+    return results, standard_map
+
+
+# ============================================================
 # Subcommand: preflight
 # ============================================================
 
@@ -1987,6 +2072,29 @@ def cmd_update_manifest(args):
         sys.exit(2)
 
 
+def cmd_set_standard_overrides(args):
+    """CLI handler for set-standard-overrides."""
+    toggle_names = [t.strip() for t in args.toggle.split(",") if t.strip()]
+    if not toggle_names:
+        sys.stderr.write("set-standard-overrides: --toggle listed no tools\n")
+        sys.exit(2)
+    try:
+        results, standard_map = set_standard_overrides(
+            args.source, args.target, toggle_names
+        )
+    except (ValueError, OSError, json.JSONDecodeError) as e:
+        sys.stderr.write(f"set-standard-overrides: {e}\n")
+        sys.exit(2)
+
+    print(json.dumps({
+        "toggled": {
+            name: {"standard": state == "on", "override": disposition}
+            for name, (state, disposition) in results.items()
+        },
+        "standard": standard_map,
+    }, indent=2))
+
+
 def cmd_preflight(args):
     """CLI handler for preflight."""
     tool_names = [t.strip() for t in args.tools.split(",")]
@@ -2202,6 +2310,19 @@ def main():
                             help="Path to the tool's own source directory (the one "
                                  "holding tool.toml), not the mg-cc-tools root")
     p_manifest.set_defaults(func=cmd_update_manifest)
+
+    # set-standard-overrides
+    p_std = sub.add_parser(
+        "set-standard-overrides",
+        help="Toggle which tools are part of the standard install list",
+    )
+    p_std.add_argument("--source", required=True,
+                       help="Path to mg-cc-tools source directory")
+    p_std.add_argument("--target", required=True,
+                       help="Path to target project directory")
+    p_std.add_argument("--toggle", required=True,
+                       help="Comma-separated tool names to flip on/off")
+    p_std.set_defaults(func=cmd_set_standard_overrides)
 
     # preflight
     p_pre = sub.add_parser(

@@ -159,7 +159,10 @@ If `"tools"` returned, proceed to Step 4. If `"error"`, show it and re-prompt.
 
 ### Edit Standard Install List
 
-1. Show all non-excluded tools with their current standard status:
+1. Show all non-excluded tools with their current standard status. Read the `standard`
+   and `excluded` fields straight from `$TMP/scan-status.json` — scan-status already
+   resolves each tool's effective flag (manifest override over tool.toml default), so
+   do not recompute it:
    ```
    Standard install list for $TARGET_PATH:
 
@@ -172,26 +175,28 @@ If `"tools"` returned, proceed to Step 4. If `"error"`, show it and re-prompt.
    Type tool names to toggle, or 'done' to save:
    ```
 
-2. The user types tool names (comma-separated) to toggle on/off. Repeat until "done".
-
-3. Save changes to the manifest's `standard_overrides` section (only overrides differing from tool.toml default):
+2. The user types tool names (comma-separated) to toggle on/off. Pass them through
+   verbatim — the script owns defaults, inversion, and which overrides are worth
+   storing:
    ```bash
-   python3 -c "
-   import json, os
-   manifest_path = os.path.join('$TARGET_PATH', '.claude', 'mg-cc-tools.manifest.json')
-   if os.path.isfile(manifest_path):
-       with open(manifest_path) as f:
-           m = json.load(f)
-   else:
-       m = {'tools': {}, 'capabilities': {}}
-   m['standard_overrides'] = $OVERRIDES_JSON
-   with open(manifest_path, 'w') as f:
-       json.dump(m, f, indent=2)
-       f.write('\n')
-   "
+   python3 "$MG_INSTALL_LIB" set-standard-overrides --source ./ --target "$TARGET_PATH" --toggle "<user_response>"
    ```
+   Each toggle is written as it is entered, so there is no separate save step and an
+   abandoned session keeps whatever was already confirmed. The returned JSON has:
+   - `toggled` — per named tool, its new `standard` value and whether the manifest now
+     holds an explicit `override` (`stored`) or fell back to the tool.toml default
+     (`cleared`). Both mean the toggle took effect; report the new value, not the
+     disposition.
+   - `standard` — the full effective map after the write. Re-render the list from this,
+     not from a remembered version of it.
 
-4. After saving, re-run scan-status (to pick up new standard flags) and return to Step 3.
+   Exit code 2 means nothing was written: an unknown tool name, or one excluded from
+   bulk operations. Show the stderr message and re-prompt.
+
+3. Repeat 1–2 until the user answers "done".
+
+4. Re-run scan-status (so the rest of the flow sees the new standard flags) and return
+   to Step 3.
 
 ---
 

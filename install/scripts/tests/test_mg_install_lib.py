@@ -4227,3 +4227,182 @@ class TestResolveTarget:
             assert result.returncode == 0, result.stderr
             data = json.loads(result.stdout)
             assert data["target"] == os.path.realpath(sibling)
+
+
+class TestSetStandardOverrides:
+    """set-standard-overrides subcommand tests.
+
+    The inline block this replaced took a precomputed override map and assigned it
+    over `manifest["standard_overrides"]`, so the two properties worth pinning are
+    that the rest of the manifest survives, and that an override is stored only
+    when it actually disagrees with the tool.toml default.
+    """
+
+    MANIFEST = os.path.join(".claude", "mg-cc-tools.manifest.json")
+
+    def _setup(self, tmp, tools=None):
+        source = os.path.join(tmp, "source")
+        target = os.path.join(tmp, "target")
+        os.makedirs(source)
+        for name, standard in (tools or [("alpha", True), ("beta", False)]):
+            _make_tool(source, name, standard=standard)
+        _make_pyproject(source)
+        return source, target
+
+    def _toggle(self, source, target, names):
+        return _run([
+            "set-standard-overrides",
+            "--source", source,
+            "--target", target,
+            "--toggle", names,
+        ])
+
+    def _manifest(self, target):
+        with open(os.path.join(target, self.MANIFEST)) as f:
+            return json.load(f)
+
+    def test_turning_off_a_default_on_tool_stores_an_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+
+            result = self._toggle(source, target, "alpha")
+            assert result.returncode == 0, result.stderr
+
+            out = json.loads(result.stdout)
+            assert out["toggled"]["alpha"] == {"standard": False,
+                                               "override": "stored"}
+            assert self._manifest(target)["standard_overrides"] == {"alpha": False}
+
+    def test_turning_on_a_default_off_tool_stores_an_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+
+            result = self._toggle(source, target, "beta")
+            assert result.returncode == 0, result.stderr
+            assert json.loads(result.stdout)["toggled"]["beta"]["standard"] is True
+            assert self._manifest(target)["standard_overrides"] == {"beta": True}
+
+    def test_toggling_back_clears_the_override_rather_than_storing_the_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+            self._toggle(source, target, "alpha")
+
+            result = self._toggle(source, target, "alpha")
+            assert result.returncode == 0, result.stderr
+
+            out = json.loads(result.stdout)
+            assert out["toggled"]["alpha"] == {"standard": True,
+                                               "override": "cleared"}
+            assert self._manifest(target)["standard_overrides"] == {}
+
+    def test_multiple_tools_in_one_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+
+            result = self._toggle(source, target, "alpha, beta")
+            assert result.returncode == 0, result.stderr
+
+            assert self._manifest(target)["standard_overrides"] == {
+                "alpha": False, "beta": True,
+            }
+
+    def test_other_manifest_keys_survive_the_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+            tool_dir = os.path.join(source, "alpha")
+            assert _run(["update-manifest", "--target", target,
+                         "--tool", "alpha",
+                         "--source", tool_dir]).returncode == 0
+            before = self._manifest(target)
+            assert "alpha" in before["tools"]
+
+            assert self._toggle(source, target, "beta").returncode == 0
+
+            after = self._manifest(target)
+            assert after["tools"] == before["tools"]
+            assert after["mg_cc_tools_version"] == before["mg_cc_tools_version"]
+            assert after["source_path"] == before["source_path"]
+            assert after["standard_overrides"] == {"beta": True}
+
+    def test_returns_the_full_effective_map(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+
+            result = self._toggle(source, target, "alpha")
+
+            assert json.loads(result.stdout)["standard"] == {
+                "alpha": False, "beta": False,
+            }
+
+    def test_excluded_tools_are_absent_from_the_effective_map(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+            _make_tool(source, "installer", exclude=True)
+
+            result = self._toggle(source, target, "alpha")
+
+            assert "installer" not in json.loads(result.stdout)["standard"]
+
+    def test_excluded_tool_cannot_be_toggled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+            _make_tool(source, "installer", exclude=True)
+
+            result = self._toggle(source, target, "installer")
+
+            assert result.returncode == 2
+            assert "excluded" in result.stderr
+            assert not os.path.exists(os.path.join(target, self.MANIFEST))
+
+    def test_unknown_tool_is_rejected_and_nothing_is_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+
+            result = self._toggle(source, target, "alpha,typo-tool")
+
+            assert result.returncode == 2
+            assert "typo-tool" in result.stderr
+            assert not os.path.exists(os.path.join(target, self.MANIFEST)), \
+                "a rejected batch must not partially apply"
+
+    def test_empty_toggle_list_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+
+            result = self._toggle(source, target, " , ")
+
+            assert result.returncode == 2
+
+    def test_creates_the_manifest_when_none_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+            assert not os.path.exists(os.path.join(target, self.MANIFEST))
+
+            assert self._toggle(source, target, "alpha").returncode == 0
+
+            data = self._manifest(target)
+            assert data["tools"] == {}
+            assert data["capabilities"] == {}
+
+    def test_tool_omitting_standard_defaults_to_on(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp, tools=[("gamma", None)])
+
+            result = self._toggle(source, target, "gamma")
+
+            assert json.loads(result.stdout)["toggled"]["gamma"]["standard"] is False
+
+    def test_scan_status_reads_back_what_was_written(self):
+        """The override has to land where scan-status resolves effective flags."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = self._setup(tmp)
+            os.makedirs(os.path.join(target, ".claude"), exist_ok=True)
+            self._toggle(source, target, "beta")
+
+            result = _run(["scan-status", "--source", source, "--target", target])
+            assert result.returncode == 0, result.stderr
+
+            scan = json.loads(result.stdout)
+            flags = {t["name"]: t["standard"] for t in scan["tools"]}
+            assert flags["beta"] is True
+            assert flags["alpha"] is True
