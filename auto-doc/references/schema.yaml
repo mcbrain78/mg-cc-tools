@@ -607,6 +607,14 @@ file-locations:
         database-model-summary.json
         db-usage-index.json        -- file-level DB usage index
         db-table-map.json          -- section-to-tables map
+        written-docs.json          -- per-run ledger: which documents this run
+                                      wrote, appended by write-section.py
+                                      --finalize and assemble-markdown.py as they
+                                      write. Cleared at setup, so it answers
+                                      "this run" and never accumulates. The
+                                      generate summary is built from it rather
+                                      than from a docs-directory glob, which in
+                                      update mode would report earlier runs.
       auditv2/                     -- AUDITV2 step persistent state + run history
         not-entities.json          -- entities classified as not-an-entity
         protected-entities.json    -- entities to never re-flag

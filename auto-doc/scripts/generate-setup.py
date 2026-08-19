@@ -209,6 +209,9 @@ def prepare_workspace(paths, mode, audiences, scripts_dir):
         "database-model-summary.json",
         "db-table-map.json",
         "db-usage-index.json",
+        # The written-docs ledger answers "what did THIS run write", so a
+        # surviving copy would reintroduce the very confusion it exists to end.
+        "written-docs.json",
     ]:
         p = os.path.join(generate_dir, stale)
         if os.path.exists(p):

@@ -124,7 +124,7 @@ def _run_section(tmp, state_file, document, section, content_text,
 
 
 def _run_finalize(state_file, docs_dir, audience, manifest_file, mode="initial",
-                   merge=False, xml_dir=None):
+                   merge=False, xml_dir=None, ledger=None):
     """Helper: call write-section.py in finalize mode."""
     cmd = [
         sys.executable, SCRIPT_PATH,
@@ -139,6 +139,8 @@ def _run_finalize(state_file, docs_dir, audience, manifest_file, mode="initial",
         cmd.append("--merge")
     if xml_dir:
         cmd.extend(["--xml-dir", xml_dir])
+    if ledger:
+        cmd.extend(["--ledger", ledger])
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -2289,3 +2291,110 @@ class TestMalformedRefDischarge:
             section = state["documents"]["DOC"]["sections"]["section"]
             assert section["symbols"] == ["real_func"]
             assert section["file_paths"] == ["src/mod.py"]
+
+
+class TestFinalizeLedger:
+    """--ledger records the documents finalize wrote.
+
+    The generate command used to report created files by globbing the docs
+    directory, which in update mode reports the previous run's output. These pin
+    that finalize itself is now the source of that list.
+    """
+
+    def _ledger_entries(self, path):
+        with open(path) as f:
+            return json.load(f)["documents"]
+
+    def test_written_document_is_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = _build_state(
+                tmp, [("overview", "## Overview\n\nText", [], [])], "# Arch\n"
+            )
+            docs_dir = os.path.join(tmp, "docs")
+            ledger = os.path.join(tmp, "written-docs.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "developers",
+                os.path.join(tmp, "manifest.json"), ledger=ledger,
+            )
+            assert result.returncode == 0, result.stderr
+
+            entries = self._ledger_entries(ledger)
+            assert len(entries) == 1
+            assert entries[0]["path"] == os.path.join(
+                docs_dir, "developers", "ARCHITECTURE.md"
+            )
+            assert entries[0]["stages"] == ["finalize"]
+            assert entries[0]["audience"] == "developers"
+            assert entries[0]["document"] == "ARCHITECTURE"
+
+    def test_ledger_is_optional(self):
+        """Callers that omit it must behave exactly as before."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = _build_state(
+                tmp, [("overview", "## Overview\n\nText", [], [])], "# Arch\n"
+            )
+            docs_dir = os.path.join(tmp, "docs")
+
+            result = _run_finalize(
+                state_file, docs_dir, "developers",
+                os.path.join(tmp, "manifest.json"),
+            )
+            assert result.returncode == 0, result.stderr
+            assert os.path.isfile(
+                os.path.join(docs_dir, "developers", "ARCHITECTURE.md")
+            )
+
+    def test_two_audiences_accumulate_in_one_ledger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = os.path.join(tmp, "docs")
+            ledger = os.path.join(tmp, "written-docs.json")
+            for audience in ("developers", "devops"):
+                state_file = _build_state(
+                    tmp, [("overview", "## Overview\n\nText", [], [])], "# H\n"
+                )
+                result = _run_finalize(
+                    state_file, docs_dir, audience,
+                    os.path.join(tmp, f"manifest-{audience}.json"), ledger=ledger,
+                )
+                assert result.returncode == 0, result.stderr
+
+            entries = self._ledger_entries(ledger)
+            assert len(entries) == 2
+            assert {e["audience"] for e in entries} == {"developers", "devops"}
+
+    def test_standalone_document_records_empty_audience(self):
+        """GLOSSARY and OVERVIEW finalize with --audience ""."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = _build_state(
+                tmp, [("terms", "## Terms\n\nText", [], [])], "# Glossary\n"
+            )
+            docs_dir = os.path.join(tmp, "docs")
+            ledger = os.path.join(tmp, "written-docs.json")
+
+            result = _run_finalize(
+                state_file, docs_dir, "", os.path.join(tmp, "manifest.json"),
+                ledger=ledger,
+            )
+            assert result.returncode == 0, result.stderr
+
+            entries = self._ledger_entries(ledger)
+            assert entries[0]["audience"] == ""
+            assert entries[0]["path"] == os.path.join(docs_dir, "ARCHITECTURE.md")
+
+    def test_re_finalizing_does_not_duplicate_the_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = os.path.join(tmp, "docs")
+            ledger = os.path.join(tmp, "written-docs.json")
+            for _ in range(2):
+                state_file = _build_state(
+                    tmp, [("overview", "## Overview\n\nText", [], [])], "# H\n"
+                )
+                _run_finalize(
+                    state_file, docs_dir, "developers",
+                    os.path.join(tmp, "manifest.json"), ledger=ledger,
+                )
+
+            entries = self._ledger_entries(ledger)
+            assert len(entries) == 1
+            assert entries[0]["stages"] == ["finalize"]

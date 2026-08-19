@@ -117,7 +117,8 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
        --audience "" \
        --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-glossary.json \
        --mode {mode} \
-       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
+       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
+       --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json
    ```
 
    If the state file does not exist, log a warning and continue. Writers will proceed without a glossary baseline.
@@ -127,7 +128,9 @@ Print progress: `"Stage 1/4: Building glossary (initial pass)..."`
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
        --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/GLOSSARY.xml \
-       --output {docs_dir_abs}/GLOSSARY.md
+       --output {docs_dir_abs}/GLOSSARY.md \
+       --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json \
+       --document GLOSSARY
    ```
 
 4. **Verify** `{docs_dir_abs}/GLOSSARY.md` was created:
@@ -216,11 +219,23 @@ Print progress: `"Stage 2/4: Writing audience documents with manifest emission (
 
    The `{audience}` in the templates dir path uses the CONFIG KEY (e.g., `developers/`, `end-users/`, `agents/`, `devops/`).
 
-3. **After all agents complete,** verify output files exist in each audience subdirectory:
+3. **After all agents complete,** verify each dispatched agent produced output. Build
+   `--expect` from the `(audience, document)` pairs you actually spawned agents for:
+   ```bash
+   uv run {MG_INSTALL_SCRIPTS_DIR}/check-writer-output.py \
+       --generate-dir {MG_INSTALL_WORKSPACE_DIR}/generate \
+       --expect "{audience}:{DOCUMENT},{audience}:{DOCUMENT},..."
    ```
-   Glob pattern: {docs_dir_abs}/**/*.md
-   ```
-   Log which files were created. If an agent failed to produce output, log a warning but continue -- partial generation is acceptable.
+   Do **not** check the docs directory here. Writer agents never write markdown — they
+   accumulate sections into write-state files, and the documents are not written until
+   the Finalize step below. A docs-directory check at this point reports the *previous*
+   run's files in update mode and finds nothing but `GLOSSARY.md` on a first run, so it
+   would warn when everything succeeded and pass when everything failed.
+
+   `OK` per pair means that agent recorded sections. A non-zero exit lists the pairs
+   that produced nothing. Partial generation is acceptable — continue, but carry those
+   pairs forward as failed and do not describe their existing files as this run's
+   output.
 
 ### Finalize Documents
 
@@ -238,7 +253,8 @@ uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
     --audience {audience} \
     --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-{audience}.json \
     --mode {mode} \
-    --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
+    --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
+    --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json
 ```
 
 **For standard-prompt documents** (audience + document pairs without a refined template — only possible when `/mg:auto-doc-prepare-templates` was never run for that pair): finalize the single per-audience state file:
@@ -251,7 +267,8 @@ uv run {MG_INSTALL_SCRIPTS_DIR}/write-section.py \
     --audience {audience} \
     --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-{audience}.json \
     --mode {mode} \
-    --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
+    --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
+    --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json
 ```
 
 Skip any audience whose state file(s) do not exist.
@@ -265,8 +282,15 @@ After finalize, reassemble markdown from XML (which now has refs populated from 
 ```bash
 uv run {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
     --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/{audience}/{DOCUMENT}.xml \
-    --output {docs_dir_abs}/{audience}/{DOCUMENT}.md
+    --output {docs_dir_abs}/{audience}/{DOCUMENT}.md \
+    --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json \
+    --audience {audience} \
+    --document {DOCUMENT}
 ```
+
+**This is the point at which documents exist on disk** — not the Stage 2 agent step.
+Both writers above record every path they write to the run's ledger, so the report at
+the end of this command comes from them rather than from a directory listing.
 
 ### Polish Documents
 
@@ -356,7 +380,8 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
        --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-glossary.json \
        --mode {mode} \
        --merge \
-       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
+       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
+       --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json
    ```
 
    If the state file does not exist, the reconciliation produced no changes — continue.
@@ -366,7 +391,9 @@ Print progress: `"Stage 3/4: Reconciling glossary terms..."`
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
        --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/GLOSSARY.xml \
-       --output {docs_dir_abs}/GLOSSARY.md
+       --output {docs_dir_abs}/GLOSSARY.md \
+       --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json \
+       --document GLOSSARY
    ```
 
    The reconciliation log is at `.mg/docs/generate/terms/glossary-reconciliation.log`.
@@ -417,7 +444,8 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
        --audience "" \
        --manifest-file {MG_INSTALL_WORKSPACE_DIR}/generate/manifest-overview.json \
        --mode {mode} \
-       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources
+       --xml-dir {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources \
+       --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json
    ```
 
    If the state file does not exist, log a warning — the overview agent may have failed.
@@ -427,7 +455,9 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
    ```bash
    uv run {MG_INSTALL_SCRIPTS_DIR}/assemble-markdown.py \
        --xml-file {MG_INSTALL_WORKSPACE_DIR}/generate/xml-sources/OVERVIEW.xml \
-       --output {docs_dir_abs}/OVERVIEW.md
+       --output {docs_dir_abs}/OVERVIEW.md \
+       --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json \
+       --document OVERVIEW
    ```
 
 5. **Verify OVERVIEW.md was created:**
@@ -440,32 +470,36 @@ Generate OVERVIEW.md via a dedicated subagent that reads the actual generated do
 
 After all generation is complete, present a generation report.
 
-1. **Collect stats for each generated file.** For every `.md` file in `{docs_dir_abs}` (including subdirectories):
-   - Count sections (`<!-- section:` markers)
-   - Count words (approximate: split by whitespace, excluding HTML comments and frontmatter)
+1. **Build the summary from this run's ledger**, not from a listing of the docs
+   directory:
+   ```bash
+   uv run {MG_INSTALL_SCRIPTS_DIR}/written-docs.py \
+       --ledger {MG_INSTALL_WORKSPACE_DIR}/generate/written-docs.json \
+       --docs-dir {docs_dir_abs}
+   ```
+   The ledger holds only paths that `write-section.py --finalize` or
+   `assemble-markdown.py` actually wrote this run, so under an audience filter the
+   table covers the audiences that were regenerated and leaves the others out —
+   which a `{docs_dir_abs}/**/*.md` glob cannot do.
 
-2. **Present the summary table:**
+2. **Echo the script's output verbatim.** It emits the table and totals already:
 
    ```
    Generation Summary:
 
-   | File                              | Sections | Words  |
-   |-----------------------------------|----------|--------|
-   | GLOSSARY.md                       | 5        | 820    |
-   | end-users/USER_GUIDE.md           | 6        | 1,450  |
-   | developers/ARCHITECTURE.md        | 7        | 2,100  |
-   | developers/DEVELOPER_GUIDE.md     | 5        | 1,800  |
-   | developers/QUICK_REFERENCE.md     | 4        | 650    |
-   | agents/SYSTEM_MAP.md              | 6        | 1,200  |
-   | agents/CONVENTIONS.md             | 4        | 900    |
-   | agents/GOTCHAS.md                 | 3        | 500    |
-   | agents/TESTING.md                 | 4        | 700    |
-   | devops/OPERATIONS.md              | 5        | 1,100  |
-   | devops/TROUBLESHOOTING.md         | 4        | 800    |
-   | OVERVIEW.md                       | 4        | 450    |
+   | File                          | Sections | Words  |
+   |-------------------------------|----------|--------|
+   | GLOSSARY.md                   | 5        | 820    |
+   | devops/OPERATIONS.md          | 5        | 1,100  |
+   | devops/TROUBLESHOOTING.md     | 4        | 800    |
 
-   Total: 12 files, 57 sections, ~12,470 words
+   Total: 3 files, 14 sections, ~2,720 words
    ```
+
+   Do not add rows for documents the script did not list, and do not describe an
+   `INCOMPLETE:` or `UNREADABLE:` entry as generated — pass those lines through as
+   written. A `WROTE: 0 documents` result means nothing was generated; report that
+   rather than falling back to the docs directory.
 
 3. **Show additional stats** (if applicable):
    - If glossary reconciliation added terms: `"New glossary terms: {count} added during reconciliation"` (read from `.mg/docs/generate/terms/glossary-reconciliation.log` if it exists)

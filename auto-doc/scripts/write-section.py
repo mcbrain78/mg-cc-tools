@@ -43,6 +43,7 @@ from lib.json_io import load_json, save_json, save_text
 from lib.ref_utils import identifier_for_ref
 from lib.ref_validation import discharge_malformed_refs
 from lib.symbols import extract_python_symbols
+from lib.written_ledger import record as record_written
 from lib.xml_doc import (
     add_section,
     build_xml_doc,
@@ -552,6 +553,15 @@ def finalize(args):
 
         save_text(doc_path, assembled)
         docs_written.append(doc_name)
+        # After the write, so the ledger cannot name a file that was not written.
+        # `stages` will show only "finalize" for a document whose later
+        # assemble-markdown pass never ran, which is the signal the old
+        # docs-directory glob could not produce.
+        if getattr(args, "ledger", None):
+            record_written(
+                args.ledger, doc_path, "finalize",
+                audience=args.audience or "", document=doc_name,
+            )
 
     # Build manifest in merge-manifests.py input format
     manifest = load_json(args.manifest_file, default={"documents": {}})
@@ -716,6 +726,10 @@ def main():
     parser.add_argument(
         "--xml-dir",
         help="When set, also build XML source files in this directory",
+    )
+    parser.add_argument(
+        "--ledger",
+        help="Record each written document path in this run's written-docs ledger",
     )
 
     args = parser.parse_args()

@@ -337,6 +337,27 @@ class TestWorkspace:
             assert not os.path.exists(os.path.join(generate_dir, "database-model-summary.json"))
             assert not os.path.exists(os.path.join(generate_dir, "db-table-map.json"))
 
+    def test_clears_the_written_docs_ledger(self):
+        """The ledger answers "what did THIS run write", so it must not survive."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root, scan_path, config_path = _make_project(tmp)
+            generate_dir = os.path.join(project_root, ".mg", "docs", "generate")
+            os.makedirs(generate_dir, exist_ok=True)
+            ledger = os.path.join(generate_dir, "written-docs.json")
+            _write_json(ledger, {"documents": [
+                {"path": "/docs/devops/OPERATIONS.md", "stages": ["assemble"]},
+            ]})
+
+            _run([
+                "--scan-file", scan_path, "--config", config_path,
+                "--global-config", config_path, "--scripts-dir", SCRIPTS_DIR,
+            ])
+
+            assert not os.path.exists(ledger), (
+                "a surviving ledger would report the previous run's documents as "
+                "this run's output -- the exact confusion it exists to end"
+            )
+
     def test_initial_mode_clears_manifests(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_root, scan_path, config_path = _make_project(tmp)
