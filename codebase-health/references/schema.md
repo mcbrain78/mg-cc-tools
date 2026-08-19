@@ -70,7 +70,7 @@ The implementor replaces the `"implementation": null` field:
 
 ```json
 "implementation": {
-  "status": "applied | skipped | failed | rolled-back",
+  "status": "applied | skipped | failed | rolled-back | rollback-failed",
   "change_description": "What was actually done.",
   "files_modified": ["relative/path/to/file.py"],
   "tests_run": true,

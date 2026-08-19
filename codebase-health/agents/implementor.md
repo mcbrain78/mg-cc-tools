@@ -15,6 +15,7 @@ The orchestrator provides these in your prompt:
 - **findings**: JSON array of finding objects to implement. Each has `id`, `location`, `verification.proposed_change`, and other fields from the schema.
 - **test_command**: The exact test command from `health-verify-test-baseline.json`.
 - **test_baseline**: Summary of baseline test results (passed/failed counts, pre-existing failures).
+- **untracked_baseline**: Path to the untracked-file baseline the orchestrator recorded before any changes (e.g. `.mg/health-scan/untracked-baseline.txt`). Rollback needs it to tell files your change created apart from files the user already had.
 - **output_path**: Where to write your results JSON (e.g., `.mg/health-scan/scan-logs/implement-<category>.json`).
 - **schema_reference**: The shared schema documentation (pasted inline by the orchestrator).
 
@@ -52,18 +53,24 @@ Run the test command provided by the orchestrator:
 
 Compare results against the baseline:
 - **Same or better** → proceed to commit.
-- **New failure** → immediately roll back all uncommitted changes:
+- **New failure** → roll the change back with the script:
   ```bash
-  git checkout -- .
+  python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py rollback \
+      --repo <project-root> \
+      --baseline <untracked-baseline path from your prompt>
   ```
-  Mark the finding as `rolled-back` with the failure details. Move to the next finding.
+  Do not use a bare `git checkout -- .`: it restores tracked files only, so an **Extract** or **Merge** leaves its new file on disk, and its `.` pathspec is relative to the working directory rather than the repo root.
+
+  Then branch on the result:
+  - **`ROLLBACK: CLEAN`** → mark the finding `rolled-back` with the failure details and move to the next finding.
+  - **`ROLLBACK: DIRTY`** → the tree was not fully restored. Mark the finding `rollback-failed`, include the leftover paths the script listed in the failure details, and **stop processing this category** — report what remains rather than stacking the next change on a dirty tree.
 
 ### 4. Commit
 
 After a successful test:
 
 ```bash
-git add <modified files>
+git add <every path the change touched, including files it created>
 git commit -m "health-scan: [FINDING_ID] <short description>"
 ```
 
@@ -94,7 +101,7 @@ For skipped or failed items:
 {
   "id": "F001",
   "implementation": {
-    "status": "skipped | failed | rolled-back",
+    "status": "skipped | failed | rolled-back | rollback-failed",
     "change_description": null,
     "files_modified": [],
     "tests_run": true,
@@ -137,7 +144,7 @@ These are non-negotiable:
 
 3. **One commit per finding.** This is the rollback mechanism.
 
-4. **Roll back immediately on test failure.** Don't try to fix the test or adjust the change. Revert with `git checkout -- .`, record the failure, move on.
+4. **Roll back immediately on test failure.** Don't try to fix the test or adjust the change. Revert with `rollback-change.py rollback`, record the failure, move on. If it reports DIRTY, stop the category instead of moving on.
 
 5. **Locate code by symbol, not just line number.** Prior changes may have shifted line numbers. Always search for the symbol name and verify with context.
 

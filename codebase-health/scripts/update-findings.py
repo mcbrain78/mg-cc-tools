@@ -105,7 +105,7 @@ def main():
     parser.add_argument("--id", default=None, help="Finding ID (e.g. F001)")
     parser.add_argument(
         "--status", default=None,
-        choices=["applied", "skipped", "failed", "rolled-back"],
+        choices=["applied", "skipped", "failed", "rolled-back", "rollback-failed"],
         help="Implementation status"
     )
     parser.add_argument("--change-description", default=None)
