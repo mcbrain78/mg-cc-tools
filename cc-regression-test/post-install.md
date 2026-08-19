@@ -44,65 +44,26 @@ Read the target project's settings.json. Handle three cases:
 - **File exists with `hooks` but no `PreToolUse` array:** Add it
 
 ```bash
-python3 -c "
-import json, os, sys
-
-settings_path = '<target project>/.claude/settings.json'
-install_mode = '<INSTALL_MODE>'  # 'project' | 'global' | 'target'
-if install_mode == 'project':
-    hook_cmd = 'python3 .claude/cc-regression-test/hooks/intercept-trigger.py'
-else:
-    hook_cmd = 'python3 <target project>/.claude/cc-regression-test/hooks/intercept-trigger.py'
-
-# Read or create settings
-try:
-    with open(settings_path) as f:
-        settings = json.load(f)
-except FileNotFoundError:
-    settings = {}
-except json.JSONDecodeError:
-    print('WARNING: settings.json exists but is not valid JSON. Creating backup.')
-    import shutil
-    shutil.copy2(settings_path, settings_path + '.bak')
-    settings = {}
-
-# Ensure structure exists
-hooks = settings.setdefault('hooks', {})
-pre_tool = hooks.setdefault('PreToolUse', [])
-
-# Step 3: Check if entry already present (idempotent)
-already = any(
-    isinstance(h, dict)
-    and h.get('matcher') == 'Bash'
-    and any(
-        isinstance(hk, dict) and hk.get('command') == hook_cmd
-        for hk in h.get('hooks', [])
-    )
-    for h in pre_tool
-)
-
-if already:
-    print('OK: Hook entry already present in settings.json')
-else:
-    # Step 4: Append the entry
-    new_entry = {
-        'matcher': 'Bash',
-        'hooks': [{'type': 'command', 'command': hook_cmd}]
-    }
-    pre_tool.append(new_entry)
-
-    with open(settings_path, 'w') as f:
-        json.dump(settings, f, indent=2)
-        f.write('\n')
-    print('ADDED: Hook entry for intercept-trigger.py added to settings.json')
-
-# Step 5: Report
-print()
-print('Settings file: ' + settings_path)
-print('Hook command:  ' + hook_cmd)
-print('Matcher:       Bash')
-"
+python3 "<source directory>/install/scripts/merge-hook-entry.py" \
+  --settings "<target project>/.claude/settings.json" \
+  --install-mode "<INSTALL_MODE>" \
+  --hook-rel-path ".claude/cc-regression-test/hooks/intercept-trigger.py" \
+  --hook-abs-path "<target project>/.claude/cc-regression-test/hooks/intercept-trigger.py" \
+  --matcher Bash
 ```
+
+The script handles all three settings.json states listed above (missing file, no `hooks` key,
+no `PreToolUse` array), backs up and replaces the file only if it is unparseable JSON, and
+reports one of:
+
+**ADDED** — the entry was written for the first time.
+
+**REWROTE** — stale entries referencing `intercept-trigger.py` were stripped and replaced.
+Expected on a target installed under the older scheme: install time wrote a plain relative
+command path while the runtime command wrote an absolute one, so neither could recognise the
+other and duplicates accumulated. The rewrite collapses them into one canonical entry.
+
+**UNCHANGED** — the canonical entry was already present; the file was not written.
 
 </process>
 

@@ -44,56 +44,23 @@ The hook needs exactly 1 matcher: `Bash`. It must be registered as its own entry
 only runs the first command in a `hooks` list).
 
 ```bash
-python3 -c "
-import json, sys
-
-hook_path = '<TARGET_HOOK>'
-settings_path = '<TARGET_SETTINGS>'
-install_mode = '<INSTALL_MODE>'  # 'project' | 'global' | 'target'
-
-if install_mode == 'project':
-    hook_cmd = 'python3 .claude/transcript/hooks/inject-transcript-path.py'
-else:
-    hook_cmd = 'python3 ' + hook_path
-
-try:
-    with open(settings_path) as f:
-        settings = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    settings = {}
-
-hooks = settings.setdefault('hooks', {})
-pre_tool = hooks.setdefault('PreToolUse', [])
-
-# Check if already registered (in any entry's hooks list)
-already = any(
-    isinstance(entry, dict)
-    and entry.get('matcher') == 'Bash'
-    and any(
-        isinstance(hk, dict) and hook_path in hk.get('command', '')
-        for hk in entry.get('hooks', [])
-    )
-    for entry in pre_tool
-)
-
-if already:
-    print('OK: Hook already registered in ' + settings_path)
-else:
-    new_entry = {
-        'matcher': 'Bash',
-        'hooks': [{'type': 'command', 'command': hook_cmd}]
-    }
-    pre_tool.append(new_entry)
-    with open(settings_path, 'w') as f:
-        json.dump(settings, f, indent=2)
-        f.write('\n')
-    print('ADDED: PreToolUse Bash hook entry for inject-transcript-path.py')
-"
+python3 "<source directory>/install/scripts/merge-hook-entry.py" \
+  --settings "<TARGET_SETTINGS>" \
+  --install-mode "<INSTALL_MODE>" \
+  --hook-rel-path ".claude/transcript/hooks/inject-transcript-path.py" \
+  --hook-abs-path "<TARGET_HOOK>" \
+  --matcher Bash
 ```
 
-**If ADDED:** Report that the hook was registered.
+**If ADDED:** Report that the hook was registered for the first time.
 
-**If OK:** Report that the hook is already configured.
+**If REWROTE:** Report that stale entries were stripped and replaced with the canonical
+form. This is expected on a target installed under an older scheme, which wrote a plain
+relative command path (broken by any mid-session `cd`) and whose registration check could
+never match it — so every re-install appended another duplicate entry. The rewrite
+collapses those duplicates into one canonical entry.
+
+**If UNCHANGED:** The canonical entry was already present; settings.json was not written.
 
 </process>
 

@@ -142,79 +142,22 @@ Check if the PreToolUse hook entries for permission-guard.py exist in the target
 
 The hook needs 4 matchers: `Bash`, `Read`, `Edit`, `Write`. The same Python script handles all tool types.
 
-In `project` mode, emit a `$CLAUDE_PROJECT_DIR`-rooted hook command (`python3 "$CLAUDE_PROJECT_DIR/.claude/permission-hooks/hooks/permission-guard.py"`). Claude Code sets `$CLAUDE_PROJECT_DIR` for hook commands regardless of the current working directory, so this form is portable across clones (ultraplan/ultrareview cloud workers included) AND survives mid-session `cd` shifts that would break a plain relative path. In `global`/`target` mode, emit an absolute path rooted at the installed `hooks_dir` (the existing behavior). Set `INSTALL_MODE` below to the value threaded through from the orchestrator.
+The merge is done by the shared `install/scripts/merge-hook-entry.py`, so the command form and the
+change detection are decided in one tested place rather than re-derived per tool. It strips every
+existing entry that references `permission-guard.py` and appends exactly one per matcher, which makes
+re-running it idempotent and repairs duplicates left by older install schemes. In `project` mode it
+emits a `$CLAUDE_PROJECT_DIR`-rooted command, which Claude Code resolves regardless of the session's
+working directory — portable across clones (ultraplan/ultrareview cloud workers included) and immune to
+mid-session `cd` shifts that break a plain relative path. In `global`/`target` mode it bakes the
+absolute path. Substitute `<INSTALL_MODE>` with the value threaded through from the orchestrator.
 
 ```bash
-python3 -c "
-import json, os, sys
-
-hooks_dir = '<TARGET_HOOKS_DIR>'
-settings_path = '<TARGET_SETTINGS>'
-install_mode = '<INSTALL_MODE>'  # 'project' | 'global' | 'target'
-
-if install_mode == 'project':
-    hook_cmd = 'python3 \"$CLAUDE_PROJECT_DIR/.claude/permission-hooks/hooks/permission-guard.py\"'
-else:
-    hook_cmd = 'python3 ' + os.path.join(hooks_dir, 'permission-guard.py')
-
-# Keep the original bytes: 'stripped-then-readded' is not the same question as
-# 'did the file change'. Stripping 4 stale entries and appending 4 identical ones
-# is a no-op, and reporting it as a rewrite invents a restart the user does not
-# need. The restart reminder keys off this comparison.
-try:
-    with open(settings_path) as f:
-        before = f.read()
-    settings = json.loads(before)
-except (FileNotFoundError, json.JSONDecodeError):
-    before = None
-    settings = {}
-
-hooks = settings.setdefault('hooks', {})
-pre_tool = hooks.setdefault('PreToolUse', [])
-
-matchers = ['Bash', 'Read', 'Edit', 'Write']
-
-# Strip ALL stale permission-guard.py entries before adding fresh ones.
-# A re-install (or migration from an older path scheme) could otherwise
-# accumulate duplicates with mixed relative/absolute paths — exactly the
-# state that masked the cwd-shift bug for so long.
-stripped = 0
-new_pre_tool = []
-for h in pre_tool:
-    if isinstance(h, dict) and h.get('matcher') in matchers:
-        kept_hooks = [
-            hk for hk in h.get('hooks', [])
-            if not (isinstance(hk, dict)
-                    and 'permission-guard.py' in hk.get('command', ''))
-        ]
-        stripped += len(h.get('hooks', [])) - len(kept_hooks)
-        if kept_hooks:
-            new_pre_tool.append({**h, 'hooks': kept_hooks})
-        # else: drop the now-empty matcher entry
-    else:
-        new_pre_tool.append(h)
-
-# Append fresh canonical entries.
-for matcher in matchers:
-    new_pre_tool.append({
-        'matcher': matcher,
-        'hooks': [{'type': 'command', 'command': hook_cmd}]
-    })
-
-hooks['PreToolUse'] = new_pre_tool
-
-after = json.dumps(settings, indent=2) + '\n'
-
-if after == before:
-    print(f'UNCHANGED: 4 canonical permission-guard entries already present in {settings_path}')
-else:
-    with open(settings_path, 'w') as f:
-        f.write(after)
-    if stripped:
-        print(f'REWROTE: Removed {stripped} stale permission-guard entries; added 4 fresh ones for {settings_path}')
-    else:
-        print(f'ADDED: Wrote 4 permission-guard hook entries to {settings_path}')
-"
+python3 "<source directory>/install/scripts/merge-hook-entry.py" \
+  --settings "<TARGET_SETTINGS>" \
+  --install-mode "<INSTALL_MODE>" \
+  --hook-rel-path ".claude/permission-hooks/hooks/permission-guard.py" \
+  --hook-abs-path "<TARGET_HOOKS_DIR>/permission-guard.py" \
+  --matcher Bash --matcher Read --matcher Edit --matcher Write
 ```
 
 **If UNCHANGED:** The target already had the canonical entries; settings.json was not written. No restart needed.

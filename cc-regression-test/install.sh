@@ -104,6 +104,15 @@ if [[ ! -f "${SCRIPT_DIR}/scripts/trigger.py" ]]; then
   exit 1
 fi
 
+# The shared settings.json hook merge. Deployed into the target rather than
+# called from source, because the command file that uses it runs at runtime in
+# the target project and cannot see the mg-cc-tools source tree.
+MERGE_HOOK_SRC="${SCRIPT_DIR}/../install/scripts/merge-hook-entry.py"
+if [[ ! -f "$MERGE_HOOK_SRC" ]]; then
+  echo "Error: missing install/scripts/merge-hook-entry.py"
+  exit 1
+fi
+
 # ── Check for python3 ────────────────────────────────────────────────────────
 
 if ! command -v python3 &>/dev/null; then
@@ -129,8 +138,10 @@ echo "  Commands → ${COMMANDS_DIR}/"
 mkdir -p "${SUPPORT_DIR}/hooks" "${SUPPORT_DIR}/scripts"
 cp "${SCRIPT_DIR}/hooks/intercept-trigger.py" "${SUPPORT_DIR}/hooks/"
 cp "${SCRIPT_DIR}/scripts/trigger.py" "${SUPPORT_DIR}/scripts/"
+cp "$MERGE_HOOK_SRC" "${SUPPORT_DIR}/scripts/"
 chmod +x "${SUPPORT_DIR}/hooks/intercept-trigger.py"
 chmod +x "${SUPPORT_DIR}/scripts/trigger.py"
+chmod +x "${SUPPORT_DIR}/scripts/merge-hook-entry.py"
 echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
 echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
 
@@ -146,9 +157,11 @@ echo "  Scripts  → ${SUPPORT_DIR}/scripts/"
 if [[ "$MODE" == "project" ]]; then
   HOOKS_PATH=".claude/cc-regression-test/hooks"
   SCRIPTS_PATH=".claude/cc-regression-test/scripts"
+  SETTINGS_PATH=".claude/settings.json"
 else
   HOOKS_PATH="${SUPPORT_DIR}/hooks"
   SCRIPTS_PATH="${SUPPORT_DIR}/scripts"
+  SETTINGS_PATH="${TARGET_DIR}/settings.json"
 fi
 SOURCE_ABSOLUTE="${SCRIPT_DIR}"
 
@@ -158,6 +171,10 @@ for cmd in "${COMMANDS[@]}"; do
   sed -i "s|{MG_INSTALL_HOOKS_DIR}|${HOOKS_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_SCRIPTS_DIR}|${SCRIPTS_PATH}|g" "$cmd_file"
   sed -i "s|{MG_INSTALL_SOURCE_DIR}|${SOURCE_ABSOLUTE}|g" "$cmd_file"
+  # merge-hook-entry.py needs the install mode and the settings path resolved at
+  # install time: the command runs in the target and cannot re-derive either.
+  sed -i "s|{MG_INSTALL_MODE}|${MODE}|g" "$cmd_file"
+  sed -i "s|{MG_INSTALL_SETTINGS}|${SETTINGS_PATH}|g" "$cmd_file"
 done
 
 # ── Update manifest ──────────────────────────────────────────────────────────

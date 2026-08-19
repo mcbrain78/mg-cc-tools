@@ -75,55 +75,25 @@ cp "{MG_INSTALL_SOURCE_DIR}/scripts/"*.py "{MG_INSTALL_SCRIPTS_DIR}/"
 chmod +x "{MG_INSTALL_HOOKS_DIR}/"*.py "{MG_INSTALL_SCRIPTS_DIR}/"*.py
 ```
 
-2. Re-merge hook config into settings.json. Determine the settings.json path: look at where {MG_INSTALL_HOOKS_DIR} is installed — if it's under `~/.claude/`, use `~/.claude/settings.json`. If it's under a project `.claude/`, use that project's `.claude/settings.json`.
+2. Re-merge hook config into settings.json. The settings path is resolved at install time into
+   `{MG_INSTALL_SETTINGS}`, so there is nothing to derive here.
 
 Run:
 ```bash
-python3 -c "
-import json, os, sys
-
-hooks_dir = '{MG_INSTALL_HOOKS_DIR}'
-# Derive settings.json location from hooks dir
-# hooks_dir is like /path/to/.claude/cc-regression-test/hooks
-claude_dir = os.path.dirname(os.path.dirname(hooks_dir))
-settings_path = os.path.join(claude_dir, 'settings.json')
-
-hook_cmd = 'python3 ' + os.path.join(hooks_dir, 'intercept-trigger.py')
-
-try:
-    with open(settings_path) as f:
-        settings = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    settings = {}
-
-hooks = settings.setdefault('hooks', {})
-pre_tool = hooks.setdefault('PreToolUse', [])
-
-# Hook format: {matcher: 'Bash', hooks: [{type, command}]}
-new_entry = {
-    'matcher': 'Bash',
-    'hooks': [{'type': 'command', 'command': hook_cmd}]
-}
-
-# Check if already present (check inside hooks[].command)
-already = any(
-    isinstance(h, dict)
-    and any(
-        isinstance(hk, dict) and hk.get('command') == hook_cmd
-        for hk in h.get('hooks', [])
-    )
-    for h in pre_tool
-)
-
-if not already:
-    pre_tool.append(new_entry)
-    with open(settings_path, 'w') as f:
-        json.dump(settings, f, indent=2)
-    print('Hook entry merged into ' + settings_path)
-else:
-    print('Hook entry already present in ' + settings_path)
-"
+python3 {MG_INSTALL_SCRIPTS_DIR}/merge-hook-entry.py \
+  --settings {MG_INSTALL_SETTINGS} \
+  --install-mode {MG_INSTALL_MODE} \
+  --hook-rel-path .claude/cc-regression-test/hooks/intercept-trigger.py \
+  --hook-abs-path {MG_INSTALL_HOOKS_DIR}/intercept-trigger.py \
+  --matcher Bash
 ```
+
+This is the same shared script the install step uses, so a sync run and an install now agree
+on the command form and on what counts as a change. It prints ADDED, REWROTE or UNCHANGED.
+Report whichever it prints -- in particular, do NOT report a fresh registration on UNCHANGED.
+A REWROTE here means duplicates left by the previous scheme were collapsed: install time wrote
+a relative command path while this command wrote an absolute one, so neither recognised the
+other and every sync run appended one more entry.
 
 Report:
 ```
