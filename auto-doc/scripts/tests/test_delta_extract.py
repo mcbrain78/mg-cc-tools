@@ -167,3 +167,87 @@ class TestDeltaExtractWithPrevious:
             assert os.path.isfile(hashes_path)
             hashes = _read_json(hashes_path)
             assert hashes["monitoring"] == "abc123"
+
+
+class TestChangedSectionsOut:
+    """--changed-sections-out writes the extraction agent's --sections-filter.
+
+    The orchestrator used to read `changed` out of stdout and interpolate it back
+    into a shell argument to produce this file. These tests pin the property that
+    made that round trip removable: the file the agent reads and the list this
+    script computed are the same object, not two transcriptions of it.
+    """
+
+    def test_written_file_matches_stdout_changed(self):
+        with tempfile.TemporaryDirectory() as td:
+            pvd = _setup_prose_verify(td, [
+                ("monitoring", "hash1"),
+                ("ops/deployment", "hash2"),
+            ])
+            out = os.path.join(td, "changed-sections.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--prose-verify-dir", pvd,
+                 "--prev-entities-file", os.path.join(td, "prev.json"),
+                 "--entities-file", os.path.join(td, "entities.json"),
+                 "--changed-sections-out", out],
+                capture_output=True, text=True,
+            )
+
+            assert result.returncode == 0, result.stderr
+            assert _read_json(out) == json.loads(result.stdout)["changed"]
+            assert _read_json(out) == ["monitoring", "ops/deployment"]
+
+    def test_empty_list_is_still_written(self):
+        """A stale filter from a previous run would be worse than an empty one."""
+        with tempfile.TemporaryDirectory() as td:
+            pvd = _setup_prose_verify(td, [("monitoring", "hash1")])
+            prev_ent = os.path.join(td, "prev-entities.json")
+            curr_ent = os.path.join(td, "entities.json")
+            _write_json(prev_ent, [{"name": "etl_runs", "section": "monitoring"}])
+            _write_json(os.path.join(td, "prev-entities-hashes.json"),
+                        {"monitoring": "hash1"})
+            out = os.path.join(td, "changed-sections.json")
+            _write_json(out, ["monitoring", "stale-leftover"])
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--prose-verify-dir", pvd,
+                 "--prev-entities-file", prev_ent,
+                 "--entities-file", curr_ent,
+                 "--changed-sections-out", out],
+                capture_output=True, text=True,
+            )
+
+            assert result.returncode == 0, result.stderr
+            assert json.loads(result.stdout)["changed"] == []
+            assert _read_json(out) == []
+
+    def test_parent_directory_is_created(self):
+        with tempfile.TemporaryDirectory() as td:
+            pvd = _setup_prose_verify(td, [("monitoring", "hash1")])
+            out = os.path.join(td, "run", "nested", "changed-sections.json")
+
+            result = subprocess.run(
+                [sys.executable, SCRIPT,
+                 "--prose-verify-dir", pvd,
+                 "--prev-entities-file", os.path.join(td, "prev.json"),
+                 "--entities-file", os.path.join(td, "entities.json"),
+                 "--changed-sections-out", out],
+                capture_output=True, text=True,
+            )
+
+            assert result.returncode == 0, result.stderr
+            assert _read_json(out) == ["monitoring"]
+
+    def test_flag_is_optional(self):
+        """Existing callers that omit it must behave exactly as before."""
+        with tempfile.TemporaryDirectory() as td:
+            pvd = _setup_prose_verify(td, [("monitoring", "hash1")])
+
+            result = _run(pvd, os.path.join(td, "prev.json"),
+                          os.path.join(td, "entities.json"))
+
+            assert result.returncode == 0, result.stderr
+            assert json.loads(result.stdout)["changed"] == ["monitoring"]

@@ -116,25 +116,19 @@ Handle user response:
 
 ### Step 5: Initialize Fix Queue and Process Groups
 
-1. Archive the previous fix run if it exists (has `fix-state.json`), then create a fresh fix directory:
+1. Archive the previous fix run, then create a fresh fix directory. `fix-state.json` is
+   the sentinel — a fix run that never got that far is overwritten rather than archived.
+   Fix runs share auditv2's history directory and are distinguished by the `fix-` prefix:
    ```bash
-   if [ -f {MG_INSTALL_WORKSPACE_DIR}/fix/fix-state.json ]; then
-     NEXT_NUM=$(python3 -c "
-   import os, re
-   hist = '{MG_INSTALL_WORKSPACE_DIR}/auditv2/history'
-   if not os.path.isdir(hist):
-       print(1)
-   else:
-       nums = [int(m.group(1)) for d in os.listdir(hist)
-               if (m := re.match(r'fix-(\d+)', d))]
-       print(max(nums) + 1 if nums else 1)
-   ")
-     mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2/history
-     mv {MG_INSTALL_WORKSPACE_DIR}/fix \
-        {MG_INSTALL_WORKSPACE_DIR}/auditv2/history/fix-${NEXT_NUM}
-   fi
+   uv run {MG_INSTALL_SCRIPTS_DIR}/archive-run.py \
+       --run-dir {MG_INSTALL_WORKSPACE_DIR}/fix \
+       --history-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/history \
+       --prefix fix \
+       --sentinel fix-state.json
    mkdir -p {MG_INSTALL_WORKSPACE_DIR}/fix
    ```
+   `ARCHIVED:` names where the previous run went; `SKIPPED:` says why there was nothing
+   to archive. Report whichever you got rather than assuming an archive happened.
 
 2. Build the approved indices string (comma-separated, e.g., `"0,1,2"` or `"0,2"`).
 

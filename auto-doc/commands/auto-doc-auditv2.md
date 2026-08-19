@@ -77,24 +77,19 @@ The script prints `<matching> <legacy>` to stdout (two integers, space-separated
 
 4. **Archive previous run and create auditv2 directory** (persistent files at top level, per-run data in `run/`):
 
-   First, archive the previous run if it completed (has `summary.md`):
+   First, archive the previous run. `summary.md` is the sentinel: the script archives the
+   run directory only if that file is present, so an interrupted run is left to be
+   overwritten rather than given a history slot.
    ```bash
-   if [ -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/summary.md ]; then
-     NEXT_NUM=$(python3 -c "
-   import os, re
-   hist = '{MG_INSTALL_WORKSPACE_DIR}/auditv2/history'
-   if not os.path.isdir(hist):
-       print(1)
-   else:
-       nums = [int(m.group(1)) for d in os.listdir(hist)
-               if (m := re.match(r'audit-(\d+)', d))]
-       print(max(nums) + 1 if nums else 1)
-   ")
-     mkdir -p {MG_INSTALL_WORKSPACE_DIR}/auditv2/history
-     mv {MG_INSTALL_WORKSPACE_DIR}/auditv2/run \
-        {MG_INSTALL_WORKSPACE_DIR}/auditv2/history/audit-${NEXT_NUM}
-   fi
+   uv run {MG_INSTALL_SCRIPTS_DIR}/archive-run.py \
+       --run-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/run \
+       --history-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/history \
+       --prefix audit \
+       --sentinel summary.md
    ```
+   `ARCHIVED:` names where the previous run went; `SKIPPED:` says why there was nothing
+   to archive. Both are normal — report whichever you got rather than assuming an
+   archive happened.
 
    Then create a fresh run directory:
    ```bash
@@ -145,16 +140,14 @@ For each XML file processed in Step 3:
 uv run {MG_INSTALL_SCRIPTS_DIR}/delta-extract.py \
     --prose-verify-dir {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT} \
     --prev-entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/entities-{audience}-{DOCUMENT}.json \
-    --entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/entities-{audience}-{DOCUMENT}.json
+    --entities-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/entities-{audience}-{DOCUMENT}.json \
+    --changed-sections-out {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/changed-sections-{audience}-{DOCUMENT}.json
 ```
 
-Parse the JSON output. If `changed` is empty (all sections reused), skip extraction for that document entirely. If `changed` has entries, write the changed sections list to a filter file:
-```bash
-python3 -c "
-import json, sys
-with open(sys.argv[1], 'w') as f: json.dump(json.loads(sys.argv[2]), f, indent=2)
-" {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/changed-sections-{audience}-{DOCUMENT}.json '{changed_json}'
-```
+`--changed-sections-out` writes the filter file itself, so read the JSON output only to
+decide **whether** to spawn an extraction agent for this document: if `changed` is empty
+(all sections reused), skip it. Do not transcribe the section list anywhere — the file
+the agent will read already holds it.
 
 ### Step 4: Wave 1 — Entity Extraction
 
@@ -216,42 +209,24 @@ rm -f {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/*.sectionctl
 
 b. **Recompute affected sections.** Propagation within the previous wave pruned the uncleared file, so some sections may now have zero entities. Recompute the affected-sections filter for each document:
 ```bash
-python3 -c "
-import json, sys
-with open(sys.argv[1]) as f: u = json.load(f)
-s = sorted(set(e['section'] for e in u))
-with open(sys.argv[2], 'w') as f: json.dump(s, f, indent=2)
-" {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
-  {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}/affected-sections.json
+uv run {MG_INSTALL_SCRIPTS_DIR}/affected-sections.py \
+    --uncleared-file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json \
+    --output {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}/affected-sections.json
 ```
-If the uncleared file is empty (`[]`) for a document, skip that document for the remaining waves.
+`NO-SECTIONS` means this document has no work left — skip it for the remaining waves. `AFFECTED: <n>` means continue. Take that answer from the script's output rather than re-reading the uncleared file, so the skip decision and the filter the agents receive cannot disagree.
 
 c. **Write session config** for each document that still has uncleared entities:
 ```bash
-python3 -c "
-import json, os
-session = {
-    'workspace': '{MG_INSTALL_WORKSPACE_DIR}',
-    'document': '{DOCUMENT}',
-    'audience': '{audience}',
-    'wave': {N},
-    'prose_verify_dir': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}',
-    'uncleared_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/uncleared-{audience}-{DOCUMENT}.json',
-    'findings_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/findings-prose-{audience}-{DOCUMENT}.json',
-    'sections_filter': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/prose-verify-{audience}-{DOCUMENT}/affected-sections.json',
-    'not_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/not-entities.json',
-    'dismissed_this_run_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json',
-    'protected_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/protected-entities.json',
-    'suppress_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/suppressed-findings.json',
-    'covered_entities_file': '{MG_INSTALL_WORKSPACE_DIR}/auditv2/covered-entities.json',
-}
-path = os.path.join('{MG_INSTALL_WORKSPACE_DIR}', 'auditv2', 'run', 'session-{audience}-{DOCUMENT}.json')
-with open(path, 'w') as f:
-    json.dump(session, f, indent=2)
-"
+uv run {MG_INSTALL_SCRIPTS_DIR}/write-session-config.py \
+    --workspace {MG_INSTALL_WORKSPACE_DIR} \
+    --audience {audience} \
+    --document {DOCUMENT} \
+    --wave {N}
 ```
 
-Where `{N}` is the current wave number (1, 2, 3, ...).
+Where `{N}` is the current wave number (1, 2, 3, ...). Every path in the session file is derived from those four values, so there is nothing else to pass; the output path defaults to `auditv2/run/session-{audience}-{DOCUMENT}.json`, which is what step e hands the agents.
+
+A `WARNING:` on stderr lists session paths that do not exist yet. Step b writes the sections filter and step 5 writes the uncleared file, so by this point they should both be there — treat the warning as a sign that a document is being set up out of order, not as noise.
 
 d. **Snapshot findings for diff.** Before spawning resolution agents, copy the current findings to a snapshot so the aggregate summary can compute the delta for this wave:
 ```bash
@@ -281,11 +256,8 @@ Num waves: {num_waves}"
 After all resolution waves complete, check if any entities were dismissed during this run:
 
 ```bash
-python3 -c "
-import json, sys
-with open(sys.argv[1]) as f: d = json.load(f)
-print(len(d))
-" {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json
+uv run {MG_INSTALL_SCRIPTS_DIR}/count-json-array.py \
+    --file {MG_INSTALL_WORKSPACE_DIR}/auditv2/run/dismissed-this-run.json
 ```
 
 If the count is greater than 0, spawn a classification agent (**model: sonnet**, foreground):

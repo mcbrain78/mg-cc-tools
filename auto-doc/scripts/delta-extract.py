@@ -9,10 +9,17 @@ Usage:
     python3 delta-extract.py \
         --prose-verify-dir DIR \
         --prev-entities-file FILE \
-        --entities-file FILE
+        --entities-file FILE \
+        [--changed-sections-out FILE]
 
 Output (JSON to stdout):
     {"changed": ["section/path", ...], "reused": N}
+
+`--changed-sections-out` writes the `changed` list to a file as well. The caller
+needs it on disk anyway, to pass as the extraction agent's `--sections-filter`,
+and having the producer write it removes a round trip where the orchestrator read
+the list out of this JSON and interpolated it back into a shell argument -- a step
+that could only ever reproduce or corrupt what was already known here.
 """
 
 import argparse
@@ -116,6 +123,11 @@ def main():
         "--entities-file", required=True,
         help="Current run's entities file (created/appended)",
     )
+    parser.add_argument(
+        "--changed-sections-out",
+        help="Also write the changed-sections list here, for use as a "
+             "--sections-filter argument",
+    )
 
     args = parser.parse_args()
     result = delta_extract(
@@ -123,6 +135,15 @@ def main():
         prev_entities_file=args.prev_entities_file,
         entities_file=args.entities_file,
     )
+
+    if args.changed_sections_out:
+        out_parent = os.path.dirname(os.path.abspath(args.changed_sections_out))
+        os.makedirs(out_parent, exist_ok=True)
+        # Written even when empty: the caller skips extraction in that case, and a
+        # stale filter file left over from a previous run would be worse than an
+        # empty one.
+        save_json(args.changed_sections_out, result["changed"])
+
     json.dump(result, sys.stdout, indent=2)
     print()  # trailing newline
     print(
