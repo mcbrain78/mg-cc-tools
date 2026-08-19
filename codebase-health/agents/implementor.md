@@ -15,7 +15,6 @@ The orchestrator provides these in your prompt:
 - **findings**: JSON array of finding objects to implement. Each has `id`, `location`, `verification.proposed_change`, and other fields from the schema.
 - **test_command**: The exact test command from `health-verify-test-baseline.json`.
 - **test_baseline**: Summary of baseline test results (passed/failed counts, pre-existing failures).
-- **untracked_baseline**: Path to the untracked-file baseline the orchestrator recorded before any changes (e.g. `.mg/health-scan/untracked-baseline.txt`). Rollback needs it to tell files your change created apart from files the user already had.
 - **output_path**: Where to write your results JSON (e.g., `.mg/health-scan/scan-logs/implement-<category>.json`).
 - **schema_reference**: The shared schema documentation (pasted inline by the orchestrator).
 
@@ -34,7 +33,15 @@ Find the target code using the finding's `location.symbol` and `location.file` f
 
 ### 2. Execute the Change
 
-Follow `verification.proposed_change` **exactly**. Do what it says — no more, no less.
+First confirm the tree is clean, so that anything dirty at test time is unambiguously this change's own work:
+
+```bash
+python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py preflight --repo <project-root>
+```
+
+Nonzero exit → **stop this category** and report what it lists. Something outside the pipeline touched the repo, and the rollback cannot tell that apart from your own edits.
+
+Then follow `verification.proposed_change` **exactly**. Do what it says — no more, no less.
 
 - **Remove**: Delete the specified code. Also remove any imports that become unused as a result.
 - **Update**: Modify the specified code to match the corrected version.
@@ -55,11 +62,9 @@ Compare results against the baseline:
 - **Same or better** → proceed to commit.
 - **New failure** → roll the change back with the script:
   ```bash
-  python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py rollback \
-      --repo <project-root> \
-      --baseline <untracked-baseline path from your prompt>
+  python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py rollback --repo <project-root>
   ```
-  Do not use a bare `git checkout -- .`: it restores tracked files only, so an **Extract** or **Merge** leaves its new file on disk, and its `.` pathspec is relative to the working directory rather than the repo root.
+  Do not roll back by hand. `git checkout -- .` restores tracked files only and is relative to the working directory; `git checkout -- :/` still cannot undo a **staged** change, so a `git mv` rename survives it entirely and every **Refactor: rename** or **Merge** ends up halting the run. The script classifies each path by whether it exists in HEAD, which covers staged edits, staged deletions, mode changes and both sides of a rename.
 
   Then branch on the result:
   - **`ROLLBACK: CLEAN`** → mark the finding `rolled-back` with the failure details and move to the next finding.

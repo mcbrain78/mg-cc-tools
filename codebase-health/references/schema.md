@@ -267,6 +267,49 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/update-findings.py \
     --tests-run --tests-passed --rollback-commit abc123f
 ```
 
+### rollback-change.py
+
+Guards and undoes a single failed change during implementation. Two subcommands.
+
+`preflight` asserts the working tree is clean before a change is applied, excluding the
+pipeline's own workspace (`.mg/`, `.health-scan/`) so the tool's findings JSON does not
+count as user work. It is the safety basis for the rollback being unscoped: if the tree
+was clean beforehand, everything dirty afterwards is that change's own footprint.
+
+```bash
+python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py preflight --repo <project-root>
+```
+
+`rollback` undoes the change that just failed its tests. It classifies each dirty path by
+whether it exists in HEAD — restoring from the commit if so, unstaging and removing if not
+— which covers staged edits, staged deletions, mode changes and both sides of a rename.
+Reports `ROLLBACK: CLEAN` (exit 0) or `ROLLBACK: DIRTY` with the leftovers (exit 1).
+
+```bash
+python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py rollback --repo <project-root>
+```
+
+### record-run-state.py
+
+Persists which category is in flight and the commit it started from, to
+`.mg/health-scan/health-implement-run-state.json`. Needed because the implement step no
+longer undoes anything on a cross-category regression: it stops with the batch's commits
+in place, and this file is what identifies the range afterwards — including to a fresh
+session, if the original one died.
+
+```bash
+python3 {MG_INSTALL_SCRIPTS_DIR}/record-run-state.py set-checkpoint \
+    --state .mg/health-scan/health-implement-run-state.json \
+    --category orphaned-code --checkpoint "$(git rev-parse HEAD)"
+
+python3 {MG_INSTALL_SCRIPTS_DIR}/record-run-state.py mark-halted \
+    --state .mg/health-scan/health-implement-run-state.json \
+    --reason "3 integration tests regressed" --head "$(git rev-parse HEAD)"
+
+python3 {MG_INSTALL_SCRIPTS_DIR}/record-run-state.py read  --state <path>   # exit 1 if halted
+python3 {MG_INSTALL_SCRIPTS_DIR}/record-run-state.py clear --state <path>
+```
+
 ### split-findings.py
 
 Splits verified findings into downstream documents. Called by the verifier

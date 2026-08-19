@@ -1,39 +1,59 @@
 #!/usr/bin/env python3
-"""Roll back a failed code change, and report honestly whether it worked.
+"""Undo one failed code change, and report honestly whether it worked.
 
-The implement step used to roll back with a bare `git checkout -- .` and then
-record the finding as `rolled-back`, on the stated grounds that committing after
-every success means only the current change can be affected. Two things were
-wrong with that:
+The implement step applies one finding at a time, tests, and commits. When a
+change breaks the tests it has to be undone before the next one starts. Three
+earlier attempts at that got it wrong:
 
-  * `git checkout` restores tracked files. It does not touch untracked ones, so
-    a failed "Refactor: Extract..." or "Merge: Combine duplicates" -- both
-    file-creating change types the step documents -- left its new file sitting on
-    disk while the finding was reported as cleanly rolled back.
-  * The `.` pathspec is relative to the working directory. Run from a
-    subdirectory it silently reverts only that subtree, leaving modifications
-    elsewhere in the repo in place. `:/` anchors to the repo root instead.
+  * `git checkout -- .` restores tracked files only and its pathspec is relative
+    to the working directory, so a failed change's new file stayed on disk and a
+    rollback run from a subdirectory silently reverted only that subtree.
+  * `git checkout -- :/` fixed the subdirectory half but still cannot undo a
+    STAGED change. Verified: after `git mv old.py new.py` the rename survives it
+    completely. Since Refactor-rename and Merge are documented change types,
+    every one of them left the tree dirty and halted the run.
+  * An untracked-file baseline recorded once per run was used to decide which
+    untracked files were the change's own. Over a long run that snapshot goes
+    stale, so anything the user dropped into the repo afterwards was classified
+    as rollback debris and deleted.
 
-So the rollback reverts tracked files repo-wide, removes exactly the untracked
-files that appeared since the baseline, and then re-checks the tree. It reports
-CLEAN only when nothing is left over, and DIRTY (with the paths) when something
-is -- because "I could not fully undo this" is the one thing the caller must not
-paper over when deciding what to record.
+This version drops the baseline entirely. `preflight` asserts the tree is clean
+immediately before a change is applied, which makes the baseline unnecessary:
+whatever is dirty at rollback time is that change's own footprint, with no
+snapshot to go stale. Safety comes from checking at the right moment rather than
+from remembering.
 
-Deleting untracked files needs a baseline to be safe: without one there is no
-way to distinguish a file the failed change created from a file the user left
-lying around. With no baseline the script reverts tracked files, reports what it
-found, and deletes nothing.
+Classification is by whether a path exists in HEAD, not by its status code, which
+handles every case with one rule:
+
+    in HEAD      -> `git checkout HEAD -- <path>`  (sources from the commit, so
+                    it undoes staged edits, staged deletions and mode changes)
+    not in HEAD  -> unstage, then remove from disk
+
+A staged rename is two paths under that rule: the old side is in HEAD and gets
+restored, the new side is not and gets removed. That is the case every previous
+version missed.
+
+Residual risk, stated rather than hidden: if the user edits a tracked file during
+the window between preflight and rollback, `git checkout HEAD -- <path>` cannot
+tell that edit from the failed change's and will revert both. The window is one
+change's Execute+Test, not the whole run, and nothing here closes it further.
 
 Usage:
-    rollback-change.py baseline --repo <root> --out <file>
-    rollback-change.py rollback --repo <root> [--baseline <file>] [--dry-run]
+    rollback-change.py preflight --repo <root> [--exclude <dir>]...
+    rollback-change.py rollback  --repo <root> [--exclude <dir>]... [--dry-run]
 """
 
 import argparse
 import os
 import subprocess
 import sys
+
+# The pipeline writes its own findings JSON and reports inside the project while
+# it runs, so those paths are never part of a change's footprint. Both layouts
+# are excluded by default: a forgotten flag should not make the tool roll back
+# its own ledger.
+DEFAULT_EXCLUDES = (".mg", ".health-scan")
 
 
 def git(repo, *args, check=True):
@@ -42,103 +62,127 @@ def git(repo, *args, check=True):
     )
 
 
-def untracked(repo):
-    """Untracked, non-ignored files, as repo-relative paths."""
-    out = git(repo, "ls-files", "--others", "--exclude-standard").stdout
-    return {line for line in out.splitlines() if line}
+def has_head(repo):
+    """False in a repo with no commits yet, where nothing can be in HEAD."""
+    return git(repo, "rev-parse", "--verify", "HEAD", check=False).returncode == 0
 
 
-def modified(repo):
-    """Tracked files with unstaged or staged modifications."""
-    out = git(repo, "status", "--porcelain", "--untracked-files=no").stdout
-    paths = set()
+def _unquote(path):
+    """Undo git's C-style quoting of paths containing unusual characters."""
+    if path.startswith('"') and path.endswith('"'):
+        return path[1:-1].encode().decode("unicode_escape")
+    return path
+
+
+def entries(repo, excludes):
+    """Dirty paths from git status, both sides of renames, excludes applied.
+
+    Returns a list of (path, status_code) with one entry per affected path.
+    """
+    out = git(
+        repo, "status", "--porcelain", "--untracked-files=all"
+    ).stdout
+    found = []
     for line in out.splitlines():
-        if not line:
+        if not line or len(line) < 4:
             continue
-        # Porcelain v1: 2 status chars, a space, then the path (or "old -> new").
-        path = line[3:]
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        paths.add(path.strip('"'))
-    return paths
-
-
-def cmd_baseline(args):
-    paths = sorted(untracked(args.repo))
-    with open(args.out, "w") as f:
+        code, rest = line[:2], line[3:]
+        paths = []
+        if " -> " in rest:
+            # Rename or copy: both sides matter.
+            old, new = rest.split(" -> ", 1)
+            paths = [_unquote(old), _unquote(new)]
+        else:
+            paths = [_unquote(rest)]
         for p in paths:
-            f.write(p + "\n")
-    print(f"BASELINE: recorded {len(paths)} pre-existing untracked file(s) to {args.out}")
-    return 0
+            top = p.split("/", 1)[0]
+            if top in excludes:
+                continue
+            found.append((p, code))
+    return found
+
+
+def cmd_preflight(args):
+    dirty = entries(args.repo, set(args.excludes))
+    if not dirty:
+        print("PREFLIGHT: CLEAN -- safe to apply the next change")
+        return 0
+    print("PREFLIGHT: DIRTY -- the working tree has changes that are not this run's")
+    for path, code in sorted(dirty):
+        print(f"  {code} {path}")
+    print(
+        "Applying a change now would make the failed-change rollback unable to tell "
+        "these apart from its own edits. Commit, stash or revert them first."
+    )
+    return 1
 
 
 def cmd_rollback(args):
     repo = args.repo
+    excludes = set(args.excludes)
+    dirty = entries(repo, excludes)
 
-    baseline = None
-    if args.baseline:
-        try:
-            with open(args.baseline) as f:
-                baseline = {line.strip() for line in f if line.strip()}
-        except FileNotFoundError:
-            print(
-                f"WARNING: baseline {args.baseline} not found; "
-                "reverting tracked files only and deleting nothing"
-            )
+    if not dirty:
+        print("ROLLBACK: CLEAN -- nothing to undo, tree already matches HEAD")
+        return 0
 
-    # Revert tracked modifications repo-wide. `:/` is the repo root regardless of
-    # the caller's working directory, which `.` is not.
-    if not args.dry_run:
-        git(repo, "checkout", "--", ":/")
+    head = has_head(repo)
+    restore, discard = [], []
+    for path, _ in dirty:
+        in_head = head and git(
+            repo, "cat-file", "-e", f"HEAD:{path}", check=False
+        ).returncode == 0
+        (restore if in_head else discard).append(path)
 
-    leftover_untracked = untracked(repo)
-    if baseline is None:
-        stray = set()
-        undeletable = leftover_untracked
-    else:
-        stray = leftover_untracked - baseline
-        undeletable = set()
+    if args.dry_run:
+        for p in sorted(restore):
+            print(f"  would restore from HEAD: {p}")
+        for p in sorted(discard):
+            print(f"  would unstage and remove: {p}")
+        print("DRY-RUN: no changes made")
+        return 0
+
+    if restore:
+        # One call: git applies it atomically enough for our purposes and it
+        # undoes staged content, staged deletions and mode bits together.
+        git(repo, "checkout", "HEAD", "--", *sorted(restore))
 
     removed = []
-    for rel in sorted(stray):
-        abs_path = os.path.join(repo, rel)
-        if args.dry_run:
-            removed.append(rel)
-            continue
+    for path in sorted(discard):
+        abs_path = os.path.join(repo, path)
+        # Unstage first so a staged-new file does not linger in the index after
+        # its blob is gone from disk.
+        git(repo, "reset", "-q", "HEAD", "--", path, check=False)
         try:
             os.remove(abs_path)
-            removed.append(rel)
+            removed.append(path)
+        except FileNotFoundError:
+            removed.append(path)
         except OSError as exc:
-            print(f"WARNING: could not remove {rel}: {exc}")
-            undeletable.add(rel)
+            print(f"WARNING: could not remove {path}: {exc}")
         else:
-            # Prune directories the removal just emptied. removedirs stops at the
-            # first non-empty parent, so this cannot walk out of the repo.
             parent = os.path.dirname(abs_path)
             if parent and os.path.isdir(parent):
                 try:
+                    # Stops at the first non-empty parent, so it cannot walk out
+                    # of the repo.
                     os.removedirs(parent)
                 except OSError:
                     pass
 
-    still_modified = modified(repo)
-    still_untracked = (untracked(repo) - (baseline or set())) | undeletable
-
+    if restore:
+        print(f"RESTORED: {len(restore)} path(s) from HEAD: {', '.join(sorted(restore))}")
     if removed:
-        print(
-            f"REMOVED: {len(removed)} untracked file(s) created by the failed change: "
-            + ", ".join(removed)
-        )
+        print(f"REMOVED: {len(removed)} path(s) the change created: {', '.join(removed)}")
 
-    if not still_modified and not still_untracked:
-        print("ROLLBACK: CLEAN -- working tree matches the last commit")
+    leftover = entries(repo, excludes)
+    if not leftover:
+        print("ROLLBACK: CLEAN -- working tree matches HEAD")
         return 0
 
     print("ROLLBACK: DIRTY -- the working tree was not fully restored")
-    for p in sorted(still_modified):
-        print(f"  still modified:  {p}")
-    for p in sorted(still_untracked):
-        print(f"  still untracked: {p}")
+    for path, code in sorted(leftover):
+        print(f"  {code} {path}")
     print(
         "Record this finding as rollback-failed, not rolled-back, and stop rather "
         "than applying the next change on top of a dirty tree."
@@ -148,29 +192,34 @@ def cmd_rollback(args):
 
 def main(argv=None):
     p = argparse.ArgumentParser(
-        description="Roll back a failed code change, and report honestly whether it worked."
+        description="Undo one failed code change, and report whether it worked."
     )
     sub = p.add_subparsers(dest="command", required=True)
 
-    b = sub.add_parser("baseline", help="record pre-existing untracked files")
-    b.add_argument("--repo", required=True)
-    b.add_argument("--out", required=True)
-    b.set_defaults(func=cmd_baseline)
-
-    r = sub.add_parser("rollback", help="revert a failed change and verify")
-    r.add_argument("--repo", required=True)
-    r.add_argument("--baseline", help="baseline file from the `baseline` command")
-    r.add_argument("--dry-run", action="store_true")
-    r.set_defaults(func=cmd_rollback)
+    for name, fn, helptext in (
+        ("preflight", cmd_preflight, "assert the tree is clean before a change"),
+        ("rollback", cmd_rollback, "undo the change that just failed, and verify"),
+    ):
+        sp = sub.add_parser(name, help=helptext)
+        sp.add_argument("--repo", required=True)
+        sp.add_argument(
+            "--exclude",
+            action="append",
+            dest="excludes",
+            default=None,
+            help=f"top-level dir to ignore (repeatable; default: {' '.join(DEFAULT_EXCLUDES)})",
+        )
+        if name == "rollback":
+            sp.add_argument("--dry-run", action="store_true")
+        sp.set_defaults(func=fn)
 
     args = p.parse_args(argv)
-    if not os.path.isdir(os.path.join(args.repo, ".git")):
-        # A worktree or submodule has a .git file rather than a directory; only
-        # bail when git itself does not recognise the path.
-        probe = git(args.repo, "rev-parse", "--git-dir", check=False)
-        if probe.returncode != 0:
-            print(f"ERROR: {args.repo} is not a git repository", file=sys.stderr)
-            return 2
+    if args.excludes is None:
+        args.excludes = list(DEFAULT_EXCLUDES)
+
+    if git(args.repo, "rev-parse", "--git-dir", check=False).returncode != 0:
+        print(f"ERROR: {args.repo} is not a git repository", file=sys.stderr)
+        return 2
     return args.func(args)
 
 

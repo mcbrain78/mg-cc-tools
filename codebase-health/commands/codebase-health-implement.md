@@ -27,21 +27,26 @@ If any are missing or if `verification` is `null` on any finding, **stop** and t
 
 ### Step 1: Pre-flight Checks
 
-1. **Check git status.** The project should be in a clean git state (no uncommitted changes). If there are uncommitted changes, ask the user to commit or stash them first. This is non-negotiable — you need a clean rollback point.
-
-2. **Confirm the user is on the intended branch.** Run `git branch --show-current` and tell the user which branch you'll be committing to. Ask them to confirm this is correct before proceeding. **Never create or switch branches yourself** — that's the user's responsibility.
-
-3. **Load the test baseline.** Read `health-verify-test-baseline.json` to know what "passing" looks like. If there are pre-existing failures, note them — you won't be blamed for those.
-
-4. **Record the untracked-file baseline.** Rolling back a failed change means deleting the files it created, and that is only safe if you can tell those apart from files the user already had lying around. Capture the baseline once, now:
+1. **Check git status.** The project must be in a clean git state before the first change. Use the script rather than reading `git status` yourself, so the pipeline's own workspace (`.mg/`, `.health-scan/`) is excluded — the scan and verify steps wrote their findings JSON there, and that is not uncommitted work the user needs to deal with:
 
    ```bash
-   python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py baseline \
-       --repo <project-root> \
-       --out <project-root>/.mg/health-scan/untracked-baseline.txt
+   python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py preflight --repo <project-root>
    ```
 
-   Because every successful change is committed immediately, any untracked file that appears later and is not in this baseline was created by the change currently being attempted.
+   Nonzero exit → stop and ask the user to commit or stash what it lists. This is non-negotiable: the rollback below distinguishes this change's work from everyone else's purely by the tree having been clean beforehand.
+
+2. **Check for an unresolved halt from a previous run.**
+
+   ```bash
+   python3 {MG_INSTALL_SCRIPTS_DIR}/record-run-state.py read \
+       --state <project-root>/.mg/health-scan/health-implement-run-state.json
+   ```
+
+   If it reports `halted`, a previous run stopped after a cross-category regression and left commits in place for review. Show the record and stop — do not start a new run on top of an unresolved one. The user either resolves those commits themselves or clears the state with `record-run-state.py clear`.
+
+3. **Confirm the user is on the intended branch.** Run `git branch --show-current` and tell the user which branch you'll be committing to. Ask them to confirm this is correct before proceeding. **Never create or switch branches yourself** — that's the user's responsibility.
+
+4. **Load the test baseline.** Read `health-verify-test-baseline.json` to know what "passing" looks like. If there are pre-existing failures, note them — you won't be blamed for those.
 
 5. **Read config.** Load pipeline configuration using layered lookup:
    - **First**, check `<project-root>/.mg/health-scan/.health-scan.config.json` (project-level overrides).
@@ -85,7 +90,15 @@ Before each change, write to the console what you're about to do:
 
 #### B. Execute
 
-Follow the verifier's `proposed_change` instruction precisely. Do exactly what it says — no more, no less. If the instruction is ambiguous, **skip the item** rather than guess.
+First confirm the tree is still clean, so that whatever is dirty when this change is tested is unambiguously this change's own work:
+
+```bash
+python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py preflight --repo <project-root>
+```
+
+Nonzero exit → **stop the run** and report what it lists. Something outside this pipeline modified the repo since the last commit, and the rollback below cannot tell that apart from a failed change's own edits. This check is the entire safety basis for the rollback being unscoped.
+
+Then follow the verifier's `proposed_change` instruction precisely. Do exactly what it says — no more, no less. If the instruction is ambiguous, **skip the item** rather than guess.
 
 Common change types:
 - **Remove**: Delete the specified code. Also remove any imports that become unused as a result.
@@ -106,13 +119,11 @@ If the verifier ran the full suite and the project is large, you may further nar
 
 Compare results against the baseline:
 - **Same or better** → proceed to the next change.
-- **New failure** → this change broke something. Roll it back with the script, which reverts tracked files repo-wide, removes the untracked files this change created, and then re-checks the tree:
+- **New failure** → this change broke something. Roll it back with the script, which restores from HEAD everything the change touched, removes what it created, and re-checks the tree:
   ```bash
-  python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py rollback \
-      --repo <project-root> \
-      --baseline <project-root>/.mg/health-scan/untracked-baseline.txt
+  python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py rollback --repo <project-root>
   ```
-  Do not roll back with a bare `git checkout -- .`. It restores tracked files only, so a failed **Refactor: Extract** or **Merge** leaves its new file on disk; and its `.` pathspec is relative to the working directory, so run from a subdirectory it silently reverts only that subtree. The script uses `:/` and deletes the created files.
+  Do not roll back by hand. `git checkout -- .` restores tracked files only and its pathspec is relative to the working directory; `git checkout -- :/` fixes the directory half but still cannot undo a **staged** change, so a `git mv` rename survives it completely — which meant every **Refactor: rename** and **Merge** left the tree dirty and halted the run. The script classifies by whether each path exists in HEAD, which covers staged edits, staged deletions, mode changes, and both sides of a rename.
 
   Then branch on what it reports:
   - **`ROLLBACK: CLEAN`** → the tree matches the last commit. Mark the finding `status: "rolled-back"` with the failure details and move to the next item.
@@ -186,11 +197,14 @@ Skip categories with no findings in the work queue.
 
 For each category **sequentially**:
 
-**a. Record checkpoint.** Capture the current HEAD SHA before the batch:
+**a. Record checkpoint.** Capture the current HEAD SHA and persist it before the batch starts:
 ```bash
-git rev-parse HEAD
+python3 {MG_INSTALL_SCRIPTS_DIR}/record-run-state.py set-checkpoint \
+    --state <project-root>/.mg/health-scan/health-implement-run-state.json \
+    --category <category> \
+    --checkpoint "$(git rev-parse HEAD)"
 ```
-Save this as the rollback point for the entire category batch.
+This marks where the category's commits begin. It goes to disk rather than living in your context because the tool no longer undoes anything automatically: if this session dies, the commits this batch makes are still on the branch, and the record is the only thing that explains which commits belong to which category.
 
 **b. Launch subagent.** Use the **Task tool** to spawn a single subagent:
 
@@ -209,24 +223,31 @@ Compose the subagent prompt with:
 3. The category name.
 4. The findings for this category as a JSON array (including their `verification` objects).
 5. The test command and baseline summary from `health-verify-test-baseline.json`.
-6. The untracked-file baseline path from Step 1: `<project-root>/.mg/health-scan/untracked-baseline.txt`. Without it the subagent's rollback cannot safely delete the files a failed change created.
-7. The output path: `<project-root>/.mg/health-scan/scan-logs/implement-<category>.json`.
-8. The shared schema documentation — read `references/schema.md` and paste the `implementation` object section.
+6. The output path: `<project-root>/.mg/health-scan/scan-logs/implement-<category>.json`.
+7. The shared schema documentation — read `references/schema.md` and paste the `implementation` object section.
 
 **c. Read results.** After the subagent completes, read `implement-<category>.json` from the output path.
 
-**d. Inter-batch test validation.** Run the full test command and compare against baseline:
-- **Tests pass** → merge the subagent's results into the findings JSON. Proceed to the next category.
-- **Tests fail** → the batch introduced a cross-category regression. Roll back the entire category batch:
-  ```bash
-  git reset --hard <checkpoint_sha>
-  python3 {MG_INSTALL_SCRIPTS_DIR}/rollback-change.py rollback \
-      --repo <project-root> \
-      --baseline <project-root>/.mg/health-scan/untracked-baseline.txt
-  ```
-  `git reset --hard` discards the batch's commits and the files they added, but it leaves untracked files alone — and since the commit step stages `<modified files>`, a newly created file can miss the commit and survive the reset. The second command sweeps exactly those and confirms the tree really is back at the checkpoint.
+If it holds fewer entries than the category had findings, the subagent stopped early — a crash, or its own `rollback-failed` stop. Its commits are real and stay where they are. Still run the inter-batch validation below, then **stop the run** afterwards rather than launching the next category, and say in the report how many findings were left unattempted.
 
-  If it reports `ROLLBACK: DIRTY`, **stop** and report the leftover paths rather than starting the next category on a dirty tree. Otherwise mark all findings in this batch as `rolled-back` with reason: `"Inter-batch test validation failed after <category> batch. Entire batch rolled back to <checkpoint_sha>."` Proceed to the next category.
+**d. Inter-batch test validation.** Run the full test command and compare against baseline:
+
+- **Tests pass** → merge the subagent's results (step e) and proceed to the next category.
+
+- **Tests fail** → the batch introduced a cross-category regression. **Stop. Do not undo anything.**
+
+  ```bash
+  python3 {MG_INSTALL_SCRIPTS_DIR}/record-run-state.py mark-halted \
+      --state <project-root>/.mg/health-scan/health-implement-run-state.json \
+      --reason "<which tests regressed after the <category> batch>" \
+      --head "$(git rev-parse HEAD)"
+  ```
+
+  Then merge the subagent's results (step e), skip every remaining category, skip Step 3's final validation — it would only reproduce this same failure — and go to Step 4 to write the report.
+
+  **Never `git reset --hard`, `git revert`, or otherwise discard commits here.** The tool used to reset to the checkpoint, which was wrong in three ways at once: it destroyed the per-finding commits that Safety Rule 10 calls the audit trail; it discarded any uncommitted work in the tree with no recovery path, since reflog only preserves commits; and it discarded by SHA range without checking that the range held only this tool's commits. `git revert` is not a safe substitute either — on conflict its own documented recovery, `git revert --abort`, discards staged changes anywhere in the repo, verified by reproduction.
+
+  Every commit in this batch passed its own test run before being committed. What failed is the interaction *between* categories, which is a question about which changes to keep — a judgement the tool is not in a position to make, and cannot make safely on a repo it does not exclusively own. So it reports the range and leaves the decision to the user.
 
 **e. Merge results.** Use the update script to merge the subagent's batch results:
 
@@ -236,9 +257,18 @@ python3 {MG_INSTALL_SCRIPTS_DIR}/update-findings.py \
     --batch <project-root>/.mg/health-scan/scan-logs/implement-<category>.json
 ```
 
+This is unconditional and needs no correction pass. Because nothing discards commits any more, a finding the subagent recorded as `applied` with a `rollback_commit` SHA is still exactly that — the SHA resolves, the commit is reachable, and the ledger matches git. The old flow reset first and then merged these same records unchanged, leaving the findings file asserting `applied` against commits that no longer existed.
+
+**f. Clear the checkpoint** once a category passes validation and its results are merged:
+
+```bash
+python3 {MG_INSTALL_SCRIPTS_DIR}/record-run-state.py clear \
+    --state <project-root>/.mg/health-scan/health-implement-run-state.json
+```
+
 #### 3. Continue to Step 3
 
-After all category batches are processed, proceed to Step 3 (Final Validation) as normal.
+If no category halted, proceed to Step 3 (Final Validation) as normal. If one did, skip to Step 4.
 
 ### Step 3: Final Validation
 
@@ -296,6 +326,32 @@ Review the commits on this branch.
 Each change is its own commit and can be individually reverted with `git revert <SHA>`.
 ```
 
+**If the run halted** (a category failed inter-batch validation, or a subagent stopped early), add this section. Read the SHAs from the run-state file rather than from memory — it is the durable record, and after a session death it is the only one:
+
+```
+## Run Halted
+
+The <category> batch passed every per-finding test but regressed the full suite:
+  <which tests>
+
+Nothing has been undone. Every commit is still on <branch>, and each one passed its
+own tests before being committed. Deciding which to keep is yours — the failure is an
+interaction between categories, not a verdict on any single change.
+
+  Batch commits:   git log <checkpoint_sha>..<head_sha> --oneline
+  Combined diff:   git diff <checkpoint_sha>..<head_sha>
+  Undo the batch:  git revert --no-commit <checkpoint_sha>..<head_sha>
+                   (then review and commit; run it yourself so a conflict is
+                    visible and resolvable — do NOT let the tool run this)
+
+  Categories not attempted: <list>
+
+Clear the halt when you have decided, so the next run can start:
+  python3 <scripts>/record-run-state.py clear --state <state path>
+```
+
+Do not offer `git reset --hard` as an option in this section. It would discard the commits above along with anything uncommitted in the tree, and reflog does not recover the latter.
+
 ### Step 5: Present Results
 
 Show the user the implementation report. Make it clear that:
@@ -327,8 +383,10 @@ These are non-negotiable. Violating any of them risks breaking the codebase.
 
 9. **Never make changes beyond what's in the work queue.** You might notice other issues while implementing. Don't fix them. Note them in the report for a future scan.
 
-10. **Preserve the git history.** Don't rebase, amend, or force-push. The commit-per-finding history is the audit trail.
+10. **Preserve the git history.** Don't rebase, amend, or force-push, and never discard a commit. The commit-per-finding history is the audit trail.
 
-11. **Inter-batch test validation is mandatory.** In subagent mode, always run the full test suite between category batches. If tests fail after a batch, roll back the entire batch with `git reset --hard <checkpoint>` followed by `rollback-change.py rollback` (reset leaves untracked files behind) before proceeding to the next category. This catches cross-category interaction effects that per-finding tests within a batch might miss.
+11. **Inter-batch test validation is mandatory, and its failure path is to stop.** In subagent mode, always run the full test suite between category batches — it catches cross-category interaction effects that per-finding tests within a batch cannot. When it fails, record the halt, report the commit range, and stop. **Do not reset, revert, or discard any commit automatically.** The batch's commits each passed their own tests and stay exactly where they are; which of them to keep is the user's decision. This rule used to mandate `git reset --hard <checkpoint>`, which contradicted Rule 9 above on the same page — the contradiction is resolved by removing the destructive action, not by softening the rule.
 
-12. **Never run implementation subagents in parallel.** Implementation subagents must be launched sequentially, one category at a time. Git commits cannot be parallelized, and changes from one batch shift line numbers for the next. Always wait for one subagent to complete (and pass inter-batch validation) before launching the next.
+12. **Never undo anything you cannot scope.** The per-finding rollback is allowed to be unscoped only because a preflight check immediately beforehand proved the tree was clean, so everything dirty is this change's own work. If that check has not just passed, do not roll back — stop and report.
+
+13. **Never run implementation subagents in parallel.** Implementation subagents must be launched sequentially, one category at a time. Git commits cannot be parallelized, and changes from one batch shift line numbers for the next. Always wait for one subagent to complete (and pass inter-batch validation) before launching the next.
