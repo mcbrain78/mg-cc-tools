@@ -197,6 +197,12 @@ class TestGitDestructiveRemote:
         assert_blocked("git config user.name 'John'", self.CAT)
         assert_blocked("git config user.email me@example.com", self.CAT)
 
+    def test_block_config_write_url_subsection(self):
+        # Subsections are arbitrary — a URL key is still a write.
+        assert_blocked(
+            "git config url.https://github.com/.insteadOf git@github.com:", self.CAT
+        )
+
     def test_block_config_write_behind_options(self):
         # Scope and format options must not hide the write behind them.
         assert_blocked('git config --global user.name "John"', self.CAT)
@@ -241,6 +247,13 @@ class TestGitDestructiveRemote:
         assert_allowed("git config user.name\necho done")
         assert_allowed("git config --global user.name")
         assert_allowed("git config user.name > /tmp/name.txt")
+
+    def test_allow_config_words_in_prose(self):
+        # Rules scan the raw command string, quotes included: a sectionless
+        # word after "git config" is prose, not a writable key.
+        assert_allowed('echo "=== git config rule ==="')
+        assert_allowed('grep -n "git config" hooks/permission-guard.py')
+        assert_allowed('echo "git config e.g. write intent"')
 
     def test_block_submodule_add(self):
         assert_blocked("git submodule add url", self.CAT)

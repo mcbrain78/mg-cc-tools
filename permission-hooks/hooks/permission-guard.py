@@ -80,7 +80,13 @@ _GIT_CONFIG_OPTS = (
 
 # A write is a mutating flag, a mutating subcommand, or a key with a value
 # after it. The value cannot be a redirect or a shell terminator — those end
-# the command, leaving a bare-key read.
+# the command, leaving a bare-key read. The key must carry its section dot:
+# git rejects a write to a sectionless key ("key does not contain a section"),
+# and the rules scan the raw command string, so an undotted key would flag
+# ordinary prose containing the words — `echo "=== git config rule ==="`. The
+# middle of the key stays permissive for URL subsections
+# (`url.https://github.com/.insteadOf`) but must end on a key character, so a
+# trailing-dot abbreviation ("git config e.g. foo") is not a write either.
 _GIT_CONFIG_WRITE = (
     r"\bgit\s+config(?!\s+(?:get|list)\b)"
     + _GIT_CONFIG_OPTS
@@ -88,7 +94,7 @@ _GIT_CONFIG_WRITE = (
     r"--(?:add|unset|unset-all|replace-all|rename-section|remove-section|edit)\b"
     r"|-e\b"
     r"|(?:set|unset|edit|rename-section|remove-section)\b"
-    r"|[\w.][\w.-]*[ \t]+[^\s)`;&|<>]"
+    r"|[\w-]+\.\S*[\w-][ \t]+[^\s)`;&|<>]"
     r")"
 )
 
