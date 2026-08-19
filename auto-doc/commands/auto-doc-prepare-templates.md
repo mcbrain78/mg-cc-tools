@@ -161,22 +161,33 @@ If any agent fails, log a warning for that document. Partial refinement is accep
 
 ### Step 5: Summary
 
-After all agents complete, discover the refined templates that were created:
-```
-Glob pattern: .mg/docs/templates/**/*.template.md
-```
+Report the (audience, document) pairs you actually refined in Step 4 — the same set the
+per-pair `Refined:` lines came from.
+
+**Do not discover them with a glob over `.mg/docs/templates/`.** That directory is never
+cleaned, and Step 0 supports an audience filter, so a glob returns every template any
+previous run left behind. A filtered run would count other audiences' untouched files as
+freshly created, and a refinement that failed this run would be masked by a stale template
+of the same name sitting where the new one should be. Step 2 already knows the correct
+scope; use it.
 
 Print the summary:
 ```
 Template Refinement Complete
 
-Refined templates:
+Refined this run:
   .mg/docs/templates/end-users/USER_GUIDE.template.md
   .mg/docs/templates/developers/ARCHITECTURE.template.md
   ...
 
-Total: {count} refined templates created
+Total: {count} of {attempted} templates refined
+Failed: {list of (audience, document) pairs whose agent failed, or "none"}
 Scan date used: {scan_date}
 
 Next step: Run /mg:auto-doc-generate to generate documentation using refined templates.
 ```
+
+`{attempted}` is the pair count from Step 2 and `{count}` the number that succeeded, so a
+partial run reads as partial. If the filter was active, say so, and note that other
+audiences' templates on disk were left untouched rather than silently folding them into
+the total.
