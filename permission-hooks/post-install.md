@@ -66,7 +66,7 @@ chmod +x "<TARGET_HOOKS_DIR>/permission-guard.py"
 
 Log: `Installed permission-guard.py to <TARGET_HOOKS_DIR>/`
 
-### If already installed (sync check):
+### If already installed (copy verification):
 
 Compare the installed hook (ignoring the PROJECT_ROOT line) against the source:
 
@@ -78,9 +78,21 @@ echo "installed: $INSTALLED_MD5"
 echo "source:    $SOURCE_MD5"
 ```
 
-**If identical:** Log `Hook file in sync.` Then check if PROJECT_ROOT needs resolving (see below). Then proceed to Step 3.
+**Read this as an integrity check on the copy, not as drift detection.** When invoked
+by the `/mg:install` orchestrator, `install.sh` has already copied the hook into the
+target before this step runs, so the comparison is between the source and a copy just
+made from it. A match therefore proves the copy landed intact — not truncated, and not
+mangled by placeholder substitution. It says nothing about what the target held
+beforehand, and must never be reported as "the target was already current."
 
-**After sync check (both identical and synced cases):** Verify PROJECT_ROOT state in the installed file:
+The one place that question is answerable is inside `install.sh`, which hashes the
+outgoing file before overwriting it and prints `Guard logic: UPDATED / unchanged /
+new install`. Cite that line — visible in the orchestrator's `install.sh` output — if
+you need to state whether the guard logic actually changed.
+
+**If identical:** Log `Copy verified against source.` Then check if PROJECT_ROOT needs resolving (see below). Then proceed to Step 3.
+
+**After copy verification (both identical and re-copied cases):** Verify PROJECT_ROOT state in the installed file:
 
 ```bash
 grep '^PROJECT_ROOT = ' "<TARGET_HOOKS_DIR>/permission-guard.py"
@@ -99,14 +111,17 @@ grep '^PROJECT_ROOT = ' "<TARGET_HOOKS_DIR>/permission-guard.py"
   Log: `Resolved PROJECT_ROOT to <target project>`
   If already resolved to a non-empty path, no action needed.
 
-**If different:** Ask via AskUserQuestion:
-- header: "Sync"
-- question: "Installed permission-guard.py is out of sync with source. Sync now?"
+**If different:** In the orchestrated flow this means `install.sh`'s copy did not land
+(interrupted write, permissions, wrong target) — the hook was copied moments ago, so
+it cannot legitimately differ. Treat it as a failed copy and re-copy. Ask via
+AskUserQuestion:
+- header: "Re-copy"
+- question: "Installed permission-guard.py does not match source — the copy appears to have failed. Re-copy now?"
 - options:
-  - "Sync now" -- "Copy updated hook from source"
-  - "Continue stale" -- "Proceed with currently installed hook"
+  - "Re-copy" -- "Copy the hook from source again"
+  - "Continue as-is" -- "Proceed with the currently installed hook"
 
-**If "Sync now":**
+**If "Re-copy":**
 
 1. Read the currently installed file to extract the resolved PROJECT_ROOT value
 2. Copy the source file over:
@@ -119,7 +134,7 @@ chmod +x "<TARGET_HOOKS_DIR>/permission-guard.py"
 sed -i "s|{MG_INSTALL_PROJECT_ROOT}|<extracted-project-root>|g" "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
-Log: `Hook synced from source.`
+Log: `Hook re-copied from source.`
 
 ## Step 3: Settings.json Management
 
@@ -142,10 +157,16 @@ if install_mode == 'project':
 else:
     hook_cmd = 'python3 ' + os.path.join(hooks_dir, 'permission-guard.py')
 
+# Keep the original bytes: 'stripped-then-readded' is not the same question as
+# 'did the file change'. Stripping 4 stale entries and appending 4 identical ones
+# is a no-op, and reporting it as a rewrite invents a restart the user does not
+# need. The restart reminder keys off this comparison.
 try:
     with open(settings_path) as f:
-        settings = json.load(f)
+        before = f.read()
+    settings = json.loads(before)
 except (FileNotFoundError, json.JSONDecodeError):
+    before = None
     settings = {}
 
 hooks = settings.setdefault('hooks', {})
@@ -182,16 +203,21 @@ for matcher in matchers:
 
 hooks['PreToolUse'] = new_pre_tool
 
-with open(settings_path, 'w') as f:
-    json.dump(settings, f, indent=2)
-    f.write('\n')
+after = json.dumps(settings, indent=2) + '\n'
 
-if stripped:
-    print(f'REWROTE: Removed {stripped} stale permission-guard entries; added 4 fresh ones for {settings_path}')
+if after == before:
+    print(f'UNCHANGED: 4 canonical permission-guard entries already present in {settings_path}')
 else:
-    print(f'ADDED: Wrote 4 permission-guard hook entries to {settings_path}')
+    with open(settings_path, 'w') as f:
+        f.write(after)
+    if stripped:
+        print(f'REWROTE: Removed {stripped} stale permission-guard entries; added 4 fresh ones for {settings_path}')
+    else:
+        print(f'ADDED: Wrote 4 permission-guard hook entries to {settings_path}')
 "
 ```
+
+**If UNCHANGED:** The target already had the canonical entries; settings.json was not written. No restart needed.
 
 **If ADDED:** Report that the canonical hook entries were written for the first time.
 
@@ -219,8 +245,8 @@ print('=' * 50)
 print(f'  Total: {total} rules + out-of-project path guard')
 print()
 print(f'  PROJECT_ROOT: {guard.PROJECT_ROOT!r}')
-if not guard.PROJECT_ROOT or guard.PROJECT_ROOT == '{' + 'PROJECT_ROOT' + '}':
-    print('  (will fall back to cwd from hook event)')
+if not guard.PROJECT_ROOT or guard.PROJECT_ROOT.startswith('{'):
+    print('  (unresolved placeholder -- resolves at runtime via CLAUDE_PROJECT_DIR, then event cwd)')
 "
 ```
 
@@ -237,14 +263,27 @@ Permission Guard Status
 
   Target:     <target project>
   Hook file:  <TARGET_HOOKS_DIR>/permission-guard.py
-  Settings:   [ADDED / OK / MISMATCH]
-  Sync:       [Fresh install / In sync / Synced / Stale]
+  Settings:   [ADDED / REWROTE / UNCHANGED]
+  Copy:       [Fresh install / Verified against source / Re-copied / Mismatch]
 
 ==================================================
 ```
 
-If the hook was just added or synced, remind the user:
-> Note: Restart Claude Code in the target project for hook changes to take effect.
+Do not state or imply that the target "already had" the current guard logic — the copy
+verification above cannot support that claim. If you need to report whether the logic
+changed, quote `install.sh`'s `Guard logic:` line.
+
+**Restart reminder — key it off Step 3's settings.json result only:**
+
+- **If Step 3 reported ADDED or REWROTE** (the hook registration in settings.json
+  changed), remind the user:
+  > Note: Restart Claude Code in the target project — hook registration in settings.json is snapshotted at session start.
+
+- **If Step 3 changed nothing**, do not ask for a restart, even when the hook file
+  itself was updated. settings.json registers the hook as
+  `python3 ".../permission-guard.py"`, which Claude Code spawns as a fresh subprocess
+  on every PreToolUse event, so python3 re-reads the file each call and new guard logic
+  is live immediately. Only the registration is session-scoped.
 
 Then output exactly ONE of these markers as the final line:
 

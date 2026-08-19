@@ -137,9 +137,23 @@ SUPPORT_DIR="${TARGET_DIR}/permission-hooks"
 echo "Installing permission-hooks to: ${TARGET_DIR}"
 
 # Hook file
+#
+# Hash the outgoing copy before overwriting it. This is the only point in the
+# install where "what the target had" is still observable: every later check
+# runs after the cp and can therefore only confirm the copy landed, never
+# whether the guard logic actually changed. Reported at the end of the run.
+# The PROJECT_ROOT line is excluded so a mode switch alone doesn't read as a
+# logic change.
 mkdir -p "${SUPPORT_DIR}/hooks"
+hook_md5() { grep -v '^PROJECT_ROOT = ' "$1" 2>/dev/null | md5sum | cut -d' ' -f1; }
+if [[ -f "${SUPPORT_DIR}/hooks/permission-guard.py" ]]; then
+  HOOK_MD5_BEFORE=$(hook_md5 "${SUPPORT_DIR}/hooks/permission-guard.py")
+else
+  HOOK_MD5_BEFORE=""
+fi
 cp "${SCRIPT_DIR}/hooks/permission-guard.py" "${SUPPORT_DIR}/hooks/"
 chmod +x "${SUPPORT_DIR}/hooks/permission-guard.py"
+HOOK_MD5_AFTER=$(hook_md5 "${SUPPORT_DIR}/hooks/permission-guard.py")
 echo "  Hooks    → ${SUPPORT_DIR}/hooks/"
 
 # Scripts
@@ -256,6 +270,13 @@ echo "Done. Installed:"
 echo ""
 echo "  Hook:"
 echo "    ${SUPPORT_DIR}/hooks/permission-guard.py"
+if [[ -z "$HOOK_MD5_BEFORE" ]]; then
+  echo "    Guard logic: new install (${HOOK_MD5_AFTER:0:8})"
+elif [[ "$HOOK_MD5_BEFORE" != "$HOOK_MD5_AFTER" ]]; then
+  echo "    Guard logic: UPDATED (${HOOK_MD5_BEFORE:0:8} → ${HOOK_MD5_AFTER:0:8}) — live on the next tool call"
+else
+  echo "    Guard logic: unchanged (${HOOK_MD5_AFTER:0:8})"
+fi
 if [[ "$MODE" == "project" ]]; then
   echo "    PROJECT_ROOT: {MG_INSTALL_PROJECT_ROOT} placeholder (resolves to event.cwd at runtime)"
 elif [[ -n "$PROJECT_ROOT" ]]; then
