@@ -1,5 +1,12 @@
 # Apply GSD Patches
 
+> **Source reference only — not installed, not invocable.** `gsd-patches/post-install.md`
+> supersedes this file and reads patches directly from the source tree; its Step 0 removes
+> any `commands/mg/apply-gsd-patches.md` it finds in a target as a stale v1.0 artifact. The
+> file is kept deliberately as a reference for the patch format and conflict-resolution flow
+> (see `.planning/phases/08-install-tool-improvements/08-04-PLAN.md`). Nothing resolves the
+> `{MG_INSTALL_*}` placeholders below, so the steps here cannot be executed as written.
+
 ---
 name: mg:apply-gsd-patches
 description: Apply GSD workflow patches to a target project
@@ -38,7 +45,14 @@ INSTALLED_FILES=$(cd "{MG_INSTALL_PATCHES_DIR}" && md5sum *.md 2>/dev/null | sor
 SOURCE_FILES=$(cd "{MG_INSTALL_SOURCE_PATCHES_DIR}" && md5sum *.md 2>/dev/null | sort)
 ```
 
-**If identical:** Log `Patches in sync.` and proceed to Step 1.
+**This comparison cannot conclude "in sync".** Both `cd` calls fail when the placeholders are
+unresolved — which they always are, since nothing installs this file — so both variables hold
+the empty string and compare equal. Empty-equals-empty is not agreement between two sets of
+patches; there is no installed copy to compare against, because the current design reads
+patches from the source tree and never duplicates them into a target.
+
+**If identical:** the only honest reading is that neither directory was readable. Report that
+and stop rather than logging a sync result.
 
 **If different:** Determine what changed:
 - **New in source:** Files in `{MG_INSTALL_SOURCE_PATCHES_DIR}` not present in `{MG_INSTALL_PATCHES_DIR}`

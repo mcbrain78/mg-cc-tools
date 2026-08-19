@@ -374,13 +374,23 @@ _check_copied() {
   done
 }
 
+# Only two of these checks can actually fail, and both are kept for a reason.
+#
+# A _check_copied call is worth making only when the target is populated by
+# something OTHER than the same glob it audits. Otherwise it re-applies the
+# filter that excluded the file in the first place -- a file skipped for failing
+# `[[ -f ]]` (broken symlink, directory) is invisible to the check by
+# construction, and under `set -e` a failed `cp` has already aborted the script.
+# The checks for scripts, scripts/lib and references were exactly that shape and
+# have been dropped; they could only ever confirm what the copy step already
+# guaranteed.
+#
+# commands: the target is filled from the curated COMMANDS array, so a new
+# source command that nobody added to that array is a real, reachable warning.
 _check_copied "${SCRIPT_DIR}/commands" "$COMMANDS_DIR" "*.md"
-_check_copied "${SCRIPT_DIR}/scripts" "${SUPPORT_DIR}/scripts" "*.py"
-_check_copied "${SCRIPT_DIR}/scripts/lib" "${SUPPORT_DIR}/scripts/lib" "*.py"
-_check_copied "${SCRIPT_DIR}/references" "${SUPPORT_DIR}/references" "*.md"
-_check_copied "${SCRIPT_DIR}/references" "${SUPPORT_DIR}/references" "*.yaml"
-_check_copied "${SCRIPT_DIR}/references" "${SUPPORT_DIR}/references" "*.json"
-_check_copied "${SCRIPT_DIR}/references" "${SUPPORT_DIR}/references" ".*.json"
+# agents: copied by glob, but the cleanup `rm -f` further down removes specific
+# names AFTER the copy. If source ever ships a file that cleanup still deletes,
+# source-has/target-lacks becomes true and this catches the disagreement.
 _check_copied "${SCRIPT_DIR}/agents" "${SUPPORT_DIR}/agents" "*.md"
 
 # 2. Unresolved references/ paths in installed .md files
@@ -410,7 +420,10 @@ done
 if [[ "$AUDIT_WARNINGS" -gt 0 ]]; then
   echo "  ${AUDIT_WARNINGS} warning(s) -- new files may need install.sh updates"
 else
-  echo "  All checks passed."
+  # Name what was checked. "All checks passed" reads as "everything installed
+  # correctly", which is more than these three checks look at.
+  echo "  No warnings: commands match the COMMANDS array, agents survived cleanup,"
+  echo "  and no unresolved reference paths or install placeholders remain."
 fi
 
 # -- Summary -------------------------------------------------------------------
