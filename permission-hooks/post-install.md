@@ -2,8 +2,10 @@
 
 <objective>
 Install the permission-guard hook into the target project and register it in settings.json.
-This step requires Claude Code intelligence for JSON merging (settings.json hook entry management),
-sync checking with user prompts, and smoke testing -- tasks that cannot be done by simple file copies.
+The settings.json merge and the status report are both scripted; what needs Claude Code
+intelligence is the parts around them -- deciding how to resolve PROJECT_ROOT for the
+install mode, prompting the user when a copy looks like it failed, and reporting the
+outcome without overclaiming what each check proved.
 </objective>
 
 <context>
@@ -168,30 +170,19 @@ python3 "<source directory>/install/scripts/merge-hook-entry.py" \
 
 ## Step 4: Status Report
 
-Read the installed permission-guard.py and extract category information.
+Report the rule inventory of the hook that was just installed. Point the script at the
+**installed** copy, not the source — the whole value of this step is that it describes
+what the target will actually run:
 
 ```bash
-python3 -c "
-import sys, os
-sys.path.insert(0, '<TARGET_HOOKS_DIR>')
-import importlib
-guard = importlib.import_module('permission-guard')
-
-total = 0
-print('Permission Guard -- Rule Categories:')
-print('=' * 50)
-for cat, patterns in guard.CATEGORIES.items():
-    count = len(patterns)
-    total += count
-    print(f'  {cat}: {count} rules')
-print('=' * 50)
-print(f'  Total: {total} rules + out-of-project path guard')
-print()
-print(f'  PROJECT_ROOT: {guard.PROJECT_ROOT!r}')
-if not guard.PROJECT_ROOT or guard.PROJECT_ROOT.startswith('{'):
-    print('  (unresolved placeholder -- resolves at runtime via CLAUDE_PROJECT_DIR, then event cwd)')
-"
+python3 "<source directory>/permission-hooks/scripts/report-guard-status.py" \
+  --hook "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
+
+Echo its output verbatim. It imports the installed file to count the rules, so a
+non-zero exit means the target holds a file the hook runtime could not load either —
+treat that as a failed install and report `POST-INSTALL: FAILED:` with the stderr line,
+rather than continuing to the summary.
 
 </process>
 
