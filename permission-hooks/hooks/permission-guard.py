@@ -92,6 +92,53 @@ _GIT_CONFIG_WRITE = (
     r")"
 )
 
+# ── Command position ────────────────────────────────────────────────────────
+# Words like "service", "kill" and "systemctl" are common in prose, paths and
+# regex alternations, and these rules scan the command string with heredocs
+# stripped but quotes intact. Anchoring such a word to command position — start
+# of the string, or after a shell separator — is what keeps the text cases
+# quiet. `\n` belongs in the separator class because a multi-line Bash command
+# is a script: without it only its first line is guarded.
+_CMD_POS = r"(?:^|[;&\n]\s*)"
+
+# Same, plus after a pipe. Only for commands that are never a word you would
+# meet in text, so "| dd" can be read as syntax rather than as data.
+_CMD_POS_PIPE = r"(?:^|[;&|\n]\s*)"
+
+# ── systemctl ───────────────────────────────────────────────────────────────
+# systemctl is mostly introspection: is-enabled, list-timers, show and friends
+# report state and exit. Exempting the single literal `status` asked on every
+# one of those, and any global option before the subcommand (`systemctl --user
+# status foo`) defeated the exemption altogether.
+#
+# The read set is small and closed; the write set grows with systemd (freeze,
+# thaw, mount-image, …). So name the reads and flag the rest — that keeps a
+# subcommand systemd adds tomorrow on the asking side.
+
+# Global options that may sit between `systemctl` and the subcommand. The short
+# options that take a separate value swallow it, so the `service` in
+# `systemctl -t service list-units` can't be mistaken for a subcommand.
+_SYSTEMCTL_OPTS = r"(?:\s+(?:-[HMtpnosP]\s+\S+|--[\w-]+=\S+|--[\w-]+|-[A-Za-z]+))*"
+
+_SYSTEMCTL_READ = (
+    r"(?:status|show|show-environment|cat|help|get-default"
+    r"|is-active|is-enabled|is-failed|is-system-running"
+    r"|list-(?:units|unit-files|sockets|timers|jobs|dependencies|machines"
+    r"|paths|automounts))(?![\w-])"
+)
+
+# Two negative lookaheads, not one match-the-write pattern: a greedy option
+# group followed by a positive match backtracks until the option itself is
+# taken for the subcommand, which is how `--user status` would get flagged. A
+# lookahead that fails has nothing to backtrack into.
+_SYSTEMCTL_WRITE = (
+    _CMD_POS
+    + r"systemctl(?![\w-])"
+    # Bare `systemctl [options]`, redirected or not, just lists units.
+    + r"(?!" + _SYSTEMCTL_OPTS + r"\s*(?:$|[)\n;&|]|\d*[<>]))"
+    + r"(?!" + _SYSTEMCTL_OPTS + r"\s+" + _SYSTEMCTL_READ + r")"
+)
+
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
@@ -137,9 +184,9 @@ CATEGORIES = {
     "Destructive Filesystem": [
         (r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
         (r"\b(chmod|chown)\b", "permission/ownership change"),
-        (r"(?:^|[;&|]\s*)ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
+        (_CMD_POS_PIPE + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
-        (r"(?:^|[;&|]\s*)dd\s", "raw disk operations"),
+        (_CMD_POS_PIPE + r"dd\s", "raw disk operations"),
     ],
     "Secrets & Credentials": [
         *(_ENV_RULES if ENV_PROTECTION else []),
@@ -151,18 +198,18 @@ CATEGORIES = {
         (r"\bsudo\b", "sudo"),
         (r"\b(apt|apt-get|brew|yum|dnf|pacman|apk)\s+(install|remove|purge|uninstall)\b", "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
-        (r"\bsystemctl\s+(?!status\b)", "systemctl (not status)"),
-        # Command-position only (start of command or after ; / & / &&), and must
-        # take an argument. NOT after a pipe: you never pipe into service/launchctl,
-        # but "|service" is common in TEXT (regex alternations, markdown tables) and
-        # the guard scans the raw command string, quotes/heredocs included.
-        (r"(?:^|[;&]\s*)(launchctl|service)\s+\S", "service manager"),
+        (_SYSTEMCTL_WRITE, "systemctl (not a read subcommand)"),
+        # Command-position only (see _CMD_POS), and must take an argument. NOT
+        # after a pipe: you never pipe into service/launchctl, but "|service" is
+        # common in TEXT (regex alternations, markdown tables) and the guard
+        # scans the raw command string with quotes intact.
+        (_CMD_POS + r"(launchctl|service)\s+\S", "service manager"),
         # Same command-position + argument anchoring as the service rule above:
         # these words are common in prose/paths ("kill the test", /etc/passwd,
         # "iptables rules"), so only flag them as an actual command invocation.
-        (r"(?:^|[;&]\s*)(useradd|userdel|usermod|passwd)\s+\S", "user management"),
-        (r"(?:^|[;&]\s*)(iptables|ufw)\s+\S", "firewall management"),
-        (r"(?:^|[;&]\s*)(kill|killall)\s+\S", "process termination"),
+        (_CMD_POS + r"(useradd|userdel|usermod|passwd)\s+\S", "user management"),
+        (_CMD_POS + r"(iptables|ufw)\s+\S", "firewall management"),
+        (_CMD_POS + r"(kill|killall)\s+\S", "process termination"),
     ],
 }
 

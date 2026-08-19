@@ -529,9 +529,66 @@ class TestSystemOperations:
         assert_blocked("systemctl restart nginx", self.CAT)
         assert_blocked("systemctl stop nginx", self.CAT)
         assert_blocked("systemctl enable nginx", self.CAT)
+        assert_blocked("systemctl daemon-reload", self.CAT)
+        assert_blocked("systemctl mask foo.service", self.CAT)
+        assert_blocked("systemctl edit foo.service", self.CAT)
+        assert_blocked("systemctl set-default multi-user.target", self.CAT)
+        # A write whose name shares a stem with a read (show-environment).
+        assert_blocked("systemctl set-environment FOO=1", self.CAT)
+        assert_blocked("systemctl import-environment PATH", self.CAT)
+        # Options in front of the subcommand cannot hide the write.
+        assert_blocked("systemctl --user restart mg-usage-watch", self.CAT)
+        assert_blocked("systemctl --no-block -q enable foo.timer", self.CAT)
+        assert_blocked("systemctl -H build.example.com stop nginx", self.CAT)
 
-    def test_allow_systemctl_status(self):
+    def test_allow_systemctl_read_subcommands(self):
+        # Every one of these reports state and exits — no mutation, no privilege.
         assert_allowed("systemctl status nginx")
+        assert_allowed("systemctl is-enabled derive-ticker-cusip-aliases.timer")
+        assert_allowed("systemctl is-active foo.service")
+        assert_allowed("systemctl is-failed foo.service")
+        assert_allowed("systemctl is-system-running")
+        assert_allowed("systemctl show foo.service")
+        assert_allowed("systemctl show-environment")
+        assert_allowed("systemctl cat foo.service")
+        assert_allowed("systemctl get-default")
+        assert_allowed("systemctl list-timers")
+        assert_allowed("systemctl list-units --all")
+        assert_allowed("systemctl list-unit-files")
+        assert_allowed("systemctl list-dependencies foo.service")
+
+    def test_allow_systemctl_read_behind_global_options(self):
+        # The old rule only inspected the token right after `systemctl`, so any
+        # global option in front of the subcommand asked — including on the very
+        # unit this repo installs, which is a --user service.
+        assert_allowed("systemctl --user status mg-usage-watch")
+        assert_allowed("systemctl --user is-enabled mg-usage-watch.timer")
+        assert_allowed("systemctl --no-pager -l status foo")
+        assert_allowed("systemctl --type=timer list-units")
+        assert_allowed("systemctl -t service list-units")
+        assert_allowed("systemctl show -p Wants foo.service")
+
+    def test_allow_bare_systemctl_listing(self):
+        # Bare systemctl lists units. Options and redirects don't change that.
+        assert_allowed("systemctl")
+        assert_allowed("systemctl --user")
+        assert_allowed("systemctl --failed")
+        assert_allowed("systemctl 2>&1")
+        assert_allowed("systemctl > units.txt")
+        assert_allowed("systemctl --no-pager | head -20")
+
+    def test_allow_systemctl_in_prose(self):
+        # Command-position anchoring: a mention is not an invocation.
+        assert_allowed('git commit -m "run systemctl restart nginx after deploy"')
+        assert_allowed("echo 'systemctl enable foo' >> README.md")
+
+    def test_block_systemctl_after_separator_or_newline(self):
+        # Anchoring must not become a bypass: a multi-line Bash command is a
+        # script, and every line of it is command position.
+        assert_blocked("cd /tmp; systemctl restart nginx", self.CAT)
+        assert_blocked("true && systemctl stop nginx", self.CAT)
+        assert_blocked('echo checking\nsystemctl restart nginx', self.CAT)
+        assert_blocked('echo checking\n  systemctl disable foo.timer', self.CAT)
 
     def test_block_service_managers(self):
         assert_blocked("launchctl load plist", self.CAT)
@@ -539,6 +596,11 @@ class TestSystemOperations:
         # Still caught when chained after a sequencing separator.
         assert_blocked("cd /tmp; service nginx restart", self.CAT)
         assert_blocked("true && service nginx stop", self.CAT)
+        # …and on any line of a multi-line command, not just the first.
+        assert_blocked("echo checking\nservice nginx restart", self.CAT)
+        assert_blocked("echo checking\nkill 12345", self.CAT)
+        assert_blocked("echo checking\niptables -F", self.CAT)
+        assert_blocked("echo checking\nuseradd bob", self.CAT)
 
     def test_allow_service_as_path_or_prose(self):
         # "service" inside a path segment or prose must NOT trigger the
