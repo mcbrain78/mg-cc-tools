@@ -1627,6 +1627,80 @@ class TestExitCodeMasking:
         result = check_exit_code_masking(cmd)
         assert result is None
 
+    # ── The pipe must belong to the pytest run's own pipeline ────────────
+    # `.*\|` used to reach across a separator and charge pytest for a pipe
+    # that another command owned.
+
+    def test_allow_pipe_in_later_command(self):
+        cmd = "uv run pytest -q --no-header; uv run ruff check . | tail -5"
+        assert check_exit_code_masking(cmd) is None
+
+    def test_allow_pipe_in_and_chained_command(self):
+        cmd = "uv run pytest -q --no-header && git status --short | wc -l"
+        assert check_exit_code_masking(cmd) is None
+
+    def test_allow_pipe_in_earlier_command(self):
+        cmd = "uv run ruff check . | tail -5; uv run pytest -q --no-header"
+        assert check_exit_code_masking(cmd) is None
+
+    def test_allow_or_operator_is_not_a_pipe(self):
+        assert check_exit_code_masking("pytest -q || true") is None
+
+    def test_block_pipe_in_later_command_of_same_line(self):
+        """The scoping must not become an escape: a real pipe still denies."""
+        cmd = "uv run ruff check . ; uv run pytest -q | tail -5"
+        assert check_exit_code_masking(cmd) is not None
+
+    def test_block_multiline_pytest_pipe(self):
+        """A Bash command is a script; every line of it is guarded."""
+        cmd = "cd /repo\nuv run pytest -q | head -30"
+        assert check_exit_code_masking(cmd) is not None
+
+    def test_block_stderr_redirect_before_pipe(self):
+        """The & of 2>&1 is not a separator — it must not orphan the pipe."""
+        cmd = "uv run pytest --tb=short -q --no-header 2>&1 | tail -8"
+        assert check_exit_code_masking(cmd) is not None
+
+    # ── pytest must be invoked, not merely mentioned ──────────────────────
+
+    def test_allow_grep_for_pytest_piped(self):
+        assert check_exit_code_masking("grep -rn pytest CLAUDE.md | head -5") is None
+
+    def test_allow_echo_about_pytest_piped(self):
+        cmd = 'echo "never pipe pytest output" | wc -l'
+        assert check_exit_code_masking(cmd) is None
+
+    def test_allow_commit_message_naming_the_rule(self):
+        cmd = 'git commit -m "docs: explain why pytest | tail is banned"'
+        assert check_exit_code_masking(cmd) is None
+
+    def test_allow_pytest_only_in_final_stage(self):
+        """A pipeline's last stage keeps its status, so nothing is masked."""
+        assert check_exit_code_masking("git log --oneline | grep pytest") is None
+
+    def test_block_pytest_inside_bash_c(self):
+        """A quoted argument to a shell invoker IS a command — scan it raw."""
+        cmd = "bash -c \"pytest -q | head -20\""
+        assert check_exit_code_masking(cmd) is not None
+
+    # ── Status kept by hand, or output kept whole ─────────────────────────
+
+    def test_allow_pipefail(self):
+        assert check_exit_code_masking("set -o pipefail; pytest -q | tail -20") is None
+
+    def test_allow_pipestatus(self):
+        cmd = "pytest -q | tail -20; exit ${PIPESTATUS[0]}"
+        assert check_exit_code_masking(cmd) is None
+
+    def test_allow_passthrough_sink(self):
+        """tee truncates nothing, so the failure summary still shows."""
+        assert check_exit_code_masking("uv run pytest -q | tee /tmp/out.log") is None
+
+    def test_block_passthrough_feeding_a_filter(self):
+        """tee is only safe if nothing downstream of it drops output."""
+        cmd = "uv run pytest -q | tee /tmp/out.log | grep FAILED"
+        assert check_exit_code_masking(cmd) is not None
+
 
 # ── LLM evaluator imports ─────────────────────────────────────────────────────
 
