@@ -453,8 +453,7 @@ Spawn ONE **reconcile** subagent on the **Opus** model, handing it the agent ins
 
 Then confirm the cleanup left no broken reference behind — read back a single number, not the report:
 ```
-uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py reconcile-audit {absolute WORKING path} \
-  | python3 -c "import json,sys; print(len(json.load(sys.stdin)['dangling_references']))"
+uv run {MG_INSTALL_SCRIPTS_DIR}/improve_files.py reconcile-audit {absolute WORKING path} --dangling-count
 ```
 `0` → proceed to step 5. Anything else → re-spawn the reconcile agent naming what dangles, and re-check. Do **not** act on the numbering gaps this command also reports: mid-loop they are expected, and closing them is finalize's job.
 

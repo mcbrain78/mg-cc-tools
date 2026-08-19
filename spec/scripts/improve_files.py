@@ -80,7 +80,7 @@ scratch-clean <file>
     Remove the whole ``<spec-dir>/.spec-scratch`` tree if present (idempotent).
     Called at terminal states (approve / reject / discard).
 
-reconcile-audit <file>
+reconcile-audit <file> [--dangling-count]
     Read-only deterministic check of ONE markdown file — pass the working copy's
     path at finalize (or any spec path). Reports decision-heading numbering
     (``### Dn:`` contiguous 1..N, in document order, no duplicates) and
@@ -89,6 +89,8 @@ reconcile-audit <file>
     reconcile agent consumes it and re-runs it to confirm ``clean`` before finalize
     proceeds — the guard for its one destructive edit (renumbering). Audits the
     path AS GIVEN — no sidecar derivation (a content check, not a session op).
+    ``--dangling-count`` prints only the number of dangling references, for the
+    mid-loop check that must ignore the numbering gaps finalize will close.
 
 Exit codes: 0 = success, 1 = error (details on stderr).
 """
@@ -669,7 +671,7 @@ _DEC_REF = re.compile(r"(?<![A-Za-z0-9_])D(\d+)\b")
 _OD_REF = re.compile(r"(?<![A-Za-z0-9_])OD(\d+)\b")
 
 
-def cmd_reconcile_audit(source: Path) -> int:
+def cmd_reconcile_audit(source: Path, dangling_count: bool = False) -> int:
     """Deterministic pre-finalize audit of decision numbering + cross-references.
 
     Audits the file at ``source`` DIRECTLY — no working-copy derivation; pass the
@@ -679,7 +681,12 @@ def cmd_reconcile_audit(source: Path) -> int:
     ``ODn`` token in the prose resolves to a heading. The reconcile agent consumes
     this and re-runs it to confirm ``clean`` before finalize proceeds — the guard
     for its one destructive edit (renumbering). Always exits 0 when it runs; the
-    verdict is the ``clean`` field, not the return code."""
+    verdict is the ``clean`` field, not the return code.
+
+    ``dangling_count`` prints just ``len(dangling_references)`` instead of the
+    report. The improve-auto loop checks that number every third round and must
+    ignore the numbering gaps this same command reports (expected mid-loop, closed
+    by finalize), so it wants one field, not the document."""
     if not source.is_file():
         return _fail(f"file to audit not found: {source}")
     lines = source.read_text().splitlines()
@@ -748,6 +755,9 @@ def cmd_reconcile_audit(source: Path) -> int:
         "reference_counts": {f"D{n}": dec_refs[n] for n in sorted(dec_refs)},
         "clean": not numbering_issues and not dangling,
     }
+    if dangling_count:
+        print(len(dangling))
+        return 0
     print(json.dumps(report, indent=2))
     return 0
 
@@ -775,7 +785,7 @@ Sidecars:
   scratch-clean    <file>                                 Remove the .spec-scratch tree
 
 Finalize:
-  reconcile-audit  <file>                                 Audit decision numbering + xrefs (JSON; clean=finalize guard)
+  reconcile-audit  <file> [--dangling-count]              Audit decision numbering + xrefs (JSON; clean=finalize guard)
 """
 
 
@@ -820,7 +830,7 @@ def main(argv: list[str] | None = None) -> int:
     if command == "scratch-clean":
         return cmd_scratch_clean(source)
     if command == "reconcile-audit":
-        return cmd_reconcile_audit(source)
+        return cmd_reconcile_audit(source, dangling_count="--dangling-count" in rest)
 
     print(f"Error: unknown command: {command}", file=sys.stderr)
     print(USAGE, file=sys.stderr)
