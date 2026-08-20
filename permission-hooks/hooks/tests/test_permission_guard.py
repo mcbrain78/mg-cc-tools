@@ -1107,6 +1107,98 @@ class TestMaskQuoted:
         assert _mask_quoted("echo 'abc") == "echo 'xxx"
 
 
+class TestQuotedDataNotSyntax:
+    """check_command masks quoted spans: a search pattern is not a command."""
+
+    def test_grep_for_rm_rf_is_not_a_recursive_rm(self):
+        assert_bash_allowed('grep -rn "rm -rf\\|reclaim" notes.md')
+
+    def test_grep_for_chmod_is_not_a_chmod(self):
+        assert_bash_allowed('grep -n "chmod 777" notes.md')
+
+    def test_commit_message_mentioning_rm_rf(self):
+        assert_allowed('git commit -m "refactor: drop the rm -rf fallback"')
+
+    def test_rg_for_sudo_is_not_a_sudo(self):
+        assert_bash_allowed('rg "sudo rm -rf" docs/')
+
+    def test_real_recursive_rm_still_blocked(self):
+        assert_bash_blocked("rm -rf /data", "Destructive Filesystem")
+
+    def test_nested_shell_invocation_scanned_raw(self):
+        # bash -c's argument IS a command, so masking must not apply.
+        assert_bash_blocked('bash -c "rm -rf /data"', "Destructive Filesystem")
+
+    def test_eval_scanned_raw(self):
+        assert_bash_blocked('eval "chmod 777 /etc"', "Destructive Filesystem")
+
+    def test_reported_match_is_real_text_not_filler(self):
+        # Masking is length-preserving, so the match slices the original.
+        result = check_command("rm -rf /data")
+        assert result is not None
+        assert "x" not in result[2]
+
+
+class TestPatternPositionExemption:
+    """check_sensitive_in_command skips pattern/script positions, not paths."""
+
+    def test_grep_for_key_name_allowed(self):
+        assert_bash_allowed('grep -rn "id_rsa" src/')
+
+    def test_rg_for_credentials_name_allowed(self):
+        assert_bash_allowed('rg "credentials.json" .')
+
+    def test_pattern_via_e_flag_allowed(self):
+        assert_bash_allowed('grep -e "id_rsa" src/')
+
+    def test_pattern_via_glued_regexp_flag_allowed(self):
+        assert_bash_allowed("grep --regexp=id_rsa src/")
+
+    def test_value_flag_does_not_consume_pattern_position(self):
+        assert_bash_allowed('grep -A 5 "id_rsa" notes.md')
+
+    def test_sed_script_allowed(self):
+        assert_bash_allowed('sed -n "s/id_rsa/x/p" notes.md')
+
+    def test_echo_arguments_are_data(self):
+        assert_bash_allowed('echo "~/.ssh/id_rsa"')
+
+    def test_key_shaped_pattern_with_unquoted_path_operand(self):
+        # The pattern position holds a key-shaped string; the operand is a
+        # normal file. Searching FOR the name is not reading the key.
+        assert_bash_allowed("grep ~/.ssh/id_rsa notes.md")
+
+    # ── The file operand stays guarded ────────────────────────────────────
+
+    def test_quoted_path_operand_still_blocked(self):
+        assert_bash_blocked('cat "~/.ssh/id_rsa"')
+
+    def test_key_as_grep_operand_still_blocked(self):
+        assert_bash_blocked('grep "hostkey" ~/.ssh/id_rsa')
+
+    def test_extra_operand_after_pattern_still_blocked(self):
+        assert_bash_blocked('grep -rn "foo" src/ ~/.ssh/id_rsa')
+
+    def test_pattern_file_flag_exempts_nothing(self):
+        # -f reads patterns FROM a file, so the operand is a real path.
+        assert_bash_blocked("grep -f patterns.txt ~/.ssh/id_rsa")
+
+    def test_sed_in_place_target_still_blocked(self):
+        assert_bash_blocked('sed -i "s/a/b/" ~/.ssh/id_rsa')
+
+    def test_pem_operand_still_blocked(self):
+        assert_bash_blocked("grep pat certs/server.pem")
+
+    def test_assignment_prefix_stepped_over(self):
+        assert_bash_allowed('LC_ALL=C grep "id_rsa" src/')
+
+    def test_non_text_tool_gets_no_exemption(self):
+        assert_bash_blocked("cp ~/.ssh/id_rsa /tmp/x")
+
+    def test_second_segment_checked_independently(self):
+        assert_bash_blocked('grep "id_rsa" src/; cat ~/.ssh/id_rsa')
+
+
 # ── Sensitive file path guard (Read/Edit/Write) ─────────────────────────────
 
 class TestSensitiveFilePaths:

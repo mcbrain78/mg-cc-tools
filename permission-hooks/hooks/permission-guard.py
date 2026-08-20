@@ -37,6 +37,12 @@ PROJECT_ROOT = "{MG_INSTALL_PROJECT_ROOT}"
 ENV_PROTECTION = False
 
 _ENV_RULES = [
+    # Unlike every other category rule this one matches an operand (the
+    # redirect target) rather than a command verb, so check_command's quote
+    # masking hides a quoted target: `echo x > "cfg/.env"` does not match.
+    # Unquoted targets — the common form — still do, and the write itself
+    # still reaches the out-of-project guard, which recovers quoted redirect
+    # targets from the original string (see _candidate_write_targets).
     (r">\s*\S*\.env\b", "writing .env file"),
     (r"\bprintenv\b", "environment dump"),
     (r"\benv\s*($|[|;>])", "environment dump"),
@@ -785,13 +791,28 @@ SENSITIVE_FILE_PATTERNS = [
 def check_command(command):
     """Check command against category rules.
 
+    Quoted text is data, not syntax: a grep whose search pattern contains
+    "rm -rf" is not a recursive rm. Every rule in CATEGORIES matches a command
+    verb together with its flags or subcommand, never a bare operand, so a
+    quoted span can never carry the part a rule needs to match — masking it
+    costs the rules nothing and retires a whole class of false positive.
+    Nested shell invocations are the exception, since there the quoted string
+    IS the command; same trade as check_write_targets and
+    check_exit_code_masking.
+
+    The one rule that does read an operand is _ENV_RULES' `> ….env` redirect;
+    see the note there before enabling ENV_PROTECTION.
+
     Returns (description, category, matched_text) or None.
     """
     command = _strip_heredocs(command)
+    # Masking is length-preserving, so a match found in the masked copy slices
+    # the real text out of the original for reporting.
+    scanned = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
     for compiled_re, description, category in RULES:
-        match = compiled_re.search(command)
+        match = compiled_re.search(scanned)
         if match:
-            return (description, category, match.group())
+            return (description, category, command[match.start():match.end()])
     return None
 
 
@@ -806,23 +827,131 @@ def check_file_path(file_path):
     return None
 
 
+# ── Pattern-position exemption ──────────────────────────────────────────────
+# This guard strips quotes rather than masking them, so that a quoted path
+# (`cat "~/.ssh/id_rsa"`) is still caught. The cost is that a search tool's
+# pattern reads as a path: `grep id_rsa src/` searches FOR the name, it does
+# not read the key. The discriminator is argument position, not quoting —
+# quoting cannot tell a pattern from a path, but position can, and it lands the
+# right way round either way: in `grep pattern ~/.ssh/id_rsa` the key is an
+# operand and stays guarded, while in `grep ~/.ssh/id_rsa file` the key-shaped
+# string really is just the text being searched for.
+
+# Tools whose first non-flag argument is a pattern or script, not a path.
+_PATTERN_ARG_TOOLS = re.compile(r"^(?:grep|egrep|fgrep|rg|ag|ack|sed|awk|jq)$")
+
+# Tools whose arguments are all literal data and never paths.
+_DATA_ARG_TOOLS = re.compile(r"^(?:echo|printf)$")
+
+# -e/--regexp supplies the pattern itself, so the pattern position moves to
+# that flag's value and no positional argument is exempt.
+_PATTERN_FLAG_RE = re.compile(r"^(?:-e|--regexp)(?:=|$)")
+
+# -f/--file reads the patterns from a FILE, so that argument is a real path and
+# nothing in the segment is exempt.
+_PATTERN_FILE_FLAG_RE = re.compile(r"^(?:-f|--file)(?:=|$)")
+
+# Flags whose value is a separate following token, which would otherwise be
+# mistaken for the pattern position (`grep -A 5 id_rsa f`). Enumerated rather
+# than inferred: guessing "a number is not a pattern" would silently exempt a
+# real path in `grep 5 ~/.ssh/id_rsa`.
+_VALUE_FLAG_RE = re.compile(
+    r"^(?:-[ABCm]|--(?:after-context|before-context|context|max-count))$"
+)
+
+# A leading `FOO=1 grep …` assignment belongs to the command that follows it.
+_ASSIGN_TOKEN_RE = re.compile(r"^\w+=\S*$")
+
+
+def _exempt_token_spans(segment, offset):
+    """Yield (start, end) spans of tokens in *segment* that hold pattern or
+    script data rather than a path.
+
+    Spans are absolute offsets into the command *segment* was sliced from.
+    Whole tokens are yielded: a glued `--regexp=~/.ssh/id_rsa` is a pattern in
+    its entirety.
+    """
+    tokens = [(offset + m.start(), offset + m.end(), m.group())
+              for m in _TOKEN_RE.finditer(segment)]
+
+    index = 0
+    while index < len(tokens) and _ASSIGN_TOKEN_RE.match(tokens[index][2]):
+        index += 1
+    if index >= len(tokens):
+        return
+
+    command_word = os.path.basename(tokens[index][2])
+    rest = tokens[index + 1:]
+
+    if _DATA_ARG_TOOLS.match(command_word):
+        for start, end, _ in rest:
+            yield (start, end)
+        return
+
+    if not _PATTERN_ARG_TOOLS.match(command_word):
+        return
+
+    # Patterns read from a file: the argument is a path, exempt nothing.
+    if any(_PATTERN_FILE_FLAG_RE.match(text) for _, _, text in rest):
+        return
+
+    flagged = False
+    for position, (start, end, text) in enumerate(rest):
+        if not _PATTERN_FLAG_RE.match(text):
+            continue
+        flagged = True
+        if "=" in text:
+            yield (start, end)
+        elif position + 1 < len(rest):
+            yield (rest[position + 1][0], rest[position + 1][1])
+    if flagged:
+        return
+
+    # No pattern flag, so the first argument that is neither a flag nor a
+    # flag's separate value is the pattern.
+    position = 0
+    while position < len(rest):
+        text = rest[position][2]
+        if _VALUE_FLAG_RE.match(text):
+            position += 2
+            continue
+        if text.startswith("-") and text != "-":
+            position += 1
+            continue
+        yield (rest[position][0], rest[position][1])
+        return
+
+
 def check_sensitive_in_command(command):
     """Check if a Bash command references sensitive file paths.
 
     Tokenises the command on whitespace and shell operators, strips quotes
     and shell punctuation, and tests each token against SENSITIVE_FILE_PATTERNS.
+    Tokens holding a search pattern or script rather than a path are skipped
+    (see _exempt_token_spans); every other token stays guarded.
 
     Returns (description, matched_path) or None.
     """
     command = _strip_heredocs(command)
-    tokens = re.split(r'[\s;|&]+', command)
-    for token in tokens:
-        token = token.strip(_TOKEN_STRIP_CHARS)
-        if not token:
-            continue
-        for compiled_re, description in SENSITIVE_FILE_PATTERNS:
-            if compiled_re.search(token):
-                return (description, token)
+    # Segment and token boundaries are read off the masked copy so a quoted `;`
+    # or a space inside a pattern does not split, but each token is sliced from
+    # the original. Nested shell invocations are scanned raw — there the quoted
+    # string is itself a command, and its leading word is `bash`, so no
+    # exemption applies and every token is checked.
+    scanned = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
+
+    for segment in _SEGMENT_RE.finditer(scanned):
+        exempt = set(_exempt_token_spans(segment.group(), segment.start()))
+        for match in _TOKEN_RE.finditer(segment.group()):
+            span = (segment.start() + match.start(), segment.start() + match.end())
+            if span in exempt:
+                continue
+            token = command[span[0]:span[1]].strip(_TOKEN_STRIP_CHARS)
+            if not token:
+                continue
+            for compiled_re, description in SENSITIVE_FILE_PATTERNS:
+                if compiled_re.search(token):
+                    return (description, token)
     return None
 
 
