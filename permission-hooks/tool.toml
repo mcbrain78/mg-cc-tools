@@ -10,3 +10,8 @@ script = "post-install.md"
 
 [detect]
 paths = [".claude/permission-hooks/hooks/"]
+
+[install]
+# post-install.md runs this against the hook it just installed, from the source
+# tree. install.sh deliberately does not deploy it -- nothing in the target calls it.
+source_only = ["scripts/report-guard-status.py"]

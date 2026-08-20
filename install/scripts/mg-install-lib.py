@@ -226,7 +226,7 @@ def read_tool_toml(tool_dir):
     """Read and parse tool.toml from a tool directory.
 
     Returns dict with keys: description, exclude, standard, required, optional,
-    post_install_script, detect_paths.
+    post_install_script, detect_paths, source_only.
     """
     toml_path = os.path.join(tool_dir, "tool.toml")
     with open(toml_path, "rb") as f:
@@ -239,6 +239,7 @@ def read_tool_toml(tool_dir):
         "post_install": {"script"},
         "detect": {"paths"},
         "external": {"repo", "path", "archive"},
+        "install": {"source_only"},
     }
     for section_name, expected in _EXPECTED_KEYS.items():
         actual = set(data.get(section_name, {}).keys())
@@ -253,6 +254,7 @@ def read_tool_toml(tool_dir):
     post_install_section = data.get("post_install", {})
     detect_section = data.get("detect", {})
     external_section = data.get("external", {})
+    install_section = data.get("install", {})
 
     return {
         "description": tool_section.get("description", ""),
@@ -263,6 +265,7 @@ def read_tool_toml(tool_dir):
         "post_install_script": post_install_section.get("script"),
         "detect_paths": detect_section.get("paths", []),
         "external": bool(external_section),
+        "source_only": install_section.get("source_only", []),
     }
 
 
@@ -1029,15 +1032,26 @@ def validate_install(target_dir, tool_names=None, source_dir=None):
             _check_install_sh_sed_targets(install_sh, tool_name, issues)
 
     # --- Source-vs-target file comparison ---
+    #
+    # Every checksummed source file is expected to land in the target. Two kinds
+    # of file legitimately do not: the installer's own entry points, and whatever
+    # the tool declares under `[install] source_only` -- helpers the post-install
+    # runs straight from the source tree, or docs the tool copies somewhere the
+    # target-path convention below does not describe. Both are indistinguishable
+    # from a copy that silently failed unless the tool says so, which is why the
+    # declaration lives in tool.toml rather than as per-tool knowledge here.
     if source_dir:
         check_tool_names = tool_names or _discover_tool_names(source_dir)
         for tool_name in check_tool_names:
             tool_dir = os.path.join(source_dir, tool_name)
             if not os.path.isfile(os.path.join(tool_dir, "install.sh")):
                 continue
+            not_installed = {"install.sh", "post-install.md"}
+            if os.path.isfile(os.path.join(tool_dir, "tool.toml")):
+                not_installed.update(read_tool_toml(tool_dir)["source_only"])
             checksums = compute_tool_checksums(tool_dir)
             for rel_path in checksums:
-                if rel_path in ("install.sh", "post-install.md"):
+                if rel_path in not_installed:
                     continue
                 if rel_path.startswith("commands/"):
                     target_path = os.path.join(

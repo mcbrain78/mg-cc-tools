@@ -30,7 +30,7 @@ def _run(args, **kwargs):
 def _make_tool(parent, name, description="Test tool", exclude=False,
                standard=None, required=None, optional=None, commands=None,
                has_install_sh=True, post_install_script=None,
-               detect_paths=None):
+               detect_paths=None, source_only=None):
     """Create a mock tool directory with tool.toml and optionally install.sh.
 
     Args:
@@ -45,6 +45,7 @@ def _make_tool(parent, name, description="Test tool", exclude=False,
         has_install_sh: Whether to create install.sh (default True).
         post_install_script: If set, add [post_install] section and create the file.
         detect_paths: If set, add [detect] section with these paths.
+        source_only: If set, add [install] source_only with these relative paths.
 
     Returns:
         Path to the created tool directory.
@@ -76,6 +77,11 @@ def _make_tool(parent, name, description="Test tool", exclude=False,
         toml_lines.append("[detect]")
         arr = ", ".join(f'"{p}"' for p in detect_paths)
         toml_lines.append(f"paths = [{arr}]")
+    if source_only:
+        toml_lines.append("")
+        toml_lines.append("[install]")
+        arr = ", ".join(f'"{p}"' for p in source_only)
+        toml_lines.append(f"source_only = [{arr}]")
     with open(os.path.join(tool_dir, "tool.toml"), "w") as f:
         f.write("\n".join(toml_lines) + "\n")
 
@@ -1741,6 +1747,48 @@ class TestValidate:
             missing = [i for i in data["issues"]
                        if i["type"] == "missing_source_file"]
             assert len(missing) == 0, f"Unexpected missing: {missing}"
+
+    def test_source_only_files_not_flagged(self):
+        """Files declared under [install] source_only are not expected in target."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source")
+            target = os.path.join(tmp, "target")
+            cmd_dir = os.path.join(target, ".claude", "commands", "mg")
+            os.makedirs(cmd_dir, exist_ok=True)
+
+            tool_dir = _make_tool(
+                source, "my-tool",
+                source_only=["scripts/report-status.py", "README.md"],
+            )
+            scripts_dir = os.path.join(tool_dir, "scripts")
+            os.makedirs(scripts_dir, exist_ok=True)
+            # Declared source-only: an install-time helper and a contributor doc
+            with open(os.path.join(scripts_dir, "report-status.py"), "w") as f:
+                f.write("print('status')\n")
+            with open(os.path.join(tool_dir, "README.md"), "w") as f:
+                f.write("docs\n")
+            # Undeclared runtime script -- must still be flagged when absent
+            with open(os.path.join(scripts_dir, "runtime.py"), "w") as f:
+                f.write("print('runtime')\n")
+            _make_pyproject(source)
+
+            with open(os.path.join(cmd_dir, "my-tool.md"), "w") as f:
+                f.write("installed\n")
+
+            result = _run([
+                "validate", "--target", target,
+                "--tools", "my-tool", "--source", source,
+            ])
+            assert result.returncode == 0, result.stderr
+            data = json.loads(result.stdout)
+
+            patterns = {i["pattern"] for i in data["issues"]
+                        if i["type"] == "missing_source_file"}
+            assert "scripts/report-status.py" not in patterns
+            assert "README.md" not in patterns
+            assert "scripts/runtime.py" in patterns, (
+                f"undeclared script should still be flagged: {patterns}"
+            )
 
     def test_scans_tool_specific_agent_dirs(self):
         """Placeholders in .claude/{tool}/agents/ are detected."""

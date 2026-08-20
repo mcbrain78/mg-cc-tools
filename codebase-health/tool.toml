@@ -7,3 +7,7 @@ optional = ["ruff", "vulture", "pyright", "jscpd", "lizard"]
 
 [detect]
 paths = [".claude/codebase-health/scripts/"]
+
+[install]
+# Contributor documentation for this repo -- install.sh never copies it.
+source_only = ["README.md"]

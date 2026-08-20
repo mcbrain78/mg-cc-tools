@@ -7,3 +7,9 @@ required = ["python3"]
 
 [detect]
 paths = [".claude/data-provider/scripts/"]
+
+[install]
+# install.sh seeds README.md into the .mg/data-provider workspace, not into
+# .claude/data-provider/ -- so the target-path convention cannot find it there.
+# DESIGN.md is NOT listed: it does land in .claude/data-provider/ and stays checked.
+source_only = ["README.md"]
