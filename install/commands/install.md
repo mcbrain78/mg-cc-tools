@@ -50,7 +50,7 @@ Parse `$ARGUMENTS` into space-separated tokens:
    ```
 2. Set up TMP directory:
    ```bash
-   MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")" && mkdir -p "$TMP" && rm -f "$TMP"/*.json
+   MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")" && mkdir -p "$TMP" && rm -f "${TMP:?}"/*.json
    ```
 3. Run Step 2 (scan-status) — but do NOT render the status table.
 4. Resolve the tool names directly:
@@ -98,7 +98,7 @@ If `TARGET_PATH` does not have a `.claude/` directory:
 
 Store `TARGET_PATH`. Set the per-target temp directory, create it, and clean stale files from any previous session:
 ```bash
-MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")" && mkdir -p "$TMP" && rm -f "$TMP"/*.json
+MG_TMP_BASE="/tmp" && TMP="$MG_TMP_BASE/mg-install-$(basename "$TARGET_PATH")" && mkdir -p "$TMP" && rm -f "${TMP:?}"/*.json
 ```
 
 ---
