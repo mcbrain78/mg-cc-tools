@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """PreToolUse hook that guards against dangerous operations.
 
-For Bash: checks commands against 8 categories of dangerous patterns plus
-an out-of-project path guard.
+For Bash: checks commands against 8 categories of dangerous patterns, a
+worktree-destruction stage that asks git what a restore would cost, plus an
+out-of-project path guard.
 
 For Read/Edit/Write: checks file paths against sensitive file patterns.
 
@@ -20,6 +21,7 @@ it's empty and falls back to cwd from the hook event.
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -154,9 +156,18 @@ _SYSTEMCTL_WRITE = (
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
+# The checkout rule carries no exemption on purpose. It used to read
+# `git\s+checkout\s+(?!--)`, i.e. it treated the `--` spelling as the benign
+# "file restore" case and let it through — which is the wrong way round (see
+# the Git worktree destruction section). Every checkout now reaches a guard:
+# the pathspec forms are claimed by check_worktree_destruction, which asks git
+# whether there is anything to lose and suppresses this rule when there is
+# not, and everything else — branch switches, --detach, --force — asks here.
+GIT_CHECKOUT_RULE = "git checkout"
+
 CATEGORIES = {
     "Git Branch & History": [
-        (r"\bgit\s+checkout\s+(?!--)", "git checkout (not file restore)"),
+        (r"\bgit\s+checkout\b", GIT_CHECKOUT_RULE),
         (r"\bgit\s+switch\b", "git switch"),
         (r"\bgit\s+branch\s+(?!-)[A-Za-z]", "branch creation"),
         (r"\bgit\s+branch\s+(-[dD]|--delete)\b", "branch deletion"),
@@ -770,6 +781,365 @@ def _is_safe_rm(command):
 
     return True
 
+
+# ── Git worktree destruction ────────────────────────────────────────────────
+# `git checkout -- <path>`, `git restore <path>` and `git clean -f` are the
+# only operations this guard sees that can destroy work with NO recovery path.
+# A discarded worktree modification leaves no reflog entry and no object in the
+# database to recover from: the bytes are gone. (`git reset --hard` is in the
+# same class and has its own always-ask rule.)
+#
+# The old checkout rule exempted the `--` spelling as "file restore", which had
+# it exactly backwards. `git checkout <branch>` REFUSES when it would overwrite
+# local modifications; `git checkout -- <file>` is *designed* to discard them.
+# The exemption spared the irreversible form and asked about the recoverable
+# one — and a real ~500-line loss went through it unprompted.
+#
+# Asking on every restore would be too noisy to stay readable, and a prompt
+# nobody reads is not a guard. So the discriminator is whether there is
+# anything to lose: git itself is asked, scoped to the pathspecs the command
+# names, and a restore over a clean path stays silent. Uncertainty asks — an
+# unresolvable working directory, a pathspec neither git nor the filesystem
+# recognises (which means we resolved it wrong), or a git that will not answer
+# all land on the ask side, because the cost of a spurious prompt here is a
+# keystroke and the cost of a miss is unrecoverable work.
+#
+# `git stash push` is deliberately NOT here: it moves work rather than
+# destroying it, `git stash list` still holds it, and the point where it does
+# become irreversible — `git stash drop|clear` — already has its own rule.
+
+_GIT_TIMEOUT_S = 5
+
+# Redirects are stripped before tokenising so `2>/dev/null` is not read as a
+# pathspec. Matches an optional fd, the operator, and its target.
+_REDIRECT_STRIP_RE = re.compile(r"\d*(?:>>|>|<<<|<)\s*&?\S+")
+
+# git's own options that take a separate value, so a value can never be read as
+# the subcommand. `-C` is captured: it moves the repo the command acts on.
+_GIT_GLOBAL_VALUE_OPTS = frozenset({
+    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+    "--super-prefix", "--config-env",
+})
+
+# Subcommand options taking a separate value, per verb. `-m` is absent on
+# purpose: on checkout it means --merge and takes nothing.
+_CHECKOUT_VALUE_OPTS = frozenset({"--conflict", "--pathspec-from-file"})
+_RESTORE_VALUE_OPTS = frozenset({
+    "-s", "--source", "--conflict", "--pathspec-from-file",
+})
+_CLEAN_VALUE_OPTS = frozenset({"-e", "--exclude", "--pathspec-from-file"})
+
+# checkout options that mean "make or move a branch" rather than "restore a
+# path". These are branch operations and belong to the category rule.
+_CHECKOUT_BRANCH_OPTS = frozenset({
+    "-b", "-B", "--orphan", "--detach", "--track", "-t", "--no-track",
+    "--guess", "--no-guess",
+})
+
+# verb: the git subcommand. paths: the pathspecs it names. bounded: whether it
+# named any (an unbounded `git clean -f` reaches the whole tree). ignored:
+# whether ignored files are in scope (-x/-X). chdir: a `git -C <dir>` override.
+GitWorktreeCmd = namedtuple("GitWorktreeCmd", "verb paths bounded ignored chdir")
+
+# How many paths to name in a prompt before summarising the rest.
+_REASON_PATH_LIMIT = 3
+
+
+def _tokenize_segment(text):
+    """Split one shell segment into tokens, quotes removed.
+
+    shlex gets quoted paths with spaces right; an unbalanced quote makes it
+    raise, and a whitespace split is a good enough fallback there.
+    """
+    try:
+        return shlex.split(text, comments=False, posix=True)
+    except ValueError:
+        return text.split()
+
+
+def _split_operands(args, value_opts):
+    """Split *args* into (flags, before_dashdash, after_dashdash, saw_dashdash).
+
+    Options in *value_opts* swallow their separate value so it is never
+    mistaken for an operand. The `--` split is kept because it is the only
+    unambiguous pathspec marker git offers.
+    """
+    flags, pre, post = [], [], []
+    saw_dashdash = False
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if saw_dashdash:
+            post.append(token)
+            i += 1
+            continue
+        if token == "--":
+            saw_dashdash = True
+            i += 1
+            continue
+        if token.startswith("-") and token != "-":
+            flags.append(token)
+            if token.split("=", 1)[0] in value_opts and "=" not in token:
+                i += 2
+            else:
+                i += 1
+            continue
+        pre.append(token)
+        i += 1
+    return flags, pre, post, saw_dashdash
+
+
+def _flag_names(flags):
+    """Return the set of long-option names and the concatenated short letters.
+
+    `-fd` and `--force -d` have to answer the same question, so short clusters
+    are flattened into one string to test letters against.
+    """
+    names = {flag.split("=", 1)[0] for flag in flags}
+    shorts = "".join(
+        flag.lstrip("-") for flag in flags if not flag.startswith("--")
+    )
+    return names, shorts
+
+
+def _path_exists_under(base_dir, path):
+    """Return True if *path* names something on disk, resolved against base_dir.
+
+    lexists, not exists: a dangling symlink is still a path the command names.
+    """
+    if not base_dir:
+        return False
+    candidate = path if os.path.isabs(path) else os.path.join(base_dir, path)
+    return os.path.lexists(candidate)
+
+
+def _parse_checkout(args, base_dir, chdir):
+    """Classify a `git checkout` invocation, or None if it is a branch op."""
+    flags, pre, post, saw_dashdash = _split_operands(args, _CHECKOUT_VALUE_OPTS)
+    names, _ = _flag_names(flags)
+    if names & _CHECKOUT_BRANCH_OPTS:
+        return None
+    if saw_dashdash:
+        # Everything after `--` is a pathspec by definition. Anything before it
+        # is a tree-ish, which changes what the worktree is overwritten WITH,
+        # not whether it is overwritten.
+        paths = post
+    else:
+        # `git checkout foo` is ambiguous: branch or path. Only claim it when
+        # every operand names something on disk — a partial match means we are
+        # guessing, and the category rule (which asks) is the safer reader.
+        if not pre or not all(_path_exists_under(base_dir, p) for p in pre):
+            return None
+        paths = pre
+    if not paths:
+        return None
+    return GitWorktreeCmd("checkout", paths, True, False, chdir)
+
+
+def _parse_restore(args, chdir):
+    """Classify a `git restore` invocation, or None if the worktree is safe."""
+    flags, pre, post, saw_dashdash = _split_operands(args, _RESTORE_VALUE_OPTS)
+    names, shorts = _flag_names(flags)
+    staged = "--staged" in names or "S" in shorts
+    worktree = "--worktree" in names or "W" in shorts
+    if staged and not worktree:
+        # Index-only: unstages, leaves the worktree untouched. Not a loss.
+        return None
+    paths = post if saw_dashdash else pre
+    if not paths:
+        # git restore refuses without a pathspec, so there is nothing to guard.
+        return None
+    return GitWorktreeCmd("restore", paths, True, False, chdir)
+
+
+def _parse_clean(args, chdir):
+    """Classify a `git clean` invocation, or None if it deletes nothing."""
+    flags, pre, post, saw_dashdash = _split_operands(args, _CLEAN_VALUE_OPTS)
+    names, shorts = _flag_names(flags)
+    if "--dry-run" in names or "n" in shorts:
+        return None
+    if not ("--force" in names or "f" in shorts):
+        # Without -f git refuses (clean.requireForce defaults to true).
+        return None
+    ignored = "x" in shorts or "X" in shorts
+    paths = post if saw_dashdash else pre
+    return GitWorktreeCmd("clean", paths, bool(paths), ignored, chdir)
+
+
+def _parse_git_worktree_cmd(tokens, base_dir):
+    """Return a GitWorktreeCmd for *tokens*, or None if it destroys nothing."""
+    if not tokens or os.path.basename(tokens[0]) != "git":
+        return None
+    index, chdir = 1, None
+    while index < len(tokens) and tokens[index].startswith("-"):
+        option = tokens[index]
+        name = option.split("=", 1)[0]
+        if "=" in option or name not in _GIT_GLOBAL_VALUE_OPTS:
+            index += 1
+            continue
+        if name == "-C" and index + 1 < len(tokens):
+            chdir = tokens[index + 1]
+        index += 2
+    if index >= len(tokens):
+        return None
+    verb, args = tokens[index], tokens[index + 1:]
+    if verb == "checkout":
+        return _parse_checkout(args, base_dir, chdir)
+    if verb == "restore":
+        return _parse_restore(args, chdir)
+    if verb == "clean":
+        return _parse_clean(args, chdir)
+    return None
+
+
+def _run_git(root, args):
+    """Run a git command in *root*. Returns stdout, or None if git would not answer."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", root] + args,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT_S,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def _git_knows_path(root, path):
+    """Return True if *path* is on disk or tracked by the repo at *root*.
+
+    The point is to catch our own misresolution. A pathspec that neither the
+    filesystem nor the index recognises means the base directory we resolved it
+    against is probably wrong — in which case a clean `git status` for it
+    proves nothing, and the caller must ask rather than clear.
+    """
+    if _path_exists_under(root, path):
+        return True
+    return _run_git(root, ["ls-files", "--error-unmatch", "--", path]) is not None
+
+
+def _git_pending(root, cmd):
+    """Return the porcelain lines *cmd* would destroy, or None if unknown."""
+    args = ["status", "--porcelain"]
+    # Untracked files are what clean deletes and what a restore cannot touch.
+    args.append("--untracked-files=" + ("all" if cmd.verb == "clean" else "no"))
+    if cmd.ignored:
+        args.append("--ignored=matching")
+    if cmd.paths:
+        args.append("--")
+        args.extend(cmd.paths)
+    output = _run_git(root, args)
+    if output is None:
+        return None
+    lines = [line for line in output.splitlines() if line.strip()]
+    if cmd.verb == "clean":
+        return [line for line in lines if line[:2] in ("??", "!!")]
+    return [line for line in lines if line[:2] not in ("??", "!!")]
+
+
+def _porcelain_paths(lines):
+    """Extract the path from each porcelain line, rename arrows resolved."""
+    paths = []
+    for line in lines:
+        path = line[3:] if len(line) > 3 else line
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        paths.append(path.strip().strip('"'))
+    return paths
+
+
+def _worktree_reason(cmd, lines):
+    """Build the prompt text naming what this command would destroy.
+
+    The paths are the point of the prompt, so they lead. A count only appears
+    when there is more than one, and the list is truncated so a wide sweep
+    stays readable.
+    """
+    paths = _porcelain_paths(lines)
+    shown = ", ".join(paths[:_REASON_PATH_LIMIT])
+    if len(paths) > _REASON_PATH_LIMIT:
+        shown += f", +{len(paths) - _REASON_PATH_LIMIT} more"
+    if len(paths) > 1:
+        shown = f"{len(paths)} paths ({shown})"
+    verb = "deletes untracked" if cmd.verb == "clean" else "discards uncommitted changes in"
+    scope = "" if cmd.bounded else ", across the whole tree"
+    return f"git {cmd.verb} {verb} {shown}{scope} — not recoverable from git"
+
+
+def _judge_worktree_cmd(cmd, base_dir):
+    """Return ("ask", reason) or ("clear", None) for one parsed git command."""
+    root = base_dir
+    if cmd.chdir:
+        root = cmd.chdir if os.path.isabs(cmd.chdir) else os.path.join(base_dir or "", cmd.chdir)
+    if not root or not os.path.isdir(root):
+        return ("ask", f"git {cmd.verb} destroys uncommitted work and the "
+                       "directory it would run in could not be resolved")
+    if cmd.bounded:
+        unknown = [p for p in cmd.paths if not _git_knows_path(root, p)]
+        if unknown:
+            return ("ask", f"git {cmd.verb} targets a path this guard could not "
+                           f"resolve, so what it would destroy is unknown: "
+                           f"{', '.join(unknown[:_REASON_PATH_LIMIT])}")
+    lines = _git_pending(root, cmd)
+    if lines is None:
+        return ("ask", f"git {cmd.verb} destroys uncommitted work and git would "
+                       "not report what is pending")
+    if not lines:
+        return ("clear", None)
+    return ("ask", _worktree_reason(cmd, lines))
+
+
+def _resolve_cd(base_dir, target):
+    """Return the directory a `cd <target>` lands in, or None if unknowable."""
+    if target.startswith("-"):
+        return None  # `cd -` needs shell history this hook does not have
+    if os.path.isabs(target):
+        return target
+    if not base_dir:
+        return None
+    return os.path.normpath(os.path.join(base_dir, target))
+
+
+def check_worktree_destruction(command, base_dir):
+    """Check whether *command* would destroy unrecoverable worktree content.
+
+    Returns ("ask", reason), ("clear", None), or None when no segment invokes a
+    worktree-destroying git command. "clear" means a restore was recognised and
+    git reports nothing pending for its paths — the caller uses it to suppress
+    the broad checkout category rule, which would otherwise ask about a no-op.
+
+    Segments are read off the quote-masked copy so a quoted `;` does not split
+    the command, and sliced from the original so pathspecs keep their real
+    text. A `cd` in an earlier segment moves the base directory, because that
+    is where the git command will actually run.
+    """
+    command = _strip_heredocs(command)
+    masked = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
+    cwd = base_dir
+    cleared = False
+    for segment in _SEGMENT_RE.finditer(masked):
+        text = command[segment.start():segment.end()]
+        tokens = _tokenize_segment(_REDIRECT_STRIP_RE.sub(" ", text))
+        if not tokens:
+            continue
+        if os.path.basename(tokens[0]) == "cd" and len(tokens) > 1:
+            cwd = _resolve_cd(cwd, tokens[1])
+            continue
+        parsed = _parse_git_worktree_cmd(tokens, cwd)
+        if not parsed:
+            continue
+        decision, reason = _judge_worktree_cmd(parsed, cwd)
+        if decision == "ask":
+            # First loss wins: the prompt names the command that would destroy
+            # work, and the user is deciding about the whole compound anyway.
+            return ("ask", reason)
+        cleared = True
+    return ("clear", None) if cleared else None
+
+
 # ── Sensitive file patterns (for Read/Edit/Write tool guards) ───────────────
 # Each is (compiled_regex, description). Matched against the file_path.
 
@@ -788,7 +1158,7 @@ SENSITIVE_FILE_PATTERNS = [
 ]
 
 
-def check_command(command):
+def check_command(command, skip_descriptions=()):
     """Check command against category rules.
 
     Quoted text is data, not syntax: a grep whose search pattern contains
@@ -803,6 +1173,10 @@ def check_command(command):
     The one rule that does read an operand is _ENV_RULES' `> ….env` redirect;
     see the note there before enabling ENV_PROTECTION.
 
+    *skip_descriptions* drops rules a more precise stage has already judged —
+    only check_worktree_destruction uses it, to keep the broad checkout rule
+    from asking about a restore it has proved is a no-op.
+
     Returns (description, category, matched_text) or None.
     """
     command = _strip_heredocs(command)
@@ -810,6 +1184,8 @@ def check_command(command):
     # the real text out of the original for reporting.
     scanned = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
     for compiled_re, description, category in RULES:
+        if description in skip_descriptions:
+            continue
         match = compiled_re.search(scanned)
         if match:
             return (description, category, command[match.start():match.end()])
@@ -1553,6 +1929,24 @@ def main():
                 _ask("[permission-guard] Session context emitter — requires human approval")
             return
 
+    # ── Git worktree destruction ────────────────────────────────────────
+    # Ahead of the auto-approve window, and for the same reason the pause latch
+    # and the usage gate are: the window exists to skip ROUTINE approvals for
+    # the duration of a known command, and an unrecoverable loss of uncommitted
+    # work is not routine. Everything else in this guard interrupts something
+    # that can be retried; this one cannot. The window still covers the common
+    # case, because a restore over a clean path clears here and never prompts.
+    skip_rules = ()
+    if tool_name == "Bash" and tool_input.get("command"):
+        verdict = check_worktree_destruction(
+            tool_input["command"], _resolve_project_root(event)
+        )
+        if verdict and verdict[0] == "ask":
+            _ask(f"[permission-guard] Git Worktree Destruction: {verdict[1]}")
+            return
+        if verdict:
+            skip_rules = (GIT_CHECKOUT_RULE,)
+
     # ── Session context auto-approve ───────────────────────────────────
     ctx_cmd = check_session_context(event.get("transcript_path", ""))
     if ctx_cmd:
@@ -1621,7 +2015,7 @@ def main():
     trace_prefix = f"{eval_trace} " if eval_trace else ""
 
     # 1. Category rules
-    result = check_command(command)
+    result = check_command(command, skip_rules)
     if result:
         description, category, _matched = result
         _ask(f"[permission-guard] {trace_prefix}{category}: {description}")

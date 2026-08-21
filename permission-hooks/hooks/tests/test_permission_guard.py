@@ -1,6 +1,7 @@
 """Tests for permission-guard.py hook."""
 import sys
 import os
+import subprocess
 import pytest
 
 # Add hook directory to path so we can import the module
@@ -105,8 +106,22 @@ class TestGitBranchHistory:
     def test_block_checkout_b(self):
         assert_blocked("git checkout -b new-branch", self.CAT)
 
-    def test_allow_checkout_file_restore(self):
-        assert_allowed("git checkout -- file.txt")
+    def test_block_checkout_file_restore(self):
+        # The `--` form used to be exempted here as "file restore". It is the
+        # irreversible one, so it no longer gets a pass from the category rule;
+        # check_worktree_destruction is what decides whether it actually costs
+        # anything (see TestGitWorktreeDestruction).
+        assert_blocked("git checkout -- file.txt", self.CAT)
+
+    def test_block_checkout_forms_the_old_exemption_spared(self):
+        assert_blocked("git checkout --force other-branch", self.CAT)
+        assert_blocked("git checkout --ours file.txt", self.CAT)
+        assert_blocked("git checkout --detach", self.CAT)
+
+    def test_checkout_rule_is_suppressible(self):
+        result = check_command("git checkout -- file.txt",
+                               (guard.GIT_CHECKOUT_RULE,))
+        assert result is None
 
     def test_block_switch(self):
         assert_blocked("git switch main", self.CAT)
@@ -3682,3 +3697,282 @@ class TestStage0WritesSidecar:
         guard.main()
 
         assert not os.path.exists(self._sidecar_path(sid))
+
+
+# ── Git worktree destruction ─────────────────────────────────────────────────
+
+def _git(repo, *args):
+    """Run git in *repo*, raising on failure so a broken fixture is loud."""
+    subprocess.run(["git", "-C", str(repo)] + list(args), check=True,
+                   capture_output=True, text=True)
+
+
+@pytest.fixture
+def repo(tmp_path):
+    """A real git repo with one committed file. Real git, because the whole
+    point of this stage is that git — not a regex — decides what is pending."""
+    path = tmp_path / "proj"
+    path.mkdir()
+    _git(path, "init", "-q")
+    _git(path, "config", "user.email", "test@example.invalid")
+    _git(path, "config", "user.name", "Test")
+    (path / "src").mkdir()
+    (path / "src" / "keeper.py").write_text("original\n")
+    (path / "clean.txt").write_text("committed\n")
+    _git(path, "add", "-A")
+    _git(path, "commit", "-qm", "initial")
+    return path
+
+
+def dirty(repo, relpath="src/keeper.py"):
+    """Give *relpath* uncommitted content — the thing a restore would destroy."""
+    (repo / relpath).write_text("five hundred lines of unsaved work\n")
+
+
+class TestGitWorktreeDestruction:
+    """The stage that asks git what a restore would actually cost."""
+
+    def judge(self, repo, command):
+        return guard.check_worktree_destruction(command, str(repo))
+
+    # ── the incident ────────────────────────────────────────────────────
+    def test_the_command_that_destroyed_the_work(self, repo):
+        """`git checkout <path>` on a dirty file, reached through a cd, asks."""
+        dirty(repo)
+        verdict = self.judge(
+            repo,
+            f"cd {repo} && git checkout src/keeper.py 2>/dev/null; echo restored",
+        )
+        assert verdict[0] == "ask"
+        assert "src/keeper.py" in verdict[1]
+        assert "not recoverable" in verdict[1]
+
+    def test_the_form_the_old_rule_exempted(self, repo):
+        """`git checkout -- <path>` was silent before. It is the same loss."""
+        dirty(repo)
+        assert self.judge(repo, "git checkout -- src/keeper.py")[0] == "ask"
+
+    def test_restore_is_the_same_loss_under_a_newer_name(self, repo):
+        dirty(repo)
+        assert self.judge(repo, "git restore src/keeper.py")[0] == "ask"
+
+    def test_tree_ish_restore_over_dirty_work(self, repo):
+        dirty(repo)
+        assert self.judge(repo, "git checkout HEAD -- src/keeper.py")[0] == "ask"
+
+    # ── the precision that keeps the prompt worth reading ───────────────
+    def test_clean_path_clears(self, repo):
+        assert self.judge(repo, "git checkout -- clean.txt") == ("clear", None)
+
+    def test_clean_path_without_dashdash_clears(self, repo):
+        assert self.judge(repo, "git checkout clean.txt") == ("clear", None)
+
+    def test_restore_over_a_clean_path_clears(self, repo):
+        assert self.judge(repo, "git restore src/keeper.py") == ("clear", None)
+
+    def test_a_dirty_sibling_does_not_make_a_clean_target_ask(self, repo):
+        """Scoping is per-pathspec, not repo-wide."""
+        dirty(repo)
+        assert self.judge(repo, "git checkout -- clean.txt") == ("clear", None)
+
+    # ── forms that are not this hazard ──────────────────────────────────
+    def test_branch_switch_is_not_claimed(self, repo):
+        """Left to the category rule, which reports it as a branch operation."""
+        assert self.judge(repo, "git checkout main") is None
+        assert self.judge(repo, "git checkout -b feature-x") is None
+        assert self.judge(repo, "git checkout --detach") is None
+
+    def test_a_partial_path_match_is_not_claimed(self, repo):
+        """One real path and one unknown operand means we are guessing."""
+        assert self.judge(repo, "git checkout main src/keeper.py") is None
+
+    def test_restore_staged_only_leaves_the_worktree_alone(self, repo):
+        dirty(repo)
+        assert self.judge(repo, "git restore --staged src/keeper.py") is None
+
+    def test_restore_staged_and_worktree_does_not(self, repo):
+        dirty(repo)
+        assert self.judge(
+            repo, "git restore --staged --worktree src/keeper.py")[0] == "ask"
+
+    def test_stash_push_is_out_of_scope(self, repo):
+        """It moves work rather than destroying it; stash drop has its own rule."""
+        dirty(repo)
+        assert self.judge(repo, "git stash push src/keeper.py") is None
+
+    def test_unrelated_git_commands_are_not_claimed(self, repo):
+        assert self.judge(repo, "git status --short") is None
+        assert self.judge(repo, "git log --oneline -5") is None
+        assert self.judge(repo, "git commit -am wip") is None
+
+    # ── git clean ───────────────────────────────────────────────────────
+    def test_clean_deleting_untracked_files_asks(self, repo):
+        (repo / "notes.txt").write_text("unsaved\n")
+        verdict = self.judge(repo, "git clean -fd")
+        assert verdict[0] == "ask"
+        assert "notes.txt" in verdict[1]
+        assert "whole tree" in verdict[1]
+
+    def test_clean_with_nothing_to_delete_clears(self, repo):
+        assert self.judge(repo, "git clean -fd") == ("clear", None)
+
+    def test_clean_dry_run_is_not_claimed(self, repo):
+        (repo / "notes.txt").write_text("unsaved\n")
+        assert self.judge(repo, "git clean -nd") is None
+
+    def test_clean_without_force_is_not_claimed(self, repo):
+        (repo / "notes.txt").write_text("unsaved\n")
+        assert self.judge(repo, "git clean -d") is None
+
+    def test_clean_x_reaches_ignored_files(self, repo):
+        (repo / ".gitignore").write_text("secrets.env\n")
+        (repo / "secrets.env").write_text("KEY=1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "ignore")
+        assert self.judge(repo, "git clean -fdx")[0] == "ask"
+        # Without -x the ignored file is out of scope and there is nothing else.
+        assert self.judge(repo, "git clean -fd") == ("clear", None)
+
+    # ── uncertainty asks ────────────────────────────────────────────────
+    def test_unresolvable_pathspec_asks(self, repo):
+        """A path neither git nor the filesystem knows means we resolved it
+        wrong, and a clean status for it proves nothing."""
+        verdict = self.judge(repo, "git checkout -- ../elsewhere/ghost.py")
+        assert verdict[0] == "ask"
+        assert "could not resolve" in verdict[1]
+
+    def test_unresolvable_cd_asks(self, repo):
+        verdict = self.judge(repo, "cd - && git restore src/keeper.py")
+        assert verdict[0] == "ask"
+        assert "could not be resolved" in verdict[1]
+
+    def test_missing_base_dir_asks(self):
+        verdict = guard.check_worktree_destruction(
+            "git restore src/keeper.py", "")
+        assert verdict[0] == "ask"
+
+    def test_non_repo_asks(self, tmp_path):
+        """git will not answer outside a repo, so the loss is unknown."""
+        plain = tmp_path / "not-a-repo"
+        plain.mkdir()
+        (plain / "file.py").write_text("x\n")
+        verdict = guard.check_worktree_destruction(
+            "git restore file.py", str(plain))
+        assert verdict[0] == "ask"
+
+    # ── parsing details ─────────────────────────────────────────────────
+    def test_quoted_path_with_a_space(self, repo):
+        (repo / "my file.py").write_text("v1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "spaced")
+        (repo / "my file.py").write_text("v2\n")
+        verdict = self.judge(repo, 'git checkout -- "my file.py"')
+        assert verdict[0] == "ask"
+        assert "my file.py" in verdict[1]
+
+    def test_git_c_option_moves_the_repo(self, repo, tmp_path):
+        dirty(repo)
+        verdict = guard.check_worktree_destruction(
+            f"git -C {repo} restore src/keeper.py", str(tmp_path))
+        assert verdict[0] == "ask"
+        assert "src/keeper.py" in verdict[1]
+
+    def test_a_restore_inside_a_commit_message_is_not_a_restore(self, repo):
+        """Quoted text is data. The masking that protects the category rules
+        has to protect this stage too."""
+        dirty(repo)
+        assert self.judge(
+            repo, 'git commit -am "revert with git restore src/keeper.py"') is None
+
+    def test_heredoc_body_is_not_scanned(self, repo):
+        dirty(repo)
+        command = (
+            "cat > /tmp/note.txt <<'EOF'\n"
+            "git restore src/keeper.py\n"
+            "EOF\n"
+        )
+        assert self.judge(repo, command) is None
+
+    def test_reason_summarises_a_long_list(self, repo):
+        for name in ("a", "b", "c", "d", "e"):
+            (repo / f"{name}.py").write_text("v1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "five")
+        for name in ("a", "b", "c", "d", "e"):
+            (repo / f"{name}.py").write_text("v2\n")
+        verdict = self.judge(repo, "git checkout -- a.py b.py c.py d.py e.py")
+        assert verdict[0] == "ask"
+        assert "+2 more" in verdict[1]
+
+
+class TestWorktreeDestructionInMain:
+    """Placement: ahead of the auto-approve window, and it suppresses the
+    broad checkout rule when it has proved the restore is a no-op."""
+
+    def _run(self, monkeypatch, event):
+        decisions = []
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+        guard.main()
+        return decisions
+
+    def _event(self, repo, command, sid):
+        return {
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "transcript_path": f"/tmp/{sid}.jsonl",
+            "cwd": str(repo),
+        }
+
+    def _arm_window(self, tmp_path, monkeypatch, sid):
+        base = tmp_path / "sc"
+        monkeypatch.setenv("MG_SESSION_BASE", str(base))
+        sdir = base / f"mg-session-{sid}"
+        sdir.mkdir(parents=True, exist_ok=True)
+        with open(sdir / guard.SIDECAR_FILENAME, "w") as f:
+            json.dump({"command": "AUTO-APPROVE",
+                       "timestamp_ms": int(time.time() * 1000)}, f)
+
+    def test_asks_on_a_dirty_restore(self, repo, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        dirty(repo)
+        decisions = self._run(
+            monkeypatch, self._event(repo, "git restore src/keeper.py", "w1"))
+        assert decisions[0][1] == "ask"
+        assert "Git Worktree Destruction" in decisions[0][0]
+
+    def test_beats_an_armed_window(self, repo, tmp_path, monkeypatch):
+        """The window skips ROUTINE approvals; this loss has no retry."""
+        self._arm_window(tmp_path, monkeypatch, "w2")
+        dirty(repo)
+        decisions = self._run(
+            monkeypatch, self._event(repo, "git restore src/keeper.py", "w2"))
+        assert decisions[0][1] == "ask"
+        assert "Git Worktree Destruction" in decisions[0][0]
+
+    def test_a_clean_restore_does_not_prompt(self, repo, tmp_path, monkeypatch):
+        """The whole point of the status check: no noise when nothing is lost.
+        Without the suppression this would ask via the checkout rule."""
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        decisions = self._run(
+            monkeypatch, self._event(repo, "git checkout -- clean.txt", "w3"))
+        assert decisions == []
+
+    def test_a_branch_switch_still_asks(self, repo, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        decisions = self._run(
+            monkeypatch, self._event(repo, "git checkout other-branch", "w4"))
+        assert decisions[0][1] == "ask"
+        assert "Git Branch & History" in decisions[0][0]
+
+    def test_deferred_mode_stands_down(self, repo, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        dirty(repo)
+        event = self._event(repo, "git restore src/keeper.py", "w5")
+        event["permission_mode"] = "default"
+        assert self._run(monkeypatch, event) == []
