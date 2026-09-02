@@ -65,6 +65,13 @@ If `status` is `resumed`, say so before doing anything else: report the round it
 resuming at and how many questions are already answered. The user needs to know they are
 continuing, not starting.
 
+State `agents_remaining` up front too. The default allowance is **50** and a round costs
+roughly `3 + N + 2 x N` agents, so a six-question round is about 21 — two rounds, where
+converging needs at least three (two of them dry). Hitting the ceiling is therefore the
+*normal* outcome on a broad task, not an error. If the task looks broad, say so now and
+offer `--max-agents <n>` on this invocation, so the user chooses the budget before the
+work is spent rather than after.
+
 ## Step 2 — Digest (once per run)
 
 Spawn ONE **digest** agent with the instructions at `{MG_INSTALL_AGENTS_DIR}/digest.md`,
@@ -220,7 +227,7 @@ Then report to the user:
 
 ## On agent ceiling
 
-The run has spent its lifetime agent allowance (`agents_max`, default 250, counted
+The run has spent its lifetime agent allowance (`agents_max`, default 50, counted
 cumulatively across every invocation — a resumed run does **not** get a fresh
 allowance). `claim` now refuses, so any agent spawned from here returns without doing
 work; that is a backstop, not a plan. Stop spawning.

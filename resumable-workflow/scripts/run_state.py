@@ -119,8 +119,10 @@ MAX_ATTEMPTS = 3
 # the analogue of the built-in Workflow tool's 1000-agent lifetime backstop, which
 # was the one safety property this loop lacked: MAX_ATTEMPTS is a x3 multiplier not a
 # cap, and a round cap bounds rounds, not agents. Per-round cost here is
-# 3 + N + L*N (questions x lenses), so 250 covers roughly a dozen full rounds.
-MAX_AGENTS_DEFAULT = 250
+# 3 + N + L*N (questions x lenses), so at the measured six-questions-a-round shape
+# (~21 agents) this covers about two rounds. Deliberately tight: a run that wants more
+# should say so with --max-agents, rather than a generous default quietly spending it.
+MAX_AGENTS_DEFAULT = 50
 
 # Steps the ceiling does not apply to. Without this the ceiling deadlocks the run it
 # is meant to bound: the loop's response to exhausting its allowance is to summarize
