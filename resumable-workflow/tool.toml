@@ -4,5 +4,9 @@ description = "Resumable dynamic investigation loop — decompose, research, ver
 [preflight]
 required = ["python3"]
 
+[install]
+# Contributor-facing; points at the handover doc. Never deployed to a target.
+source_only = ["README.md"]
+
 [detect]
 paths = [".claude/resumable-workflow/scripts/"]
