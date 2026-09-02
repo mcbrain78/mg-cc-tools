@@ -15,6 +15,8 @@ text, and the path to `run_state.py`.
      session. Return `SKIP <STEP_ID> — <the summary it gave you>` and **stop**. Do no
      work, do not re-read anything, do not add findings.
    - `action: abandon` → return `ABANDON <STEP_ID>` and **stop**.
+   - `action: ceiling` → the run's lifetime agent allowance is spent. Return
+     `CEILING <STEP_ID>` and **stop**. Do no work at all.
    - `action: run` → note the `path` and `token`, and continue.
 2. Write your full working to **exactly** the `path` `claim` gave you — the evidence,
    the reasoning, the sources. End the file with a newline. This file is what the

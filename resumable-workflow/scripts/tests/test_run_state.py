@@ -307,6 +307,115 @@ class TestAbandonment:
         assert do_claim("q-flaky")["action"] == "run"
 
 
+# ── The lifetime agent ceiling ──────────────────────────────────────────────
+
+
+class TestAgentCeiling:
+    def test_default_ceiling_is_reported(self, run_dir, out):
+        run_state.main(["status", str(run_dir)])
+        state = out()
+        assert state["agents_max"] == run_state.MAX_AGENTS_DEFAULT
+        assert state["agents_spawned"] == 0
+        assert state["agents_remaining"] == run_state.MAX_AGENTS_DEFAULT
+
+    def test_claims_count_against_the_ceiling(self, tmp_path, do_claim, run_dir, out):
+        do_claim("q-a")
+        do_claim("q-b")
+        run_state.main(["status", str(run_dir)])
+        state = out()
+        assert state["agents_spawned"] == 2
+        assert state["agents_remaining"] == run_state.MAX_AGENTS_DEFAULT - 2
+
+    def test_claim_refuses_once_the_ceiling_is_reached(self, tmp_path, out):
+        d = tmp_path / "r"
+        run_state.main(["resolve", "--task", "t", "--run-dir", str(d),
+                        "--max-agents", "2"])
+        out()
+        for step in ("q-a", "q-b"):
+            run_state.main(["claim", str(d), "--step", step])
+            assert out()["action"] == "run"
+        run_state.main(["claim", str(d), "--step", "q-c"])
+        refused = out()
+        assert refused["action"] == "ceiling"
+        assert refused["agents_spawned"] == 2
+
+    def test_a_skip_does_not_burn_allowance(
+        self, tmp_path, write_payload, out, capsys
+    ):
+        """A resumed run must not spend its budget re-confirming finished work — a
+        skipped step returns after one Bash call without reading anything."""
+        d = tmp_path / "r"
+        run_state.main(["resolve", "--task", "t", "--run-dir", str(d),
+                        "--max-agents", "2"])
+        out()
+        run_state.main(["claim", str(d), "--step", "q-a"])
+        token = out()["token"]
+        payload = run_state._payload_path(d, "q-a")
+        payload.write_text("A body long enough to pass the floor check.\n",
+                           encoding="utf-8")
+        run_state.main(["complete", str(d), "--step", "q-a", "--token", token,
+                        "--summary", "s"])
+        out()
+        for _ in range(5):
+            run_state.main(["claim", str(d), "--step", "q-a"])
+            assert out()["action"] == "skip"
+        run_state.main(["status", str(d)])
+        assert out()["agents_spawned"] == 1
+
+    def test_ceiling_persists_across_invocations(self, tmp_path, out):
+        """The failure this exists to prevent: the built-in tool's `budget` counts
+        per turn, so a run that dies nine times spends 10x its allowance while every
+        invocation looks compliant."""
+        d = tmp_path / "r"
+        run_state.main(["resolve", "--task", "t", "--run-dir", str(d),
+                        "--max-agents", "2"])
+        out()
+        run_state.main(["claim", str(d), "--step", "q-a"])
+        out()
+        # --- session dies; same command re-typed ---
+        run_state.main(["resolve", "--task", "t", "--run-dir", str(d)])
+        resumed = out()
+        assert resumed["agents_max"] == 2
+        assert resumed["agents_spawned"] == 1
+        assert resumed["agents_remaining"] == 1
+
+    def test_ceiling_can_be_raised_deliberately_on_a_resume(self, tmp_path, out):
+        d = tmp_path / "r"
+        run_state.main(["resolve", "--task", "t", "--run-dir", str(d),
+                        "--max-agents", "1"])
+        out()
+        run_state.main(["claim", str(d), "--step", "q-a"])
+        out()
+        run_state.main(["claim", str(d), "--step", "q-b"])
+        assert out()["action"] == "ceiling"
+        run_state.main(["resolve", "--task", "t", "--run-dir", str(d),
+                        "--max-agents", "5"])
+        assert out()["agents_remaining"] == 4
+        run_state.main(["claim", str(d), "--step", "q-b"])
+        assert out()["action"] == "run"
+
+    def test_summary_step_is_exempt_from_the_ceiling(self, tmp_path, out):
+        """Otherwise the ceiling deadlocks the run it bounds: the loop's response to
+        exhausting its allowance is to summarize what it has, and that step's own
+        claim would be refused — discarding every agent already paid for."""
+        d = tmp_path / "r"
+        run_state.main(["resolve", "--task", "t", "--run-dir", str(d),
+                        "--max-agents", "1"])
+        out()
+        run_state.main(["claim", str(d), "--step", "q-a"])
+        out()
+        run_state.main(["claim", str(d), "--step", "q-b"])
+        assert out()["action"] == "ceiling"
+        run_state.main(["claim", str(d), "--step", "summary"])
+        assert out()["action"] == "run"
+
+    @pytest.mark.parametrize("bad", ["nope", "0", "-3"])
+    def test_bad_max_agents_is_refused(self, tmp_path, bad):
+        assert run_state.main(["resolve", "--task", "t",
+                               "--run-dir", str(tmp_path / "r"),
+                               "--max-agents", bad]) == 1
+
+
 # ── Reaping orphaned steps ──────────────────────────────────────────────────
 
 
@@ -492,6 +601,8 @@ class TestDerivedState:
         rec = out()["findings"][fid]
         assert rec["text"] == claim_text
         assert rec["round"] == 1
+        # `question` is what lets the loop batch verification by question.
+        assert rec["question"] == question
 
     def test_refuted_verdicts_are_counted_separately(self, run_dir, question, out):
         """The loop owns the majority-refute threshold; the script only reports."""

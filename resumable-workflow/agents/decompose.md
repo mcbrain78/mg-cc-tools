@@ -16,6 +16,8 @@ You were given a `RUN_DIR`, a `STEP_ID`, and the path to `run_state.py`.
    `python3 {MG_INSTALL_SCRIPTS_DIR}/run_state.py claim <RUN_DIR> --step <STEP_ID>`
    - `action: skip` → already done. Return `SKIP <STEP_ID> — <the summary it gave you>` and **stop**.
    - `action: abandon` → return `ABANDON <STEP_ID>` and **stop**.
+   - `action: ceiling` → the run's lifetime agent allowance is spent. Return
+     `CEILING <STEP_ID>` and **stop**. Do no work at all.
    - `action: run` → note the `path` and `token`, and continue.
 2. Record each question (below). Also write a short rationale to the `path` `claim`
    gave you — one line per question saying why it is worth asking. End with a newline.

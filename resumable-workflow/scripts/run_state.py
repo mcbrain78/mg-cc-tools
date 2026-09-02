@@ -47,11 +47,13 @@ round without duplicating research.
 
 Subcommands
 -----------
-resolve --task <text> [--run-dir <path>] [--force]
+resolve --task <text> [--run-dir <path>] [--max-agents N] [--force]
     Resolve (creating if needed) the run dir for a task and emit the folded state.
     The entry point for both a cold start and a resume — ``status`` in the output
     tells them apart. Refuses to adopt a ``--run-dir`` whose task differs, or to
     create a new dir when a near-identical sibling exists, without ``--force``.
+    ``--max-agents`` sets the lifetime ceiling (default MAX_AGENTS_DEFAULT); passing
+    it on a resume deliberately raises or lowers an existing run's ceiling.
 
 add <run-dir> --kind question|finding|verdict …
     Record a domain node, idempotent by content slug. Emits its id and whether it
@@ -61,9 +63,11 @@ add <run-dir> --kind question|finding|verdict …
       verdict : --finding FID --lens L --refuted true|false
 
 claim <run-dir> --step <id> [--identity <str>]
-    The gate every agent calls first. Emits ``action`` (skip | run | abandon), the
-    guard-safe payload ``path``, a ``token`` that ``complete`` must present, and the
-    prior ``summary`` on skip so a resumed run costs one Bash call per done step.
+    The gate every agent calls first. Emits ``action`` (skip | run | abandon |
+    ceiling), the guard-safe payload ``path``, a ``token`` that ``complete`` must
+    present, and the prior ``summary`` on skip so a resumed run costs one Bash call
+    per done step. ``ceiling`` means the run's lifetime agent allowance is spent and
+    the agent must return without doing any work.
 
 complete <run-dir> --step <id> --token <t> --summary <s> [--no-payload]
     Mark a step done. Takes no path — it recomputes what ``claim`` emitted, so an
@@ -83,10 +87,11 @@ round <run-dir>
     than accepting one. ``status`` derives the dry-round count from these markers.
 
 status <run-dir>
-    Emit the folded state: pending questions (id AND text), findings (text, round,
-    verdict and refutation counts), current round, dry rounds, abandoned steps,
-    open steps, all_complete, corrupt_lines. Read at the top of every round — this
-    is the resume mechanism, and it must carry enough to act on without reading any
+    Emit the folded state: pending questions (id AND text), findings (text, parent
+    question, round, verdict and refutation counts), current round, dry rounds,
+    abandoned steps, open steps, all_complete, agents_spawned / agents_max /
+    agents_remaining, corrupt_lines. Read at the top of every round — this is the
+    resume mechanism, and it must carry enough to act on without reading any
     payload.
 
 Exit codes: 0 = success, 1 = error (details on stderr).
@@ -108,6 +113,20 @@ MANIFEST_NAME = "manifest.json"
 
 # A step that has failed this many times is abandoned rather than retried forever.
 MAX_ATTEMPTS = 3
+
+# Ceiling on agents that may do real work across a run's whole lifetime, counted
+# cumulatively in the ledger so a resumed run does NOT get a fresh allowance. This is
+# the analogue of the built-in Workflow tool's 1000-agent lifetime backstop, which
+# was the one safety property this loop lacked: MAX_ATTEMPTS is a x3 multiplier not a
+# cap, and a round cap bounds rounds, not agents. Per-round cost here is
+# 3 + N + L*N (questions x lenses), so 250 covers roughly a dozen full rounds.
+MAX_AGENTS_DEFAULT = 250
+
+# Steps the ceiling does not apply to. Without this the ceiling deadlocks the run it
+# is meant to bound: the loop's response to exhausting its allowance is to summarize
+# what it has, and that step's own claim would be refused — losing the entire output
+# of every agent already paid for, to save one more.
+CEILING_EXEMPT = ("summary",)
 
 # Payload floor for `complete`. Non-empty is not a liveness proof — a kill mid-write
 # leaves a short, unterminated file — so require some substance AND a trailing
@@ -240,13 +259,15 @@ class Fold:
     def _apply_lifecycle(self, kind: str, rid: str, rec: dict, seq: int) -> None:
         st = self.steps.setdefault(
             rid, {"status": None, "attempts": 0, "identity": None,
-                  "token": None, "summary": None, "claim_seq": None}
+                  "token": None, "summary": None, "claim_seq": None,
+                  "claim_count": 0}
         )
         # `complete` is terminal: a late record cannot reopen a finished step.
         if st["status"] == "complete":
             return
         if kind == "claimed":
             st["status"] = "claimed"
+            st["claim_count"] += 1
             st["token"] = rec.get("token")
             st["claim_seq"] = seq
             if rec.get("identity") is not None:
@@ -325,6 +346,15 @@ class Fold:
                       if v["verdicts"] == 0]
         return not self.pending_questions() and not unverified and not self.open_steps()
 
+    def agents_spawned(self) -> int:
+        """Agents that did real work, cumulative over the run's whole life.
+
+        Counts ``claimed`` records: a step that `claim` answered with ``skip`` appends
+        nothing, so a resumed run's already-done steps do not burn allowance — the
+        agent returned after one Bash call without reading anything. A re-claim does
+        count, because that genuinely is another agent doing the work again."""
+        return sum(st["claim_count"] for st in self.steps.values())
+
     def new_questions_this_round(self) -> int:
         """Questions recorded during the round now open, derived from the question
         records' own ``round`` tag.
@@ -350,9 +380,13 @@ class Fold:
             # text is one line by construction, so carrying it keeps context flat.
             "pending": [{"id": q, "text": self.questions[q].get("text", "")}
                         for q in sorted(self.pending_questions())],
+            # `question` is what lets the loop batch verification by question: one
+            # verifier per (question, lens) instead of per (finding, lens) removes
+            # findings-per-question from the dominant cost term.
             "findings": {
                 f: {**v,
                     "text": self.findings[f].get("text", ""),
+                    "question": self.findings[f].get("question"),
                     "round": self.findings[f].get("round")}
                 for f, v in sorted(fv.items())
             },
@@ -360,6 +394,7 @@ class Fold:
             "abandoned": sorted(self.abandoned()),
             "open_steps": sorted(self.open_steps()),
             "all_complete": self.all_complete(),
+            "agents_spawned": self.agents_spawned(),
             "corrupt_lines": self.corrupt,
         }
 
@@ -403,12 +438,30 @@ def _now() -> str:
 # ── resolve ─────────────────────────────────────────────────────────────────
 
 
+def _with_ceiling(state: dict, manifest: dict) -> dict:
+    """Attach the agent ceiling to a state dict. The allowance is cumulative over the
+    run's life, so a resumed run inherits what it already spent."""
+    cap = int(manifest.get("max_agents", MAX_AGENTS_DEFAULT))
+    state["agents_max"] = cap
+    state["agents_remaining"] = max(0, cap - state["agents_spawned"])
+    return state
+
+
 def cmd_resolve(argv: list[str]) -> int:
     task, argv = _flag(argv, "--task")
     explicit, argv = _flag(argv, "--run-dir")
+    max_agents, argv = _flag(argv, "--max-agents")
     force, argv = _bool_flag(argv, "--force")
     if not task or not task.strip():
         return _fail("resolve requires --task <text>")
+    max_agents_n: int | None = None
+    if max_agents is not None:
+        try:
+            max_agents_n = int(max_agents)
+        except ValueError:
+            return _fail(f"--max-agents must be an integer, got {max_agents!r}")
+        if max_agents_n < 1:
+            return _fail("--max-agents must be at least 1")
 
     slug = _slug(task, "run")
     task_sha = hashlib.sha256(_normalize(task).encode("utf-8")).hexdigest()
@@ -441,14 +494,21 @@ def cmd_resolve(argv: list[str]) -> int:
     manifest = _read_manifest(run_dir) or {
         "task": task, "task_sha": task_sha, "slug": slug,
         "created_at": _now(), "invocations": 0,
+        "max_agents": MAX_AGENTS_DEFAULT,
     }
+    manifest.setdefault("max_agents", MAX_AGENTS_DEFAULT)
+    # An explicit --max-agents on a resume RAISES (or lowers) the ceiling. That is a
+    # deliberate act by the operator, not the silent per-invocation reset that makes
+    # the built-in tool's `budget` unenforceable across sessions.
+    if max_agents_n is not None:
+        manifest["max_agents"] = max_agents_n
     manifest["invocations"] = int(manifest.get("invocations", 0)) + 1
     manifest["last_invoked_at"] = _now()
     (run_dir / MANIFEST_NAME).write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
-    state = _load(run_dir).as_json()
+    state = _with_ceiling(_load(run_dir).as_json(), manifest)
     state.update({
         "run_dir": str(run_dir.resolve()),
         # Must be the digest step's OWN payload path, not a prettier name: the digest
@@ -568,6 +628,20 @@ def cmd_claim(run_dir: Path, argv: list[str]) -> int:
         _emit({"action": "abandon", "step": step, "path": str(path.resolve()),
                "attempts": fold.steps[step]["attempts"]})
         return 0
+
+    # The lifetime ceiling. Checked here as well as by the orchestrator because the
+    # orchestrator is prose an LLM follows, and a runaway is exactly the case where
+    # it is not followed. Refusing at claim time cannot un-spawn the agent, but it
+    # does stop it doing any work — so a runaway degrades from N expensive agents to
+    # N agents that return after one Bash call.
+    if step not in CEILING_EXEMPT:
+        manifest = _read_manifest(run_dir) or {}
+        cap = int(manifest.get("max_agents", MAX_AGENTS_DEFAULT))
+        spawned = fold.agents_spawned()
+        if spawned >= cap:
+            _emit({"action": "ceiling", "step": step, "agents_spawned": spawned,
+                   "agents_max": cap})
+            return 0
 
     # Guard id aliasing: the same id must always name the same work. Without this a
     # positional id (step-3) silently points at a different item once the set
@@ -698,7 +772,7 @@ def cmd_reap(run_dir: Path) -> int:
 def cmd_status(run_dir: Path) -> int:
     if not run_dir.is_dir():
         return _fail(f"run dir not found: {run_dir}")
-    state = _load(run_dir).as_json()
+    state = _with_ceiling(_load(run_dir).as_json(), _read_manifest(run_dir) or {})
     state["run_dir"] = str(run_dir.resolve())
     _emit(state)
     return 0
@@ -709,7 +783,7 @@ def cmd_status(run_dir: Path) -> int:
 USAGE = """\
 Usage: run_state.py <command> [<run-dir>] [flags...]
 
-  resolve  --task <text> [--run-dir <path>] [--force]
+  resolve  --task <text> [--run-dir <path>] [--max-agents N] [--force]
   add      <run-dir> --kind question --text T [--round N] [--parent ID]
            <run-dir> --kind finding  --text T --question QID
            <run-dir> --kind verdict  --finding FID --lens L --refuted true|false

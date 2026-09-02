@@ -15,6 +15,8 @@ You were given a `RUN_DIR`, a `STEP_ID`, and the path to `run_state.py`.
    `python3 {MG_INSTALL_SCRIPTS_DIR}/run_state.py claim <RUN_DIR> --step <STEP_ID>`
    - `action: skip` → already done for this round. Return `SKIP <STEP_ID> — <the summary it gave you>` and **stop**.
    - `action: abandon` → return `ABANDON <STEP_ID>` and **stop**.
+   - `action: ceiling` → the run's lifetime agent allowance is spent. Return
+     `CEILING <STEP_ID>` and **stop**. Do no work at all.
    - `action: run` → note the `path` and `token`, and continue.
 2. Write your gap list to **exactly** the `path` `claim` gave you (format below). End
    with a newline. The orchestrator hands this file to the next round's decompose agent

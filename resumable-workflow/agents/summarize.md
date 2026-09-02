@@ -16,7 +16,11 @@ You were given a `RUN_DIR`, a `STEP_ID`, the `status` JSON, and the path to
 1. **First**, run:
    `python3 {MG_INSTALL_SCRIPTS_DIR}/run_state.py claim <RUN_DIR> --step <STEP_ID>`
    - `action: skip` → already written. Return `SKIP <STEP_ID> — <the summary it gave you>` and **stop**.
-   - `action: run` → note the `token`, and continue.
+   - `action: run` → note the `token`, and continue. Note you will never be told
+     `ceiling`: the `summary` step is exempt from the run's agent allowance, because
+     refusing it would discard the output of every agent already paid for in order to
+     save one. If the run hit its ceiling you are still expected to write the
+     summary — as a partial, with the shortfall under Gaps.
 2. Write the summary to the **`summary_path`** you were given — not to the `claim`
    payload path. This is the run's deliverable and it lives at a stable, predictable
    location so the orchestrator can report it without holding it in context.

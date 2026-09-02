@@ -95,6 +95,11 @@ finding **text**, not just ids, so you never need to read a payload or the ledge
 act. Never carry a finding, a question, or a payload from a previous round in your own
 context; re-read it here.
 
+Check `agents_remaining`. If it is **0**, go to **On agent ceiling** — do not spawn.
+If it is lower than what this round needs (roughly `2 + |pending| + 2 x |questions with
+unverified findings|`), say so before proceeding: the round will stop partway and the
+allowance is the run's whole life, not this invocation's.
+
 ### 3.1 Decompose
 
 Spawn ONE **decompose** agent (`{MG_INSTALL_AGENTS_DIR}/decompose.md`), step id
@@ -116,17 +121,29 @@ concurrently. Wait for a batch, then send the next. Do not spawn more than 8 at 
 
 ### 3.3 Verify
 
-Re-run `status`. For every finding in `unverified`, spawn **verify** agents
-(`{MG_INSTALL_AGENTS_DIR}/verify.md`), one per lens:
+Re-run `status`. Group the ids in `unverified` **by their `question` field**, then spawn
+one **verify** agent (`{MG_INSTALL_AGENTS_DIR}/verify.md`) per (question, lens) pair —
+handing it every unverified finding of that question, with each finding's `id` and
+`text`:
 
-- Default **two** lenses: `correctness` and `sources`. Step ids `v-<finding-id>-correctness`
-  and `v-<finding-id>-sources`.
-- **Only if those two disagree**, spawn a third — `scope`, or `repro` where reproducing
-  the reasoning is the real question — as the tie-break.
+- Default **two** lenses: `correctness` and `sources`. Step ids
+  `v-<question-id>-correctness` and `v-<question-id>-sources`.
+- **Only where those two disagree** on a specific finding, spawn a third for that
+  finding alone — `scope`, or `repro` where reproducing the reasoning is the real
+  question — as the tie-break. Step id `v-<finding-id>-<lens>`.
 
-Two-plus-tie-break rather than three-always is a deliberate cost bound: verification is
-where agent count explodes, and a unanimous pair needs no third opinion. Batch these the
-same way, up to 8 per message.
+Batch up to 8 per message, as in 3.2.
+
+**Batching by question is the main cost bound, and it is load-bearing.** One agent per
+(finding, lens) is what makes this loop unaffordable: research agents were measured
+producing a *mean of 11 findings per question*, so per-finding verification costs
+`2 x N x 11` agents a round — 132–198 for a six-question round, against the built-in
+Workflow tool's entire 1000-agent lifetime cap. Per question it is `2 x N`, about 11x
+less, and no finding is dropped to get there. Do not "simplify" this back to one agent
+per finding.
+
+The two-plus-tie-break rule is the second bound: a unanimous pair needs no third
+opinion.
 
 ### 3.4 Apply the majority rule
 
@@ -157,6 +174,7 @@ converging a run that never had a dry round.
 On the one-line summaries and the `status` JSON alone — you hold no round content:
 
 - **`dry_rounds >= 2` and `all_complete` is true** → converged. Go to Step 4.
+- **`agents_remaining` is 0** → go to **On agent ceiling**.
 - **`M` reaches 20** → stop at cap. Go to **On round cap**.
 - Otherwise → increment `M` and start the next round at 3.0. Carry nothing forward.
 
@@ -199,6 +217,26 @@ Then report to the user:
 - **Do not downgrade agent models.** Verification quality is the termination signal — a
   false confirmation ends the loop on a wrong answer. Let agents inherit the session
   model.
+
+## On agent ceiling
+
+The run has spent its lifetime agent allowance (`agents_max`, default 250, counted
+cumulatively across every invocation — a resumed run does **not** get a fresh
+allowance). `claim` now refuses, so any agent spawned from here returns without doing
+work; that is a backstop, not a plan. Stop spawning.
+
+Summarize what exists (Step 4) — the summary agent enumerates gaps, so a
+ceiling-truncated run produces an honest partial answer rather than nothing. The
+`summary` step is **exempt** from the ceiling precisely so this is always possible;
+refusing it would discard everything already paid for to save one agent.
+
+Then tell the user plainly: the ceiling stopped the run, how many agents it spent, what
+is still `pending` and `unverified`, and that they can raise it by re-invoking with a
+higher `--max-agents` on `resolve` (the run continues from disk, so nothing already
+done is repeated).
+
+A run that hits the ceiling in its first two rounds usually means the task is too broad
+— say so, and suggest narrowing rather than just raising the number.
 
 ## On round cap
 
