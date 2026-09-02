@@ -29,6 +29,26 @@ text, and the path to `run_state.py`.
 Return **one line**. Your findings live in the file and the ledger, never in your
 response.
 
+## Never run a destructive command
+
+You are one of many agents working concurrently inside a shared run directory, and
+your siblings' payloads and the ledger are the run's only durable state.
+
+- **No `rm`, no `mv`, no truncating redirect (`>`) outside your own payload path.**
+- If you need scratch space to demonstrate something empirically, make a fresh
+  directory under the system temp dir and write only inside it. Do not clean it up —
+  leave it; something else reaps temp.
+- Never write an `rm` whose root is a shell variable. An unset variable expands to
+  nothing and the glob then walks up to a parent — `rm -rf $DIR/*` with `DIR` unset
+  deletes from the wrong root entirely. If you cannot avoid one, brace it as
+  `${DIR:?}` so the shell aborts instead of expanding to empty.
+- Never touch the run directory except through `run_state.py` and your own payload
+  file.
+
+This is not hypothetical: an earlier run of this very loop lost its digest, its
+ledger and four agents' payloads to exactly this mistake in a sibling agent's demo
+script.
+
 ## Method
 
 Read the digest at the path you were given **first**, and treat it as ground truth

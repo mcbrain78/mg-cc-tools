@@ -73,12 +73,21 @@ fail <run-dir> --step <id> --reason <r>
     Record a failed attempt. Past MAX_ATTEMPTS ``claim`` returns ``abandon``, so an
     impossible step neither retries forever nor poisons the summary with a stub.
 
-round <run-dir> --new-questions <n>
-    Close the current round. ``status`` derives the dry-round count from these.
+reap <run-dir>
+    Fail every step still in ``claimed``, counting an attempt. Called at the top of
+    a round, where nothing is legitimately in flight, so a claimed step is an agent
+    that died. Left alone, such a step pins ``all_complete`` False forever.
+
+round <run-dir>
+    Close the open round, deriving the new-question count from the ledger rather
+    than accepting one. ``status`` derives the dry-round count from these markers.
 
 status <run-dir>
-    Emit the folded state: pending questions, findings with verdict counts, current
-    round, dry rounds, abandoned steps, all_complete, corrupt_lines.
+    Emit the folded state: pending questions (id AND text), findings (text, round,
+    verdict and refutation counts), current round, dry rounds, abandoned steps,
+    open steps, all_complete, corrupt_lines. Read at the top of every round — this
+    is the resume mechanism, and it must carry enough to act on without reading any
+    payload.
 
 Exit codes: 0 = success, 1 = error (details on stderr).
 """
@@ -316,14 +325,37 @@ class Fold:
                       if v["verdicts"] == 0]
         return not self.pending_questions() and not unverified and not self.open_steps()
 
+    def new_questions_this_round(self) -> int:
+        """Questions recorded during the round now open, derived from the question
+        records' own ``round`` tag.
+
+        Deliberately NOT a number the caller supplies. An orchestrator computing it
+        as (total after − total before) gets 0 on any round that was interrupted and
+        re-run, because the count it reads at the start of the re-run already
+        includes the questions the dead attempt added. Two such rounds satisfy the
+        dry-round rule and the run converges having never had a dry round at all —
+        on a tool whose entire purpose is surviving interruptions."""
+        m = self.current_round()
+        return sum(1 for q in self.questions.values() if q.get("round") == m)
+
     def as_json(self) -> dict:
         fv = self.finding_verdicts()
         return {
             "round": self.current_round(),
             "dry_rounds": self.dry_rounds(),
             "questions_total": len(self.questions),
-            "pending": sorted(self.pending_questions()),
-            "findings": fv,
+            # Ids alone are not enough to act on: an id is a slug truncated to
+            # SLUG_MAX, so the orchestrator cannot recover the question to hand a
+            # research agent, nor a refuted finding's text to hand decompose. The
+            # text is one line by construction, so carrying it keeps context flat.
+            "pending": [{"id": q, "text": self.questions[q].get("text", "")}
+                        for q in sorted(self.pending_questions())],
+            "findings": {
+                f: {**v,
+                    "text": self.findings[f].get("text", ""),
+                    "round": self.findings[f].get("round")}
+                for f, v in sorted(fv.items())
+            },
             "unverified": sorted(f for f, v in fv.items() if v["verdicts"] == 0),
             "abandoned": sorted(self.abandoned()),
             "open_steps": sorted(self.open_steps()),
@@ -487,8 +519,12 @@ def cmd_add(run_dir: Path, argv: list[str]) -> int:
         nid = _slug(text, "f")
         is_new = nid not in fold.findings
         if is_new:
+            # `round` mirrors what question records carry, so a caller can scope
+            # "refuted this round" instead of re-handling every refuted finding on
+            # every round.
             _append(run_dir, {"kind": "finding", "id": nid, "text": text.strip(),
-                              "question": qid, "ts": _now()})
+                              "question": qid, "round": fold.current_round(),
+                              "ts": _now()})
     else:  # verdict
         fid, argv = _flag(argv, "--finding")
         lens, argv = _flag(argv, "--lens")
@@ -621,21 +657,41 @@ def cmd_fail(run_dir: Path, argv: list[str]) -> int:
 # ── round / status ──────────────────────────────────────────────────────────
 
 
-def cmd_round(run_dir: Path, argv: list[str]) -> int:
-    new_q, argv = _flag(argv, "--new-questions")
-    if new_q is None:
-        return _fail("round requires --new-questions <n>")
-    try:
-        n_new = int(new_q)
-    except ValueError:
-        return _fail(f"--new-questions must be an integer, got {new_q!r}")
-
+def cmd_round(run_dir: Path) -> int:
+    """Close the open round. Takes no count — see new_questions_this_round()."""
     fold = _load(run_dir)
     n = fold.current_round()
+    n_new = fold.new_questions_this_round()
     _append(run_dir, {"kind": "round", "n": n, "new_questions": n_new, "ts": _now()})
     after = _load(run_dir)
     _emit({"closed_round": n, "new_questions": n_new,
            "next_round": after.current_round(), "dry_rounds": after.dry_rounds()})
+    return 0
+
+
+def cmd_reap(run_dir: Path) -> int:
+    """Fail every step still sitting in `claimed`, counting an attempt against each.
+
+    Called at the top of a round, where no agent is legitimately in flight — the
+    orchestrator waits for each batch before moving on. So a `claimed` step here is
+    an agent that died between claiming and completing.
+
+    Without this such a step is stranded: it never reappears in `pending` or
+    `unverified` (a verify agent that recorded its verdict first has satisfied
+    those), but it keeps `open_steps` non-empty, which pins `all_complete` False
+    forever and makes the run structurally incapable of converging. Routing orphans
+    through `failed` means they retry, and hit the MAX_ATTEMPTS abandon path if they
+    keep dying."""
+    fold = _load(run_dir)
+    orphans = sorted(fold.open_steps())
+    for step in orphans:
+        _append(run_dir, {"kind": "failed", "id": step,
+                          "reason": "orphaned — claimed but never completed",
+                          "ts": _now()})
+    after = _load(run_dir)
+    _emit({"reaped": orphans,
+           "abandoned_now": sorted(s for s in orphans
+                                   if after.step_status(s) == "abandoned")})
     return 0
 
 
@@ -660,7 +716,8 @@ Usage: run_state.py <command> [<run-dir>] [flags...]
   claim    <run-dir> --step <id> [--identity <str>]
   complete <run-dir> --step <id> --token <t> --summary <s> [--no-payload]
   fail     <run-dir> --step <id> --reason <r>
-  round    <run-dir> --new-questions <n>
+  reap     <run-dir>                        Fail steps orphaned by a dead agent
+  round    <run-dir>                        Close the round (count is derived)
   status   <run-dir>
 """
 
@@ -676,7 +733,7 @@ def main(argv: list[str] | None = None) -> int:
     if command == "resolve":
         return cmd_resolve(rest)
 
-    if command in ("add", "claim", "complete", "fail", "round", "status"):
+    if command in ("add", "claim", "complete", "fail", "reap", "round", "status"):
         if not rest:
             return _fail(f"{command} requires <run-dir>")
         run_dir, rest = Path(rest[0]), rest[1:]
@@ -690,8 +747,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_complete(run_dir, rest)
         if command == "fail":
             return cmd_fail(run_dir, rest)
+        if command == "reap":
+            return cmd_reap(run_dir)
         if command == "round":
-            return cmd_round(run_dir, rest)
+            return cmd_round(run_dir)
         return cmd_status(run_dir)
 
     print(f"Error: unknown command: {command}", file=sys.stderr)

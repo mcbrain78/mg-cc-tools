@@ -79,12 +79,20 @@ already costs more than one digest.
 
 Rounds `M = <round from resolve>` upward, to a cap of **20**. Each round:
 
-### 3.0 Read the state
+### 3.0 Reap, then read the state
 
+`python3 {MG_INSTALL_SCRIPTS_DIR}/run_state.py reap <run_dir>`
 `python3 {MG_INSTALL_SCRIPTS_DIR}/run_state.py status <run_dir>`
 
-Note `questions_total` — call it `Q_before`. This JSON is your **only** knowledge of the
-run. Never carry a finding, a question, or a payload from a previous round in your own
+Reap first. Nothing is legitimately in flight here — you wait for every batch before
+moving on — so any step still `claimed` belongs to an agent that died. Left alone it
+appears in neither `pending` nor `unverified` yet keeps `open_steps` non-empty, which
+pins `all_complete` False and makes the run unable to converge at all. Report anything
+it `abandoned_now`.
+
+The `status` JSON is your **only** knowledge of the run. It carries the question and
+finding **text**, not just ids, so you never need to read a payload or the ledger to
+act. Never carry a finding, a question, or a payload from a previous round in your own
 context; re-read it here.
 
 ### 3.1 Decompose
@@ -92,14 +100,16 @@ context; re-read it here.
 Spawn ONE **decompose** agent (`{MG_INSTALL_AGENTS_DIR}/decompose.md`), step id
 `decompose-r<M>`. Give it the task text, the absolute `digest_path`, and — on rounds
 after the first — the absolute path to the previous round's assess payload
-(`handoff-assess-r<M-1>.md` in the run dir) plus the text of any finding the majority
-rule refuted last round.
+(`handoff-assess-r<M-1>.md` in the run dir) plus the `text` of every finding the
+majority rule refuted whose `round` is `M-1`. Both the text and the round come
+straight from `status.findings`.
 
 ### 3.2 Research
 
-Re-run `status`. For every id in `pending`, spawn a **research** agent
-(`{MG_INSTALL_AGENTS_DIR}/research.md`) with that id as both the step id and the
-question, plus the absolute `digest_path`.
+Re-run `status`. For every entry in `pending`, spawn a **research** agent
+(`{MG_INSTALL_AGENTS_DIR}/research.md`) with its `id` as the step id, its `text` as
+the question, and the absolute `digest_path`. Pass the **text**, not the id — an id is
+a slug truncated to 40 characters, so it is not the question.
 
 **Batch up to 8 agents per message** — multiple Agent calls in a single message run
 concurrently. Wait for a batch, then send the next. Do not spawn more than 8 at once.
@@ -121,8 +131,9 @@ same way, up to 8 per message.
 ### 3.4 Apply the majority rule
 
 From `status`, for each finding: **refuted** when `refuted > verdicts / 2`, otherwise
-**confirmed**. You own this rule; the script only counts. Keep the refuted ids — 3.1
-feeds them to next round's decompose so the question behind them gets re-asked.
+**confirmed**. You own this rule; the script only counts. Keep the refuted findings'
+`id`, `text` and `round` — 3.1 feeds the text to next round's decompose so the question
+behind them gets re-asked.
 
 ### 3.5 Assess
 
@@ -132,9 +143,14 @@ absolute paths of this round's research payloads (`handoff-<question-id>.md`).
 
 ### 3.6 Close the round
 
-Re-run `status` and take `questions_total` as `Q_after`. Then:
+`python3 {MG_INSTALL_SCRIPTS_DIR}/run_state.py round <run_dir>`
 
-`python3 {MG_INSTALL_SCRIPTS_DIR}/run_state.py round <run_dir> --new-questions <Q_after - Q_before>`
+It takes no count and you must not compute one. The new-question count is derived from
+the question records' own `round` tag. An orchestrator computing it as
+(total-after − total-before) records **0** for any round that was interrupted and
+re-run, because the total it read at the start of the re-run already included the
+questions the dead attempt added — and two such rounds satisfy the dry-round rule,
+converging a run that never had a dry round.
 
 ### 3.7 Branch
 

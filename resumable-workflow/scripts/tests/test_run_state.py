@@ -307,6 +307,72 @@ class TestAbandonment:
         assert do_claim("q-flaky")["action"] == "run"
 
 
+# ── Reaping orphaned steps ──────────────────────────────────────────────────
+
+
+class TestReap:
+    def test_orphaned_claim_blocks_convergence_until_reaped(
+        self, run_dir, question, write_payload, do_claim, out
+    ):
+        """Regression. A verify agent that records its verdict and then dies leaves a
+        step that appears in NEITHER pending nor unverified — the verdict satisfied
+        both — yet keeps open_steps non-empty, pinning all_complete False forever.
+        The run becomes structurally unable to converge and must hit the round cap."""
+        token = do_claim(question)["token"]
+        write_payload(question)
+        run_state.main(["complete", str(run_dir), "--step", question,
+                        "--token", token, "--summary", "s"])
+        out()
+        run_state.main(["add", str(run_dir), "--kind", "finding",
+                        "--text", "F one", "--question", question])
+        fid = out()["id"]
+        run_state.main(["add", str(run_dir), "--kind", "verdict", "--finding", fid,
+                        "--lens", "correctness", "--refuted", "false"])
+        out()
+        # The verifier claimed its step, recorded the verdict, then died.
+        do_claim(f"v-{fid}-correctness")
+
+        run_state.main(["status", str(run_dir)])
+        stuck = out()
+        assert stuck["pending"] == [] and stuck["unverified"] == []
+        assert stuck["open_steps"] == [f"v-{fid}-correctness"]
+        assert stuck["all_complete"] is False
+
+        run_state.main(["reap", str(run_dir)])
+        assert out()["reaped"] == [f"v-{fid}-correctness"]
+        run_state.main(["status", str(run_dir)])
+        assert out()["all_complete"] is True
+
+    def test_reap_is_a_noop_when_nothing_is_orphaned(self, run_dir, out):
+        run_state.main(["reap", str(run_dir)])
+        assert out()["reaped"] == []
+
+    def test_reap_never_touches_a_completed_step(
+        self, run_dir, question, write_payload, do_claim, out
+    ):
+        token = do_claim(question)["token"]
+        write_payload(question)
+        run_state.main(["complete", str(run_dir), "--step", question,
+                        "--token", token, "--summary", "s"])
+        out()
+        run_state.main(["reap", str(run_dir)])
+        assert out()["reaped"] == []
+        assert do_claim(question)["action"] == "skip"
+
+    def test_repeatedly_orphaned_step_is_eventually_abandoned(
+        self, run_dir, do_claim, out
+    ):
+        """Otherwise a step whose agent dies every time retries forever."""
+        for _ in range(run_state.MAX_ATTEMPTS - 1):
+            do_claim("q-cursed")
+            run_state.main(["reap", str(run_dir)])
+            assert out()["abandoned_now"] == []
+        do_claim("q-cursed")
+        run_state.main(["reap", str(run_dir)])
+        assert out()["abandoned_now"] == ["q-cursed"]
+        assert do_claim("q-cursed")["action"] == "abandon"
+
+
 # ── Derived loop state ──────────────────────────────────────────────────────
 
 
@@ -315,30 +381,90 @@ class TestDerivedState:
         """Storing a counter loses a round on one side of a crash or the other."""
         run_state.main(["status", str(run_dir)])
         assert out()["round"] == 1
-        run_state.main(["round", str(run_dir), "--new-questions", "3"])
+        run_state.main(["round", str(run_dir)])
         out()
         run_state.main(["status", str(run_dir)])
         assert out()["round"] == 2
 
-    def test_dry_rounds_count_only_the_trailing_run(self, run_dir, out):
-        for n in ("0", "2", "0", "0"):
-            run_state.main(["round", str(run_dir), "--new-questions", n])
+    def _add_q(self, run_dir, capsys, text):
+        run_state.main(["add", str(run_dir), "--kind", "question", "--text", text])
+        capsys.readouterr()
+
+    def test_new_questions_is_derived_from_question_records(
+        self, run_dir, capsys, out
+    ):
+        self._add_q(run_dir, capsys, "Q a")
+        self._add_q(run_dir, capsys, "Q b")
+        run_state.main(["round", str(run_dir)])
+        assert out()["new_questions"] == 2
+
+    def test_dry_rounds_count_only_the_trailing_run(self, run_dir, capsys, out):
+        # round 1 productive, 2 dry, 3 productive, 4 and 5 dry
+        self._add_q(run_dir, capsys, "Q r1")
+        run_state.main(["round", str(run_dir)])
+        out()
+        run_state.main(["round", str(run_dir)])
+        out()
+        self._add_q(run_dir, capsys, "Q r3")
+        run_state.main(["round", str(run_dir)])
+        out()
+        for _ in range(2):
+            run_state.main(["round", str(run_dir)])
             out()
         run_state.main(["status", str(run_dir)])
         assert out()["dry_rounds"] == 2
 
-    def test_productive_round_resets_the_dry_count(self, run_dir, out):
-        run_state.main(["round", str(run_dir), "--new-questions", "0"])
-        out()
-        run_state.main(["round", str(run_dir), "--new-questions", "5"])
+    def test_productive_round_resets_the_dry_count(self, run_dir, capsys, out):
+        run_state.main(["round", str(run_dir)])
+        assert out()["dry_rounds"] == 1
+        self._add_q(run_dir, capsys, "Q new")
+        run_state.main(["round", str(run_dir)])
         assert out()["dry_rounds"] == 0
 
-    def test_non_integer_new_questions_is_refused(self, run_dir):
-        assert run_state.main(["round", str(run_dir), "--new-questions", "many"]) == 1
+    def test_interrupted_round_does_not_record_a_false_dry_round(
+        self, run_dir, capsys, out
+    ):
+        """Regression, and the reason the count is derived at all.
 
-    def test_pending_holds_unresearched_questions(self, run_dir, question, out):
+        Simulates the real failure: decompose adds its questions, the session dies
+        before `round` is called, and the run is re-invoked. An orchestrator
+        computing (total after - total before) reads a total that ALREADY includes
+        those questions and records 0. Two such rounds satisfied `dry_rounds >= 2`
+        and converged a run that never had a dry round."""
+        self._add_q(run_dir, capsys, "Q from the attempt that died")
+        self._add_q(run_dir, capsys, "Q also from it")
+        # --- session dies here; re-invocation re-runs the round and closes it ---
+        run_state.main(["round", str(run_dir)])
+        closed = out()
+        assert closed["new_questions"] == 2
+        assert closed["dry_rounds"] == 0
+
+    def test_questions_added_by_a_verify_agent_count_for_the_open_round(
+        self, run_dir, capsys, out
+    ):
+        """The feedback edge: a refuting verifier may raise a question mid-round, and
+        it must keep the round from reading as dry."""
+        run_state.main(["round", str(run_dir)])       # close round 1
+        out()
+        self._add_q(run_dir, capsys, "Q raised by a verifier in round 2")
+        run_state.main(["round", str(run_dir)])
+        assert out()["new_questions"] == 1
+
+    def test_pending_carries_the_question_text(self, run_dir, question, out):
+        """Ids are slugs truncated to SLUG_MAX, so the orchestrator cannot recover
+        the question from an id — and it may not read payloads."""
         run_state.main(["status", str(run_dir)])
-        assert out()["pending"] == [question]
+        pending = out()["pending"]
+        assert pending == [{"id": question, "text": "Where is auth checked?"}]
+
+    def test_long_question_text_survives_id_truncation(self, run_dir, capsys, out):
+        long_q = ("Does the orchestrator have any route to the full text of a "
+                  "question whose slug was truncated at forty characters?")
+        self._add_q(run_dir, capsys, long_q)
+        run_state.main(["status", str(run_dir)])
+        pending = out()["pending"]
+        assert len(pending[0]["id"]) < len(long_q)
+        assert pending[0]["text"] == long_q
 
     def test_unverified_holds_findings_with_no_verdict(self, run_dir, question, out):
         run_state.main(["add", str(run_dir), "--kind", "finding",
@@ -352,7 +478,20 @@ class TestDerivedState:
         run_state.main(["status", str(run_dir)])
         state = out()
         assert state["unverified"] == []
-        assert state["findings"][fid] == {"verdicts": 1, "refuted": 0}
+        assert state["findings"][fid]["verdicts"] == 1
+        assert state["findings"][fid]["refuted"] == 0
+
+    def test_findings_carry_text_and_round(self, run_dir, question, out):
+        """Step 3.1 must hand decompose the TEXT of refuted findings, and scope them
+        to a round. Neither is recoverable from an id, and payloads are off limits."""
+        claim_text = "validate_token ignores aud (auth/validate.py:41)"
+        run_state.main(["add", str(run_dir), "--kind", "finding",
+                        "--text", claim_text, "--question", question])
+        fid = out()["id"]
+        run_state.main(["status", str(run_dir)])
+        rec = out()["findings"][fid]
+        assert rec["text"] == claim_text
+        assert rec["round"] == 1
 
     def test_refuted_verdicts_are_counted_separately(self, run_dir, question, out):
         """The loop owns the majority-refute threshold; the script only reports."""
@@ -365,7 +504,9 @@ class TestDerivedState:
                             "--lens", lens, "--refuted", refuted])
             out()
         run_state.main(["status", str(run_dir)])
-        assert out()["findings"][fid] == {"verdicts": 3, "refuted": 2}
+        rec = out()["findings"][fid]
+        assert rec["verdicts"] == 3
+        assert rec["refuted"] == 2
 
     def test_empty_run_is_not_all_complete(self, run_dir, out):
         """A fresh ledger must not read as finished, or a caller gating only on
@@ -508,7 +649,6 @@ class TestCli:
         ["claim"],
         ["complete", "--step", "q-x"],
         ["fail", "--step", "q-x"],
-        ["round"],
     ])
     def test_bad_flags_fail_with_exit_1(self, run_dir, argv):
         """Exit code 1, never argparse's 2 — the house contract is 0/1."""
