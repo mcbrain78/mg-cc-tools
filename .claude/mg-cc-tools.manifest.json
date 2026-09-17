@@ -21,7 +21,7 @@
     },
     "permission-hooks": {
       "version": "0.1.0",
-      "installed_at": "2026-08-19T07:36:21.868305+00:00",
+      "installed_at": "2026-09-17T08:02:52.036974+00:00",
       "commands": [
         "auto-approve-session.md",
         "auto-approve.md",
@@ -33,12 +33,13 @@
         "commands/auto-approve.md": "sha256:920e86c66a2cd82e090d60fbf88ae72838a5e9dae23277f0e5e94384737db690",
         "commands/edit-off.md": "sha256:3c8a32c155245e381a11c4dce3d0e3b2cb7e6a11b828a5a4312c15f4c0df478f",
         "commands/edit-on.md": "sha256:7c0b5717cb3cc4f66be36036092de1b690da09a46b2f2ec2fb5797b5c53958a3",
-        "hooks/permission-guard.py": "sha256:9a3758891ebab109d8a5b03d06ed9e24f0af9c6f403aab64de5d6d7c96b9a29e",
-        "install.sh": "sha256:3e4119eacc72cf2a4ba992defe16ab9c3a7ee78bd77be7e3ac388f01bf15b4cb",
-        "post-install.md": "sha256:f4403470bd2a2cc43714cd83f1960c4b8111dbf050d3e2afd9e43ea6214d4de8",
+        "hooks/permission-guard.py": "sha256:087b73f5af5ee6d8809cab9a37005b0d847e8aa4e810e60d6355131fd7ad3f2b",
+        "install.sh": "sha256:068b0686b86997e08026f8c251879a730e3eceee1ee99552e0395a8bbb3cd7e8",
+        "post-install.md": "sha256:b56034b054a10c40af3cfee67e9ddd290f14010ca536c03fcd21554d7563d07e",
         "scripts/auto-approve-session.py": "sha256:f95670419c616da78fc56282e3b44fd6ae7a4dbfd9b763e4bee725802b9481d4",
         "scripts/emit-context.py": "sha256:54db2e0a0b3a3ebe850bc100a38f3690ea4f0ba480dda4c5f49ccdc2b14644ea",
         "scripts/emit-edit-guard.py": "sha256:98f50a8762a4f6e8860f40c5147f1d3e040aa233d373d809e8d31a2a0cdb1c99",
+        "scripts/report-guard-status.py": "sha256:f7893c4ca4d7dc2286a315573ec84a5676ec8450c27b339190616a59085238a4",
         "scripts/usage-read.py": "sha256:ea356da311fe34075401a8cfe39b4274188adbd4986aee3491a8338e67fe1979",
         "scripts/usage-watch.py": "sha256:52c10667ee4b0734a2ca02ccf0656303f22a6c69e1e6661cc1e8c82cd632bd74"
       }
@@ -230,6 +231,6 @@
   },
   "capabilities": {},
   "mg_cc_tools_version": "0.1.0",
-  "last_updated": "2026-08-19T07:36:21.865466+00:00",
+  "last_updated": "2026-09-17T08:02:52.034568+00:00",
   "source_path": "/home/mcbrain/mg_projects/mg-cc-tools"
 }
