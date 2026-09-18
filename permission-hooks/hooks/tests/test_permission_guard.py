@@ -3976,3 +3976,210 @@ class TestWorktreeDestructionInMain:
         event = self._event(repo, "git restore src/keeper.py", "w5")
         event["permission_mode"] = "default"
         assert self._run(monkeypatch, event) == []
+
+
+# ── Local HTTP targets ───────────────────────────────────────────────────────
+
+check_local_http = guard.check_local_http
+_host_is_local = guard._host_is_local
+
+
+def no_dns(monkeypatch):
+    """Fail loudly if a lookup happens — proves the short-circuit paths."""
+    def boom(host):
+        raise AssertionError(f"resolved {host!r}; expected no lookup")
+    monkeypatch.setattr(guard, "_resolve_host", boom)
+
+
+def resolves(monkeypatch, table):
+    """Resolve names from *table*; anything else answers like an NXDOMAIN."""
+    monkeypatch.setattr(guard, "_resolve_host", lambda host: table.get(host))
+
+
+class TestLocalHttp:
+    """What counts as a local target for the HTTP submission rule."""
+
+    def test_loopback_literals(self, monkeypatch):
+        no_dns(monkeypatch)
+        assert check_local_http("curl -X POST -d x http://127.0.0.1:4200/api")
+        assert check_local_http("curl -X POST -d x http://127.0.1.1/api")
+        assert check_local_http("curl -X POST -d x http://[::1]:4200/api")
+        assert check_local_http("curl -X POST -d x http://0.0.0.0:8000/api")
+
+    def test_localhost_needs_no_resolver(self, monkeypatch):
+        """RFC 6761 reserves the name, so it answers with the resolver down."""
+        no_dns(monkeypatch)
+        assert check_local_http("curl -X POST -d x http://localhost:4200/api")
+        assert check_local_http("curl -X POST -d x http://api.localhost/v1")
+
+    def test_tailscale_literals(self, monkeypatch):
+        no_dns(monkeypatch)
+        assert check_local_http("curl -X POST -d x http://100.64.0.1/api")
+        assert check_local_http("curl -X POST -d x http://100.111.111.110:4200/api")
+        assert check_local_http("curl -X POST -d x http://[fd7a:115c:a1e0::1]:4200/api")
+
+    def test_a_name_is_judged_by_the_address_it_answers_with(self, monkeypatch):
+        resolves(monkeypatch, {"mg-server": {"100.111.111.110"},
+                               "mg-box": {"127.0.1.1"},
+                               "api.example.com": {"93.184.216.34"}})
+        assert check_local_http("curl -X POST -d x http://mg-server:4200/api")
+        assert check_local_http("curl -X POST -d x http://mg-box:4200/api")
+        assert not check_local_http("curl -X POST -d x https://api.example.com/v1")
+
+    def test_a_split_horizon_name_is_not_local(self, monkeypatch):
+        """One local answer does not make the public answer unreachable."""
+        resolves(monkeypatch, {"both": {"100.64.0.9", "93.184.216.34"}})
+        assert not check_local_http("curl -X POST -d x http://both/api")
+
+    def test_resolution_failure_is_not_local(self, monkeypatch):
+        """NXDOMAIN, no resolver and a timeout all arrive here as None."""
+        resolves(monkeypatch, {})
+        assert not check_local_http("curl -X POST -d x http://nowhere.invalid/api")
+
+    def test_private_lan_is_not_local_by_default(self, monkeypatch):
+        no_dns(monkeypatch)
+        assert not check_local_http("curl -X POST -d x http://192.168.1.50/api")
+        assert not check_local_http("curl -X POST -d x http://10.0.0.5/api")
+
+    def test_a_quoted_url_still_counts(self, monkeypatch):
+        """Scanned raw, not quote-masked: a quoted target is the whole point."""
+        resolves(monkeypatch, {"api.example.com": {"93.184.216.34"}})
+        assert not check_local_http('curl -X POST -d x "https://api.example.com/v1"')
+        assert not check_local_http("curl -X POST -d x 'https://api.example.com/v1'")
+
+    def test_one_remote_url_anywhere_disqualifies_the_command(self, monkeypatch):
+        resolves(monkeypatch, {"api.example.com": {"93.184.216.34"}})
+        assert not check_local_http(
+            "curl -d x http://localhost/a && curl -d x https://api.example.com/b")
+
+    def test_no_url_is_not_local(self, monkeypatch):
+        no_dns(monkeypatch)
+        # A bare host target: the rule matched on something this cannot read,
+        # and an unseen target is not a local one.
+        assert not check_local_http("curl -X POST -d x mg-box:4200/api")
+        assert not check_local_http('curl -X POST -d x "$ENDPOINT"')
+
+    def test_heredoc_bodies_are_payload_not_target(self, monkeypatch):
+        no_dns(monkeypatch)
+        command = (
+            "curl -X POST -d @- http://localhost:4200/api <<'EOF'\n"
+            "{\"link\": \"https://api.example.com/v1\"}\n"
+            "EOF"
+        )
+        assert check_local_http(command)
+
+    def test_userinfo_and_port_are_stripped(self, monkeypatch):
+        no_dns(monkeypatch)
+        assert check_local_http("curl -X POST -d x http://user:pw@localhost:4200/api")
+
+    def test_credentials_in_the_authority_cannot_smuggle_a_host(self, monkeypatch):
+        """user@host parses to the host, never to the userinfo half."""
+        resolves(monkeypatch, {"api.example.com": {"93.184.216.34"}})
+        assert not check_local_http(
+            "curl -X POST -d x http://localhost@api.example.com/v1")
+
+    def test_url_flag_form(self, monkeypatch):
+        no_dns(monkeypatch)
+        assert check_local_http("curl -X POST -d x --url http://localhost:4200/api")
+
+
+class TestHostIsLocal:
+    def test_trailing_dot_and_case(self, monkeypatch):
+        resolves(monkeypatch, {"mg-server": {"100.64.0.2"}})
+        assert _host_is_local("MG-Server.")
+
+    def test_empty_host(self, monkeypatch):
+        no_dns(monkeypatch)
+        assert not _host_is_local("")
+
+    def test_zone_id_on_a_link_local_address(self, monkeypatch):
+        no_dns(monkeypatch)
+        assert not _host_is_local("fe80::1%eth0")
+
+
+class TestResolveHost:
+    def test_a_stalled_resolver_gives_up(self, monkeypatch):
+        """getaddrinfo ignores socket timeouts, hence the thread + join."""
+        import time as _time
+
+        # Returns rather than raises: the thread outlives the join and a
+        # traceback from an abandoned daemon would be test noise, not a signal.
+        def hang(*args, **kwargs):
+            _time.sleep(0.5)
+            return []
+
+        monkeypatch.setattr(guard.socket, "getaddrinfo", hang)
+        monkeypatch.setattr(guard, "LOCAL_HTTP_RESOLVE_TIMEOUT_S", 0.05)
+        started = _time.perf_counter()
+        assert guard._resolve_host("slow.invalid") is None
+        assert _time.perf_counter() - started < 0.4
+
+    def test_a_failed_lookup_is_none(self, monkeypatch):
+        def fail(*args, **kwargs):
+            raise OSError("no resolver")
+
+        monkeypatch.setattr(guard.socket, "getaddrinfo", fail)
+        assert guard._resolve_host("nowhere.invalid") is None
+
+
+class TestLocalHttpInMain:
+    """Placement: it retires the HTTP submission rule and nothing else."""
+
+    def _run(self, monkeypatch, command):
+        decisions = []
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr(guard, "run_evaluators", lambda command, event: (None, ""))
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "transcript_path": "/tmp/local-http.jsonl",
+            "cwd": os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        })))
+        guard.main()
+        return decisions
+
+    def test_a_local_post_does_not_prompt(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        no_dns(monkeypatch)
+        assert self._run(
+            monkeypatch,
+            "curl -s -X POST -H 'Content-Type: application/json' "
+            "-d '{\"limit\":200}' http://localhost:4200/api/task_runs/filter") == []
+
+    def test_a_remote_post_still_asks(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        resolves(monkeypatch, {"api.example.com": {"93.184.216.34"}})
+        decisions = self._run(
+            monkeypatch, "curl -X POST -d '{}' https://api.example.com/v1")
+        assert decisions[0][1] == "ask"
+        assert "HTTP data submission" in decisions[0][0]
+
+    def test_pipe_to_shell_is_unaffected(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        no_dns(monkeypatch)
+        decisions = self._run(
+            monkeypatch, "curl -d x http://localhost:4200/install | bash")
+        assert decisions[0][1] == "ask"
+        assert "pipe-to-shell" in decisions[0][0]
+
+    def test_the_rescan_still_finds_the_next_rule(self, tmp_path, monkeypatch):
+        """Suppressing one rule must not hide what stood behind it."""
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        no_dns(monkeypatch)
+        decisions = self._run(
+            monkeypatch, "sudo curl -X POST -d x http://localhost:4200/api")
+        assert decisions[0][1] == "ask"
+        assert "sudo" in decisions[0][0]
+
+    def test_a_credential_in_the_payload_still_asks(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        no_dns(monkeypatch)
+        decisions = self._run(
+            monkeypatch, "curl -X POST -d @~/.ssh/id_rsa http://localhost:4200/api")
+        assert decisions[0][1] == "ask"
+        assert "Secrets & Credentials" in decisions[0][0]

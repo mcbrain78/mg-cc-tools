@@ -18,13 +18,16 @@ applies; unknown/missing modes fail safe (the guard stays active).
 PROJECT_ROOT is embedded at install time via sed. For --global installs
 it's empty and falls back to cwd from the hook event.
 """
+import ipaddress
 import json
 import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
+import threading
 import time
 from collections import namedtuple
 from datetime import datetime
@@ -165,6 +168,10 @@ _SYSTEMCTL_WRITE = (
 # not, and everything else — branch switches, --detach, --force — asks here.
 GIT_CHECKOUT_RULE = "git checkout"
 
+# Suppressed for local targets by check_local_http; see the Local HTTP targets
+# section for what "local" means and why only this one rule is exempted.
+HTTP_SUBMIT_RULE = "HTTP data submission"
+
 CATEGORIES = {
     "Git Branch & History": [
         (r"\bgit\s+checkout\b", GIT_CHECKOUT_RULE),
@@ -214,7 +221,7 @@ CATEGORIES = {
     "Secrets & Credentials": [
         *(_ENV_RULES if ENV_PROTECTION else []),
         (r"\bexport\s+\w*(TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|API_KEY)=", "credential export"),
-        (r"\b(curl|wget)\s+.*(-X\s*(POST|PUT|PATCH|DELETE)|-d\s|--data)", "HTTP data submission"),
+        (r"\b(curl|wget)\s+.*(-X\s*(POST|PUT|PATCH|DELETE)|-d\s|--data)", HTTP_SUBMIT_RULE),
         (r"\b(curl|wget)\s+.*\|\s*(bash|sh|zsh)\b", "pipe-to-shell"),
     ],
     "System Operations": [
@@ -1140,6 +1147,139 @@ def check_worktree_destruction(command, base_dir):
     return ("clear", None) if cleared else None
 
 
+# ── Local HTTP targets ──────────────────────────────────────────────────────
+# HTTP_SUBMIT_RULE exists to catch data leaving the machine, and it reads the
+# verb (-X POST, -d) rather than the target — so a POST to a service on this
+# host or on this tailnet asks exactly as loudly as one to a stranger. Routine
+# local API work (a Prefect query, a health check against a dev server) then
+# costs an approval per call, the same trade ENV_PROTECTION and
+# PGPASS_PROTECTION were switched off over.
+#
+# check_local_http buys that back for local targets only, and suppresses THAT
+# ONE RULE. Everything else still stands: pipe-to-shell keeps its own rule (a
+# local URL is no safer to pipe into a shell), and a credential in the argument
+# list still asks, because check_sensitive_in_command runs after the category
+# rules regardless of what they skipped.
+#
+# "Local" is decided by ADDRESS, not by name, so a tailnet needs no per-host
+# entry: every URL host is resolved and every address it answers with has to
+# land in one of these networks. Add a CIDR here to trust more — e.g.
+# "192.168.0.0/16" for a home LAN, deliberately not trusted by default.
+LOCAL_HTTP_NETWORKS = (
+    "127.0.0.0/8",          # loopback; Debian/Ubuntu also park the host's own name at 127.0.1.1
+    "::1/128",
+    "0.0.0.0/32",           # curl sends this one to localhost
+    "100.64.0.0/10",        # Tailscale IPv4 (the CGNAT range tailnets allocate from)
+    "fd7a:115c:a1e0::/48",  # Tailscale IPv6 (ULA)
+)
+
+_LOCAL_NETWORKS = tuple(ipaddress.ip_network(cidr) for cidr in LOCAL_HTTP_NETWORKS)
+
+# Resolution is fail-closed: NXDOMAIN, a timeout, or a resolver that is not
+# answering leaves the host untrusted and the rule asks as before. The lookup
+# runs in a daemon thread because getaddrinfo() ignores
+# socket.setdefaulttimeout(), so a stalled resolver would otherwise stall the
+# tool call. It is only ever reached once the rule has already matched, and
+# MagicDNS and /etc/hosts both answer in single-digit milliseconds.
+LOCAL_HTTP_RESOLVE_TIMEOUT_S = 1.0
+
+# The authority of any scheme://… URL: everything up to the first path
+# separator, whitespace, quote or shell metacharacter. A bracketed IPv6
+# literal is captured whole so its colons are not read as a port.
+_URL_AUTHORITY_RE = re.compile(
+    r"\b[A-Za-z][A-Za-z0-9+.-]*://(\[[^\]\s]*\]|[^/\s'\"`<>|&;)]*)"
+)
+
+
+def _resolve_host(host):
+    """Return the set of addresses *host* answers with, or None if it cannot.
+
+    None covers every failure the same way — unknown name, no resolver,
+    timeout — because the caller treats all three as "not local".
+    """
+    box = {}
+
+    def lookup():
+        try:
+            infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+            box["addrs"] = {info[4][0] for info in infos}
+        except (OSError, UnicodeError, ValueError):
+            box["addrs"] = None
+
+    worker = threading.Thread(target=lookup, daemon=True)
+    worker.start()
+    worker.join(LOCAL_HTTP_RESOLVE_TIMEOUT_S)
+    return box.get("addrs")
+
+
+def _ip_is_local(text):
+    """Return True if *text* is an address inside LOCAL_HTTP_NETWORKS."""
+    try:
+        # A link-local address carries a zone id (fe80::1%eth0) that
+        # ip_address does not parse.
+        addr = ipaddress.ip_address(text.split("%", 1)[0])
+    except ValueError:
+        return False
+    return any(addr in network for network in _LOCAL_NETWORKS)
+
+
+def _url_host(authority):
+    """Return the hostname out of a URL authority, or "" if there is none."""
+    authority = authority.rsplit("@", 1)[-1]  # drop user:password@
+    if authority.startswith("["):             # [::1]:4200
+        return authority[1:].partition("]")[0]
+    return authority.split(":", 1)[0]         # host:port
+
+
+def _host_is_local(host):
+    """Return True if *host* names this machine, the loopback, or the tailnet."""
+    host = host.strip().rstrip(".").lower()
+    if not host:
+        return False
+    # RFC 6761 reserves localhost and its subdomains for the loopback, and
+    # answering without a lookup keeps the common case working on a machine
+    # whose resolver is down.
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        pass
+    else:
+        return _ip_is_local(host)
+    addresses = _resolve_host(host)
+    if not addresses:
+        return False
+    # ALL of them: a name that answers with one local and one public address
+    # can still reach the public one.
+    return all(_ip_is_local(address) for address in addresses)
+
+
+def check_local_http(command):
+    """Return True if every URL in *command* points at a local address.
+
+    Scanned raw rather than quote-masked, because a URL is exactly the kind of
+    argument that gets quoted, and a hidden ``"https://api.example.com"`` is
+    the one thing this must not miss. Heredoc bodies are dropped the same way
+    check_command drops them — a URL in a payload is data, not a target.
+
+    A command with no URL at all returns False: the rule matched on some
+    target this cannot see (a bare host, a --url read from a variable), and
+    an unseen target is not a local one. So does any single untrusted URL —
+    ``curl -d @x localhost && curl -d @x api.example.com`` is one command,
+    and one leak is enough.
+    """
+    hosts = set()
+    for match in _URL_AUTHORITY_RE.finditer(_strip_heredocs(command)):
+        host = _url_host(match.group(1))
+        if not host:
+            return False
+        hosts.add(host)
+    if not hosts:
+        return False
+    return all(_host_is_local(host) for host in hosts)
+
+
 # ── Sensitive file patterns (for Read/Edit/Write tool guards) ───────────────
 # Each is (compiled_regex, description). Matched against the file_path.
 
@@ -2016,6 +2156,12 @@ def main():
 
     # 1. Category rules
     result = check_command(command, skip_rules)
+    # A local target retires the HTTP submission rule and only that rule, so
+    # the scan runs again for whatever it was standing in front of (a `sudo`,
+    # a pipe-to-shell). Locality is tested only once the rule has matched,
+    # which keeps the name lookup off every other Bash call.
+    if result and result[0] == HTTP_SUBMIT_RULE and check_local_http(command):
+        result = check_command(command, skip_rules + (HTTP_SUBMIT_RULE,))
     if result:
         description, category, _matched = result
         _ask(f"[permission-guard] {trace_prefix}{category}: {description}")
