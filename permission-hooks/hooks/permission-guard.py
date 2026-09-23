@@ -122,6 +122,13 @@ _CMD_POS = r"(?:^|[;&\n]\s*)"
 # meet in text, so "| dd" can be read as syntax rather than as data.
 _CMD_POS_PIPE = r"(?:^|[;&|\n]\s*)"
 
+# `\brm` also matches the tail of a flag: `-` is not a word character, so
+# `docker run --rm` has a word boundary right before the `r`. Put this in front
+# of a command word so a flag spelled like the command is not read as a call to
+# it. Unlike _CMD_POS it keeps `xargs rm`, `sudo rm` and
+# `find -exec rm` in view.
+_NOT_FLAG = r"(?<!-)"
+
 # ── systemctl ───────────────────────────────────────────────────────────────
 # systemctl is mostly introspection: is-enabled, list-timers, show and friends
 # report state and exit. Exempting the single literal `status` asked on every
@@ -212,7 +219,7 @@ CATEGORIES = {
         (r"\bscp\s", "remote file transfer (scp)"),
     ],
     "Destructive Filesystem": [
-        (r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
+        (_NOT_FLAG + r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
         (r"\b(chmod|chown)\b", "permission/ownership change"),
         (_CMD_POS_PIPE + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
@@ -662,7 +669,7 @@ _TOKEN_STRIP_CHARS = "'\"`(),[]{}"
 
 # Commands that modify files (used by out-of-project path guard)
 FILE_MODIFYING_CMDS = re.compile(
-    r"\b(rm|mv|cp|mkdir|touch|tee)\b"
+    _NOT_FLAG + r"\b(rm|mv|cp|mkdir|touch|tee)\b"
 )
 # Captures the target of a write redirect (> or >>). The (?<!\d) lookbehind
 # excludes fd-prefixed redirects (e.g. 2>) and the (?!&) lookahead excludes fd
@@ -1850,7 +1857,7 @@ def run_evaluators(command, event):
 # ── Evaluator definitions ────────────────────────────────────────────────────
 
 _RM_VARIABLE_RE = re.compile(
-    r'\brm\s+(-\S+\s+)*-\S*[rR]\S*\s+.*(\$\w+|\$\{[^}]+\}|\$\([^)]+\))'
+    _NOT_FLAG + r'\brm\s+(-\S+\s+)*-\S*[rR]\S*\s+.*(\$\w+|\$\{[^}]+\}|\$\([^)]+\))'
 )
 
 
@@ -1921,7 +1928,7 @@ Respond with ONLY a JSON object, no other text:
     return prompt
 
 
-_RM_RECURSIVE_RE = re.compile(r'\brm\s+(-\S+\s+)*-\S*[rR]')
+_RM_RECURSIVE_RE = re.compile(_NOT_FLAG + r'\brm\s+(-\S+\s+)*-\S*[rR]')
 
 
 def _gate_rm_user_approved(command, event):

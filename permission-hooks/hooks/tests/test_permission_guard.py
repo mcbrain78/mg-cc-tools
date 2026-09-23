@@ -374,6 +374,15 @@ class TestDestructiveFilesystem:
         assert_allowed('DIR=/tmp/road-runner && rm -f "$DIR"/*.log')
         assert_allowed('mkdir -p /tmp/foo && rm -f /tmp/foo/bar.txt')
 
+    def test_allow_rm_flag_of_another_command(self):
+        """`--rm` is a flag, not an rm call, even when a short -r flag follows."""
+        assert_allowed("docker run --rm -r img")
+
+    def test_block_rm_run_by_another_command(self):
+        assert_blocked("find . -name build | xargs rm -rf", self.CAT)
+        assert_blocked("find . -name build -exec rm -rf {} +", self.CAT)
+        assert_blocked("/bin/rm -rf dir/", self.CAT)
+
     def test_block_chmod(self):
         assert_blocked("chmod 755 script.sh", self.CAT)
         assert_blocked("chmod +x script.sh", self.CAT)
@@ -758,6 +767,22 @@ class TestOutsideProject:
         assert result is not None
         assert "../" in result[1]
 
+    def test_allow_container_path_after_docker_run_rm(self):
+        """`--rm` does not make the container-side paths write targets."""
+        result = check_outside_project(
+            'docker run --rm -v "$PWD/dumps:/in:ro" postgres:18 '
+            "pg_restore -f - /in/db.dump > out.sql",
+            self.PROJECT,
+        )
+        assert result is None
+
+    def test_block_real_rm_next_to_docker_run_rm(self):
+        result = check_outside_project(
+            "docker run --rm img /in/x && rm -f /etc/config", self.PROJECT
+        )
+        assert result is not None
+        assert result[1] == "/etc/config"
+
     def test_allow_parent_traversal_resolving_inside(self):
         """cp to ../subdir resolves inside project root when cwd is a child."""
         import os
@@ -1093,6 +1118,10 @@ class TestCandidateWriteTargets:
         # is still extracted.
         targets = list(_candidate_write_targets('bash -c "cat x > /etc/passwd"'))
         assert any("/etc/passwd" in t for t in targets)
+
+    def test_flag_spelled_like_command_yields_nothing(self):
+        # `--rm` is docker's flag, so the segment runs no file-modifying command.
+        assert list(_candidate_write_targets("docker run --rm img /in/x")) == []
 
 
 class TestMaskQuoted:
@@ -1871,6 +1900,17 @@ class TestRmVariableGate:
     def test_match_rm_rf_with_multiple_flags(self):
         assert _gate_rm_variable_cleanup('rm -f -r $DIR', {}) is True
 
+    def test_reject_docker_run_rm_flag(self):
+        """`--rm --network` is not a recursive rm, whatever variables follow."""
+        assert _gate_rm_variable_cleanup(
+            'docker run --rm --network none --user "$(id -u)" img', {}
+        ) is False
+
+    def test_match_real_rm_next_to_docker_run_rm(self):
+        assert _gate_rm_variable_cleanup(
+            'docker run --rm img; rm -rf "$DIR"', {}
+        ) is True
+
 
 # ── Verdict parsing ───────────────────────────────────────────────────────────
 
@@ -2393,6 +2433,12 @@ class TestGateRmUserApproved:
             "rm -rf /home/user/project/docs/auto-doc/",
             {"transcript_path": "/t.jsonl"},
         ) is True
+
+    def test_rejects_docker_run_rm_flag(self):
+        assert _gate_rm_user_approved(
+            "docker run --rm --network none img",
+            {"transcript_path": "/t.jsonl"},
+        ) is False
 
 
 # ── rm-user-approved prompt tests ──────────────────────────────────────────────
@@ -4183,3 +4229,65 @@ class TestLocalHttpInMain:
             monkeypatch, "curl -X POST -d @~/.ssh/id_rsa http://localhost:4200/api")
         assert decisions[0][1] == "ask"
         assert "Secrets & Credentials" in decisions[0][0]
+
+
+# ── Flags spelled like rm ─────────────────────────────────────────────────────
+
+class TestDockerRunRmInMain:
+    """`docker run --rm` is not an rm: no Haiku call and no out-of-project ask."""
+
+    PROJECT = "/home/user/myproject"
+    SCRATCH = "/tmp/claude-1000/-home-user-myproject/sid/scratchpad/devscan"
+
+    def _run(self, tmp_path, monkeypatch, command):
+        decisions, haiku_calls = [], []
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", self.PROJECT)
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr(guard, "_call_haiku", lambda prompt: haiku_calls.append(prompt))
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "transcript_path": "/tmp/docker-run-rm.jsonl",
+            "cwd": self.PROJECT,
+        })))
+        guard.main()
+        return decisions, haiku_calls
+
+    def test_pg_restore_into_scratch_does_not_prompt(self, tmp_path, monkeypatch):
+        command = (
+            f"S={self.SCRATCH}; docker run --rm --network none "
+            '--user "$(id -u):$(id -g)" -v "$PWD/temp/prepass-42:/in:ro" '
+            "postgres:18 pg_restore --data-only -n finance_metrics "
+            "-t inst_holdings_events -f - /in/raw-42-prepass.dump "
+            "> $S/ihe_before.sql 2>$S/ihe_before.err; wc -l $S/ihe_before.sql; "
+            'cat $S/ihe_before.err | head; grep -m1 "^COPY" $S/ihe_before.sql '
+            "| cut -c1-600"
+        )
+        assert self._run(tmp_path, monkeypatch, command) == ([], [])
+
+    def test_heredoc_then_pg_restore_does_not_prompt(self, tmp_path, monkeypatch):
+        command = (
+            f"S={self.SCRATCH}; python3 - <<'EOF' > $S/regressed.tsv\n"
+            "print('x')\n"
+            "EOF\n"
+            "cat $S/regressed.tsv | awk -F'\\t' '{print $2}' | sort | uniq -c; "
+            'docker run --rm --network none --user "$(id -u):$(id -g)" '
+            '-v "$PWD/temp/prepass-42:/in:ro" postgres:18 pg_restore '
+            "--data-only -n raw_sec -t form13f_holdings -f - "
+            '/in/raw-42-prepass.dump 2>/dev/null | head -30 | grep "^COPY" '
+            "| cut -c1-400"
+        )
+        assert self._run(tmp_path, monkeypatch, command) == ([], [])
+
+    def test_real_rm_outside_project_still_asks(self, tmp_path, monkeypatch):
+        decisions, _ = self._run(
+            tmp_path, monkeypatch,
+            "docker run --rm img /in/x && rm -f /etc/config")
+        assert decisions[0][1] == "ask"
+        assert "Out-of-project" in decisions[0][0]
