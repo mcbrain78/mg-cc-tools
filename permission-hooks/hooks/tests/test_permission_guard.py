@@ -4291,3 +4291,160 @@ class TestDockerRunRmInMain:
             "docker run --rm img /in/x && rm -f /etc/config")
         assert decisions[0][1] == "ask"
         assert "Out-of-project" in decisions[0][0]
+
+
+# ── Exec-bit chmod ────────────────────────────────────────────────────────────
+
+check_exec_bit_chmod = guard.check_exec_bit_chmod
+
+# A fictitious scratchpad: these strings are only scanned, never run.
+_SCRATCH_POLL = (
+    "S=/tmp/claude-1000/-home-user-myproject/sid/scratchpad/act7; "
+    "cat > \"$S/poll.sh\" <<'EOF'\n"
+    "#!/usr/bin/env bash\n"
+    "for i in $(seq 1 360); do\n"
+    "  sleep 60\n"
+    "done\n"
+    "EOF\n"
+    "chmod +x \"$S/poll.sh\"; echo ok"
+)
+
+
+class TestExecBitChmod:
+    """Which chmod calls count as only adding the execute bit."""
+
+    @pytest.mark.parametrize("command", [
+        "chmod +x script.sh",
+        "chmod u+x a.sh b.sh",
+        "chmod a+x,g+x tool",
+        "chmod -v +x tool",
+        "chmod --changes +x tool",
+        "chmod +x tool 2>/dev/null",
+        'chmod +x "$S/poll.sh"',
+        'chmod +x "odd;name.sh"',
+        "chmod +x run.sh && ./run.sh",
+        "(cd bin && chmod +x run.sh)",
+        _SCRATCH_POLL,
+    ])
+    def test_plain_exec_bit_is_exempt(self, command):
+        assert check_exec_bit_chmod(command)
+
+    @pytest.mark.parametrize("command", [
+        "chmod 755 tool",
+        "chmod +rx tool",
+        "chmod -x tool",
+        "chmod a=x tool",
+        "chmod go-w tool",
+        "chmod +x",
+        'chmod "+x" tool',
+        "chmod --reference=a tool",
+    ])
+    def test_any_other_mode_is_not(self, command):
+        assert not check_exec_bit_chmod(command)
+
+    @pytest.mark.parametrize("command", [
+        "chmod -R +x dir",
+        "chmod -vR +x dir",
+        "chmod --recursive +x dir",
+        # GNU chmod permutes its arguments, so -R still counts here.
+        "chmod +x dir -R",
+    ])
+    def test_recursive_is_not(self, command):
+        assert not check_exec_bit_chmod(command)
+
+    @pytest.mark.parametrize("command", [
+        "chmod +x a.sh && chown user b.sh",
+        "chmod +x a.sh; chmod 777 b.sh",
+        "chown user:group file",
+    ])
+    def test_every_other_permission_change_keeps_asking(self, command):
+        assert not check_exec_bit_chmod(command)
+
+    @pytest.mark.parametrize("command", [
+        "sudo chmod +x tool",
+        "find . -name '*.sh' -exec chmod +x {} +",
+        "find . -name '*.sh' | xargs chmod +x",
+        'bash -c "chmod +x tool"',
+        'eval "chmod +x tool"',
+    ])
+    def test_chmod_run_by_another_command_is_not(self, command):
+        assert not check_exec_bit_chmod(command)
+
+    @pytest.mark.parametrize("command", [
+        "chmod +x .git/hooks/pre-commit",
+        'chmod +x ".git/hooks/pre-commit"',
+        "cd .git/hooks && chmod +x pre-commit",
+        "cd .git && chmod +x info/tool",
+        "chmod +x repo.git/hooks/update",
+        "git config core.hooksPath .githooks && chmod +x .githooks/pre-commit",
+        'chmod +x "$HOOK_DIR/post-merge"',
+        "chmod +x .claude/hooks/guard.sh",
+    ])
+    def test_hooks_and_git_dirs_keep_asking(self, command):
+        """Git runs an executable hook later, with no tool call to guard."""
+        assert not check_exec_bit_chmod(command)
+
+    def test_github_dir_is_not_a_git_dir(self):
+        assert check_exec_bit_chmod("chmod +x .github/scripts/release.sh")
+
+    def test_no_chmod_is_not_exempt(self):
+        assert not check_exec_bit_chmod("ls -la")
+
+
+class TestExecBitChmodInMain:
+    """Placement: it retires the permission-change rule and nothing else."""
+
+    PROJECT = "/home/user/myproject"
+
+    def _run(self, tmp_path, monkeypatch, command):
+        decisions = []
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", self.PROJECT)
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr(guard, "run_evaluators", lambda command, event: (None, ""))
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "transcript_path": "/tmp/exec-bit-chmod.jsonl",
+            "cwd": self.PROJECT,
+        })))
+        guard.main()
+        return decisions
+
+    def test_scratchpad_script_does_not_prompt(self, tmp_path, monkeypatch):
+        assert self._run(tmp_path, monkeypatch, _SCRATCH_POLL) == []
+
+    def test_in_project_script_does_not_prompt(self, tmp_path, monkeypatch):
+        assert self._run(tmp_path, monkeypatch, "chmod +x scripts/run.sh") == []
+
+    def test_git_hook_still_asks(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch, "chmod +x .git/hooks/pre-commit")
+        assert decisions[0][1] == "ask"
+        assert "permission/ownership change" in decisions[0][0]
+
+    def test_out_of_project_target_still_asks(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch, "chmod +x /etc/cron.daily/job")
+        assert decisions[0][1] == "ask"
+        assert "Out-of-project" in decisions[0][0]
+
+    def test_home_bin_target_still_asks(self, tmp_path, monkeypatch):
+        """A script on PATH can shadow a real command."""
+        decisions = self._run(tmp_path, monkeypatch, "chmod +x ~/.local/bin/git")
+        assert decisions[0][1] == "ask"
+        assert "Out-of-project" in decisions[0][0]
+
+    def test_the_rescan_still_finds_the_next_rule(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch, "chmod +x run.sh && sudo ./run.sh")
+        assert decisions[0][1] == "ask"
+        assert "sudo" in decisions[0][0]
+
+    def test_exemptions_stack(self, tmp_path, monkeypatch):
+        """Two exempt rules in one command: each retires only its own."""
+        no_dns(monkeypatch)
+        command = "chmod +x run.sh && curl -X POST -d x http://localhost:4200/api"
+        assert self._run(tmp_path, monkeypatch, command) == []

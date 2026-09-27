@@ -179,6 +179,10 @@ GIT_CHECKOUT_RULE = "git checkout"
 # section for what "local" means and why only this one rule is exempted.
 HTTP_SUBMIT_RULE = "HTTP data submission"
 
+# Suppressed for a plain `chmod +x` by check_exec_bit_chmod; see the Exec-bit
+# chmod section.
+PERMISSION_CHANGE_RULE = "permission/ownership change"
+
 CATEGORIES = {
     "Git Branch & History": [
         (r"\bgit\s+checkout\b", GIT_CHECKOUT_RULE),
@@ -220,7 +224,7 @@ CATEGORIES = {
     ],
     "Destructive Filesystem": [
         (_NOT_FLAG + r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
-        (r"\b(chmod|chown)\b", "permission/ownership change"),
+        (r"\b(chmod|chown)\b", PERMISSION_CHANGE_RULE),
         (_CMD_POS_PIPE + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
         (_CMD_POS_PIPE + r"dd\s", "raw disk operations"),
@@ -667,9 +671,11 @@ def _is_claude_internal(path):
 # Quotes plus common shell/code punctuation that isn't part of real paths.
 _TOKEN_STRIP_CHARS = "'\"`(),[]{}"
 
-# Commands that modify files (used by out-of-project path guard)
+# Commands that modify files (used by out-of-project path guard). chmod and
+# chown are here for the one chmod the category rules let through (see the
+# Exec-bit chmod section): `chmod +x ~/.local/bin/x` must still ask.
 FILE_MODIFYING_CMDS = re.compile(
-    _NOT_FLAG + r"\b(rm|mv|cp|mkdir|touch|tee)\b"
+    _NOT_FLAG + r"\b(rm|mv|cp|mkdir|touch|tee|chmod|chown)\b"
 )
 # Captures the target of a write redirect (> or >>). The (?<!\d) lookbehind
 # excludes fd-prefixed redirects (e.g. 2>) and the (?!&) lookahead excludes fd
@@ -1285,6 +1291,88 @@ def check_local_http(command):
     if not hosts:
         return False
     return all(_host_is_local(host) for host in hosts)
+
+
+# ── Exec-bit chmod ──────────────────────────────────────────────────────────
+# PERMISSION_CHANGE_RULE asks on every chmod, so an agent marking its own
+# helper script executable asks exactly as loudly as `chown -R` on $HOME. The
+# execute bit is no boundary for the agent: `bash script.sh` runs the same
+# file without it and without a prompt, and this guard never reads a script's
+# body either way (heredocs are stripped before scanning). Asking there buys
+# nothing.
+#
+# What +x does add is a file that something ELSE runs later, with no tool call
+# in between for this guard to see. Git only runs a hook that is executable,
+# and .git/hooks is in-project, so the out-of-project check does not cover it.
+# Any command that mentions a hook or a .git directory therefore keeps asking
+# — a deliberately broad text match, since the target is often quoted or
+# built from a variable. A hook path assembled entirely from variables set in
+# an earlier call is not caught; writing the hook file is unguarded too.
+#
+# check_exec_bit_chmod suppresses THAT ONE RULE, and only when every chmod in
+# the command adds nothing but the execute bit to named files. Numeric modes,
+# removals, `=`, -R (GNU chmod reads it after the operands too), any chown,
+# and a chmod run by another command (`find -exec`, `xargs`, `sudo`) all still
+# ask. Out-of-project targets still ask: chmod is in FILE_MODIFYING_CMDS, and
+# check_outside_project runs after the category rules regardless of what they
+# skipped.
+
+_PERMISSION_WORD_RE = re.compile(r"\b(?:chmod|chown)\b")
+
+# Clauses like u+x, a+x or +x, comma-separated: execute added, nothing taken.
+_EXEC_BIT_MODE_RE = re.compile(r"[ugoa]*\+x(?:,[ugoa]*\+x)*")
+
+# Output-only options. Anything else starting with `-` — -R, --reference, or a
+# mode like -w that removes a bit — keeps the rule in force.
+_CHMOD_QUIET_OPTS_RE = re.compile(r"-[cfv]+|--(?:changes|silent|quiet|verbose)")
+
+_HOOK_MENTION_RE = re.compile(r"\.git\b|hook", re.IGNORECASE)
+
+
+def _is_exec_bit_chmod(segment):
+    """Return True if *segment* is `chmod [quiet opts] <+x mode> <file>...`."""
+    tokens = _TOKEN_RE.findall(_REDIRECT_STRIP_RE.sub(" ", segment))
+    if not tokens or tokens[0] != "chmod":
+        return False
+    operands = []
+    for token in tokens[1:]:
+        if token.startswith("-"):
+            if not _CHMOD_QUIET_OPTS_RE.fullmatch(token):
+                return False
+        else:
+            operands.append(token)
+    return len(operands) >= 2 and bool(_EXEC_BIT_MODE_RE.fullmatch(operands[0]))
+
+
+def check_exec_bit_chmod(command):
+    """Return True if every chmod/chown in *command* is a plain `chmod +x`.
+
+    The hook check reads the raw command, since a quoted or variable target is
+    exactly what quote masking would hide. The segment check reads the masked
+    one, like check_command, so a quoted `;` does not split a segment. A nested
+    shell (`bash -c`, `eval`, `xargs`) hides its real command in a string and
+    gets no exemption.
+    """
+    command = _strip_heredocs(command)
+    if _HOOK_MENTION_RE.search(command) or _SHELL_INVOKER_RE.search(command):
+        return False
+    found = False
+    for segment in _SEGMENT_RE.findall(_mask_quoted(command)):
+        if not _PERMISSION_WORD_RE.search(segment):
+            continue
+        if not _is_exec_bit_chmod(segment):
+            return False
+        found = True
+    return found
+
+
+# Rules a more precise check can retire for one command, keyed by the rule's
+# description. Each check sees the whole command and returns True only when it
+# has cleared every match of its rule.
+RULE_EXEMPTIONS = {
+    HTTP_SUBMIT_RULE: check_local_http,
+    PERMISSION_CHANGE_RULE: check_exec_bit_chmod,
+}
 
 
 # ── Sensitive file patterns (for Read/Edit/Write tool guards) ───────────────
@@ -2163,12 +2251,15 @@ def main():
 
     # 1. Category rules
     result = check_command(command, skip_rules)
-    # A local target retires the HTTP submission rule and only that rule, so
-    # the scan runs again for whatever it was standing in front of (a `sudo`,
-    # a pipe-to-shell). Locality is tested only once the rule has matched,
-    # which keeps the name lookup off every other Bash call.
-    if result and result[0] == HTTP_SUBMIT_RULE and check_local_http(command):
-        result = check_command(command, skip_rules + (HTTP_SUBMIT_RULE,))
+    # An exemption retires its rule and only that rule, so the scan runs again
+    # for whatever it was standing in front of (a `sudo`, a pipe-to-shell).
+    # Each one is tested only once its rule has matched, which keeps
+    # check_local_http's name lookup off every other Bash call. The loop ends
+    # because a skipped rule cannot match again.
+    while (result and result[0] in RULE_EXEMPTIONS
+           and RULE_EXEMPTIONS[result[0]](command)):
+        skip_rules += (result[0],)
+        result = check_command(command, skip_rules)
     if result:
         description, category, _matched = result
         _ask(f"[permission-guard] {trace_prefix}{category}: {description}")
