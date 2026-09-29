@@ -736,6 +736,17 @@ def _join_continuations(command):
     return _CONTINUATION_RE.sub(lambda match: match.group(1) + "  ", command)
 
 
+def _command_text(command):
+    """Return *command* the way every check reads it.
+
+    Heredoc bodies are dropped first, since a `\\` ending a line inside a
+    quoted heredoc is data, not a continuation. Continuation lines are then
+    joined, so `git push origin main \\` + newline + `--force` reads as the
+    one command bash runs.
+    """
+    return _join_continuations(_strip_heredocs(command))
+
+
 def _mask_quoted(command):
     """Return *command* with the contents of quoted spans replaced by filler.
 
@@ -1153,7 +1164,7 @@ def check_worktree_destruction(command, base_dir):
     text. A `cd` in an earlier segment moves the base directory, because that
     is where the git command will actually run.
     """
-    command = _strip_heredocs(command)
+    command = _command_text(command)
     masked = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
     cwd = base_dir
     cleared = False
@@ -1300,7 +1311,7 @@ def check_local_http(command):
     and one leak is enough.
     """
     hosts = set()
-    for match in _URL_AUTHORITY_RE.finditer(_strip_heredocs(command)):
+    for match in _URL_AUTHORITY_RE.finditer(_command_text(command)):
         host = _url_host(match.group(1))
         if not host:
             return False
@@ -1351,7 +1362,7 @@ def _rule_commands(command, description):
     `git merge` + newline does — bash runs a bare `git merge` there.
     """
     rule_re = _RULE_RE_BY_DESCRIPTION[description]
-    command = _join_continuations(_strip_heredocs(command))
+    command = _command_text(command)
     masked = _mask_quoted(command)
     matches = list(rule_re.finditer(masked))
     if _SHELL_INVOKER_RE.search(command):
@@ -1427,7 +1438,7 @@ def check_exec_bit_chmod(command):
     exactly what quote masking would hide. Each chmod is then read as its own
     command by _rule_commands.
     """
-    if _HOOK_MENTION_RE.search(_strip_heredocs(command)):
+    if _HOOK_MENTION_RE.search(_command_text(command)):
         return False
     found = _rule_commands(command, PERMISSION_CHANGE_RULE)
     return bool(found) and all(_is_exec_bit_chmod("".join(parts)) for parts in found)
@@ -1513,7 +1524,7 @@ def check_command(command, skip_descriptions=()):
 
     Returns (description, category, matched_text) or None.
     """
-    command = _strip_heredocs(command)
+    command = _command_text(command)
     # Masking is length-preserving, so a match found in the masked copy slices
     # the real text out of the original for reporting.
     scanned = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
@@ -1642,7 +1653,7 @@ def check_sensitive_in_command(command):
 
     Returns (description, matched_path) or None.
     """
-    command = _strip_heredocs(command)
+    command = _command_text(command)
     # Segment and token boundaries are read off the masked copy so a quoted `;`
     # or a space inside a pattern does not split, but each token is sliced from
     # the original. Nested shell invocations are scanned raw — there the quoted
@@ -1779,7 +1790,7 @@ def check_outside_project(command, project_root):
         return None
 
     # Strip heredoc bodies so their content isn't parsed as paths
-    command = _strip_heredocs(command)
+    command = _command_text(command)
 
     # Normalize project root (remove trailing slash)
     project_root = project_root.rstrip("/")
@@ -1861,7 +1872,7 @@ def check_exit_code_masking(command):
 
     Returns a reason string or None.
     """
-    command = _strip_heredocs(command)
+    command = _command_text(command)
     # Quoted text is data: a commit message about this rule is not a test run.
     # Nested shell invocations are the exception — there the quoted string IS
     # the command, so scan it raw (same trade as check_write_targets).

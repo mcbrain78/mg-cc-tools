@@ -4625,3 +4625,47 @@ class TestFfOnlyMergeInMain:
                               "git merge --ff-only feature-x && git push --force")
         assert decisions[0][1] == "ask"
         assert "force push" in decisions[0][0]
+
+
+# ── Line continuations ────────────────────────────────────────────────────────
+
+_join_continuations = guard._join_continuations
+
+
+class TestLineContinuation:
+    """A backslash-newline is one command to bash, so it is one to every check."""
+
+    PROJECT = "/home/user/myproject"
+
+    def test_join_keeps_offsets(self):
+        cmd = "git push origin main \\\n  --force"
+        joined = _join_continuations(cmd)
+        assert len(joined) == len(cmd)
+        assert "\n" not in joined
+
+    def test_escaped_backslash_is_not_a_continuation(self):
+        cmd = "echo \\\\\nls"
+        assert _join_continuations(cmd) == cmd
+
+    @pytest.mark.parametrize("command, category", [
+        ("git push origin main \\\n  --force", "Git Destructive Remote"),
+        ("git reset \\\n  --hard", "Git Branch & History"),
+        ("git \\\n  merge feature-x", "Git Branch & History"),
+    ])
+    def test_category_rules_read_across_the_break(self, command, category):
+        assert_blocked(command, category)
+
+    def test_out_of_project_target_on_the_next_line(self):
+        result = check_outside_project("cp a.txt \\\n  /etc/app.conf", self.PROJECT)
+        assert result is not None
+
+    def test_exit_code_masking_on_the_next_line(self):
+        assert check_exit_code_masking("pytest tests \\\n  | tail -5")
+
+    def test_backslash_in_a_quoted_heredoc_is_data(self):
+        """The body is dropped before joining, so its last `\\` cannot swallow EOF."""
+        cmd = ("cat > run.sh <<'EOF'\n"
+               "sudo make install \\\n"
+               "EOF\n"
+               "bash run.sh")
+        assert check_command(cmd) is None
