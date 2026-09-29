@@ -126,8 +126,9 @@ class TestGitBranchHistory:
     def test_block_switch(self):
         assert_blocked("git switch main", self.CAT)
 
-    def test_block_branch_create(self):
-        assert_blocked("git branch new-feature", self.CAT)
+    def test_allow_branch_create(self):
+        """Only adds a ref, so there is nothing to lose."""
+        assert_allowed("git branch new-feature")
 
     def test_allow_branch_list(self):
         assert_allowed("git branch -l")
@@ -140,13 +141,16 @@ class TestGitBranchHistory:
         assert_blocked("git branch -D old-branch", self.CAT)
         assert_blocked("git branch --delete old-branch", self.CAT)
 
-    def test_block_merge(self):
-        assert_blocked("git merge feature-x", self.CAT)
-
-    def test_allow_merge_abort(self):
-        assert_allowed("git merge --abort")
-        assert_allowed("git merge --continue")
-        assert_allowed("git merge --quit")
+    @pytest.mark.parametrize("command", [
+        "git merge feature-x",
+        "git merge --ff-only feature-x",
+        "git merge --no-ff -m 'land x' feature-x",
+        "git merge --squash feature-x",
+        "git merge --abort",
+    ])
+    def test_allow_merge(self, command):
+        """A merge only adds commits; a conflicted one is undone by --abort."""
+        assert_allowed(command)
 
     def test_block_rebase(self):
         assert_blocked("git rebase main", self.CAT)
@@ -157,13 +161,14 @@ class TestGitBranchHistory:
         assert_allowed("git rebase --quit")
         assert_allowed("git rebase --skip")
 
-    def test_block_cherry_pick(self):
-        assert_blocked("git cherry-pick abc123", self.CAT)
-
-    def test_allow_cherry_pick_recovery(self):
-        assert_allowed("git cherry-pick --abort")
-        assert_allowed("git cherry-pick --continue")
-        assert_allowed("git cherry-pick --quit")
+    @pytest.mark.parametrize("command", [
+        "git cherry-pick abc123",
+        "git cherry-pick abc123 def456",
+        "git cherry-pick --abort",
+    ])
+    def test_allow_cherry_pick(self, command):
+        """A cherry-pick only adds commits, and refuses to overwrite local changes."""
+        assert_allowed(command)
 
     def test_block_reset_hard(self):
         assert_blocked("git reset --hard", self.CAT)
@@ -4561,134 +4566,6 @@ class TestExecBitChmodInMain:
         assert self._run(tmp_path, monkeypatch, command) == []
 
 
-# ── Fast-forward-only merge ───────────────────────────────────────────────────
-
-check_ff_only_merge = guard.check_ff_only_merge
-
-# The command that prompted in a real session: a subagent fast-forwarding its
-# worktree branch.
-_FF_WORKTREE = ("git merge --ff-only c51095a 2>&1 | tail -3; "
-                "git log --oneline -1; git branch --show-current")
-
-
-class TestFfOnlyMerge:
-    """Which merges count as fast-forward-only."""
-
-    @pytest.mark.parametrize("command", [
-        "git merge --ff-only feature-x",
-        "git merge feature-x --ff-only",
-        "git merge --ff-only origin/main",
-        "git merge --no-ff --ff-only feature-x",
-        "git merge --ff-only -q feature-x",
-        "git merge --abort && git merge --ff-only feature-x",
-        "cd ../wt && git merge --ff-only feature-x",
-        _FF_WORKTREE,
-    ])
-    def test_ff_only_is_exempt(self, command):
-        assert check_ff_only_merge(command)
-
-    @pytest.mark.parametrize("command", [
-        "git merge feature-x",
-        "git merge --ff feature-x",
-        "git merge --no-ff feature-x",
-        "git merge --squash feature-x",
-        # git keeps the last of --ff / --no-ff / --ff-only.
-        "git merge --ff-only --no-ff feature-x",
-        "git merge --ff-only feature-x --ff",
-    ])
-    def test_any_other_merge_is_not(self, command):
-        assert not check_ff_only_merge(command)
-
-    def test_every_merge_in_the_command_must_be_ff_only(self):
-        assert not check_ff_only_merge(
-            "git merge --ff-only a && git merge b")
-        assert not check_ff_only_merge(
-            "git merge b; git merge --ff-only a")
-
-    def test_quoted_option_is_data(self):
-        """A -m message is text, not an option, whichever way it points."""
-        assert not check_ff_only_merge('git merge -m "--ff-only" feature-x')
-        assert check_ff_only_merge(
-            'git merge --ff-only -m "not --no-ff" feature-x')
-
-    @pytest.mark.parametrize("command", [
-        'bash -c "git merge --ff-only feature-x"',
-        'eval "git merge --ff-only feature-x"',
-        "git merge --ff-only a && bash -c 'git merge b'",
-    ])
-    def test_merge_inside_a_nested_shell_string_is_not(self, command):
-        assert not check_ff_only_merge(command)
-
-    def test_unrelated_nested_shell_does_not_refuse(self):
-        assert check_ff_only_merge("git merge --ff-only a && bash -c 'echo hi'")
-
-    @pytest.mark.parametrize("command", [
-        "$(git merge --ff-only a)$(git merge b)",
-        "`git merge --ff-only a` `git merge b`",
-        "git merge --ff-only a $(git merge b)",
-        "(git merge --ff-only a)(git merge b)",
-    ])
-    def test_command_substitution_is_its_own_command(self, command):
-        assert not check_ff_only_merge(command)
-
-    def test_continuation_joins_lines(self):
-        assert check_ff_only_merge("git merge \\\n  --ff-only feature-x")
-        assert not check_ff_only_merge("git merge --ff-only feature-x \\\n  --no-ff")
-
-    def test_bare_merge_before_a_newline_is_not(self):
-        """Bash runs `git merge` on its own line: a merge of the upstream."""
-        assert not check_ff_only_merge("git merge --ff-only a; git merge\n--ff-only")
-
-    def test_no_merge_is_not_exempt(self):
-        assert not check_ff_only_merge("git log --oneline -1")
-
-
-class TestFfOnlyMergeInMain:
-    """Placement: it retires the git merge rule and nothing else."""
-
-    PROJECT = "/home/user/myproject"
-
-    def _run(self, tmp_path, monkeypatch, command):
-        decisions = []
-        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
-        monkeypatch.setenv("CLAUDE_PROJECT_DIR", self.PROJECT)
-        monkeypatch.setattr(guard, "_decide",
-                            lambda reason, decision="ask": decisions.append((reason, decision)))
-        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
-        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
-        monkeypatch.setattr(guard, "run_evaluators", lambda command, event: (None, ""))
-        import io
-        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
-            "permission_mode": "bypassPermissions",
-            "tool_name": "Bash",
-            "tool_input": {"command": command},
-            "transcript_path": "/tmp/ff-only-merge.jsonl",
-            "cwd": self.PROJECT,
-        })))
-        guard.main()
-        return decisions
-
-    def test_worktree_fast_forward_does_not_prompt(self, tmp_path, monkeypatch):
-        assert self._run(tmp_path, monkeypatch, _FF_WORKTREE) == []
-
-    def test_plain_merge_still_asks(self, tmp_path, monkeypatch):
-        decisions = self._run(tmp_path, monkeypatch, "git merge feature-x")
-        assert decisions[0][1] == "ask"
-        assert "git merge (not recovery)" in decisions[0][0]
-
-    def test_overridden_ff_only_still_asks(self, tmp_path, monkeypatch):
-        decisions = self._run(tmp_path, monkeypatch,
-                              "git merge --ff-only --no-ff feature-x")
-        assert decisions[0][1] == "ask"
-        assert "git merge (not recovery)" in decisions[0][0]
-
-    def test_the_rescan_still_finds_the_next_rule(self, tmp_path, monkeypatch):
-        decisions = self._run(tmp_path, monkeypatch,
-                              "git merge --ff-only feature-x && git push --force")
-        assert decisions[0][1] == "ask"
-        assert "force push" in decisions[0][0]
-
-
 # ── Line continuations ────────────────────────────────────────────────────────
 
 _join_continuations = guard._join_continuations
@@ -4712,7 +4589,7 @@ class TestLineContinuation:
     @pytest.mark.parametrize("command, category", [
         ("git push origin main \\\n  --force", "Git Destructive Remote"),
         ("git reset \\\n  --hard", "Git Branch & History"),
-        ("git \\\n  merge feature-x", "Git Branch & History"),
+        ("git \\\n  rebase main", "Git Branch & History"),
     ])
     def test_category_rules_read_across_the_break(self, command, category):
         assert_blocked(command, category)
@@ -4869,15 +4746,12 @@ class TestLinkedWorktreeInMain:
 
     @pytest.mark.parametrize("command", [
         "git reset --hard HEAD",
-        "git merge other",
         "git rebase main",
-        "git cherry-pick main",
         "git checkout -b new-branch",
         "git switch -c new-branch",
         "git switch --detach HEAD",
         "git checkout worktree-agent-x",
         "git checkout main -- file.txt",
-        "git branch new-feature",
         "git checkout -- file.txt",
         "git restore file.txt",
         "git clean -fd",
@@ -4940,7 +4814,6 @@ class TestLinkedWorktreeInMain:
 
     @pytest.mark.parametrize("command, rule", [
         ("git reset --hard HEAD", "git reset --hard"),
-        ("git merge other", "git merge (not recovery)"),
         ("git stash drop stash@{1}", "git stash destruction"),
         ("git checkout -b new-branch", "git checkout"),
     ])
@@ -4949,6 +4822,21 @@ class TestLinkedWorktreeInMain:
         decisions = self._run(tmp_path, monkeypatch, command, main, main)
         assert decisions and decisions[0][1] == "ask"
         assert rule in decisions[0][0]
+
+    @pytest.mark.parametrize("command", [
+        "git merge --ff-only worktree-agent-x",
+        "git merge --no-ff -m 'land agent work' worktree-agent-x",
+        "git cherry-pick worktree-agent-x",
+        # The two calls that prompted in a real session, host made local.
+        "export PREFECT_API_URL=http://localhost:4200/api; git status --short; "
+        "git merge --ff-only worktree-agent-x 2>&1 | tail -1; "
+        "git cherry-pick 99608e8 cd6cbd2 2>&1 | tail -2; git log --oneline c51095a..HEAD | cat",
+        "git cherry-pick eaac5b3 3b60cd7 60591ec 2>&1 | tail -1; git status --short; "
+        "git diff --name-only c51095a HEAD | sort | tr '\\n' ' '",
+    ])
+    def test_landing_worktree_work_does_not_prompt(self, tmp_path, monkeypatch, worktree_repo, command):
+        main, _wt = worktree_repo
+        assert self._run(tmp_path, monkeypatch, command, main, main) == []
 
     def test_main_tree_uncommitted_work_still_asks(self, tmp_path, monkeypatch, worktree_repo):
         main, _wt = worktree_repo

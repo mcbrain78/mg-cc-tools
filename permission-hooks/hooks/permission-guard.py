@@ -175,10 +175,6 @@ _SYSTEMCTL_WRITE = (
 # not, and everything else — branch switches, --detach, --force — asks here.
 GIT_CHECKOUT_RULE = "git checkout"
 
-# Suppressed for a fast-forward-only merge by check_ff_only_merge; see the
-# Fast-forward-only merge section.
-GIT_MERGE_RULE = "git merge (not recovery)"
-
 # Read by check_linked_worktree_rule, which judges these rules' forms; see the
 # Linked worktrees section.
 GIT_SWITCH_RULE = "git switch"
@@ -197,11 +193,8 @@ CATEGORIES = {
     "Git Branch & History": [
         (r"\bgit\s+checkout\b", GIT_CHECKOUT_RULE),
         (r"\bgit\s+switch\b", GIT_SWITCH_RULE),
-        (r"\bgit\s+branch\s+(?!-)[A-Za-z]", "branch creation"),
         (r"\bgit\s+branch\s+(-[dD]|--delete)\b", "branch deletion"),
-        (r"\bgit\s+merge\s+(?!--abort|--continue|--quit)", GIT_MERGE_RULE),
         (r"\bgit\s+rebase\s+(?!--abort|--continue|--quit|--skip)", GIT_REBASE_RULE),
-        (r"\bgit\s+cherry-pick\s+(?!--abort|--continue|--quit)", "git cherry-pick (not recovery)"),
         (r"\bgit\s+reset\s+--hard\b", "git reset --hard"),
         (r"\bgit\s+stash\s+(drop|clear)\b", GIT_STASH_RULE),
         (r"\bgit\s+tag\s+(-d|--delete)\b", "git tag deletion"),
@@ -1375,7 +1368,8 @@ def check_local_http(command):
 #     no _SEGMENT_RE segment: `chmod +x a $(chmod 777 b)` read as one chmod
 #     whose mode is +x.
 #   - A backslash-newline joins two lines into one command:
-#     `git merge --ff-only x \` + newline + `--no-ff` makes a merge commit.
+#     `find / | xargs \` + newline + `chmod +x f` read as a chmod of its own,
+#     though xargs runs it on every file find prints.
 #   - With a nested shell in the command, check_command scans quoted text too,
 #     so the rule can match inside a string that masking hides from segment
 #     parsing: `bash -c "chmod 777 x"`.
@@ -1404,7 +1398,7 @@ def _rule_commands(command, description):
 
     Returns None when a match cannot be read this way: one inside a quoted
     span (see above), or one that itself runs across a command break, as
-    `git merge` + newline does — bash runs a bare `git merge` there.
+    `git rebase` + newline does — bash runs a bare `git rebase` there.
     """
     rule_re = _RULE_RE_BY_DESCRIPTION[description]
     command = _command_text(command)
@@ -1489,37 +1483,6 @@ def check_exec_bit_chmod(command):
     return bool(found) and all(_is_exec_bit_chmod("".join(parts)) for parts in found)
 
 
-# ── Fast-forward-only merge ─────────────────────────────────────────────────
-# GIT_MERGE_RULE asks on every merge that is not a recovery, but a merge with
-# --ff-only does none of what makes a merge worth asking about. It either
-# moves the branch forward onto commits that already exist or fails: no merge
-# commit, no conflict, and git refuses before it would overwrite uncommitted
-# or untracked changes. `git reset --hard ORIG_HEAD` undoes it. `git pull`,
-# which CAN make a merge commit, is not guarded at all.
-#
-# git reads --ff, --no-ff and --ff-only as one option and keeps the last one,
-# so `git merge --ff-only --no-ff x` makes a merge commit. The exemption holds
-# only when --ff-only is the last of the three.
-
-_FF_MODE_OPTS = frozenset({"--ff", "--no-ff", "--ff-only"})
-
-
-def check_ff_only_merge(command):
-    """Return True if every merge GIT_MERGE_RULE catches in *command* is --ff-only.
-
-    Each merge is read as its own command by _rule_commands, off the masked
-    text, so a `--no-ff` inside a -m message is not an option.
-    """
-    found = _rule_commands(command, GIT_MERGE_RULE)
-    if not found:
-        return False
-    for _before, _word, after in found:
-        modes = [token for token in _TOKEN_RE.findall(after) if token in _FF_MODE_OPTS]
-        if not modes or modes[-1] != "--ff-only":
-            return False
-    return True
-
-
 # ── Linked worktrees ────────────────────────────────────────────────────────
 # The Git Branch & History rules protect the repository's real history, above
 # all the branch checked out in the main working tree. A linked worktree
@@ -1560,8 +1523,7 @@ def check_ff_only_merge(command):
 LinkedWorktree = namedtuple("LinkedWorktree", "top branch")
 
 LINKED_WORKTREE_RULES = frozenset({
-    GIT_CHECKOUT_RULE, GIT_SWITCH_RULE, "branch creation", GIT_MERGE_RULE,
-    GIT_REBASE_RULE, "git cherry-pick (not recovery)", "git reset --hard",
+    GIT_CHECKOUT_RULE, GIT_SWITCH_RULE, GIT_REBASE_RULE, "git reset --hard",
     GIT_STASH_RULE,
 })
 
@@ -1811,7 +1773,6 @@ def check_linked_worktree_rule(description, command, worktree):
 RULE_EXEMPTIONS = {
     HTTP_SUBMIT_RULE: check_local_http,
     PERMISSION_CHANGE_RULE: check_exec_bit_chmod,
-    GIT_MERGE_RULE: check_ff_only_merge,
 }
 
 
