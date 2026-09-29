@@ -178,6 +178,15 @@ _SYSTEMCTL_WRITE = (
     + r"(?!" + _SYSTEMCTL_OPTS + r"\s+" + _SYSTEMCTL_READ + r")"
 )
 
+# Services any project may start, stop and restart without asking; see the
+# Managed systemd units section. Adding one here takes an edit and a reinstall,
+# like the rule groups above.
+SYSTEMCTL_MANAGED_UNITS = (
+    "prefect-server.service",
+    "finance-data-worker.service",
+    "stock-ranker-worker.service",
+)
+
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
@@ -203,6 +212,10 @@ HTTP_SUBMIT_RULE = "HTTP data submission"
 # Suppressed for a plain `chmod +x` by check_exec_bit_chmod; see the Exec-bit
 # chmod section.
 PERMISSION_CHANGE_RULE = "permission/ownership change"
+
+# Suppressed for lifecycle calls on SYSTEMCTL_MANAGED_UNITS by
+# check_managed_systemctl; see the Managed systemd units section.
+SYSTEMCTL_RULE = "systemctl (not a read subcommand)"
 
 CATEGORIES = {
     "Git Branch & History": [
@@ -260,7 +273,7 @@ CATEGORIES = {
         (r"\bsudo\b", "sudo"),
         (r"\b(apt|apt-get|brew|yum|dnf|pacman|apk)\s+(install|remove|purge|uninstall)\b", "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
-        (_SYSTEMCTL_WRITE, "systemctl (not a read subcommand)"),
+        (_SYSTEMCTL_WRITE, SYSTEMCTL_RULE),
         # Command-position only (see _CMD_POS), and must take an argument. NOT
         # after a pipe: you never pipe into service/launchctl, but "|service" is
         # common in TEXT (regex alternations, markdown tables) and the guard
@@ -1422,6 +1435,11 @@ def check_local_http(command):
 # of a redirect (`2>&1`, `&>log`) is not one.
 _COMMAND_BREAK_RE = re.compile(r"[\n;|()`]|(?<![<>])&(?!>)")
 
+# A rule anchored with _CMD_POS matches the separator in front of its verb
+# (`; systemctl`, `&& systemctl`). That separator is where the command starts,
+# not a break inside it.
+_LEADING_BREAK_CHARS = ";& \t\n\r\f\v"
+
 _RULE_RE_BY_DESCRIPTION = {description: compiled
                            for compiled, description, _category in RULES}
 
@@ -1447,14 +1465,15 @@ def _rule_commands(command, description):
             return None
     found = []
     for match in matches:
-        if _COMMAND_BREAK_RE.search(match.group()):
+        word = match.group().lstrip(_LEADING_BREAK_CHARS)
+        word_start = match.end() - len(word)
+        if _COMMAND_BREAK_RE.search(word):
             return None
-        breaks_before = list(_COMMAND_BREAK_RE.finditer(masked, 0, match.start()))
+        breaks_before = list(_COMMAND_BREAK_RE.finditer(masked, 0, word_start))
         start = breaks_before[-1].end() if breaks_before else 0
         next_break = _COMMAND_BREAK_RE.search(masked, match.end())
         end = next_break.start() if next_break else len(masked)
-        found.append((masked[start:match.start()], match.group(),
-                      masked[match.end():end]))
+        found.append((masked[start:word_start], word, masked[match.end():end]))
     return found
 
 
@@ -1518,6 +1537,54 @@ def check_exec_bit_chmod(command):
         return False
     found = _rule_commands(command, PERMISSION_CHANGE_RULE)
     return bool(found) and all(_is_exec_bit_chmod("".join(parts)) for parts in found)
+
+
+# ── Managed systemd units ───────────────────────────────────────────────────
+# SYSTEMCTL_RULE asks on every systemctl that is not a read, so bouncing the
+# Prefect server and its workers — routine for the projects that run them —
+# asks as loudly as `systemctl isolate rescue.target`.
+#
+# check_managed_systemctl suppresses THAT ONE RULE, and only when every
+# systemctl in the command starts, stops, restarts, reloads or resets named
+# SYSTEMCTL_MANAGED_UNITS. A bare name means its .service, as it does to
+# systemctl. Everything else still asks: enable/disable, mask, edit, kill,
+# isolate, daemon-reload; a glob, variable or quoted unit, whose target this
+# cannot read; and any option outside the output-only ones below (-H and -M
+# reach another host or container, --job-mode=isolate stops everything else).
+
+_SYSTEMCTL_LIFECYCLE_VERBS = frozenset({
+    "start", "stop", "restart", "try-restart", "reload",
+    "reload-or-restart", "try-reload-or-restart", "reset-failed",
+})
+
+_SYSTEMCTL_SAFE_OPTS = frozenset({
+    "--user", "--system", "--no-block", "--no-pager", "--no-ask-password",
+    "--wait", "-q", "--quiet",
+})
+
+
+def _is_managed_systemctl(segment):
+    """Return True if *segment* is a lifecycle verb on managed units only."""
+    tokens = _TOKEN_RE.findall(_REDIRECT_STRIP_RE.sub(" ", segment))
+    if not tokens or tokens[0] != "systemctl":
+        return False
+    words = []
+    for token in tokens[1:]:
+        if token.startswith("-"):
+            if token not in _SYSTEMCTL_SAFE_OPTS:
+                return False
+        else:
+            words.append(token)
+    if len(words) < 2 or words[0] not in _SYSTEMCTL_LIFECYCLE_VERBS:
+        return False
+    return all((unit if "." in unit else unit + ".service") in SYSTEMCTL_MANAGED_UNITS
+               for unit in words[1:])
+
+
+def check_managed_systemctl(command):
+    """Return True if every systemctl write in *command* is on a managed unit."""
+    found = _rule_commands(command, SYSTEMCTL_RULE)
+    return bool(found) and all(_is_managed_systemctl("".join(parts)) for parts in found)
 
 
 # ── Linked worktrees ────────────────────────────────────────────────────────
@@ -1935,6 +2002,7 @@ def check_linked_worktree_rule(description, command, worktree):
 RULE_EXEMPTIONS = {
     HTTP_SUBMIT_RULE: check_local_http,
     PERMISSION_CHANGE_RULE: check_exec_bit_chmod,
+    SYSTEMCTL_RULE: check_managed_systemctl,
 }
 
 

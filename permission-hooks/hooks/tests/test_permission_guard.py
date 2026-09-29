@@ -4617,6 +4617,155 @@ class TestExecBitChmodInMain:
         assert self._run(tmp_path, monkeypatch, command) == []
 
 
+# ── Managed systemd units ─────────────────────────────────────────────────────
+
+check_managed_systemctl = guard.check_managed_systemctl
+
+# The shape that prompted in a real session: push, confirm nothing runs, then
+# stop the workers and the server. Host and user are fictitious; these strings
+# are only scanned, never run.
+_PREFECT_SHUTDOWN = (
+    "git push origin v6 2>&1 | tail -1; date -u +%FT%TZ; "
+    "export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=20000'; "
+    "psql -h db.example.internal -U app_ro -d prefect -Atc \"select state_type, count(*) "
+    "from flow_run where state_type in ('RUNNING','PENDING') group by 1\"; "
+    "unset PGOPTIONS; "
+    "systemctl stop finance-data-worker.service stock-ranker-worker.service; "
+    "echo \"stop workers exit=$?\"; "
+    "systemctl stop prefect-server.service; echo \"stop server exit=$?\"; "
+    "systemctl is-active prefect-server.service finance-data-worker.service "
+    "stock-ranker-worker.service; "
+    "pgrep -af '/\\.venv/bin/prefect (server|worker)'"
+)
+
+
+class TestManagedSystemctl:
+    """Which systemctl calls count as lifecycle calls on managed units."""
+
+    @pytest.mark.parametrize("command", [
+        "systemctl stop prefect-server.service",
+        "systemctl restart finance-data-worker.service stock-ranker-worker.service",
+        "systemctl start prefect-server",
+        "systemctl try-restart prefect-server.service",
+        "systemctl reload-or-restart prefect-server.service",
+        "systemctl reset-failed stock-ranker-worker.service",
+        "systemctl --no-block restart prefect-server.service",
+        "systemctl -q stop prefect-server.service",
+        "systemctl --user stop prefect-server.service",
+        "systemctl stop prefect-server.service 2>&1",
+        _PREFECT_SHUTDOWN,
+    ])
+    def test_lifecycle_call_on_managed_unit_is_exempt(self, command):
+        assert check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        "cd /tmp; systemctl stop prefect-server.service",
+        "true && systemctl start prefect-server.service",
+        "echo checking\n  systemctl restart prefect-server.service",
+        "systemctl stop stock-ranker-worker.service; systemctl stop prefect-server.service",
+    ])
+    def test_after_a_separator_is_exempt(self, command):
+        """The rule's match includes the separator; that is not a break inside it."""
+        assert check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        "systemctl stop nginx",
+        "systemctl stop nginx.service",
+        "systemctl stop prefect-server.timer",
+        "systemctl restart prefect-server.service nginx.service",
+    ])
+    def test_unmanaged_unit_is_not(self, command):
+        assert not check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        "systemctl enable prefect-server.service",
+        "systemctl disable prefect-server.service",
+        "systemctl mask prefect-server.service",
+        "systemctl edit prefect-server.service",
+        "systemctl kill prefect-server.service",
+        "systemctl isolate prefect-server.service",
+        "systemctl set-property prefect-server.service CPUQuota=50%",
+        "systemctl daemon-reload",
+        "systemctl restart",
+    ])
+    def test_any_other_verb_is_not(self, command):
+        assert not check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        "systemctl -H build.example.com stop prefect-server.service",
+        "systemctl --host=build.example.com stop prefect-server.service",
+        "systemctl -M box stop prefect-server.service",
+        "systemctl start --job-mode=isolate prefect-server.service",
+        "systemctl -qn stop prefect-server.service",
+    ])
+    def test_other_options_are_not(self, command):
+        assert not check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        "systemctl stop 'prefect-*'",
+        "systemctl stop prefect-*",
+        "systemctl stop $UNIT",
+        'systemctl stop "$UNIT"',
+        'systemctl stop "prefect-server.service"',
+    ])
+    def test_unreadable_unit_is_not(self, command):
+        assert not check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        "systemctl stop prefect-server.service; systemctl stop nginx",
+        "systemctl stop prefect-server.service && systemctl enable nginx",
+    ])
+    def test_every_systemctl_must_qualify(self, command):
+        assert not check_managed_systemctl(command)
+
+    def test_systemctl_inside_a_nested_shell_string_is_not(self):
+        command = 'systemctl stop prefect-server.service; bash -c "cd /; systemctl stop nginx"'
+        assert not check_managed_systemctl(command)
+
+    def test_no_systemctl_is_not_exempt(self):
+        assert not check_managed_systemctl("ls -la")
+
+
+class TestManagedSystemctlInMain:
+    """Placement: it retires the systemctl rule and nothing else."""
+
+    PROJECT = "/home/user/myproject"
+
+    def _run(self, tmp_path, monkeypatch, command):
+        decisions = []
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", self.PROJECT)
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr(guard, "run_evaluators", lambda command, event: (None, ""))
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "transcript_path": "/tmp/managed-systemctl.jsonl",
+            "cwd": self.PROJECT,
+        })))
+        guard.main()
+        return decisions
+
+    def test_prefect_shutdown_does_not_prompt(self, tmp_path, monkeypatch):
+        assert self._run(tmp_path, monkeypatch, _PREFECT_SHUTDOWN) == []
+
+    def test_unmanaged_unit_still_asks(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch, "systemctl restart nginx")
+        assert decisions[0][1] == "ask"
+        assert guard.SYSTEMCTL_RULE in decisions[0][0]
+
+    def test_the_rescan_still_finds_the_next_rule(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch,
+                              "systemctl stop prefect-server.service && sudo reboot")
+        assert decisions[0][1] == "ask"
+        assert "sudo" in decisions[0][0]
+
+
 # ── Line continuations ────────────────────────────────────────────────────────
 
 _join_continuations = guard._join_continuations
