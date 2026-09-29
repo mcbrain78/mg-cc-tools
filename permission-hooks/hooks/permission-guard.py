@@ -689,22 +689,30 @@ _REDIRECT_TARGET_RE = re.compile(r"(?<!\d)>{1,2}\s*(?!&)([^\s;|&<>]+)")
 # Heredoc body stripping — removes content between heredoc markers
 # so that data inside heredocs is not mistaken for shell arguments.
 _HEREDOC_RE = re.compile(
-    r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n"  # start: <<'DELIM'...\n
-    r".*?"                                 # body (non-greedy, crosses lines)
-    r"^\1\s*$",                            # terminator: DELIM on its own line
+    r"(<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n)"  # opener line, through its newline
+    r".*?"                                   # body (non-greedy, crosses lines)
+    r"^\t*\2\s*$",                           # terminator: DELIM on its own line
     re.MULTILINE | re.DOTALL,
 )
 
 
 def _strip_heredocs(command):
-    """Remove heredoc bodies so their content is not parsed as shell arguments."""
-    return _HEREDOC_RE.sub("", command)
+    """Remove heredoc bodies so their content is not parsed as shell arguments.
+
+    The rest of the opener line stays: only the lines after it are the body,
+    so in `cat > f <<'EOF' && git push --force` the push is still a command.
+    """
+    return _HEREDOC_RE.sub(r"\1", command)
 
 
 # Quote masking — the contents of quoted spans are replaced by this filler so
 # shell punctuation inside a string literal (a `>` closing an XML tag in a sed
 # pattern, an `rm` inside a commit message) is not read as shell syntax.
+# Comments are masked the same way: bash never runs them.
 _MASK_CHAR = "x"
+
+# A `#` starts a comment only at the start of a word.
+_COMMENT_START_AFTER = " \t\n;&|()<>"
 
 # Nested shell invocations: the quoted argument IS a command, so masking it
 # would hide a real redirect or a real rm target. Those commands are scanned
@@ -762,6 +770,10 @@ def _mask_quoted(command):
     pair — is left visible: bash runs it, so `echo "$(sudo ls)"` is a sudo,
     not a string. Inside it, quoting starts afresh, so the pattern in
     `"$(grep "rm -rf" log)"` is still data.
+
+    A comment is masked up to its newline. Left alone, the apostrophe in
+    `# it's done` would open a quote that hides every line down to the next
+    apostrophe.
     """
     out = list(command)
     # Enclosing contexts, innermost last: '"' is a double-quoted span; ')' and
@@ -795,6 +807,12 @@ def _mask_quoted(command):
             continue
         if char == "\\":
             i += 2  # escaped char outside quotes — nothing to mask
+            continue
+        if char == "#" and (i == 0 or command[i - 1] in _COMMENT_START_AFTER):
+            newline = command.find("\n", i)
+            end = n if newline == -1 else newline
+            out[i:end] = _MASK_CHAR * (end - i)
+            i = end
             continue
         if char == "'":
             close = command.find("'", i + 1)

@@ -1180,6 +1180,19 @@ class TestMaskQuoted:
         cmd = 'echo ' + '"$(' * 5000 + 'ls'
         assert len(_mask_quoted(cmd)) == len(cmd)
 
+    def test_comment_is_masked_to_its_newline(self):
+        assert _mask_quoted("ls # it's\npwd") == "ls xxxxxx\npwd"
+
+    def test_apostrophes_in_two_comments_do_not_pair_up(self):
+        cmd = "# Let's go back\ncd /elsewhere\n# reset it's state\ngit reset --hard"
+        masked = _mask_quoted(cmd)
+        assert "cd /elsewhere" in masked
+        assert "git reset --hard" in masked
+
+    @pytest.mark.parametrize("cmd", ["echo a#b", "echo ${#x}", "echo $#", "curl http://h/#top"])
+    def test_hash_inside_a_word_is_not_a_comment(self, cmd):
+        assert _mask_quoted(cmd) == cmd
+
 
 class TestQuotedDataNotSyntax:
     """check_command masks quoted spans: a search pattern is not a command."""
@@ -1211,6 +1224,12 @@ class TestQuotedDataNotSyntax:
         result = check_command("rm -rf /data")
         assert result is not None
         assert "x" not in result[2]
+
+    def test_apostrophe_in_a_comment_hides_nothing(self):
+        assert_blocked("git status # it's fine\ngit reset --hard", "Git Branch & History")
+
+    def test_comment_is_data(self):
+        assert_allowed("ls  # git push --force would be wrong here")
 
     @pytest.mark.parametrize("command, category", [
         ('echo "$(sudo ls)"', "System Operations"),
@@ -1760,6 +1779,16 @@ class TestHeredocStripping:
         result = _strip_heredocs(cmd)
         assert "/tmp/out.txt" in result
         assert "body" not in result
+
+    def test_rest_of_the_opener_line_is_still_shell(self):
+        cmd = "cat > notes.txt <<'EOF' && git push --force\nbody\nEOF"
+        assert "git push --force" in _strip_heredocs(cmd)
+        assert "body" not in _strip_heredocs(cmd)
+        assert check_command(cmd)[0] == "force push"
+
+    def test_dash_heredoc_terminator_may_be_indented(self):
+        cmd = "cat <<-EOF\n\tgit push --force\n\tEOF\necho done"
+        assert check_command(cmd) is None
 
     # ── Integration: check_outside_project with heredoc content ───────────
 
