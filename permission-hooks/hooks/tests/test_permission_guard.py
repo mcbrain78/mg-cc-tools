@@ -4448,3 +4448,110 @@ class TestExecBitChmodInMain:
         no_dns(monkeypatch)
         command = "chmod +x run.sh && curl -X POST -d x http://localhost:4200/api"
         assert self._run(tmp_path, monkeypatch, command) == []
+
+
+# ── Fast-forward-only merge ───────────────────────────────────────────────────
+
+check_ff_only_merge = guard.check_ff_only_merge
+
+# The command that prompted in a real session: a subagent fast-forwarding its
+# worktree branch.
+_FF_WORKTREE = ("git merge --ff-only c51095a 2>&1 | tail -3; "
+                "git log --oneline -1; git branch --show-current")
+
+
+class TestFfOnlyMerge:
+    """Which merges count as fast-forward-only."""
+
+    @pytest.mark.parametrize("command", [
+        "git merge --ff-only feature-x",
+        "git merge feature-x --ff-only",
+        "git merge --ff-only origin/main",
+        "git merge --no-ff --ff-only feature-x",
+        "git merge --ff-only -q feature-x",
+        "git merge --abort && git merge --ff-only feature-x",
+        "cd ../wt && git merge --ff-only feature-x",
+        _FF_WORKTREE,
+    ])
+    def test_ff_only_is_exempt(self, command):
+        assert check_ff_only_merge(command)
+
+    @pytest.mark.parametrize("command", [
+        "git merge feature-x",
+        "git merge --ff feature-x",
+        "git merge --no-ff feature-x",
+        "git merge --squash feature-x",
+        # git keeps the last of --ff / --no-ff / --ff-only.
+        "git merge --ff-only --no-ff feature-x",
+        "git merge --ff-only feature-x --ff",
+    ])
+    def test_any_other_merge_is_not(self, command):
+        assert not check_ff_only_merge(command)
+
+    def test_every_merge_in_the_command_must_be_ff_only(self):
+        assert not check_ff_only_merge(
+            "git merge --ff-only a && git merge b")
+        assert not check_ff_only_merge(
+            "git merge b; git merge --ff-only a")
+
+    def test_quoted_option_is_data(self):
+        """A -m message is text, not an option, whichever way it points."""
+        assert not check_ff_only_merge('git merge -m "--ff-only" feature-x')
+        assert check_ff_only_merge(
+            'git merge --ff-only -m "not --no-ff" feature-x')
+
+    @pytest.mark.parametrize("command", [
+        'bash -c "git merge --ff-only feature-x"',
+        'eval "git merge --ff-only feature-x"',
+    ])
+    def test_nested_shell_is_not(self, command):
+        assert not check_ff_only_merge(command)
+
+    def test_no_merge_is_not_exempt(self):
+        assert not check_ff_only_merge("git log --oneline -1")
+
+
+class TestFfOnlyMergeInMain:
+    """Placement: it retires the git merge rule and nothing else."""
+
+    PROJECT = "/home/user/myproject"
+
+    def _run(self, tmp_path, monkeypatch, command):
+        decisions = []
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", self.PROJECT)
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr(guard, "run_evaluators", lambda command, event: (None, ""))
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "transcript_path": "/tmp/ff-only-merge.jsonl",
+            "cwd": self.PROJECT,
+        })))
+        guard.main()
+        return decisions
+
+    def test_worktree_fast_forward_does_not_prompt(self, tmp_path, monkeypatch):
+        assert self._run(tmp_path, monkeypatch, _FF_WORKTREE) == []
+
+    def test_plain_merge_still_asks(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch, "git merge feature-x")
+        assert decisions[0][1] == "ask"
+        assert "git merge (not recovery)" in decisions[0][0]
+
+    def test_overridden_ff_only_still_asks(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch,
+                              "git merge --ff-only --no-ff feature-x")
+        assert decisions[0][1] == "ask"
+        assert "git merge (not recovery)" in decisions[0][0]
+
+    def test_the_rescan_still_finds_the_next_rule(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch,
+                              "git merge --ff-only feature-x && git push --force")
+        assert decisions[0][1] == "ask"
+        assert "force push" in decisions[0][0]

@@ -175,6 +175,11 @@ _SYSTEMCTL_WRITE = (
 # not, and everything else — branch switches, --detach, --force — asks here.
 GIT_CHECKOUT_RULE = "git checkout"
 
+# Suppressed for a fast-forward-only merge by check_ff_only_merge; see the
+# Fast-forward-only merge section.
+GIT_MERGE_RULE = "git merge (not recovery)"
+_GIT_MERGE_NOT_RECOVERY = r"\bgit\s+merge\s+(?!--abort|--continue|--quit)"
+
 # Suppressed for local targets by check_local_http; see the Local HTTP targets
 # section for what "local" means and why only this one rule is exempted.
 HTTP_SUBMIT_RULE = "HTTP data submission"
@@ -189,7 +194,7 @@ CATEGORIES = {
         (r"\bgit\s+switch\b", "git switch"),
         (r"\bgit\s+branch\s+(?!-)[A-Za-z]", "branch creation"),
         (r"\bgit\s+branch\s+(-[dD]|--delete)\b", "branch deletion"),
-        (r"\bgit\s+merge\s+(?!--abort|--continue|--quit)", "git merge (not recovery)"),
+        (_GIT_MERGE_NOT_RECOVERY, GIT_MERGE_RULE),
         (r"\bgit\s+rebase\s+(?!--abort|--continue|--quit|--skip)", "git rebase (not recovery)"),
         (r"\bgit\s+cherry-pick\s+(?!--abort|--continue|--quit)", "git cherry-pick (not recovery)"),
         (r"\bgit\s+reset\s+--hard\b", "git reset --hard"),
@@ -1366,12 +1371,53 @@ def check_exec_bit_chmod(command):
     return found
 
 
+# ── Fast-forward-only merge ─────────────────────────────────────────────────
+# GIT_MERGE_RULE asks on every merge that is not a recovery, but a merge with
+# --ff-only does none of what makes a merge worth asking about. It either
+# moves the branch forward onto commits that already exist or fails: no merge
+# commit, no conflict, and git refuses before it would overwrite uncommitted
+# or untracked changes. `git reset --hard ORIG_HEAD` undoes it. `git pull`,
+# which CAN make a merge commit, is not guarded at all.
+#
+# git reads --ff, --no-ff and --ff-only as one option and keeps the last one,
+# so `git merge --ff-only --no-ff x` makes a merge commit. The exemption holds
+# only when --ff-only is the last of the three.
+
+_GIT_MERGE_NOT_RECOVERY_RE = re.compile(_GIT_MERGE_NOT_RECOVERY)
+
+_FF_MODE_OPTS = frozenset({"--ff", "--no-ff", "--ff-only"})
+
+
+def check_ff_only_merge(command):
+    """Return True if every merge GIT_MERGE_RULE catches in *command* is --ff-only.
+
+    Read the way check_command reads it — heredocs dropped, quotes masked — so
+    a `--no-ff` inside a -m message is not an option. A nested shell hides its
+    real command in a string and gets no exemption.
+    """
+    command = _strip_heredocs(command)
+    if _SHELL_INVOKER_RE.search(command):
+        return False
+    found = False
+    for segment in _SEGMENT_RE.findall(_mask_quoted(command)):
+        match = _GIT_MERGE_NOT_RECOVERY_RE.search(segment)
+        if not match:
+            continue
+        modes = [token for token in _TOKEN_RE.findall(segment[match.end():])
+                 if token in _FF_MODE_OPTS]
+        if not modes or modes[-1] != "--ff-only":
+            return False
+        found = True
+    return found
+
+
 # Rules a more precise check can retire for one command, keyed by the rule's
 # description. Each check sees the whole command and returns True only when it
 # has cleared every match of its rule.
 RULE_EXEMPTIONS = {
     HTTP_SUBMIT_RULE: check_local_http,
     PERMISSION_CHANGE_RULE: check_exec_bit_chmod,
+    GIT_MERGE_RULE: check_ff_only_merge,
 }
 
 
