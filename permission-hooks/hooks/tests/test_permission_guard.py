@@ -4731,3 +4731,226 @@ class TestLineContinuation:
                "EOF\n"
                "bash run.sh")
         assert check_command(cmd) is None
+
+
+# ── Linked worktrees ──────────────────────────────────────────────────────────
+
+_command_worktree = guard._command_worktree
+
+_GIT_ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+
+
+def _git(cwd, *args):
+    subprocess.run(["git", "-C", str(cwd), *args], check=True,
+                   capture_output=True, env=_GIT_ENV)
+
+
+@pytest.fixture
+def worktree_repo(tmp_path):
+    """A repo on `main` with a linked worktree laid out the way CC makes one.
+
+    Stashes: stash@{0} was made in the worktree, stash@{1} in the main tree.
+    Both trees have an uncommitted change to file.txt.
+    """
+    main = tmp_path / "proj"
+    main.mkdir()
+    _git(main, "init", "-q", "-b", "main")
+    (main / "file.txt").write_text("one\n")
+    _git(main, "add", "file.txt")
+    _git(main, "commit", "-qm", "one")
+    _git(main, "branch", "other")
+    _git(main, "tag", "v1")
+    wt = main / ".claude" / "worktrees" / "agent-x"
+    _git(main, "worktree", "add", "-q", "-b", "worktree-agent-x", str(wt))
+    (main / "file.txt").write_text("main change\n")
+    _git(main, "stash", "push", "-qm", "from-main")
+    (wt / "file.txt").write_text("wt change\n")
+    _git(wt, "stash", "push", "-qm", "item45")
+    (main / "file.txt").write_text("main dirty\n")
+    (wt / "file.txt").write_text("wt dirty\n")
+    (wt / "sub").mkdir()
+    return main, wt
+
+
+class TestCommandWorktree:
+    """Where a call's git commands run, and whether that is a linked worktree."""
+
+    def test_main_tree_is_not_a_linked_worktree(self, worktree_repo):
+        main, _wt = worktree_repo
+        assert _command_worktree("git reset --hard", str(main)) is None
+
+    def test_linked_worktree_is_found(self, worktree_repo):
+        _main, wt = worktree_repo
+        found = _command_worktree("git reset --hard", str(wt))
+        assert found == guard.LinkedWorktree(os.path.realpath(wt), "worktree-agent-x")
+
+    def test_from_a_subdirectory(self, worktree_repo):
+        _main, wt = worktree_repo
+        assert _command_worktree("git reset --hard", str(wt / "sub"))
+
+    def test_detached_worktree_has_no_branch(self, worktree_repo):
+        _main, wt = worktree_repo
+        _git(wt, "checkout", "-q", "--detach")
+        assert _command_worktree("git reset --hard", str(wt)).branch is None
+
+    def test_leading_cd_into_the_worktree(self, worktree_repo):
+        main, wt = worktree_repo
+        assert _command_worktree(f"cd {wt} && git reset --hard", str(main))
+        assert _command_worktree(f"cd {wt}; git reset --hard", str(main))
+
+    @pytest.mark.parametrize("shape", [
+        "cd {wt} | git reset --hard",      # a pipeline runs the cd in a subshell
+        "cd {wt} & git reset --hard",      # so does the background
+        "(cd {wt} && true); git reset --hard",
+        "cd {wt}/missing && git reset --hard",  # a failed cd leaves git where it was
+    ])
+    def test_cd_that_does_not_stick(self, worktree_repo, shape):
+        main, wt = worktree_repo
+        assert _command_worktree(shape.format(wt=wt), str(main)) is None
+
+    @pytest.mark.parametrize("shape", [
+        "cd sub && git reset --hard",
+        "cd {wt}/sub && git reset --hard",
+        "pushd sub && git reset --hard && popd",
+        "git -C sub status && git reset --hard",
+    ])
+    def test_moves_inside_the_worktree(self, worktree_repo, shape):
+        _main, wt = worktree_repo
+        assert _command_worktree(shape.format(wt=wt), str(wt))
+
+    @pytest.mark.parametrize("shape", [
+        "cd {main} && git reset --hard",
+        "cd .. && git reset --hard",
+        "cd $WT && git reset --hard",
+        "cd ~/proj && git reset --hard",
+        "cd; git reset --hard",
+        "cd - && git reset --hard",
+        "pushd {main} && git reset --hard",
+        "builtin cd {main}; git reset --hard",
+        "git -C {main} status && git reset --hard",
+        "GIT_DIR={main}/.git git reset --hard",
+        "export GIT_WORK_TREE={main}; git reset --hard",
+        "git --git-dir={main}/.git reset --hard",
+        'eval "cd {main}"; git reset --hard',
+        "source setup.sh; git reset --hard",
+    ])
+    def test_anything_that_could_leave_turns_it_off(self, worktree_repo, shape):
+        main, wt = worktree_repo
+        assert _command_worktree(shape.format(main=main, wt=wt), str(wt)) is None
+
+    def test_no_cwd(self):
+        assert _command_worktree("git reset --hard", "") is None
+
+
+class TestLinkedWorktreeInMain:
+    """Which git commands stop asking inside a linked worktree, and which do not."""
+
+    def _run(self, tmp_path, monkeypatch, command, cwd, project):
+        decisions = []
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project))
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_deny", lambda reason: decisions.append((reason, "deny")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr(guard, "run_evaluators", lambda command, event: (None, ""))
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "transcript_path": "/tmp/linked-worktree.jsonl",
+            "cwd": str(cwd),
+        })))
+        guard.main()
+        return decisions
+
+    @pytest.mark.parametrize("command", [
+        "git reset --hard HEAD",
+        "git merge other",
+        "git rebase main",
+        "git cherry-pick main",
+        "git checkout -b new-branch",
+        "git switch -c new-branch",
+        "git switch --detach HEAD",
+        "git checkout worktree-agent-x",
+        "git checkout main -- file.txt",
+        "git branch new-feature",
+        "git checkout -- file.txt",
+        "git restore file.txt",
+        "git clean -fd",
+        "git stash drop",
+        "git stash drop stash@{0}",
+        "git stash drop 0",
+        # The call that prompted in a real session.
+        "git stash drop stash@{0} && git stash list --format='%gd %H %gs' | grep -c item45 ; true",
+    ])
+    def test_worktree_local_git_does_not_prompt(self, tmp_path, monkeypatch, worktree_repo, command):
+        main, wt = worktree_repo
+        assert self._run(tmp_path, monkeypatch, command, wt, main) == []
+
+    @pytest.mark.parametrize("command, rule", [
+        ("git checkout main", "git checkout"),
+        ("git checkout other", "git checkout"),
+        ("git checkout -", "git checkout"),
+        ('git checkout "other"', "git checkout"),
+        ("git checkout -B other", "git checkout"),
+        ("git switch other", "git switch"),
+        ("git switch -C other", "git switch"),
+        ("git rebase main other", "git rebase (not recovery)"),
+        ("git rebase --root other", "git rebase (not recovery)"),
+        ("git branch -D other", "branch deletion"),
+        ("git tag -d v1", "git tag deletion"),
+        ("git stash clear", "git stash destruction"),
+        ("git stash drop stash@{1}", "git stash destruction"),
+        ("git stash drop && git stash drop", "git stash destruction"),
+        ("git stash drop $S", "git stash destruction"),
+        ("git push --force", "force push"),
+        ("find . -name x -execdir git reset --hard \\;", "git reset --hard"),
+        ("sudo git reset --hard", "git reset --hard"),
+    ])
+    def test_reaching_shared_state_still_asks(self, tmp_path, monkeypatch, worktree_repo, command, rule):
+        main, wt = worktree_repo
+        decisions = self._run(tmp_path, monkeypatch, command, wt, main)
+        assert decisions and decisions[0][1] == "ask"
+        assert rule in decisions[0][0]
+
+    def test_leaving_the_worktree_still_asks(self, tmp_path, monkeypatch, worktree_repo):
+        main, wt = worktree_repo
+        decisions = self._run(tmp_path, monkeypatch, f"cd {main} && git reset --hard", wt, main)
+        assert decisions and "git reset --hard" in decisions[0][0]
+
+    def test_uncommitted_work_outside_the_worktree_still_asks(self, tmp_path, monkeypatch, worktree_repo):
+        main, wt = worktree_repo
+        decisions = self._run(tmp_path, monkeypatch,
+                              f"git -C {main} checkout -- file.txt", wt, main)
+        assert decisions and "Git Worktree Destruction" in decisions[0][0]
+
+    def test_stash_from_a_detached_worktree_still_asks(self, tmp_path, monkeypatch, worktree_repo):
+        main, wt = worktree_repo
+        _git(wt, "checkout", "-q", "--detach")
+        decisions = self._run(tmp_path, monkeypatch, "git stash drop", wt, main)
+        assert decisions and "git stash destruction" in decisions[0][0]
+
+    def test_main_session_entering_the_worktree(self, tmp_path, monkeypatch, worktree_repo):
+        main, wt = worktree_repo
+        assert self._run(tmp_path, monkeypatch, f"cd {wt} && git reset --hard", main, main) == []
+
+    @pytest.mark.parametrize("command, rule", [
+        ("git reset --hard HEAD", "git reset --hard"),
+        ("git merge other", "git merge (not recovery)"),
+        ("git stash drop stash@{1}", "git stash destruction"),
+        ("git checkout -b new-branch", "git checkout"),
+    ])
+    def test_main_tree_still_asks(self, tmp_path, monkeypatch, worktree_repo, command, rule):
+        main, _wt = worktree_repo
+        decisions = self._run(tmp_path, monkeypatch, command, main, main)
+        assert decisions and decisions[0][1] == "ask"
+        assert rule in decisions[0][0]
+
+    def test_main_tree_uncommitted_work_still_asks(self, tmp_path, monkeypatch, worktree_repo):
+        main, _wt = worktree_repo
+        decisions = self._run(tmp_path, monkeypatch, "git checkout -- file.txt", main, main)
+        assert decisions and "Git Worktree Destruction" in decisions[0][0]

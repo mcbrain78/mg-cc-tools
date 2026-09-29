@@ -179,6 +179,12 @@ GIT_CHECKOUT_RULE = "git checkout"
 # Fast-forward-only merge section.
 GIT_MERGE_RULE = "git merge (not recovery)"
 
+# Read by check_linked_worktree_rule, which judges these rules' forms; see the
+# Linked worktrees section.
+GIT_SWITCH_RULE = "git switch"
+GIT_REBASE_RULE = "git rebase (not recovery)"
+GIT_STASH_RULE = "git stash destruction"
+
 # Suppressed for local targets by check_local_http; see the Local HTTP targets
 # section for what "local" means and why only this one rule is exempted.
 HTTP_SUBMIT_RULE = "HTTP data submission"
@@ -190,14 +196,14 @@ PERMISSION_CHANGE_RULE = "permission/ownership change"
 CATEGORIES = {
     "Git Branch & History": [
         (r"\bgit\s+checkout\b", GIT_CHECKOUT_RULE),
-        (r"\bgit\s+switch\b", "git switch"),
+        (r"\bgit\s+switch\b", GIT_SWITCH_RULE),
         (r"\bgit\s+branch\s+(?!-)[A-Za-z]", "branch creation"),
         (r"\bgit\s+branch\s+(-[dD]|--delete)\b", "branch deletion"),
         (r"\bgit\s+merge\s+(?!--abort|--continue|--quit)", GIT_MERGE_RULE),
-        (r"\bgit\s+rebase\s+(?!--abort|--continue|--quit|--skip)", "git rebase (not recovery)"),
+        (r"\bgit\s+rebase\s+(?!--abort|--continue|--quit|--skip)", GIT_REBASE_RULE),
         (r"\bgit\s+cherry-pick\s+(?!--abort|--continue|--quit)", "git cherry-pick (not recovery)"),
         (r"\bgit\s+reset\s+--hard\b", "git reset --hard"),
-        (r"\bgit\s+stash\s+(drop|clear)\b", "git stash destruction"),
+        (r"\bgit\s+stash\s+(drop|clear)\b", GIT_STASH_RULE),
         (r"\bgit\s+tag\s+(-d|--delete)\b", "git tag deletion"),
     ],
     "Git Destructive Remote": [
@@ -1514,6 +1520,291 @@ def check_ff_only_merge(command):
     return True
 
 
+# ── Linked worktrees ────────────────────────────────────────────────────────
+# The Git Branch & History rules protect the repository's real history, above
+# all the branch checked out in the main working tree. A linked worktree
+# (`git worktree add`, and every worktree CC gives an isolated agent) is a
+# workspace of its own: resetting, rebasing or discarding changes there is the
+# work, and asking about each step costs an approval per step of an unattended
+# run.
+#
+# A worktree still shares the repository with the main tree and every other
+# worktree: all branches, all tags, the stash list, config and remotes. So only
+# the rules whose effect stays in the worktree and on its own branch stand down
+# there (LINKED_WORKTREE_RULES). Branch and tag deletion, `stash clear` and
+# everything under Git Destructive Remote keep asking. So do the forms of the
+# retired rules that reach another branch:
+#
+#   - switching the worktree onto an existing branch (`git checkout main`,
+#     `git switch main`, `checkout -B`, `switch -C`). A branch checked out
+#     nowhere else — which can be the official one, when the main tree is on
+#     another branch — could otherwise be reset or rebased from here. Creating
+#     a new branch or detaching HEAD stays exempt.
+#   - `git rebase <upstream> <branch>`, which checks out and rewrites <branch>.
+#   - dropping a stash that was not made on this worktree's branch. The stash
+#     list is shared, so `stash@{0}` can be another worktree's; a stash's
+#     subject names the branch it was made on, and git never has one branch
+#     checked out in two worktrees.
+#
+# The uncommitted-work check (Git worktree destruction) stands down in a
+# linked worktree too: discarding the worktree's own changes is the trade.
+#
+# All of this needs every command in the call to provably run inside one
+# linked worktree: the one the call starts in, or the one a leading
+# `cd <dir> &&` enters. A later `cd` or `git -C` is followed when its target
+# is literal — absolute, or relative without `..` — and stays inside it.
+# Anything that can move git elsewhere less plainly (pushd to a new place,
+# env -C, --git-dir, GIT_DIR, source, eval, a variable target) turns the
+# exemption off for the whole call, and every rule asks as before.
+
+LinkedWorktree = namedtuple("LinkedWorktree", "top branch")
+
+LINKED_WORKTREE_RULES = frozenset({
+    GIT_CHECKOUT_RULE, GIT_SWITCH_RULE, "branch creation", GIT_MERGE_RULE,
+    GIT_REBASE_RULE, "git cherry-pick (not recovery)", "git reset --hard",
+    GIT_STASH_RULE,
+})
+
+# Ways to point git at another repository or directory that no `cd` or `-C`
+# spells out.
+_GIT_RELOCATE_RE = re.compile(
+    r"\bGIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|NAMESPACE)\b"
+    r"|--git-dir\b|--work-tree\b"
+)
+
+# One simple command: the span between two _COMMAND_BREAK_RE break points.
+_SIMPLE_COMMAND_RE = re.compile(r"[^\n;|&()`]+")
+
+_ASSIGNMENT_RE = re.compile(r"\w+=")
+_ASSIGNMENTS_ONLY_RE = re.compile(r"\s*(?:\w+=\S*\s+)*")
+
+_DIR_CHANGERS = frozenset({"cd", "pushd", "popd"})
+
+# Commands that run text in THIS shell, where a `cd` would stick.
+_SAME_SHELL_RUNNERS = frozenset({"source", ".", "eval"})
+
+# A path that means the same thing to bash as it reads here: no expansion,
+# no quoting left over.
+_LITERAL_PATH_RE = re.compile(r"[^$`~*?\[\]{}'\"\\]+")
+
+
+def _worktree_at(path):
+    """Return the LinkedWorktree containing *path*, or None.
+
+    None for the main working tree (its git dir is the common dir), for a path
+    outside any repository, and whenever git does not answer.
+    """
+    out = _run_git(path, ["rev-parse", "--path-format=absolute",
+                          "--show-toplevel", "--git-dir", "--git-common-dir"])
+    lines = out.splitlines() if out else []
+    if len(lines) != 3:
+        return None
+    top, git_dir, common_dir = lines
+    if os.path.realpath(git_dir) == os.path.realpath(common_dir):
+        return None
+    branch = _run_git(top, ["symbolic-ref", "-q", "--short", "HEAD"])
+    return LinkedWorktree(os.path.realpath(top), branch.strip() if branch else None)
+
+
+def _inside(path, top):
+    return os.path.commonpath([path, top]) == top
+
+
+def _follow_dir(here, target, top):
+    """Return where `cd <target>` from *here* lands, or None if not provably in *top*."""
+    if not _LITERAL_PATH_RE.fullmatch(target) or ".." in target.split("/"):
+        return None
+    landed = os.path.realpath(os.path.join(here, target))
+    return landed if _inside(landed, top) else None
+
+
+def _cd_target(tokens):
+    """Return the one directory a `cd`/`pushd` names, "" for none, None if unreadable."""
+    args = [token for token in tokens[1:] if token not in ("-L", "-P", "-e", "-@", "--")]
+    if not args:
+        return ""
+    if len(args) > 1 or args[0] == "-":
+        return None
+    return args[0]
+
+
+def _leading_cd(command, masked, cwd):
+    """Return the directory a leading `cd <dir>` moves the whole call into, or None.
+
+    Only a cd the rest of the call provably runs after: first thing on the
+    line, not in a pipeline or in the background (both run it in a subshell),
+    and into a directory that exists, so that it cannot fail and leave the
+    rest running where the call started.
+    """
+    first = _SIMPLE_COMMAND_RE.match(masked)
+    if not first:
+        return None
+    tokens = _tokenize_segment(command[first.start():first.end()])
+    if not tokens or tokens[0] != "cd":
+        return None
+    after = masked[first.end():first.end() + 2]
+    if (after.startswith("|") and after != "||") or (after.startswith("&") and after != "&&"):
+        return None
+    target = _cd_target(tokens)
+    if not target or not _LITERAL_PATH_RE.fullmatch(target):
+        return None
+    landed = os.path.realpath(os.path.join(cwd, target))
+    return landed if os.path.isdir(landed) else None
+
+
+def _command_worktree(command, cwd):
+    """Return the LinkedWorktree every command in *command* runs inside, or None."""
+    if not cwd or not os.path.isabs(cwd):
+        return None
+    command = _command_text(command)
+    if _GIT_RELOCATE_RE.search(command):
+        return None
+    masked = _mask_quoted(command)
+    spans = list(_SIMPLE_COMMAND_RE.finditer(masked))
+    here = _leading_cd(command, masked, cwd)
+    if here:
+        spans = spans[1:]  # already followed
+    else:
+        here = os.path.realpath(cwd)
+    worktree = _worktree_at(here)
+    if worktree is None or not _inside(here, worktree.top):
+        return None
+    for span in spans:
+        tokens = _tokenize_segment(command[span.start():span.end()])
+        while tokens and _ASSIGNMENT_RE.match(tokens[0]):
+            tokens.pop(0)
+        if not tokens:
+            continue
+        verb = tokens[0]
+        if verb in _SAME_SHELL_RUNNERS or _DIR_CHANGERS & set(tokens[1:]):
+            return None
+        if verb in ("cd", "pushd"):
+            target = _cd_target(tokens)
+            if target is None or (verb == "cd" and target == ""):
+                return None  # a bare cd goes to $HOME
+            # pushd with no directory, or +N/-N, only rotates the stack of
+            # places this call already went, all of them inside the worktree.
+            if target and not (verb == "pushd" and re.fullmatch(r"[+-]\d+", target)):
+                here = _follow_dir(here, target, worktree.top)
+                if here is None:
+                    return None
+        elif os.path.basename(verb) == "git":
+            # `git -C <dir>` moves only this one git; each has to stay inside.
+            at, index = here, 1
+            while index < len(tokens) and tokens[index].startswith("-"):
+                if tokens[index] == "-C" and index + 1 < len(tokens):
+                    at = _follow_dir(at, tokens[index + 1], worktree.top)
+                    if at is None:
+                        return None
+                index += 2 if tokens[index] in _GIT_GLOBAL_VALUE_OPTS else 1
+    return worktree
+
+
+def _names_other_branch(name, worktree):
+    """Return True unless *name* is provably not a branch other than the worktree's own.
+
+    Checking one out moves the worktree onto a shared branch. A name git
+    cannot answer for, or one that is not literal, counts as one.
+    """
+    if name == worktree.branch:
+        return False
+    if name == "-" or "@{" in name or not _LITERAL_PATH_RE.fullmatch(name):
+        return True
+    out = _run_git(worktree.top, ["for-each-ref", "--format=%(refname)",
+                                  "refs/heads/" + name])
+    return out is None or bool(out.strip())
+
+
+_CHECKOUT_WORKTREE_VALUE_OPTS = _CHECKOUT_VALUE_OPTS | {"-b", "-B", "--orphan"}
+_SWITCH_VALUE_OPTS = frozenset({
+    "-c", "-C", "--create", "--force-create", "--orphan", "--conflict",
+})
+_REBASE_VALUE_OPTS = frozenset({
+    "--onto", "-s", "--strategy", "-X", "--strategy-option", "-x", "--exec",
+})
+
+# A stash subject names the branch it was made on: "On <branch>: <message>",
+# or "WIP on <branch>: <sha> <subject>" when no message was given. A branch
+# name cannot contain a colon.
+_STASH_SUBJECT_RE = re.compile(r"(?:WIP on|On) ([^:]+): ")
+_STASH_REF_RE = re.compile(r"stash@\{(\d+)\}|(\d+)")
+
+
+def _checkout_stays(args, worktree):
+    flags, pre, _post, saw_dashdash = _split_operands(args, _CHECKOUT_WORKTREE_VALUE_OPTS)
+    names, shorts = _flag_names(flags)
+    if "B" in shorts:
+        return False
+    if "b" in shorts or names & {"--orphan", "--detach"}:
+        return True
+    # With `--`, what comes first is a tree-ish to restore paths from.
+    if saw_dashdash or not pre:
+        return True
+    return not _names_other_branch(pre[0], worktree)
+
+
+def _switch_stays(args, worktree):
+    flags, pre, _post, _ = _split_operands(args, _SWITCH_VALUE_OPTS)
+    names, shorts = _flag_names(flags)
+    if "C" in shorts or "--force-create" in names:
+        return False
+    if "c" in shorts or "d" in shorts or names & {"--create", "--orphan", "--detach"}:
+        return True
+    return bool(pre) and not _names_other_branch(pre[0], worktree)
+
+
+def _rebase_stays(args):
+    flags, pre, post, _ = _split_operands(args, _REBASE_VALUE_OPTS)
+    names, _ = _flag_names(flags)
+    # A second operand, or the only one after --root, is a branch to check out.
+    return len(pre) + len(post) < (1 if "--root" in names else 2)
+
+
+def _stash_drop_is_own(word, args, worktree):
+    if "drop" not in word or worktree.branch is None:
+        return False
+    refs = [arg for arg in args if arg not in ("-q", "--quiet")]
+    if len(refs) > 1:
+        return False
+    match = _STASH_REF_RE.fullmatch(refs[0] if refs else "stash@{0}")
+    if not match:
+        return False
+    ref = "stash@{%s}" % (match.group(1) or match.group(2))
+    subject = _run_git(worktree.top, ["log", "-1", "--format=%s", ref, "--"])
+    made_on = _STASH_SUBJECT_RE.match(subject or "")
+    return bool(made_on) and made_on.group(1) == worktree.branch
+
+
+def check_linked_worktree_rule(description, command, worktree):
+    """Return True if every match of rule *description* stays inside *worktree*.
+
+    *worktree* is what _command_worktree found for the whole call. Each match
+    has to be a git command in command position (not an argument of `find
+    -execdir` or `xargs`, which run it elsewhere) whose form reaches no other
+    branch.
+    """
+    found = _rule_commands(command, description)
+    if not found:
+        return False
+    # Every drop after the first would hit a stash the check never looked at:
+    # the one that moved up into its place.
+    if description == GIT_STASH_RULE and len(found) > 1:
+        return False
+    for before, word, after in found:
+        if not _ASSIGNMENTS_ONLY_RE.fullmatch(before):
+            return False
+        args = _TOKEN_RE.findall(after)
+        if description == GIT_CHECKOUT_RULE and not _checkout_stays(args, worktree):
+            return False
+        if description == GIT_SWITCH_RULE and not _switch_stays(args, worktree):
+            return False
+        if description == GIT_REBASE_RULE and not _rebase_stays(args):
+            return False
+        if description == GIT_STASH_RULE and not _stash_drop_is_own(word, args, worktree):
+            return False
+    return True
+
+
 # Rules a more precise check can retire for one command, keyed by the rule's
 # description. Each check sees the whole command and returns True only when it
 # has cleared every match of its rule.
@@ -2320,15 +2611,29 @@ def main():
     # work is not routine. Everything else in this guard interrupts something
     # that can be retried; this one cannot. The window still covers the common
     # case, because a restore over a clean path clears here and never prompts.
+    #
+    # A linked worktree is the exception (see the Linked worktrees section):
+    # there the changes at stake are the worktree's own. Resolved at most once
+    # per call, and only once something has asked for it, since it runs git.
+    worktree_memo = []
+
+    def linked_worktree():
+        if not worktree_memo:
+            worktree_memo.append(
+                _command_worktree(tool_input.get("command", ""), event.get("cwd", ""))
+            )
+        return worktree_memo[0]
+
     skip_rules = ()
     if tool_name == "Bash" and tool_input.get("command"):
         verdict = check_worktree_destruction(
             tool_input["command"], _resolve_project_root(event)
         )
         if verdict and verdict[0] == "ask":
-            _ask(f"[permission-guard] Git Worktree Destruction: {verdict[1]}")
-            return
-        if verdict:
+            if linked_worktree() is None:
+                _ask(f"[permission-guard] Git Worktree Destruction: {verdict[1]}")
+                return
+        elif verdict:
             skip_rules = (GIT_CHECKOUT_RULE,)
 
     # ── Session context auto-approve ───────────────────────────────────
@@ -2403,10 +2708,15 @@ def main():
     # An exemption retires its rule and only that rule, so the scan runs again
     # for whatever it was standing in front of (a `sudo`, a pipe-to-shell).
     # Each one is tested only once its rule has matched, which keeps
-    # check_local_http's name lookup off every other Bash call. The loop ends
-    # because a skipped rule cannot match again.
-    while (result and result[0] in RULE_EXEMPTIONS
-           and RULE_EXEMPTIONS[result[0]](command)):
+    # check_local_http's name lookup and the worktree's git calls off every
+    # other Bash call. The loop ends because a skipped rule cannot match again.
+    def exempt(rule):
+        if rule in RULE_EXEMPTIONS and RULE_EXEMPTIONS[rule](command):
+            return True
+        return (rule in LINKED_WORKTREE_RULES and linked_worktree() is not None
+                and check_linked_worktree_rule(rule, command, linked_worktree()))
+
+    while result and exempt(result[0]):
         skip_rules += (result[0],)
         result = check_command(command, skip_rules)
     if result:
