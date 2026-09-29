@@ -196,8 +196,8 @@ echo "  Commands → ${COMMANDS_DIR}/ (edit-on.md, edit-off.md, auto-approve.md,
 # `$(git rev-parse --show-toplevel)` walks up to the repo root regardless of
 # cwd, and the result is identical in cloud clones since they're still git
 # repos. The {MG_INSTALL_PROJECT_ROOT} placeholder in permission-guard.py is
-# left unresolved in project mode; _resolve_project_root() falls back to
-# event.cwd at runtime.
+# left unresolved in project mode; _resolve_project_root() resolves it at
+# runtime to CLAUDE_PROJECT_DIR, falling back to event.cwd if that is unset.
 #
 # In --global/--target modes the hook scripts live at a fixed absolute
 # location (~/.claude/... or user-specified) so we bake absolute paths.
@@ -278,11 +278,11 @@ else
   echo "    Guard logic: unchanged (${HOOK_MD5_AFTER:0:8})"
 fi
 if [[ "$MODE" == "project" ]]; then
-  echo "    PROJECT_ROOT: {MG_INSTALL_PROJECT_ROOT} placeholder (resolves to event.cwd at runtime)"
+  echo "    PROJECT_ROOT: {MG_INSTALL_PROJECT_ROOT} placeholder (resolves at runtime to CLAUDE_PROJECT_DIR, else event.cwd)"
 elif [[ -n "$PROJECT_ROOT" ]]; then
   echo "    PROJECT_ROOT: ${PROJECT_ROOT}"
 else
-  echo "    PROJECT_ROOT: (empty — falls back to cwd from hook event)"
+  echo "    PROJECT_ROOT: (empty — resolves at runtime to CLAUDE_PROJECT_DIR, else event.cwd)"
 fi
 echo ""
 echo "  Usage watch (optional, set-and-forget):"

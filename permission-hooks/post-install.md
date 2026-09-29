@@ -60,7 +60,7 @@ chmod +x "<TARGET_HOOKS_DIR>/permission-guard.py"
 ```
 
 2. Resolve the `{MG_INSTALL_PROJECT_ROOT}` placeholder:
-   - **If `INSTALL_MODE == project`:** leave the placeholder in place. At runtime the hook's `_resolve_project_root()` helper detects the `{` prefix and falls back to `event.cwd`, so the hook works in any clone of the project.
+   - **If `INSTALL_MODE == project`:** leave the placeholder in place. At runtime the hook's `_resolve_project_root()` helper detects the `{` prefix and resolves to `CLAUDE_PROJECT_DIR` (falling back to `event.cwd` only when that is unset), so the hook works in any clone of the project.
    - **Otherwise (global/target):** replace with the absolute path to the target project:
      ```bash
      sed -i "s|{MG_INSTALL_PROJECT_ROOT}|<target project>|g" "<TARGET_HOOKS_DIR>/permission-guard.py"
@@ -104,7 +104,7 @@ grep '^PROJECT_ROOT = ' "<TARGET_HOOKS_DIR>/permission-guard.py"
   ```bash
   sed -i 's|^PROJECT_ROOT = .*|PROJECT_ROOT = "{MG_INSTALL_PROJECT_ROOT}"|' "<TARGET_HOOKS_DIR>/permission-guard.py"
   ```
-  Log: `PROJECT_ROOT kept as placeholder (project mode — resolves to event.cwd at runtime)`
+  Log: `PROJECT_ROOT kept as placeholder (project mode — resolves at runtime to CLAUDE_PROJECT_DIR, else event.cwd)`
 
 - **Otherwise (global/target):** if the value is empty or still the placeholder, resolve it to the absolute target path:
   ```bash
