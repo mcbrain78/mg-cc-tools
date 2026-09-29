@@ -5013,3 +5013,58 @@ class TestLinkedWorktreeInMain:
         main, _wt = worktree_repo
         decisions = self._run(tmp_path, monkeypatch, "git checkout -- file.txt", main, main)
         assert decisions and "Git Worktree Destruction" in decisions[0][0]
+
+    @pytest.mark.parametrize("command", [
+        "git -C sub reset --hard",
+        "git --no-pager stash drop",
+        "git -C sub -P rebase main",
+    ])
+    def test_plain_git_options_keep_the_exemption(self, tmp_path, monkeypatch, worktree_repo, command):
+        main, wt = worktree_repo
+        assert self._run(tmp_path, monkeypatch, command, wt, main) == []
+
+    @pytest.mark.parametrize("shape, rule", [
+        ("git -c core.worktree={main} reset --hard", "git reset --hard"),
+        ("git -c rebase.updateRefs=true rebase main", "git rebase (not recovery)"),
+        ("git -C {main} reset --hard", "git reset --hard"),
+        ("git -C .. stash drop", "git stash destruction"),
+    ])
+    def test_other_git_options_still_ask(self, tmp_path, monkeypatch, worktree_repo, shape, rule):
+        main, wt = worktree_repo
+        decisions = self._run(tmp_path, monkeypatch, shape.format(main=main), wt, main)
+        assert decisions and rule in decisions[0][0]
+
+
+# ── git's own options ─────────────────────────────────────────────────────────
+
+class TestGitGlobalOptions:
+    """git's options ahead of the subcommand do not step around a rule."""
+
+    @pytest.mark.parametrize("command, rule", [
+        ("git -C /other/repo reset --hard", "git reset --hard"),
+        ("git -c core.pager=cat push --force", "force push"),
+        ("git --no-pager push origin --delete old", "remote branch deletion"),
+        ("git --git-dir=/other/.git branch -D old", "branch deletion"),
+        ("git --work-tree /other --git-dir /other/.git checkout main", "git checkout"),
+        ("git -C a -C b stash drop", "git stash destruction"),
+        ("git -P tag -d v1", "git tag deletion"),
+        ("git --namespace ns rebase main", "git rebase (not recovery)"),
+        ("git -C /other remote add upstream https://example.com/r.git", "remote management"),
+        ("git -C /other submodule add https://example.com/r.git lib", "submodule management"),
+        ("git -c user.name=x config --global user.email y@example.com", "git config write"),
+        ("git -C /other branch -f main HEAD~1", "forced branch move"),
+    ])
+    def test_rule_still_matches(self, command, rule):
+        result = check_command(command)
+        assert result is not None and result[0] == rule, (command, result)
+
+    @pytest.mark.parametrize("command", [
+        "git -C /other status",
+        "git -c color.ui=always log --oneline -5",
+        "git --no-pager diff",
+        "git -C /other log --grep reset --hard",
+        "git --version",
+        "git -C /other merge --ff-only feature",
+    ])
+    def test_no_new_prompts(self, command):
+        assert_allowed(command)

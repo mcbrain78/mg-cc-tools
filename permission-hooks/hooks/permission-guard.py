@@ -71,6 +71,21 @@ _PGPASS_FILE_PATTERNS = [
     (re.compile(r"(^|/)\.pgpass$"), "PostgreSQL password file"),
 ]
 
+# ── git's own options ───────────────────────────────────────────────────────
+# git takes options of its own ahead of the subcommand: `git -C <dir> reset
+# --hard`, `git -c k=v rebase …`, `git --no-pager push --force`. Every git rule
+# starts with _GIT, so none of them can be stepped around that way. The options
+# that take a separate value swallow it, so the value is never read as the
+# subcommand. Only option words are consumed: in `git log --grep reset` the
+# subcommand is `log`, and no rule reads `reset` there.
+_GIT = (
+    r"\bgit"
+    r"(?:\s+(?:-[Cc]\s+\S+"
+    r"|--(?:git-dir|work-tree|namespace|super-prefix|config-env)\s+(?!-)\S+"
+    r"|-\S+))*"
+    r"\s+"
+)
+
 # ── git config ──────────────────────────────────────────────────────────────
 # `git config` needs more than one pattern's worth of care: scope and format
 # options sit between the subcommand and the operands, a key with no value is
@@ -99,7 +114,7 @@ _GIT_CONFIG_OPTS = (
 # (`url.https://github.com/.insteadOf`) but must end on a key character, so a
 # trailing-dot abbreviation ("git config e.g. foo") is not a write either.
 _GIT_CONFIG_WRITE = (
-    r"\bgit\s+config(?!\s+(?:get|list)\b)"
+    _GIT + r"config(?!\s+(?:get|list)\b)"
     + _GIT_CONFIG_OPTS
     + r"\s+(?:"
     r"--(?:add|unset|unset-all|replace-all|rename-section|remove-section|edit)\b"
@@ -191,25 +206,25 @@ PERMISSION_CHANGE_RULE = "permission/ownership change"
 
 CATEGORIES = {
     "Git Branch & History": [
-        (r"\bgit\s+checkout\b", GIT_CHECKOUT_RULE),
-        (r"\bgit\s+switch\b", GIT_SWITCH_RULE),
-        (r"\bgit\s+branch\s+(-[dD]|--delete)\b", "branch deletion"),
+        (_GIT + r"checkout\b", GIT_CHECKOUT_RULE),
+        (_GIT + r"switch\b", GIT_SWITCH_RULE),
+        (_GIT + r"branch\s+(-[dD]|--delete)\b", "branch deletion"),
         # -f resets an existing branch; -M and -C overwrite the one they name.
-        (r"\bgit\s+branch\s+(?:[^\n;|&]*\s)?(?:-[A-Za-z]*[fMC][A-Za-z]*|--force)(?![\w-])",
+        (_GIT + r"branch\s+(?:[^\n;|&]*\s)?(?:-[A-Za-z]*[fMC][A-Za-z]*|--force)(?![\w-])",
          "forced branch move"),
-        (r"\bgit\s+rebase\s+(?!--abort|--continue|--quit|--skip)", GIT_REBASE_RULE),
-        (r"\bgit\s+reset\s+--hard\b", "git reset --hard"),
-        (r"\bgit\s+stash\s+(drop|clear)\b", GIT_STASH_RULE),
-        (r"\bgit\s+tag\s+(-d|--delete)\b", "git tag deletion"),
+        (_GIT + r"rebase\s+(?!--abort|--continue|--quit|--skip)", GIT_REBASE_RULE),
+        (_GIT + r"reset\s+--hard\b", "git reset --hard"),
+        (_GIT + r"stash\s+(drop|clear)\b", GIT_STASH_RULE),
+        (_GIT + r"tag\s+(-d|--delete)\b", "git tag deletion"),
     ],
     "Git Destructive Remote": [
-        (r"\bgit\s+push\s+.*(-f\b|--force|--force-with-lease)", "force push"),
-        (r"\bgit\s+push\s+\S+\s+--delete\b", "remote branch deletion"),
-        (r"\bgit\s+push\s+\S+\s+:", "remote branch deletion (colon syntax)"),
-        (r"\bgit\s+push\s+.*--tags\b", "pushing tags"),
-        (r"\bgit\s+remote\s+(add|remove|rm|set-url)\b", "remote management"),
+        (_GIT + r"push\s+.*(-f\b|--force|--force-with-lease)", "force push"),
+        (_GIT + r"push\s+\S+\s+--delete\b", "remote branch deletion"),
+        (_GIT + r"push\s+\S+\s+:", "remote branch deletion (colon syntax)"),
+        (_GIT + r"push\s+.*--tags\b", "pushing tags"),
+        (_GIT + r"remote\s+(add|remove|rm|set-url)\b", "remote management"),
         (_GIT_CONFIG_WRITE, "git config write"),
-        (r"\bgit\s+submodule\s+(add|deinit)\b", "submodule management"),
+        (_GIT + r"submodule\s+(add|deinit)\b", "submodule management"),
     ],
     "GitHub CLI": [
         (r"\bgh\s+pr\s+(merge|close)\b", "PR merge/close"),
@@ -1589,7 +1604,7 @@ _REPEATS_RE = re.compile(
 )
 
 # Any stash command that can change the stash list; list and show only read it.
-_GIT_STASH_ANY_RE = re.compile(r"\bgit\s+stash\b(?!\s+(?:list|show)\b)")
+_GIT_STASH_ANY_RE = re.compile(_GIT + r"stash\b(?!\s+(?:list|show)\b)")
 
 # A word that means the same thing to bash as it reads here: no expansion,
 # no quoting left over.
@@ -1861,6 +1876,29 @@ def _stash_drop_alone(command):
     return len(_GIT_STASH_ANY_RE.findall(masked)) == 1 and not _REPEATS_RE.search(masked)
 
 
+# git options that change nothing about what a command does or where it runs,
+# besides `-C`, which _command_worktree follows.
+_PLAIN_GIT_OPTS = frozenset({"--no-pager", "-P", "--no-optional-locks", "--no-advice"})
+
+
+def _plain_git_options(word):
+    """Return True if the options between `git` and its subcommand in *word* are harmless.
+
+    `-c` is not: it can set core.worktree, rebase.updateRefs, sequence.editor
+    or an alias for the subcommand itself.
+    """
+    tokens = word.split()[1:]
+    index = 0
+    while index < len(tokens) and tokens[index].startswith("-"):
+        if tokens[index] == "-C":
+            index += 2
+        elif tokens[index] in _PLAIN_GIT_OPTS:
+            index += 1
+        else:
+            return False
+    return True
+
+
 def check_linked_worktree_rule(description, command, worktree):
     """Return True if every match of rule *description* stays inside *worktree*.
 
@@ -1877,7 +1915,7 @@ def check_linked_worktree_rule(description, command, worktree):
     if description == GIT_STASH_RULE and not _stash_drop_alone(command):
         return False
     for before, word, after in found:
-        if before.strip():
+        if before.strip() or not _plain_git_options(word):
             return False
         args = _TOKEN_RE.findall(_REDIRECT_STRIP_RE.sub(" ", after))
         if description == GIT_CHECKOUT_RULE and not _checkout_stays(args, worktree):
