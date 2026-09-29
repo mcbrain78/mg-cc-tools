@@ -125,12 +125,13 @@ _GIT_CONFIG_WRITE = (
 )
 
 # ── Command position ────────────────────────────────────────────────────────
-# Words like "service", "kill" and "systemctl" are common in prose, paths and
-# regex alternations, and these rules scan the command string with heredocs
-# stripped but quotes intact. Anchoring such a word to command position — start
-# of the string, or after a shell separator — is what keeps the text cases
-# quiet. `\n` belongs in the separator class because a multi-line Bash command
-# is a script: without it only its first line is guarded.
+# Words like "service" and "kill" are common in prose, paths and regex
+# alternations, and these rules scan the command string with heredocs stripped
+# but quotes intact. Anchoring such a word to command position — start of the
+# string, or after a shell separator — is what keeps the text cases quiet.
+# `\n` belongs in the separator class because a multi-line Bash command is a
+# script: without it only its first line is guarded. systemctl has a wider
+# anchor of its own, _SYSTEMCTL_POS.
 _CMD_POS = r"(?:^|[;&\n]\s*)"
 
 # Same, plus after a pipe. Only for commands that are never a word you would
@@ -166,13 +167,61 @@ _SYSTEMCTL_READ = (
     r"|paths|automounts))(?![\w-])"
 )
 
+# Where bash runs systemctl as a command. _CMD_POS alone let it run, unasked,
+# from everywhere else a command starts:
+#
+#   - a pipe, `||`, a subshell, a group, a command or process substitution:
+#     `| systemctl`, `(systemctl …)`, `{ systemctl …; }`, `$(systemctl …)`,
+#     `` `systemctl …` ``, `<(systemctl …)`
+#   - a nested shell's string, which check_command scans unmasked:
+#     `bash -c "systemctl …"`, `eval 'systemctl …'`. Only a quote with the
+#     command right behind it counts; a closing quote and a space
+#     (`grep "x" systemctl.md`) is followed by an argument.
+#   - after a reserved word or an assignment: `if systemctl …`, `! systemctl`,
+#     `FOO=1 systemctl …`
+#   - behind a command that runs its arguments: `xargs systemctl`, `timeout 30
+#     systemctl`, `find … -exec systemctl`, env, nohup, nice and the rest of
+#     _SYSTEMCTL_RUNNERS. Their options are followed as flags, numbers and
+#     `{}`; one that takes a word (`timeout -s KILL 5 …`) ends the prefix, so
+#     that form is not seen. `command` takes only -p: `command -v systemctl`
+#     asks where it is, it does not run it.
+#   - by path: `/usr/bin/systemctl`
+#
+# A `{` opens a group only with a space behind it, so brace expansion
+# (`docs/{systemctl,journalctl}.md`) and `${systemctl}` stay text.
+#
+# The anchor runs at every `"`, `(` and `|` of every Bash call, so no two of
+# its alternatives may match the same token, and each token is taken
+# atomically: with `\w+=\S*` both an env argument and an assignment of its
+# own, `env A=1 A=1 …` went quadratic and `nice 1=1 1=1 …` exponential. An
+# assignment starts with a letter or `_`, as bash's do, a number argument
+# holds no `=`, and an assignment value is read to at most 512 characters, so
+# a quote-dense line with no spaces cannot make every anchor rescan the rest
+# of it. A longer value ends the prefix.
+_SYSTEMCTL_RUNNERS = r"(?:env|nohup|setsid|exec|eval|time|nice|stdbuf|timeout|xargs|watch)"
+_SYSTEMCTL_RUNNER_ARGS = r"(?:[ \t]+(?:-\S*+|\d[^\s=]*+(?!=)|\{\}))*+"
+_SYSTEMCTL_PREFIX = (
+    r"(?>(?:if|then|elif|else|do|while|until|!"
+    r"|[A-Za-z_]\w*+=\S{0,512}+"
+    r"|command(?:[ \t]+-p)?"
+    r"|" + _SYSTEMCTL_RUNNERS + _SYSTEMCTL_RUNNER_ARGS
+    + r")[ \t]+)*+"
+)
+_SYSTEMCTL_POS = (
+    r"(?:(?:^|[;&|\n(`]|(?<!\$)\{(?=\s)|[ \t]-(?:exec|execdir|ok|okdir)(?=[ \t]))[ \t]*+"
+    r"|[\"'])"
+    + _SYSTEMCTL_PREFIX
+)
+
 # Two negative lookaheads, not one match-the-write pattern: a greedy option
 # group followed by a positive match backtracks until the option itself is
 # taken for the subcommand, which is how `--user status` would get flagged. A
 # lookahead that fails has nothing to backtrack into.
+#
+# The `word` group marks where the command starts, for _rule_commands.
 _SYSTEMCTL_WRITE = (
-    _CMD_POS
-    + r"systemctl(?![\w-])"
+    _SYSTEMCTL_POS
+    + r"(?P<word>(?:(?:/[\w.-]+)*/)?systemctl)(?![\w-])"
     # Bare `systemctl [options]`, redirected or not, just lists units.
     + r"(?!" + _SYSTEMCTL_OPTS + r"\s*(?:$|[)\n;&|]|\d*[<>]))"
     + r"(?!" + _SYSTEMCTL_OPTS + r"\s+" + _SYSTEMCTL_READ + r")"
@@ -1435,11 +1484,6 @@ def check_local_http(command):
 # of a redirect (`2>&1`, `&>log`) is not one.
 _COMMAND_BREAK_RE = re.compile(r"[\n;|()`]|(?<![<>])&(?!>)")
 
-# A rule anchored with _CMD_POS matches the separator in front of its verb
-# (`; systemctl`, `&& systemctl`). That separator is where the command starts,
-# not a break inside it.
-_LEADING_BREAK_CHARS = ";& \t\n\r\f\v"
-
 _RULE_RE_BY_DESCRIPTION = {description: compiled
                            for compiled, description, _category in RULES}
 
@@ -1454,8 +1498,13 @@ def _rule_commands(command, description):
     Returns None when a match cannot be read this way: one inside a quoted
     span (see above), or one that itself runs across a command break, as
     `git rebase` + newline does — bash runs a bare `git rebase` there.
+
+    A rule that matches context in front of its command (systemctl's
+    command-position anchor takes in `; `, `$(`, `xargs `) marks where the
+    command starts with a `word` group; *word* and *before* split there.
     """
     rule_re = _RULE_RE_BY_DESCRIPTION[description]
+    has_word = "word" in rule_re.groupindex
     command = _command_text(command)
     masked = _mask_quoted(command)
     matches = list(rule_re.finditer(masked))
@@ -1465,8 +1514,8 @@ def _rule_commands(command, description):
             return None
     found = []
     for match in matches:
-        word = match.group().lstrip(_LEADING_BREAK_CHARS)
-        word_start = match.end() - len(word)
+        word_start = match.start("word") if has_word else match.start()
+        word = masked[word_start:match.end()]
         if _COMMAND_BREAK_RE.search(word):
             return None
         breaks_before = list(_COMMAND_BREAK_RE.finditer(masked, 0, word_start))
@@ -1549,8 +1598,10 @@ def check_exec_bit_chmod(command):
 # SYSTEMCTL_MANAGED_UNITS. A bare name means its .service, as it does to
 # systemctl. Everything else still asks: enable/disable, mask, edit, kill,
 # isolate, daemon-reload; a glob, variable or quoted unit, whose target this
-# cannot read; and any option outside the output-only ones below (-H and -M
-# reach another host or container, --job-mode=isolate stops everything else).
+# cannot read; any option outside the output-only ones below (-H and -M reach
+# another host or container, --job-mode=isolate stops everything else); and a
+# systemctl behind a runner (`timeout 30 systemctl …`) or in a nested shell's
+# string, which is not read as a command of its own.
 
 _SYSTEMCTL_LIFECYCLE_VERBS = frozenset({
     "start", "stop", "restart", "try-restart", "reload",
@@ -1562,11 +1613,20 @@ _SYSTEMCTL_SAFE_OPTS = frozenset({
     "--wait", "-q", "--quiet",
 })
 
+# Reserved words leave the systemctl behind them its own command
+# (`if systemctl restart …; then`). A runner does not: `timeout`, `xargs` and
+# the rest of _SYSTEMCTL_RUNNERS keep asking.
+_SHELL_RESERVED_WORDS = frozenset({"if", "then", "elif", "else", "do", "while", "until", "!", "{"})
+
+_SYSTEMCTL_PATHS = frozenset({"systemctl", "/usr/bin/systemctl", "/bin/systemctl"})
+
 
 def _is_managed_systemctl(segment):
     """Return True if *segment* is a lifecycle verb on managed units only."""
     tokens = _TOKEN_RE.findall(_REDIRECT_STRIP_RE.sub(" ", segment))
-    if not tokens or tokens[0] != "systemctl":
+    while tokens and tokens[0] in _SHELL_RESERVED_WORDS:
+        tokens = tokens[1:]
+    if not tokens or tokens[0] not in _SYSTEMCTL_PATHS:
         return False
     words = []
     for token in tokens[1:]:

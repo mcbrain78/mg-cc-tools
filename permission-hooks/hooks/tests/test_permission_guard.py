@@ -654,6 +654,90 @@ class TestSystemOperations:
         assert_blocked('echo checking\nsystemctl restart nginx', self.CAT)
         assert_blocked('echo checking\n  systemctl disable foo.timer', self.CAT)
 
+    @pytest.mark.parametrize("command", [
+        "echo y | systemctl stop nginx",
+        "false || systemctl stop nginx",
+        "(systemctl stop nginx)",
+        "{ systemctl stop nginx; }",
+        "echo $(systemctl stop nginx)",
+        'echo "$(systemctl stop nginx)"',
+        "echo `systemctl stop nginx`",
+        "cat <(systemctl stop nginx)",
+    ])
+    def test_block_systemctl_in_pipe_subshell_or_substitution(self, command):
+        assert_blocked(command, self.CAT)
+
+    @pytest.mark.parametrize("command", [
+        'bash -c "systemctl stop nginx"',
+        "sh -c 'systemctl stop nginx'",
+        'eval "systemctl stop nginx"',
+        "bash -lc 'timeout 5 systemctl restart nginx'",
+    ])
+    def test_block_systemctl_in_a_nested_shell_string(self, command):
+        assert_blocked(command, self.CAT)
+
+    @pytest.mark.parametrize("command", [
+        "if systemctl stop nginx; then echo ok; fi",
+        "if true; then systemctl start nginx; fi",
+        "! systemctl stop nginx",
+        "FOO=1 systemctl stop nginx",
+        "/usr/bin/systemctl stop nginx",
+    ])
+    def test_block_systemctl_after_reserved_word_assignment_or_by_path(self, command):
+        assert_blocked(command, self.CAT)
+
+    @pytest.mark.parametrize("command", [
+        "echo nginx | xargs systemctl stop",
+        "xargs -n1 -I{} systemctl restart {}",
+        "timeout 30 systemctl stop nginx",
+        "nohup systemctl restart nginx",
+        "env FOO=1 systemctl stop nginx",
+        "nice -n 5 systemctl stop nginx",
+        "exec systemctl stop nginx",
+        "eval systemctl stop nginx",
+        "watch -n 5 systemctl restart nginx",
+        r"find . -name x -exec systemctl stop {} \;",
+        "command -p systemctl stop nginx",
+    ])
+    def test_block_systemctl_behind_a_runner(self, command):
+        assert_blocked(command, self.CAT)
+
+    @pytest.mark.parametrize("command", [
+        "command -v systemctl",
+        "command -v systemctl >/dev/null 2>&1 || exit 2",
+        "which systemctl",
+        "man systemctl",
+        "grep -rn systemctl .",
+        'grep -n "x" systemctl.md',
+        "find . | xargs grep -l systemctl",
+        "cat docs/{systemctl,journalctl}.md",
+        "echo ${systemctl}",
+        "timeout 5 systemctl is-active nginx",
+        "if systemctl is-active --quiet nginx; then echo up; fi",
+        'bash -c "systemctl is-active nginx"',
+        "echo $(systemctl is-active nginx)",
+    ])
+    def test_allow_systemctl_mentions_and_reads_in_the_new_positions(self, command):
+        assert_allowed(command)
+
+    def test_systemctl_anchor_stays_linear(self):
+        """Overlapping prefix alternatives once made `nice 1=1 …` exponential
+        and `env A=1 …` quadratic. Run in a subprocess so a regression fails
+        on the timeout rather than hanging the suite; each input takes
+        milliseconds when the scan is linear."""
+        script = (
+            "import importlib, sys\n"
+            f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..')!r})\n"
+            "g = importlib.import_module('permission-guard')\n"
+            "rule = g._RULE_RE_BY_DESCRIPTION[g.SYSTEMCTL_RULE]\n"
+            "n = 20000\n"
+            "for s in ['nice ' + '1=1 ' * n + 'echo', 'env ' + 'A=1 ' * n + 'echo',\n"
+            "          'xargs ' + '-n 1 ' * n + 'grep x', '\"a=' + 'b\",\"c=' * n,\n"
+            "          'a=b|' * n, 'nohup timeout 5 env A=1 ' * n + 'true']:\n"
+            "    rule.search(s)\n"
+        )
+        subprocess.run([sys.executable, "-c", script], check=True, timeout=30)
+
     def test_block_service_managers(self):
         assert_blocked("launchctl load plist", self.CAT)
         assert_blocked("service nginx restart", self.CAT)
@@ -4718,8 +4802,32 @@ class TestManagedSystemctl:
     def test_every_systemctl_must_qualify(self, command):
         assert not check_managed_systemctl(command)
 
-    def test_systemctl_inside_a_nested_shell_string_is_not(self):
-        command = 'systemctl stop prefect-server.service; bash -c "cd /; systemctl stop nginx"'
+    @pytest.mark.parametrize("command", [
+        "echo $(systemctl stop prefect-server.service)",
+        "(systemctl stop prefect-server.service)",
+        "{ systemctl stop prefect-server.service; }",
+        "false || systemctl start prefect-server",
+        "if systemctl is-active --quiet prefect-server; then systemctl start prefect-server; fi",
+        "! systemctl stop prefect-server.service",
+        "/usr/bin/systemctl stop prefect-server.service",
+    ])
+    def test_its_own_command_in_the_new_positions_is_exempt(self, command):
+        assert check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        "timeout 30 systemctl stop prefect-server.service",
+        "echo prefect-server | xargs systemctl stop",
+        "FOO=1 systemctl stop prefect-server.service",
+        r"find . -name x -exec systemctl stop prefect-server.service \;",
+    ])
+    def test_behind_a_runner_or_assignment_is_not(self, command):
+        assert not check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        'bash -c "systemctl stop prefect-server.service"',
+        'systemctl stop prefect-server.service; bash -c "cd /; systemctl stop nginx"',
+    ])
+    def test_systemctl_inside_a_nested_shell_string_is_not(self, command):
         assert not check_managed_systemctl(command)
 
     def test_no_systemctl_is_not_exempt(self):
