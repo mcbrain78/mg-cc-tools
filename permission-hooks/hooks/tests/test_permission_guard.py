@@ -136,6 +136,28 @@ class TestGitBranchHistory:
         assert_allowed("git branch -a")
         assert_allowed("git branch -r")
 
+    @pytest.mark.parametrize("command", [
+        "git branch other -f HEAD~1",
+        "git branch -f other HEAD~1",
+        "git branch --force other main",
+        "git branch -M old new",
+        "git branch -C old new",
+    ])
+    def test_block_forced_branch_move(self, command):
+        """Each one moves or overwrites a branch that already exists."""
+        assert_blocked(command, self.CAT)
+
+    @pytest.mark.parametrize("command", [
+        "git branch -m old new",
+        "git branch -c old new",
+        "git branch -vv",
+        "git branch --format='%(refname:short)'",
+        "git branch --sort=-committerdate",
+    ])
+    def test_allow_branch_without_force(self, command):
+        """Without force, git refuses to overwrite a branch that exists."""
+        assert_allowed(command)
+
     def test_block_branch_delete(self):
         assert_blocked("git branch -d old-branch", self.CAT)
         assert_blocked("git branch -D old-branch", self.CAT)
@@ -4805,6 +4827,7 @@ class TestLinkedWorktreeInMain:
         ("git rebase main other", "git rebase (not recovery)"),
         ("git rebase --root other", "git rebase (not recovery)"),
         ("git branch -D other", "branch deletion"),
+        ("git branch -f other HEAD", "forced branch move"),
         ("git tag -d v1", "git tag deletion"),
         ("git stash clear", "git stash destruction"),
         ("git stash drop stash@{1}", "git stash destruction"),

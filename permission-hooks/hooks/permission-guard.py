@@ -194,6 +194,9 @@ CATEGORIES = {
         (r"\bgit\s+checkout\b", GIT_CHECKOUT_RULE),
         (r"\bgit\s+switch\b", GIT_SWITCH_RULE),
         (r"\bgit\s+branch\s+(-[dD]|--delete)\b", "branch deletion"),
+        # -f resets an existing branch; -M and -C overwrite the one they name.
+        (r"\bgit\s+branch\s+(?:[^\n;|&]*\s)?(?:-[A-Za-z]*[fMC][A-Za-z]*|--force)(?![\w-])",
+         "forced branch move"),
         (r"\bgit\s+rebase\s+(?!--abort|--continue|--quit|--skip)", GIT_REBASE_RULE),
         (r"\bgit\s+reset\s+--hard\b", "git reset --hard"),
         (r"\bgit\s+stash\s+(drop|clear)\b", GIT_STASH_RULE),
