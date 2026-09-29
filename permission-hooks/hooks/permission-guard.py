@@ -758,24 +758,63 @@ def _mask_quoted(command):
 
     Backslash escapes are honoured outside single quotes; an unterminated
     quote masks to the end of the string, as the shell would keep reading.
+
+    A command substitution inside double quotes — `"$(…)"` or a backtick
+    pair — is left visible: bash runs it, so `echo "$(sudo ls)"` is a sudo,
+    not a string. Inside it, quoting starts afresh, so the pattern in
+    `"$(grep "rm -rf" log)"` is still data.
     """
     out = list(command)
+    # Enclosing contexts, innermost last: '"' is a double-quoted span; ')' and
+    # '`' are a command substitution opened inside one, waiting for its closer;
+    # None is the top level. A ')' context counts the parentheses opened inside
+    # it, so a subshell does not close it early. A stack rather than recursion,
+    # so no nesting depth can make the hook raise.
+    stack = [[None, 0]]
     i, n = 0, len(command)
     while i < n:
+        context = stack[-1]
         char = command[i]
+        if context[0] == '"':
+            if char == "\\":
+                # \" and \$ do not close the span or open a substitution.
+                width = min(2, n - i)
+                out[i:i + width] = _MASK_CHAR * width
+                i += 2
+            elif char == '"':
+                stack.pop()
+                i += 1
+            elif command.startswith("$(", i):
+                stack.append([")", 0])
+                i += 2
+            elif char == "`":
+                stack.append(["`", 0])
+                i += 1
+            else:
+                out[i] = _MASK_CHAR
+                i += 1
+            continue
         if char == "\\":
             i += 2  # escaped char outside quotes — nothing to mask
             continue
-        if char in "'\"":
-            i += 1
-            while i < n and command[i] != char:
-                # Inside double quotes a backslash escapes the next char, so
-                # \" does not close the span.
-                width = 2 if (char == '"' and command[i] == "\\") else 1
-                out[i:i + width] = _MASK_CHAR * min(width, n - i)
-                i += width
-            i += 1  # skip the closing quote (or run past the end)
+        if char == "'":
+            close = command.find("'", i + 1)
+            end = n if close == -1 else close
+            out[i + 1:end] = _MASK_CHAR * (end - i - 1)
+            i = end + 1
             continue
+        if char == '"':
+            stack.append(['"', 0])
+        elif context[0] == ")":
+            if char == "(":
+                context[1] += 1
+            elif char == ")":
+                if context[1]:
+                    context[1] -= 1
+                else:
+                    stack.pop()
+        elif context[0] == "`" and char == "`":
+            stack.pop()
         i += 1
     return "".join(out)
 

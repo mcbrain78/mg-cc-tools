@@ -1150,6 +1150,31 @@ class TestMaskQuoted:
     def test_unterminated_quote_masks_to_end(self):
         assert _mask_quoted("echo 'abc") == "echo 'xxx"
 
+    def test_substitution_inside_double_quotes_stays_visible(self):
+        assert _mask_quoted('echo "a $(sudo ls) b"') == 'echo "xx$(sudo ls)xx"'
+
+    def test_backtick_inside_double_quotes_stays_visible(self):
+        assert _mask_quoted('echo "a `sudo ls` b"') == 'echo "xx`sudo ls`xx"'
+
+    def test_quotes_inside_a_substitution_start_afresh(self):
+        # The pattern is data again; the substitution around it is not.
+        assert (_mask_quoted('echo "$(grep "rm -rf" log)"')
+                == 'echo "$(grep "xxxxxx" log)"')
+
+    def test_subshell_does_not_close_the_substitution(self):
+        assert (_mask_quoted('echo "$( (cd a && ls) ) b"')
+                == 'echo "$( (cd a && ls) )xx"')
+
+    def test_escaped_dollar_is_not_a_substitution(self):
+        assert _mask_quoted('echo "\\$(sudo ls)"') == 'echo "xxxxxxxxxxx"'
+
+    def test_single_quotes_hide_a_substitution(self):
+        assert _mask_quoted("echo '$(sudo ls)'") == "echo '" + "x" * len("$(sudo ls)") + "'"
+
+    def test_deep_nesting_does_not_raise(self):
+        cmd = 'echo ' + '"$(' * 5000 + 'ls'
+        assert len(_mask_quoted(cmd)) == len(cmd)
+
 
 class TestQuotedDataNotSyntax:
     """check_command masks quoted spans: a search pattern is not a command."""
@@ -1181,6 +1206,43 @@ class TestQuotedDataNotSyntax:
         result = check_command("rm -rf /data")
         assert result is not None
         assert "x" not in result[2]
+
+    @pytest.mark.parametrize("command, category", [
+        ('echo "$(sudo ls)"', "System Operations"),
+        ('echo "$(git push --force)"', "Git Destructive Remote"),
+        ('echo "`git reset --hard`"', "Git Branch & History"),
+        ('echo "$(echo "$(git push --force)")"', "Git Destructive Remote"),
+    ])
+    def test_substitution_inside_double_quotes_runs(self, command, category):
+        """Bash runs a quoted `$(…)`, so it is a command, not a string."""
+        assert_blocked(command, category)
+
+    @pytest.mark.parametrize("command", [
+        'echo "Branch: $(git branch --show-current)"',
+        'cd "$(git rev-parse --show-toplevel)" && ls',
+        'DIR="$(dirname "$0")"; echo "$DIR"',
+        'echo "$(grep -c "rm -rf" notes.txt)"',
+        'echo "use \\`chmod 777\\` never"',
+        "echo '$(sudo ls)'",
+    ])
+    def test_harmless_substitutions_do_not_ask(self, command):
+        assert_allowed(command)
+
+    def test_heredoc_commit_message_is_still_data(self):
+        """The usual `-m "$(cat <<'EOF' … EOF)"` form: the body is stripped."""
+        assert_allowed("git commit -m \"$(cat <<'EOF'\n"
+                       "fix: stop rm -rf, sudo and git push --force\n"
+                       "EOF\n"
+                       ")\"")
+
+    def test_quoted_substitution_reaches_the_other_checks(self):
+        assert check_outside_project('echo "$(cp a.txt /etc/app.conf)"',
+                                     "/home/user/myproject")
+        assert check_exit_code_masking('X="$(pytest | tail -5)"')
+
+    def test_exempt_chmod_inside_a_quoted_substitution(self):
+        assert guard.check_exec_bit_chmod('echo "$(chmod +x run.sh)"')
+        assert not guard.check_exec_bit_chmod('echo "$(chmod 777 secrets.txt)"')
 
 
 class TestPatternPositionExemption:
