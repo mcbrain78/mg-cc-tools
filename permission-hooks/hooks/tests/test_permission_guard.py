@@ -4762,6 +4762,20 @@ class TestCommandWorktree:
         "git --git-dir={main}/.git reset --hard",
         'eval "cd {main}"; git reset --hard',
         "source setup.sh; git reset --hard",
+        # A cd hidden from the masked text by a comment's apostrophes, or
+        # sitting on a heredoc's opener line.
+        "# Let's go back\ncd {main}\n# reset it's state\ngit reset --hard",
+        "cat > n <<'EOF' && cd {main}\nbody\nEOF\ngit reset --hard",
+        # Same-shell runners behind a prefix or a keyword.
+        'command eval "cd {main}"; git reset --hard',
+        'if true; then eval "cd {main}"; fi; git reset --hard',
+        '{{ eval "cd {main}"; }}; git reset --hard',
+        "for f in x; do source $f; done; git reset --hard",
+        "trap 'cd {main}' DEBUG; git reset --hard",
+        "if true; then . ./env.sh; fi; git reset --hard",
+        "CDPATH={main}/.. cd proj; git reset --hard",
+        # After a popd the walk no longer knows where it is.
+        "pushd sub && popd && cd sub && git reset --hard",
     ])
     def test_anything_that_could_leave_turns_it_off(self, worktree_repo, shape):
         main, wt = worktree_repo
@@ -4770,12 +4784,78 @@ class TestCommandWorktree:
     def test_no_cwd(self):
         assert _command_worktree("git reset --hard", "") is None
 
+    def test_dot_as_an_argument_is_not_source(self, worktree_repo):
+        _main, wt = worktree_repo
+        assert _command_worktree("git add . && git reset --hard", str(wt))
+
+    def test_absolute_cd_after_popd_is_followed(self, worktree_repo):
+        _main, wt = worktree_repo
+        assert _command_worktree(f"pushd sub && popd && cd {wt}/sub && git reset --hard", str(wt))
+
+    def test_cdpath_in_the_environment(self, worktree_repo, monkeypatch):
+        _main, wt = worktree_repo
+        monkeypatch.setenv("CDPATH", "/elsewhere")
+        assert _command_worktree("git reset --hard", str(wt)) is None
+
+    @pytest.mark.parametrize("shape", [
+        "git -C vendor/lib status && git reset --hard",
+        "git status && cd vendor/lib && git reset --hard",
+        "cd vendor && cd lib && git reset --hard",
+    ])
+    def test_nested_repository_is_not_the_worktree(self, worktree_repo, shape):
+        _main, wt = worktree_repo
+        _git(wt, "init", "-q", "vendor/lib")
+        assert _command_worktree(shape, str(wt)) is None
+
+    def test_leading_cd_through_a_symlink_and_back(self, worktree_repo):
+        """bash reads `link/..` as typed, not where the link points."""
+        main, wt = worktree_repo
+        (main / "wtlink").symlink_to(wt / "sub")
+        assert _command_worktree("cd wtlink/.. && git reset --hard", str(main)) is None
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root enters any directory")
+    def test_leading_cd_into_a_directory_it_cannot_enter(self, worktree_repo):
+        main, wt = worktree_repo
+        locked = wt / "locked"
+        locked.mkdir(mode=0o600)
+        try:
+            assert _command_worktree(f"cd {locked} || true; git reset --hard", str(main)) is None
+        finally:
+            locked.chmod(0o700)
+
+
+class TestIsSessionCheckout:
+    """Which worktree this CC session started in, read off its transcript path."""
+
+    WT = guard.LinkedWorktree("/home/user/proj/.claude/worktrees/agent-x", "worktree-agent-x")
+    MAIN_SLUG = "-home-user-proj"
+
+    def test_session_started_in_the_main_tree(self):
+        path = f"/home/user/.claude/projects/{self.MAIN_SLUG}/sess.jsonl"
+        assert not guard._is_session_checkout(self.WT, path)
+
+    def test_subagent_transcript_names_the_parent_session(self):
+        path = f"/home/user/.claude/projects/{self.MAIN_SLUG}/sess/subagents/agent-x.jsonl"
+        assert not guard._is_session_checkout(self.WT, path)
+
+    @pytest.mark.parametrize("started_in", ["", "/src"])
+    def test_session_started_in_the_worktree(self, started_in):
+        slug = guard._path_slug(self.WT.top + started_in)
+        assert guard._is_session_checkout(self.WT, f"/home/user/.claude/projects/{slug}/s.jsonl")
+
+    @pytest.mark.parametrize("path", ["", "/tmp/x.jsonl", "/home/user/projects/notes.jsonl"])
+    def test_unknown_layout_counts_as_the_session_checkout(self, path):
+        """Nothing is exempt when the start directory cannot be read."""
+        assert guard._is_session_checkout(self.WT, path)
+
 
 class TestLinkedWorktreeInMain:
     """Which git commands stop asking inside a linked worktree, and which do not."""
 
-    def _run(self, tmp_path, monkeypatch, command, cwd, project):
+    def _run(self, tmp_path, monkeypatch, command, cwd, project, started_in=None):
         decisions = []
+        slug = guard._path_slug(os.path.realpath(started_in or project))
+        transcript = tmp_path / "cfg" / "projects" / slug / "session.jsonl"
         monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project))
         monkeypatch.setattr(guard, "_decide",
@@ -4789,7 +4869,7 @@ class TestLinkedWorktreeInMain:
             "permission_mode": "bypassPermissions",
             "tool_name": "Bash",
             "tool_input": {"command": command},
-            "transcript_path": "/tmp/linked-worktree.jsonl",
+            "transcript_path": str(transcript),
             "cwd": str(cwd),
         })))
         guard.main()
@@ -4809,6 +4889,12 @@ class TestLinkedWorktreeInMain:
         "git stash drop",
         "git stash drop stash@{0}",
         "git stash drop 0",
+        "git rebase main 2>&1",
+        "git rebase main >/dev/null",
+        "git stash drop 2>&1",
+        "git stash drop -q 2>/dev/null",
+        "git stash list && git stash show -p && git stash drop",
+        "git stash drop stash@{0} &>/dev/null",
         # The call that prompted in a real session.
         "git stash drop stash@{0} && git stash list --format='%gd %H %gs' | grep -c item45 ; true",
     ])
@@ -4826,6 +4912,17 @@ class TestLinkedWorktreeInMain:
         ("git switch -C other", "git switch"),
         ("git rebase main other", "git rebase (not recovery)"),
         ("git rebase --root other", "git rebase (not recovery)"),
+        ("git rebase -x 'git -C .. reset --hard HEAD' main", "git rebase (not recovery)"),
+        ("git rebase --exec='git push --force origin main' main", "git rebase (not recovery)"),
+        ("git rebase -i main", "git rebase (not recovery)"),
+        ("GIT_SEQUENCE_EDITOR=true git rebase main", "git rebase (not recovery)"),
+        ("git rebase --update-refs main", "git rebase (not recovery)"),
+        ("git stash pop; git stash drop", "git stash destruction"),
+        ("git stash push -m n; git stash drop stash@{1}", "git stash destruction"),
+        ("git stash branch t; git stash drop", "git stash destruction"),
+        ("git stash list; git stash apply; git stash drop", "git stash destruction"),
+        ("for i in 1 2; do\ngit stash drop\ndone", "git stash destruction"),
+        ("f() { git stash drop; }; f", "git stash destruction"),
         ("git branch -D other", "branch deletion"),
         ("git branch -f other HEAD", "forced branch move"),
         ("git tag -d v1", "git tag deletion"),
@@ -4859,6 +4956,28 @@ class TestLinkedWorktreeInMain:
         _git(wt, "checkout", "-q", "--detach")
         decisions = self._run(tmp_path, monkeypatch, "git stash drop", wt, main)
         assert decisions and "git stash destruction" in decisions[0][0]
+
+    def test_update_refs_from_config_still_asks(self, tmp_path, monkeypatch, worktree_repo):
+        main, wt = worktree_repo
+        _git(main, "config", "rebase.updateRefs", "true")
+        decisions = self._run(tmp_path, monkeypatch, "git rebase main", wt, main)
+        assert decisions and "git rebase (not recovery)" in decisions[0][0]
+        assert self._run(tmp_path, monkeypatch, "git rebase --no-update-refs main", wt, main) == []
+
+    def test_a_tag_named_like_the_branch_changes_nothing(self, tmp_path, monkeypatch, worktree_repo):
+        """`symbolic-ref --short` would answer heads/<branch> here."""
+        main, wt = worktree_repo
+        _git(main, "tag", "worktree-agent-x")
+        assert self._run(tmp_path, monkeypatch, "git stash drop", wt, main) == []
+        assert self._run(tmp_path, monkeypatch, "git checkout worktree-agent-x", wt, main) == []
+
+    def test_session_started_in_the_worktree_keeps_every_prompt(self, tmp_path, monkeypatch, worktree_repo):
+        """That checkout is the user's own, even though it is a linked worktree."""
+        main, wt = worktree_repo
+        for started_in in (wt, wt / "sub"):
+            decisions = self._run(tmp_path, monkeypatch, "git reset --hard", wt, main,
+                                  started_in=started_in)
+            assert decisions and "git reset --hard" in decisions[0][0]
 
     def test_main_session_entering_the_worktree(self, tmp_path, monkeypatch, worktree_repo):
         main, wt = worktree_repo

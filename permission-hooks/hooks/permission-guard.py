@@ -919,7 +919,7 @@ _GIT_TIMEOUT_S = 5
 
 # Redirects are stripped before tokenising so `2>/dev/null` is not read as a
 # pathspec. Matches an optional fd, the operator, and its target.
-_REDIRECT_STRIP_RE = re.compile(r"\d*(?:>>|>|<<<|<)\s*&?\S+")
+_REDIRECT_STRIP_RE = re.compile(r"&?\d*(?:>>|>|<<<|<)\s*&?\S+")
 
 # git's own options that take a separate value, so a value can never be read as
 # the subcommand. `-C` is captured: it moves the repo the command acts on.
@@ -1403,8 +1403,9 @@ def check_local_http(command):
 # the chmod is not where the command starts.
 
 # Split points for one simple command: _SEGMENT_RE's, plus the parentheses and
-# backticks that open and close a subshell or a command substitution.
-_COMMAND_BREAK_RE = re.compile(r"[\n;|&()`]")
+# backticks that open and close a subshell or a command substitution. The `&`
+# of a redirect (`2>&1`, `&>log`) is not one.
+_COMMAND_BREAK_RE = re.compile(r"[\n;|()`]|(?<![<>])&(?!>)")
 
 _RULE_RE_BY_DESCRIPTION = {description: compiled
                            for compiled, description, _category in RULES}
@@ -1515,31 +1516,44 @@ def check_exec_bit_chmod(command):
 # A worktree still shares the repository with the main tree and every other
 # worktree: all branches, all tags, the stash list, config and remotes. So only
 # the rules whose effect stays in the worktree and on its own branch stand down
-# there (LINKED_WORKTREE_RULES). Branch and tag deletion, `stash clear` and
-# everything under Git Destructive Remote keep asking. So do the forms of the
-# retired rules that reach another branch:
+# there (LINKED_WORKTREE_RULES). Branch and tag deletion, forced branch moves,
+# `stash clear` and everything under Git Destructive Remote keep asking. So do
+# the forms of the retired rules that reach further:
 #
 #   - switching the worktree onto an existing branch (`git checkout main`,
 #     `git switch main`, `checkout -B`, `switch -C`). A branch checked out
 #     nowhere else — which can be the official one, when the main tree is on
 #     another branch — could otherwise be reset or rebased from here. Creating
 #     a new branch or detaching HEAD stays exempt.
-#   - `git rebase <upstream> <branch>`, which checks out and rewrites <branch>.
+#   - a rebase that checks out another branch (`git rebase <upstream>
+#     <branch>`), moves other branches along (`--update-refs`, or
+#     rebase.updateRefs), or runs commands of its own (`-x`/`--exec`, and
+#     `-i`, whose editor is one).
 #   - dropping a stash that was not made on this worktree's branch. The stash
 #     list is shared, so `stash@{0}` can be another worktree's; a stash's
-#     subject names the branch it was made on, and git never has one branch
-#     checked out in two worktrees.
+#     subject names the branch it was made on, and git refuses to check one
+#     branch out in two worktrees unless forced. A drop is judged only when it
+#     is the one stash command in the call and nothing repeats it: any other
+#     stash command, loop or function can move a different stash into the slot
+#     the check looked at.
 #
 # The uncommitted-work check (Git worktree destruction) stands down in a
 # linked worktree too: discarding the worktree's own changes is the trade.
 #
+# The worktree must not be the checkout this CC session started in. That one
+# is the user's own — say, the main checkout of a bare repository set up with
+# worktrees — and keeps every prompt. CC files a session's transcripts, its
+# subagents' included, under a name made from the start directory; when the
+# transcript path does not have that shape, nothing is exempt.
+#
 # All of this needs every command in the call to provably run inside one
 # linked worktree: the one the call starts in, or the one a leading
 # `cd <dir> &&` enters. A later `cd` or `git -C` is followed when its target
-# is literal — absolute, or relative without `..` — and stays inside it.
-# Anything that can move git elsewhere less plainly (pushd to a new place,
-# env -C, --git-dir, GIT_DIR, source, eval, a variable target) turns the
-# exemption off for the whole call, and every rule asks as before.
+# is literal — absolute, or relative without `..` — stays inside the worktree,
+# and does not enter a repository nested in it. Anything that can move git
+# elsewhere less plainly (pushd to a new place, env -C, --git-dir, GIT_DIR,
+# CDPATH, source, eval, trap, a variable target) turns the exemption off for
+# the whole call, and every rule asks as before.
 
 LinkedWorktree = namedtuple("LinkedWorktree", "top branch")
 
@@ -1548,27 +1562,50 @@ LINKED_WORKTREE_RULES = frozenset({
     GIT_STASH_RULE,
 })
 
-# Ways to point git at another repository or directory that no `cd` or `-C`
-# spells out.
-_GIT_RELOCATE_RE = re.compile(
+# Ways to point git, or cd, somewhere no literal `cd` or `-C` spells out.
+_RELOCATE_RE = re.compile(
     r"\bGIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|NAMESPACE)\b"
-    r"|--git-dir\b|--work-tree\b"
+    r"|--git-dir\b|--work-tree\b|\bCDPATH\b"
 )
 
-# One simple command: the span between two _COMMAND_BREAK_RE break points.
-_SIMPLE_COMMAND_RE = re.compile(r"[^\n;|&()`]+")
-
 _ASSIGNMENT_RE = re.compile(r"\w+=")
-_ASSIGNMENTS_ONLY_RE = re.compile(r"\s*(?:\w+=\S*\s+)*")
 
 _DIR_CHANGERS = frozenset({"cd", "pushd", "popd"})
 
-# Commands that run text in THIS shell, where a `cd` would stick.
-_SAME_SHELL_RUNNERS = frozenset({"source", ".", "eval"})
+# Commands that run text in THIS shell, where a `cd` would stick. `.` does too,
+# but only counts where a command starts; anywhere else it is just the current
+# directory (`git add .`).
+_SAME_SHELL_RUNNERS = frozenset({"source", "eval", "trap"})
 
-# A path that means the same thing to bash as it reads here: no expansion,
+# Words that can stand in front of a command in the same shell.
+_COMMAND_PREFIXES = frozenset({
+    "if", "then", "else", "elif", "do", "while", "until", "!", "{",
+    "command", "builtin", "exec", "time", "nohup",
+})
+
+# Anything that can run a command more than once.
+_REPEATS_RE = re.compile(
+    r"(?:^|[\n;&|(){}`])\s*(?:for|while|until|select|function)\b|\(\s*\)"
+)
+
+# Any stash command that can change the stash list; list and show only read it.
+_GIT_STASH_ANY_RE = re.compile(r"\bgit\s+stash\b(?!\s+(?:list|show)\b)")
+
+# A word that means the same thing to bash as it reads here: no expansion,
 # no quoting left over.
-_LITERAL_PATH_RE = re.compile(r"[^$`~*?\[\]{}'\"\\]+")
+_LITERAL_WORD_RE = re.compile(r"[^$`~*?\[\]{}'\"\\]+")
+
+
+def _command_spans(masked):
+    """Return (start, end) for each simple command in *masked*: the text between breaks."""
+    spans, start = [], 0
+    for brk in _COMMAND_BREAK_RE.finditer(masked):
+        if brk.start() > start:
+            spans.append((start, brk.start()))
+        start = brk.end()
+    if start < len(masked):
+        spans.append((start, len(masked)))
+    return spans
 
 
 def _worktree_at(path):
@@ -1585,20 +1622,41 @@ def _worktree_at(path):
     top, git_dir, common_dir = lines
     if os.path.realpath(git_dir) == os.path.realpath(common_dir):
         return None
-    branch = _run_git(top, ["symbolic-ref", "-q", "--short", "HEAD"])
-    return LinkedWorktree(os.path.realpath(top), branch.strip() if branch else None)
+    # The full ref, not --short: that one says heads/<b> when a tag shares the name.
+    ref = (_run_git(top, ["symbolic-ref", "-q", "HEAD"]) or "").strip()
+    branch = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else None
+    return LinkedWorktree(os.path.realpath(top), branch)
 
 
 def _inside(path, top):
     return os.path.commonpath([path, top]) == top
 
 
+def _nested_repo_between(path, top):
+    """Return True if a directory from *path* up to, not including, *top* holds a .git."""
+    while path != top and _inside(path, top):
+        if os.path.lexists(os.path.join(path, ".git")):
+            return True
+        path = os.path.dirname(path)
+    return False
+
+
 def _follow_dir(here, target, top):
-    """Return where `cd <target>` from *here* lands, or None if not provably in *top*."""
-    if not _LITERAL_PATH_RE.fullmatch(target) or ".." in target.split("/"):
+    """Return where `cd <target>` from *here* lands, or None if not provably in *top*.
+
+    *here* is None once the walk no longer knows the exact directory (after a
+    popd): from there only an absolute target can be followed. Landing in a
+    repository nested inside the worktree counts as leaving it, since git
+    would act on that repository instead.
+    """
+    if not _LITERAL_WORD_RE.fullmatch(target) or ".." in target.split("/"):
         return None
-    landed = os.path.realpath(os.path.join(here, target))
-    return landed if _inside(landed, top) else None
+    if here is None and not os.path.isabs(target):
+        return None
+    landed = os.path.realpath(os.path.join(here or "/", target))
+    if not _inside(landed, top) or _nested_repo_between(landed, top):
+        return None
+    return landed
 
 
 def _cd_target(tokens):
@@ -1611,40 +1669,41 @@ def _cd_target(tokens):
     return args[0]
 
 
-def _leading_cd(command, masked, cwd):
+def _leading_cd(command, masked, spans, cwd):
     """Return the directory a leading `cd <dir>` moves the whole call into, or None.
 
     Only a cd the rest of the call provably runs after: first thing on the
     line, not in a pipeline or in the background (both run it in a subshell),
-    and into a directory that exists, so that it cannot fail and leave the
-    rest running where the call started.
+    and into a directory that exists and can be entered, so that it cannot
+    fail and leave the rest running where the call started. No `..`: bash
+    resolves it against the path as typed, not the one symlinks lead to.
     """
-    first = _SIMPLE_COMMAND_RE.match(masked)
-    if not first:
+    if not spans or spans[0][0] != 0:
         return None
-    tokens = _tokenize_segment(command[first.start():first.end()])
+    start, end = spans[0]
+    tokens = _tokenize_segment(command[start:end])
     if not tokens or tokens[0] != "cd":
         return None
-    after = masked[first.end():first.end() + 2]
+    after = masked[end:end + 2]
     if (after.startswith("|") and after != "||") or (after.startswith("&") and after != "&&"):
         return None
     target = _cd_target(tokens)
-    if not target or not _LITERAL_PATH_RE.fullmatch(target):
+    if not target or not _LITERAL_WORD_RE.fullmatch(target) or ".." in target.split("/"):
         return None
     landed = os.path.realpath(os.path.join(cwd, target))
-    return landed if os.path.isdir(landed) else None
+    return landed if os.path.isdir(landed) and os.access(landed, os.X_OK) else None
 
 
 def _command_worktree(command, cwd):
     """Return the LinkedWorktree every command in *command* runs inside, or None."""
-    if not cwd or not os.path.isabs(cwd):
+    if not cwd or not os.path.isabs(cwd) or os.environ.get("CDPATH"):
         return None
     command = _command_text(command)
-    if _GIT_RELOCATE_RE.search(command):
+    if _RELOCATE_RE.search(command):
         return None
     masked = _mask_quoted(command)
-    spans = list(_SIMPLE_COMMAND_RE.finditer(masked))
-    here = _leading_cd(command, masked, cwd)
+    spans = _command_spans(masked)
+    here = _leading_cd(command, masked, spans, cwd)
     if here:
         spans = spans[1:]  # already followed
     else:
@@ -1652,22 +1711,28 @@ def _command_worktree(command, cwd):
     worktree = _worktree_at(here)
     if worktree is None or not _inside(here, worktree.top):
         return None
-    for span in spans:
-        tokens = _tokenize_segment(command[span.start():span.end()])
+    for start, end in spans:
+        tokens = _tokenize_segment(command[start:end])
         while tokens and _ASSIGNMENT_RE.match(tokens[0]):
+            tokens.pop(0)
+        if _SAME_SHELL_RUNNERS & set(tokens):
+            return None
+        while tokens and tokens[0] in _COMMAND_PREFIXES:
             tokens.pop(0)
         if not tokens:
             continue
         verb = tokens[0]
-        if verb in _SAME_SHELL_RUNNERS or _DIR_CHANGERS & set(tokens[1:]):
+        if verb == "." or _DIR_CHANGERS & set(tokens[1:]):
             return None
-        if verb in ("cd", "pushd"):
-            target = _cd_target(tokens)
+        if verb in _DIR_CHANGERS:
+            target = "" if verb == "popd" else _cd_target(tokens)
             if target is None or (verb == "cd" and target == ""):
                 return None  # a bare cd goes to $HOME
-            # pushd with no directory, or +N/-N, only rotates the stack of
-            # places this call already went, all of them inside the worktree.
-            if target and not (verb == "pushd" and re.fullmatch(r"[+-]\d+", target)):
+            if verb == "popd" or target == "" or re.fullmatch(r"[+-]\d+", target):
+                # Back to, or around, places this call already went: all in
+                # the worktree, but no longer one this walk can name.
+                here = None
+            else:
                 here = _follow_dir(here, target, worktree.top)
                 if here is None:
                     return None
@@ -1683,6 +1748,26 @@ def _command_worktree(command, cwd):
     return worktree
 
 
+def _path_slug(path):
+    """Return *path* the way CC names a project directory after it."""
+    return re.sub(r"[^A-Za-z0-9-]", "-", path)
+
+
+def _is_session_checkout(worktree, transcript_path):
+    """Return True unless *worktree* is provably not where this session started.
+
+    Transcripts live at <config>/projects/<slug of the start directory>/…,
+    subagents' included. A start directory inside the worktree counts too.
+    """
+    parts = (transcript_path or "").replace("\\", "/").split("/")
+    starts = [parts[i + 1] for i in range(len(parts) - 1)
+              if parts[i] == "projects" and parts[i + 1].startswith("-")]
+    if not starts:
+        return True
+    start, top = starts[-1], _path_slug(worktree.top)
+    return start == top or start.startswith(top + "-")
+
+
 def _names_other_branch(name, worktree):
     """Return True unless *name* is provably not a branch other than the worktree's own.
 
@@ -1691,7 +1776,7 @@ def _names_other_branch(name, worktree):
     """
     if name == worktree.branch:
         return False
-    if name == "-" or "@{" in name or not _LITERAL_PATH_RE.fullmatch(name):
+    if name == "-" or "@{" in name or not _LITERAL_WORD_RE.fullmatch(name):
         return True
     out = _run_git(worktree.top, ["for-each-ref", "--format=%(refname)",
                                   "refs/heads/" + name])
@@ -1704,6 +1789,10 @@ _SWITCH_VALUE_OPTS = frozenset({
 })
 _REBASE_VALUE_OPTS = frozenset({
     "--onto", "-s", "--strategy", "-X", "--strategy-option", "-x", "--exec",
+})
+# Rebase options that reach past the worktree's own branch.
+_REBASE_REACHING_OPTS = frozenset({
+    "--exec", "--interactive", "--edit-todo", "--update-refs",
 })
 
 # A stash subject names the branch it was made on: "On <branch>: <message>",
@@ -1736,11 +1825,19 @@ def _switch_stays(args, worktree):
     return bool(pre) and not _names_other_branch(pre[0], worktree)
 
 
-def _rebase_stays(args):
+def _rebase_stays(args, worktree):
     flags, pre, post, _ = _split_operands(args, _REBASE_VALUE_OPTS)
-    names, _ = _flag_names(flags)
+    names, shorts = _flag_names(flags)
+    if names & _REBASE_REACHING_OPTS or "x" in shorts or "i" in shorts:
+        return False
     # A second operand, or the only one after --root, is a branch to check out.
-    return len(pre) + len(post) < (1 if "--root" in names else 2)
+    if len(pre) + len(post) >= (1 if "--root" in names else 2):
+        return False
+    if "--no-update-refs" in names:
+        return True
+    setting = _run_git(worktree.top, ["config", "--type=bool", "--default=false",
+                                      "--get", "rebase.updateRefs"])
+    return setting is not None and setting.strip() == "false"
 
 
 def _stash_drop_is_own(word, args, worktree):
@@ -1758,30 +1855,36 @@ def _stash_drop_is_own(word, args, worktree):
     return bool(made_on) and made_on.group(1) == worktree.branch
 
 
+def _stash_drop_alone(command):
+    """Return True if the drop is the call's one stash change, and nothing repeats it."""
+    masked = _mask_quoted(_command_text(command))
+    return len(_GIT_STASH_ANY_RE.findall(masked)) == 1 and not _REPEATS_RE.search(masked)
+
+
 def check_linked_worktree_rule(description, command, worktree):
     """Return True if every match of rule *description* stays inside *worktree*.
 
     *worktree* is what _command_worktree found for the whole call. Each match
-    has to be a git command in command position (not an argument of `find
-    -execdir` or `xargs`, which run it elsewhere) whose form reaches no other
-    branch.
+    has to be a git command at the very start of its simple command — not
+    behind an assignment, and not an argument of `find -execdir`, `xargs` or
+    `sudo` — whose form reaches no further. Its arguments are read off the
+    masked text, so a quoted one is opaque, and a check that needs its value
+    does not exempt.
     """
     found = _rule_commands(command, description)
     if not found:
         return False
-    # Every drop after the first would hit a stash the check never looked at:
-    # the one that moved up into its place.
-    if description == GIT_STASH_RULE and len(found) > 1:
+    if description == GIT_STASH_RULE and not _stash_drop_alone(command):
         return False
     for before, word, after in found:
-        if not _ASSIGNMENTS_ONLY_RE.fullmatch(before):
+        if before.strip():
             return False
-        args = _TOKEN_RE.findall(after)
+        args = _TOKEN_RE.findall(_REDIRECT_STRIP_RE.sub(" ", after))
         if description == GIT_CHECKOUT_RULE and not _checkout_stays(args, worktree):
             return False
         if description == GIT_SWITCH_RULE and not _switch_stays(args, worktree):
             return False
-        if description == GIT_REBASE_RULE and not _rebase_stays(args):
+        if description == GIT_REBASE_RULE and not _rebase_stays(args, worktree):
             return False
         if description == GIT_STASH_RULE and not _stash_drop_is_own(word, args, worktree):
             return False
@@ -2601,9 +2704,10 @@ def main():
 
     def linked_worktree():
         if not worktree_memo:
-            worktree_memo.append(
-                _command_worktree(tool_input.get("command", ""), event.get("cwd", ""))
-            )
+            worktree = _command_worktree(tool_input.get("command", ""), event.get("cwd", ""))
+            if worktree and _is_session_checkout(worktree, event.get("transcript_path", "")):
+                worktree = None
+            worktree_memo.append(worktree)
         return worktree_memo[0]
 
     skip_rules = ()
