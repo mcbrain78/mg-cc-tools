@@ -4310,6 +4310,15 @@ _SCRATCH_POLL = (
 )
 
 
+# The shape that prompted in a real session: mark a freshly written wrapper
+# executable, then run a check through it with `bash -c`.
+_WRAPPER_RUN = (
+    "S=/tmp/claude-1000/-home-user-myproject/sid/scratchpad/wrap; "
+    "chmod +x $S/wt.sh && $S/wt.sh bash -c 'echo \"VENV=${VIRTUAL_ENV:-unset}\"; "
+    "echo \"$PATH\" | cut -c1-80; pwd'; python3 $S/ps.py"
+)
+
+
 class TestExecBitChmod:
     """Which chmod calls count as only adding the execute bit."""
 
@@ -4384,6 +4393,43 @@ class TestExecBitChmod:
         """Git runs an executable hook later, with no tool call to guard."""
         assert not check_exec_bit_chmod(command)
 
+    @pytest.mark.parametrize("command", [
+        "chmod +x a.sh; bash -c 'echo hi'",
+        "chmod +x a.sh && eval 'echo hi'",
+        _WRAPPER_RUN,
+    ])
+    def test_unrelated_nested_shell_does_not_refuse(self, command):
+        """A nested shell elsewhere on the line hides no chmod."""
+        assert check_exec_bit_chmod(command)
+
+    @pytest.mark.parametrize("command", [
+        "chmod +x a.sh && bash -c 'chmod 777 b'",
+        "chmod +x a.sh; ssh host 'chmod 777 b'",
+    ])
+    def test_chmod_inside_a_nested_shell_string_is_not(self, command):
+        assert not check_exec_bit_chmod(command)
+
+    @pytest.mark.parametrize("command", [
+        "chmod +x a.sh $(chmod 777 secrets.txt)",
+        "chmod +x a.sh `chmod 777 secrets.txt`",
+        "chmod +x a.sh <(chmod 777 secrets.txt)",
+    ])
+    def test_command_substitution_is_its_own_command(self, command):
+        assert not check_exec_bit_chmod(command)
+
+    def test_substituted_exec_bit_is_exempt(self):
+        assert check_exec_bit_chmod("out=$(chmod -v +x a.sh)")
+
+    def test_continuation_joins_lines(self):
+        assert check_exec_bit_chmod("chmod +x \\\n  a.sh b.sh")
+        # xargs runs chmod +x on whatever find prints.
+        assert not check_exec_bit_chmod("find / -type f | xargs \\\n  chmod +x dummy")
+
+    def test_escaped_backslash_ends_the_line(self):
+        """An escaped backslash + newline is a literal backslash, then a new command."""
+        assert not check_exec_bit_chmod("chmod +x a.sh \\\\\nchmod 777 b")
+        assert check_exec_bit_chmod("echo \\\\\nchmod +x a.sh")
+
     def test_github_dir_is_not_a_git_dir(self):
         assert check_exec_bit_chmod("chmod +x .github/scripts/release.sh")
 
@@ -4421,6 +4467,9 @@ class TestExecBitChmodInMain:
 
     def test_in_project_script_does_not_prompt(self, tmp_path, monkeypatch):
         assert self._run(tmp_path, monkeypatch, "chmod +x scripts/run.sh") == []
+
+    def test_wrapper_run_through_bash_c_does_not_prompt(self, tmp_path, monkeypatch):
+        assert self._run(tmp_path, monkeypatch, _WRAPPER_RUN) == []
 
     def test_git_hook_still_asks(self, tmp_path, monkeypatch):
         decisions = self._run(tmp_path, monkeypatch, "chmod +x .git/hooks/pre-commit")
@@ -4503,9 +4552,30 @@ class TestFfOnlyMerge:
     @pytest.mark.parametrize("command", [
         'bash -c "git merge --ff-only feature-x"',
         'eval "git merge --ff-only feature-x"',
+        "git merge --ff-only a && bash -c 'git merge b'",
     ])
-    def test_nested_shell_is_not(self, command):
+    def test_merge_inside_a_nested_shell_string_is_not(self, command):
         assert not check_ff_only_merge(command)
+
+    def test_unrelated_nested_shell_does_not_refuse(self):
+        assert check_ff_only_merge("git merge --ff-only a && bash -c 'echo hi'")
+
+    @pytest.mark.parametrize("command", [
+        "$(git merge --ff-only a)$(git merge b)",
+        "`git merge --ff-only a` `git merge b`",
+        "git merge --ff-only a $(git merge b)",
+        "(git merge --ff-only a)(git merge b)",
+    ])
+    def test_command_substitution_is_its_own_command(self, command):
+        assert not check_ff_only_merge(command)
+
+    def test_continuation_joins_lines(self):
+        assert check_ff_only_merge("git merge \\\n  --ff-only feature-x")
+        assert not check_ff_only_merge("git merge --ff-only feature-x \\\n  --no-ff")
+
+    def test_bare_merge_before_a_newline_is_not(self):
+        """Bash runs `git merge` on its own line: a merge of the upstream."""
+        assert not check_ff_only_merge("git merge --ff-only a; git merge\n--ff-only")
 
     def test_no_merge_is_not_exempt(self):
         assert not check_ff_only_merge("git log --oneline -1")

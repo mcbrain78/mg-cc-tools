@@ -178,7 +178,6 @@ GIT_CHECKOUT_RULE = "git checkout"
 # Suppressed for a fast-forward-only merge by check_ff_only_merge; see the
 # Fast-forward-only merge section.
 GIT_MERGE_RULE = "git merge (not recovery)"
-_GIT_MERGE_NOT_RECOVERY = r"\bgit\s+merge\s+(?!--abort|--continue|--quit)"
 
 # Suppressed for local targets by check_local_http; see the Local HTTP targets
 # section for what "local" means and why only this one rule is exempted.
@@ -194,7 +193,7 @@ CATEGORIES = {
         (r"\bgit\s+switch\b", "git switch"),
         (r"\bgit\s+branch\s+(?!-)[A-Za-z]", "branch creation"),
         (r"\bgit\s+branch\s+(-[dD]|--delete)\b", "branch deletion"),
-        (_GIT_MERGE_NOT_RECOVERY, GIT_MERGE_RULE),
+        (r"\bgit\s+merge\s+(?!--abort|--continue|--quit)", GIT_MERGE_RULE),
         (r"\bgit\s+rebase\s+(?!--abort|--continue|--quit|--skip)", "git rebase (not recovery)"),
         (r"\bgit\s+cherry-pick\s+(?!--abort|--continue|--quit)", "git cherry-pick (not recovery)"),
         (r"\bgit\s+reset\s+--hard\b", "git reset --hard"),
@@ -722,6 +721,19 @@ _SHELL_INVOKER_RE = re.compile(
 # both applied to the masked command so quoted separators don't split.
 _SEGMENT_RE = re.compile(r"[^\n;|&]+")
 _TOKEN_RE = re.compile(r"\S+")
+
+# A backslash at the end of a line joins it to the next one, unless that
+# backslash is itself escaped (an even run of backslashes before it).
+_CONTINUATION_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\\n")
+
+
+def _join_continuations(command):
+    """Return *command* with each backslash-newline continuation read as spaces.
+
+    Two spaces for the two characters, so offsets into the result still line
+    up with the original command.
+    """
+    return _CONTINUATION_RE.sub(lambda match: match.group(1) + "  ", command)
 
 
 def _mask_quoted(command):
@@ -1298,6 +1310,67 @@ def check_local_http(command):
     return all(_host_is_local(host) for host in hosts)
 
 
+# ── Reading a rule's matches for an exemption ───────────────────────────────
+# An exemption retires a whole rule, so it must read every command that rule
+# matched, and read each one as bash will run it. Three ways to get that wrong,
+# each of which once let a real change through as a harmless one:
+#
+#   - A command substitution or subshell is a command of its own, but splits
+#     no _SEGMENT_RE segment: `chmod +x a $(chmod 777 b)` read as one chmod
+#     whose mode is +x.
+#   - A backslash-newline joins two lines into one command:
+#     `git merge --ff-only x \` + newline + `--no-ff` makes a merge commit.
+#   - With a nested shell in the command, check_command scans quoted text too,
+#     so the rule can match inside a string that masking hides from segment
+#     parsing: `bash -c "chmod 777 x"`.
+#
+# The third used to be handled by refusing any command with a nested shell in
+# it, which also refused a plain `chmod +x a` that merely shared a command line
+# with an unrelated `bash -c 'echo hi'`. Now only a match that actually sits
+# inside a quoted span refuses; a chmod run BY another command (`sudo chmod`,
+# `xargs chmod`, `find -exec chmod`) still fails each check's own test, since
+# the chmod is not where the command starts.
+
+# Split points for one simple command: _SEGMENT_RE's, plus the parentheses and
+# backticks that open and close a subshell or a command substitution.
+_COMMAND_BREAK_RE = re.compile(r"[\n;|&()`]")
+
+_RULE_RE_BY_DESCRIPTION = {description: compiled
+                           for compiled, description, _category in RULES}
+
+
+def _rule_commands(command, description):
+    """Return (before, word, after) for every match of rule *description*.
+
+    *word* is the matched text; *before* and *after* run from it to the
+    nearest command break on each side. All three are read off the masked
+    command, after heredocs are dropped and continuation lines joined.
+
+    Returns None when a match cannot be read this way: one inside a quoted
+    span (see above), or one that itself runs across a command break, as
+    `git merge` + newline does — bash runs a bare `git merge` there.
+    """
+    rule_re = _RULE_RE_BY_DESCRIPTION[description]
+    command = _join_continuations(_strip_heredocs(command))
+    masked = _mask_quoted(command)
+    matches = list(rule_re.finditer(masked))
+    if _SHELL_INVOKER_RE.search(command):
+        visible = {match.start() for match in matches}
+        if any(match.start() not in visible for match in rule_re.finditer(command)):
+            return None
+    found = []
+    for match in matches:
+        if _COMMAND_BREAK_RE.search(match.group()):
+            return None
+        breaks_before = list(_COMMAND_BREAK_RE.finditer(masked, 0, match.start()))
+        start = breaks_before[-1].end() if breaks_before else 0
+        next_break = _COMMAND_BREAK_RE.search(masked, match.end())
+        end = next_break.start() if next_break else len(masked)
+        found.append((masked[start:match.start()], match.group(),
+                      masked[match.end():end]))
+    return found
+
+
 # ── Exec-bit chmod ──────────────────────────────────────────────────────────
 # PERMISSION_CHANGE_RULE asks on every chmod, so an agent marking its own
 # helper script executable asks exactly as loudly as `chown -R` on $HOME. The
@@ -1321,8 +1394,6 @@ def check_local_http(command):
 # ask. Out-of-project targets still ask: chmod is in FILE_MODIFYING_CMDS, and
 # check_outside_project runs after the category rules regardless of what they
 # skipped.
-
-_PERMISSION_WORD_RE = re.compile(r"\b(?:chmod|chown)\b")
 
 # Clauses like u+x, a+x or +x, comma-separated: execute added, nothing taken.
 _EXEC_BIT_MODE_RE = re.compile(r"[ugoa]*\+x(?:,[ugoa]*\+x)*")
@@ -1353,22 +1424,13 @@ def check_exec_bit_chmod(command):
     """Return True if every chmod/chown in *command* is a plain `chmod +x`.
 
     The hook check reads the raw command, since a quoted or variable target is
-    exactly what quote masking would hide. The segment check reads the masked
-    one, like check_command, so a quoted `;` does not split a segment. A nested
-    shell (`bash -c`, `eval`, `xargs`) hides its real command in a string and
-    gets no exemption.
+    exactly what quote masking would hide. Each chmod is then read as its own
+    command by _rule_commands.
     """
-    command = _strip_heredocs(command)
-    if _HOOK_MENTION_RE.search(command) or _SHELL_INVOKER_RE.search(command):
+    if _HOOK_MENTION_RE.search(_strip_heredocs(command)):
         return False
-    found = False
-    for segment in _SEGMENT_RE.findall(_mask_quoted(command)):
-        if not _PERMISSION_WORD_RE.search(segment):
-            continue
-        if not _is_exec_bit_chmod(segment):
-            return False
-        found = True
-    return found
+    found = _rule_commands(command, PERMISSION_CHANGE_RULE)
+    return bool(found) and all(_is_exec_bit_chmod("".join(parts)) for parts in found)
 
 
 # ── Fast-forward-only merge ─────────────────────────────────────────────────
@@ -1383,32 +1445,23 @@ def check_exec_bit_chmod(command):
 # so `git merge --ff-only --no-ff x` makes a merge commit. The exemption holds
 # only when --ff-only is the last of the three.
 
-_GIT_MERGE_NOT_RECOVERY_RE = re.compile(_GIT_MERGE_NOT_RECOVERY)
-
 _FF_MODE_OPTS = frozenset({"--ff", "--no-ff", "--ff-only"})
 
 
 def check_ff_only_merge(command):
     """Return True if every merge GIT_MERGE_RULE catches in *command* is --ff-only.
 
-    Read the way check_command reads it — heredocs dropped, quotes masked — so
-    a `--no-ff` inside a -m message is not an option. A nested shell hides its
-    real command in a string and gets no exemption.
+    Each merge is read as its own command by _rule_commands, off the masked
+    text, so a `--no-ff` inside a -m message is not an option.
     """
-    command = _strip_heredocs(command)
-    if _SHELL_INVOKER_RE.search(command):
+    found = _rule_commands(command, GIT_MERGE_RULE)
+    if not found:
         return False
-    found = False
-    for segment in _SEGMENT_RE.findall(_mask_quoted(command)):
-        match = _GIT_MERGE_NOT_RECOVERY_RE.search(segment)
-        if not match:
-            continue
-        modes = [token for token in _TOKEN_RE.findall(segment[match.end():])
-                 if token in _FF_MODE_OPTS]
+    for _before, _word, after in found:
+        modes = [token for token in _TOKEN_RE.findall(after) if token in _FF_MODE_OPTS]
         if not modes or modes[-1] != "--ff-only":
             return False
-        found = True
-    return found
+    return True
 
 
 # Rules a more precise check can retire for one command, keyed by the rule's
