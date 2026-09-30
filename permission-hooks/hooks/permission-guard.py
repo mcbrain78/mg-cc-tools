@@ -359,23 +359,62 @@ _GIT_CONFIG_WRITE = (
 
 # ── Command position ────────────────────────────────────────────────────────
 # Words like "service" and "kill" are common in prose, paths and regex
-# alternations, and these rules scan the command string with heredocs stripped
-# but quotes intact. Anchoring such a word to command position — start of the
-# string, or after a shell separator — is what keeps the text cases quiet.
-# `\n` belongs in the separator class because a multi-line Bash command is a
-# script: without it only its first line is guarded. systemctl has a wider
-# anchor of its own, _SYSTEMCTL_POS.
-_CMD_POS = r"(?:^|[;&\n]\s*)"
+# alternations. Anchoring such a word to a place where bash starts a command
+# keeps the text cases quiet; quoted text is masked before the rules read it,
+# so the `| service` in `git commit -m "a | service"` is filler. Anchored at
+# only the start, `;`, `&` and a newline, these commands ran unasked from
+# everywhere else a command starts. _CMD_START takes in:
+#
+#   - the start of the string, `;`, `&`, a newline, a pipe, `||`, a subshell,
+#     a group, a command or process substitution: `| kill`, `(ln …)`,
+#     `{ kill …; }`, `$(dd …)`, `` `kill …` ``, `<(kill …)`
+#   - a nested shell's string, which check_command scans unmasked:
+#     `bash -c "kill …"`, `eval 'kill …'`. Only a quote with the command right
+#     behind it counts; a closing quote and a space (`grep "x" kill.md`) is
+#     followed by an argument.
+#   - after a reserved word or an assignment: `if kill …`, `! kill`,
+#     `FOO=1 kill …`
+#   - behind a command that runs its arguments: `xargs kill`, `timeout 30
+#     kill`, `find … -exec kill`, env, nohup, nice and the rest of _RUNNERS.
+#     Their options are followed as flags, numbers and `{}`; one that takes a
+#     word (`timeout -s KILL 5 …`) ends the prefix, so that form is not seen.
+#     `command` takes only -p: `command -v kill` asks where it is, it does not
+#     run it.
+#
+# A `{` opens a group only with a space behind it, so brace expansion
+# (`docs/{kill,ln}.md`) and `${kill}` stay text.
+#
+# The anchor runs at every `"`, `(` and `|` of every Bash call, once per rule
+# that uses it, so no two of its alternatives may match the same token, and
+# each token is taken atomically: with `\w+=\S*` both an env argument and an
+# assignment of its own, `env A=1 A=1 …` went quadratic and `nice 1=1 1=1 …`
+# exponential. An assignment starts with a letter or `_`, as bash's do, a
+# number argument holds no `=`, and an assignment value is read to at most
+# 512 characters, so a quote-dense line with no spaces cannot make every
+# anchor rescan the rest of it. A longer value ends the prefix.
+_RUNNERS = r"(?:env|nohup|setsid|exec|eval|time|nice|stdbuf|timeout|xargs|watch)"
+_RUNNER_ARGS = r"(?:[ \t]+(?:-\S*+|\d[^\s=]*+(?!=)|\{\}))*+"
+_CMD_PREFIX = (
+    r"(?>(?:if|then|elif|else|do|while|until|!"
+    r"|[A-Za-z_]\w*+=\S{0,512}+"
+    r"|command(?:[ \t]+-p)?"
+    r"|" + _RUNNERS + _RUNNER_ARGS
+    + r")[ \t]+)*+"
+)
+_CMD_START = (
+    r"(?:(?:^|[;&|\n(`]|(?<!\$)\{(?=\s)|[ \t]-(?:exec|execdir|ok|okdir)(?=[ \t]))[ \t]*+"
+    r"|[\"'])"
+    + _CMD_PREFIX
+)
 
-# Same, plus after a pipe. Only for commands that are never a word you would
-# meet in text, so "| dd" can be read as syntax rather than as data.
-_CMD_POS_PIPE = r"(?:^|[;&|\n]\s*)"
+# A command called by its path: `/usr/bin/kill`.
+_CMD_PATH = r"(?:(?:/[\w.-]+)*/)?"
 
 # `\brm` also matches the tail of a flag: `-` is not a word character, so
 # `docker run --rm` has a word boundary right before the `r`. Put this in front
 # of a command word so a flag spelled like the command is not read as a call to
-# it. Unlike _CMD_POS it keeps `xargs rm`, `sudo rm` and
-# `find -exec rm` in view.
+# it. It anchors nothing else, so `xargs rm`, `sudo rm` and `find -exec rm`
+# stay in view.
 _NOT_FLAG = r"(?<!-)"
 
 # ── systemctl ───────────────────────────────────────────────────────────────
@@ -400,52 +439,6 @@ _SYSTEMCTL_READ = (
     r"|paths|automounts))(?![\w-])"
 )
 
-# Where bash runs systemctl as a command. _CMD_POS alone let it run, unasked,
-# from everywhere else a command starts:
-#
-#   - a pipe, `||`, a subshell, a group, a command or process substitution:
-#     `| systemctl`, `(systemctl …)`, `{ systemctl …; }`, `$(systemctl …)`,
-#     `` `systemctl …` ``, `<(systemctl …)`
-#   - a nested shell's string, which check_command scans unmasked:
-#     `bash -c "systemctl …"`, `eval 'systemctl …'`. Only a quote with the
-#     command right behind it counts; a closing quote and a space
-#     (`grep "x" systemctl.md`) is followed by an argument.
-#   - after a reserved word or an assignment: `if systemctl …`, `! systemctl`,
-#     `FOO=1 systemctl …`
-#   - behind a command that runs its arguments: `xargs systemctl`, `timeout 30
-#     systemctl`, `find … -exec systemctl`, env, nohup, nice and the rest of
-#     _SYSTEMCTL_RUNNERS. Their options are followed as flags, numbers and
-#     `{}`; one that takes a word (`timeout -s KILL 5 …`) ends the prefix, so
-#     that form is not seen. `command` takes only -p: `command -v systemctl`
-#     asks where it is, it does not run it.
-#   - by path: `/usr/bin/systemctl`
-#
-# A `{` opens a group only with a space behind it, so brace expansion
-# (`docs/{systemctl,journalctl}.md`) and `${systemctl}` stay text.
-#
-# The anchor runs at every `"`, `(` and `|` of every Bash call, so no two of
-# its alternatives may match the same token, and each token is taken
-# atomically: with `\w+=\S*` both an env argument and an assignment of its
-# own, `env A=1 A=1 …` went quadratic and `nice 1=1 1=1 …` exponential. An
-# assignment starts with a letter or `_`, as bash's do, a number argument
-# holds no `=`, and an assignment value is read to at most 512 characters, so
-# a quote-dense line with no spaces cannot make every anchor rescan the rest
-# of it. A longer value ends the prefix.
-_SYSTEMCTL_RUNNERS = r"(?:env|nohup|setsid|exec|eval|time|nice|stdbuf|timeout|xargs|watch)"
-_SYSTEMCTL_RUNNER_ARGS = r"(?:[ \t]+(?:-\S*+|\d[^\s=]*+(?!=)|\{\}))*+"
-_SYSTEMCTL_PREFIX = (
-    r"(?>(?:if|then|elif|else|do|while|until|!"
-    r"|[A-Za-z_]\w*+=\S{0,512}+"
-    r"|command(?:[ \t]+-p)?"
-    r"|" + _SYSTEMCTL_RUNNERS + _SYSTEMCTL_RUNNER_ARGS
-    + r")[ \t]+)*+"
-)
-_SYSTEMCTL_POS = (
-    r"(?:(?:^|[;&|\n(`]|(?<!\$)\{(?=\s)|[ \t]-(?:exec|execdir|ok|okdir)(?=[ \t]))[ \t]*+"
-    r"|[\"'])"
-    + _SYSTEMCTL_PREFIX
-)
-
 # Two negative lookaheads, not one match-the-write pattern: a greedy option
 # group followed by a positive match backtracks until the option itself is
 # taken for the subcommand, which is how `--user status` would get flagged. A
@@ -453,8 +446,8 @@ _SYSTEMCTL_POS = (
 #
 # The `word` group marks where the command starts, for _rule_commands.
 _SYSTEMCTL_WRITE = (
-    _SYSTEMCTL_POS
-    + r"(?P<word>(?:(?:/[\w.-]+)*/)?systemctl)(?![\w-])"
+    _CMD_START
+    + r"(?P<word>" + _CMD_PATH + r"systemctl)(?![\w-])"
     # Bare `systemctl [options]`, redirected or not, just lists units.
     + r"(?!" + _SYSTEMCTL_OPTS + r"\s*(?:$|[)\n;&|]|\d*[<>]))"
     + r"(?!" + _SYSTEMCTL_OPTS + r"\s+" + _SYSTEMCTL_READ + r")"
@@ -541,9 +534,9 @@ CATEGORIES = {
     "Destructive Filesystem": [
         (_NOT_FLAG + r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
         (r"\b(chmod|chown)\b", PERMISSION_CHANGE_RULE),
-        (_CMD_POS_PIPE + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
+        (_CMD_START + _CMD_PATH + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
-        (_CMD_POS_PIPE + r"dd\s", "raw disk operations"),
+        (_CMD_START + _CMD_PATH + r"dd\s", "raw disk operations"),
     ],
     "Secrets & Credentials": [
         *(_ENV_RULES if ENV_PROTECTION else []),
@@ -556,17 +549,16 @@ CATEGORIES = {
         (r"\b(apt|apt-get|brew|yum|dnf|pacman|apk)\s+(install|remove|purge|uninstall)\b", "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
         (_SYSTEMCTL_WRITE, SYSTEMCTL_RULE),
-        # Command-position only (see _CMD_POS), and must take an argument. NOT
-        # after a pipe: you never pipe into service/launchctl, but "|service" is
-        # common in TEXT (regex alternations, markdown tables) and the guard
-        # scans the raw command string with quotes intact.
-        (_CMD_POS + r"(launchctl|service)\s+\S", "service manager"),
-        # Same command-position + argument anchoring as the service rule above:
-        # these words are common in prose/paths ("kill the test", /etc/passwd,
-        # "iptables rules"), so only flag them as an actual command invocation.
-        (_CMD_POS + r"(useradd|userdel|usermod|passwd)\s+\S", "user management"),
-        (_CMD_POS + r"(iptables|ufw)\s+\S", "firewall management"),
-        (_CMD_POS + r"(kill|killall)\s+\S", "process termination"),
+        # Only where bash starts a command (see _CMD_START), and only with an
+        # argument: these words are common in prose and paths ("kill the
+        # test", /etc/passwd, "iptables rules").
+        (_CMD_START + _CMD_PATH + r"(launchctl|service)\s+\S", "service manager"),
+        (_CMD_START + _CMD_PATH + r"(useradd|userdel|usermod|passwd)\s+\S", "user management"),
+        (_CMD_START + _CMD_PATH + r"(iptables|ufw)\s+\S", "firewall management"),
+        # Behind xargs, kill takes its arguments from stdin.
+        (_CMD_START + _CMD_PATH + r"(kill|killall)\s+\S"
+         r"|\bxargs(?:[ \t]++-\S++)*+[ \t]++" + _CMD_PATH + r"(?:kill|killall)(?![\w-])",
+         "process termination"),
     ],
 }
 
@@ -1848,7 +1840,7 @@ _SYSTEMCTL_SAFE_OPTS = frozenset({
 
 # Reserved words leave the systemctl behind them its own command
 # (`if systemctl restart …; then`). A runner does not: `timeout`, `xargs` and
-# the rest of _SYSTEMCTL_RUNNERS keep asking.
+# the rest of _RUNNERS keep asking.
 _SHELL_RESERVED_WORDS = frozenset({"if", "then", "elif", "else", "do", "while", "until", "!", "{"})
 
 _SYSTEMCTL_PATHS = frozenset({"systemctl", "/usr/bin/systemctl", "/bin/systemctl"})
@@ -2656,7 +2648,7 @@ _PASSTHROUGH_SINK = r"(?:tee|cat|less|more|bat)"
 # Commands whose arguments are patterns or paths rather than code to run:
 # `grep -rn pytest CLAUDE.md | head` searches for the word, it does not run
 # tests. Anchored to the head of a stage, the same command-position reasoning
-# as _CMD_POS, applied one pipeline stage at a time.
+# as _CMD_START, applied one pipeline stage at a time.
 _TEXT_TOOL = (
     r"(?:grep|egrep|fgrep|rg|ag|ack|sed|awk|echo|printf|ls|find|cat|head|tail"
     r"|git|jq|wc|sort|uniq|column|man)"

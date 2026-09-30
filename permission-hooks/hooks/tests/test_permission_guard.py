@@ -5653,6 +5653,23 @@ class TestCommandWords:
         ("git submodule -q deinit lib", "submodule management"),
         ("git submodule status", None),
         ("git submodule update --init", None),
+        # D: command position
+        ("(ln -s /etc/passwd x)", "symlink creation"),
+        ("echo $(dd if=/dev/zero of=x count=1)", "raw disk operations"),
+        ("xargs kill < pids", "process termination"),
+        ("pgrep -f worker | xargs kill", "process termination"),
+        ("if kill -0 1; then :; fi", "process termination"),
+        ("( service nginx restart )", "service manager"),
+        ("timeout 5 /usr/sbin/iptables -F", "firewall management"),
+        ("find . -name x -exec kill {} +", "process termination"),
+        ("for u in a b; do userdel $u; done", "user management"),
+        ("echo `killall node`", "process termination"),
+        ('git commit -m "a pipe | service foo would be nonsense"', None),
+        ('echo "| service | restart | notes |" >> table.md', None),
+        ("command -v kill", None),
+        ("man kill", None),
+        ("ls docs/{kill,ln}.md", None),
+        ("grep -rn kill .", None),
     ])
     def test_verdict(self, command, rule):
         result = check_command(command)
@@ -5672,6 +5689,7 @@ class TestCommandWords:
             "    'git tag deletion': ['git tag a ' * n, 'git tag ' + '-m x ' * n],\n"
             "    'git reset --hard': ['git reset a ' * n],\n"
             "    'remote management': ['git remote ' + '-v ' * n, 'git remote update ' + 'a ' * n],\n"
+            "    'process termination': ['(' * n, 'xargs ' * n, '| ' * n + 'kill'],\n"
             "    'git checkout': ['git -C ' + '$(a) ' * n, 'git ' + '-c $(git ' * n],\n"
             "}\n"
             "for d, inputs in cases.items():\n"
