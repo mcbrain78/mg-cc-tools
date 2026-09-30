@@ -158,10 +158,89 @@ class TestGitBranchHistory:
         """Without force, git refuses to overwrite a branch that exists."""
         assert_allowed(command)
 
+    @pytest.mark.parametrize("command", [
+        "git branch -cf old new",
+        "git branch -vf other main",
+        "git branch --forc other main",
+        "git branch other main --force 2>&1 | tail -1",
+        "git branch\t-f other",
+        "git branch \\-f other",
+        'git branch "$(git rev-parse --abbrev-ref HEAD | tr / -)" -f HEAD~1',
+        "git -C ~/src/git branch -f other main",
+        "git branch x git branch -f other",
+    ])
+    def test_block_forced_branch_move_spellings(self, command):
+        result = check_command(command)
+        assert result is not None and result[0] == "forced branch move", (command, result)
+
+    @pytest.mark.parametrize("command", [
+        # The words of the next command are not branch's.
+        "git branch new-feature && tail -f server.log",
+        "git branch --list; rm -f build.tmp",
+        "git branch -a | grep -f patterns.txt",
+        "git branch release-$(cut -f2 VERSION)",
+        # A -f inside a word is not the flag.
+        "git branch build-f-crawl",
+        "git branch fix-f",
+        # -t and -u take the rest of their bundle as the value.
+        "git branch -uf",
+        "git branch -tf feature",
+        "git branch --no-force other",
+    ])
+    def test_allow_what_branch_does_not_read(self, command):
+        assert_allowed(command)
+
+    def test_branch_rule_stays_linear(self):
+        """The old `branch\\s+(?:[^\\n;|&]*\\s)?…` scanned every `git branch`
+        to the end of its command, quadratic in `git branch a git branch a
+        …`. Run in a subprocess so a regression fails on the timeout rather
+        than hanging the suite."""
+        script = (
+            "import importlib, sys\n"
+            f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..')!r})\n"
+            "g = importlib.import_module('permission-guard')\n"
+            "rules = [g._RULE_RE_BY_DESCRIPTION[d] for d in ('forced branch move', 'branch deletion')]\n"
+            "n = 20000\n"
+            "for s in ['git branch a ' * n, 'git branch -' + 'f' * n + '_',\n"
+            "          'git branch -' + 'd' * n + '_',\n"
+            "          'git branch ' + 'a ' * n + ';', '\\\\git branch a ' * n,\n"
+            "          '$x/git branch a ' * n, 'git branch ' + '--sort git ' * n]:\n"
+            "    for rule in rules:\n"
+            "        rule.search(s)\n"
+        )
+        subprocess.run([sys.executable, "-c", script], check=True, timeout=30)
+
     def test_block_branch_delete(self):
         assert_blocked("git branch -d old-branch", self.CAT)
         assert_blocked("git branch -D old-branch", self.CAT)
         assert_blocked("git branch --delete old-branch", self.CAT)
+
+    @pytest.mark.parametrize("command", [
+        "git branch -v -d old-branch",
+        "git branch old-branch -D",
+        "git branch -dr origin/old",
+        "git branch -rD origin/old",
+        "git branch --d old-branch",
+        "git branch --dele old-branch",
+        "git branch \\-D old-branch",
+        "git branch -D $(git branch --merged | grep -v main) 2>/dev/null",
+        "git -C ~/src/git branch -D old-branch",
+        "git branch x git branch -D old-branch",
+    ])
+    def test_block_branch_delete_spellings(self, command):
+        result = check_command(command)
+        assert result is not None and result[0] == "branch deletion", (command, result)
+
+    @pytest.mark.parametrize("command", [
+        "git branch feature && git log -D",
+        "git branch --merged; tail -d x",
+        "git branch release-$(date +%d)",
+        "git branch fix-d",
+        "git branch -ud",
+        "git branch --no-delete other",
+    ])
+    def test_allow_what_branch_deletion_does_not_read(self, command):
+        assert_allowed(command)
 
     @pytest.mark.parametrize("command", [
         "git merge feature-x",
@@ -248,11 +327,34 @@ class TestGitDestructiveRemote:
         # A restart would read --force as git's option, or pair the quotes
         # differently, so the scan goes on.
         "git push origin git --force push main",
+        "git push origin git -C -f push main",
         'eval "git push x" --force "y"',
+        # A redirect may follow push with no space.
+        "git push>log --force",
+        "git push&>log --force origin main",
+        # A backtick piece may hold a git command other than push.
+        "git push origin `git rev-parse --abbrev-ref HEAD` --force",
     ])
     def test_block_force_push_spellings(self, command):
         result = check_command(command)
         assert result is not None and result[0] == "force push", (command, result)
+
+    @pytest.mark.parametrize("command, rule", [
+        ("git push --mirror origin", "mirror push"),
+        ("git push --m origin", "mirror push"),
+        ("git push origin --mirr", "mirror push"),
+        ("git push --delete origin old", "remote branch deletion"),
+        ("git push -d origin old", "remote branch deletion"),
+        ("git push -ud origin old", "remote branch deletion"),
+        ("git push --de origin old", "remote branch deletion"),
+        ("git push -u origin :old", "remote branch deletion (colon syntax)"),
+        ("git push origin main :old", "remote branch deletion (colon syntax)"),
+        ("git push --prune origin", "remote branch pruning"),
+        ("git push --pru origin 'refs/heads/*:refs/heads/*'", "remote branch pruning"),
+    ])
+    def test_block_pushes_that_delete_remote_refs(self, command, rule):
+        result = check_command(command)
+        assert result is not None and result[0] == rule, (command, result)
 
     def test_allow_normal_push(self):
         assert_allowed("git push origin main")
@@ -285,6 +387,16 @@ class TestGitDestructiveRemote:
         # -o takes the rest of its bundle as the value.
         "git push -oforce origin main",
         "git push -uof origin main",
+        "git push -od origin main",
+        # Neither the bare `:` refspec nor these options delete anything.
+        "git push origin :",
+        "git push origin HEAD:main",
+        "git push --dry-run origin main",
+        "git push -n origin main",
+        "git push --porcelain origin main",
+        "git push --progress origin main",
+        "git push --no-prune --no-mirror origin main",
+        "git push origin main; git fetch --prune",
     ])
     def test_allow_what_push_does_not_read(self, command):
         assert_allowed(command)
@@ -295,6 +407,7 @@ class TestGitDestructiveRemote:
         ("git push origin git push --tags", "pushing tags"),
         ("git push origin x/git push --force", "force push"),
         ("git push $(git push origin +main)", "force push"),
+        ("git push origin git -c git push --force", "force push"),
     ])
     def test_a_push_among_push_words_is_still_read(self, command, rule):
         result = check_command(command)
@@ -302,10 +415,11 @@ class TestGitDestructiveRemote:
 
     def test_push_rules_stay_linear(self):
         """Scanning each push to the end of its command made `git push a git
-        push a …` quadratic, and a flag class that could split a word
-        backtracked over `-ff…f_`. Run in a subprocess so a regression fails
-        on the timeout rather than hanging the suite; each input takes
-        milliseconds when the scan is linear."""
+        push a …` quadratic, and so did a push behind git options or inside
+        backticks; a flag class that could split a word backtracked over
+        `-ff…f_`. Run in a subprocess so a regression fails on the timeout
+        rather than hanging the suite; each input takes milliseconds when the
+        scan is linear."""
         script = (
             "import importlib, sys\n"
             f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..')!r})\n"
@@ -317,7 +431,11 @@ class TestGitDestructiveRemote:
             "          'git push ' + '2>&1 ' * n + 'x', 'git push ' + '\\t ' * n + 'x',\n"
             "          'git push --force=' + 'a' * n + '-', 'git push -' + 'f' * n + '_',\n"
             "          'git push $(' + 'a ' * n, 'git push \"' + 'a ' * n,\n"
-            "          'git push ' + '$(git push ' * n, 'git push ' + '$(a) ' * n + 'x']:\n"
+            "          'git push ' + '$(git push ' * n, 'git push ' + '$(a) ' * n + 'x',\n"
+            "          'git push a ' + 'git -x push a ' * n, 'git push a ' + '<git push a ' * n,\n"
+            "          '$x/git push a ' * n, '\\\\git push a ' * n,\n"
+            "          'git push ' + 'a -x/git ' * n, 'git push ' + 'git -c git push ' * n,\n"
+            "          'git push>x ' * n]:\n"
             "    for rule in rules:\n"
             "        rule.search(s)\n"
         )
@@ -5395,6 +5513,16 @@ class TestLinkedWorktreeInMain:
         ("git -c rebase.updateRefs=true rebase main", "git rebase (not recovery)"),
         ("git -C {main} reset --hard", "git reset --hard"),
         ("git -C .. stash drop", "git stash destruction"),
+        # The match starts at the `git` ending the -C value, with the rest of
+        # the git command in front of it.
+        ("git -C {main}/sub/git stash drop", "git stash destruction"),
+        ("git -C ../git rebase main", "git rebase (not recovery)"),
+        # A substitution in an option value is part of the outer command, so
+        # the outer command matches, and its match runs across the paren.
+        ("git -c x=$(git checkout -b tmp) checkout other", "git checkout"),
+        ("git -C `git checkout -q -b tmp`/srv/elsewhere checkout main", "git checkout"),
+        ("git -c x=$(git stash drop -q) stash clear", "git stash destruction"),
+        ("git -c x=$(git switch -c tmp) switch other", "git switch"),
     ])
     def test_other_git_options_still_ask(self, tmp_path, monkeypatch, worktree_repo, shape, rule):
         main, wt = worktree_repo
@@ -5424,6 +5552,12 @@ class TestGitGlobalOptions:
         ("git -C -C reset --hard", "git reset --hard"),
         ("git -c -c -c -c reset --hard", "git reset --hard"),
         ("git -c -x rebase main", "git rebase (not recovery)"),
+        # The scan stops at an option word ending in `git`; the search
+        # restarts from that `git` and reads the rest.
+        ("git -c git reset --hard", "git reset --hard"),
+        ("git -C ~/src/git reset --hard", "git reset --hard"),
+        ("git -C a/git -C b reset --hard", "git reset --hard"),
+        ("git -C ~/src/git -c x.y=1 push --force", "force push"),
     ])
     def test_rule_still_matches(self, command, rule):
         result = check_command(command)
@@ -5431,16 +5565,20 @@ class TestGitGlobalOptions:
 
     def test_option_scan_stays_linear(self):
         """Backtracking read `-c -c` as a pair or as two bare options, so
-        `git -c -c -c … x` was exponential. Run in a subprocess so a
-        regression fails on the timeout rather than hanging the suite; each
-        input takes well under a second when the scan is linear."""
+        `git -c -c -c … x` was exponential, and every `git` in `git -c git
+        -c git …` read all the options after it, which was quadratic. Run in
+        a subprocess so a regression fails on the timeout rather than hanging
+        the suite; each input takes well under a second when the scan is
+        linear."""
         script = (
             "import importlib, sys\n"
             f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..')!r})\n"
             "g = importlib.import_module('permission-guard')\n"
             "n = 20000\n"
             "for s in ['git ' + '-c ' * n + 'x', 'git ' + '-C ' * n + 'x',\n"
-            "          'git ' + '-c -C ' * n + 'x', 'git ' + '--git-dir -c ' * n + 'x']:\n"
+            "          'git ' + '-c -C ' * n + 'x', 'git ' + '--git-dir -c ' * n + 'x',\n"
+            "          'git ' + '-c git ' * n + 'x', 'git ' + '-x/git ' * n + 'x',\n"
+            "          'git -C ' + 'a/git -C ' * n]:\n"
             "    g.check_command(s)\n"
         )
         subprocess.run([sys.executable, "-c", script], check=True, timeout=30)
@@ -5455,3 +5593,89 @@ class TestGitGlobalOptions:
     ])
     def test_no_new_prompts(self, command):
         assert_allowed(command)
+
+# ── Command words ─────────────────────────────────────────────────────────────
+
+class TestCommandWords:
+    """Rules that read a command's own words: git's options, git subcommand
+    arguments, and the arguments of rm, package managers, curl, wget, gh api,
+    pipe-to-shell and export, plus the command-position rules."""
+
+    @pytest.mark.parametrize("command, rule", [
+        # review: subcommand after a substitution in a git option value
+        ('git -C "$(git rev-parse --show-toplevel)" push --force origin main', "force push"),
+        ('git -C "$(git rev-parse --show-toplevel)" reset --hard', "git reset --hard"),
+        ('git -C "$(git rev-parse --show-toplevel)" branch -D old', "branch deletion"),
+        ("git -c x=$(git checkout -b tmp) checkout other", "git checkout"),
+        ("git -C `git rev-parse --show-toplevel` reset --hard", "git reset --hard"),
+        # review: restart with substitution-holding option words
+        ("git push a git -C $(x push y) --force", "force push"),
+        ("git push a git -C `x push y` --force", "force push"),
+        ('git push a git -C "$(x push y)" --force', "force push"),
+        ("git push a git -C $(x push y) --tags", "pushing tags"),
+        ("git branch a git -c $(x branch y) -f", "forced branch move"),
+        # review: backtick idiom
+        ("git branch `git branch --show-current`-bak -f", "forced branch move"),
+        ("git branch -m `git branch --show-current` new -M", "forced branch move"),
+        ("git push origin `echo git push x` --force", "force push"),
+        # review: value options
+        ("git branch --sort -refname", None),
+        ("git branch --sort -committerdate --list", None),
+        ("git tag --sort -creatordate", None),
+        ("git tag -l --sort -v:refname", None),
+        ("git push -o -f origin main", None),
+        # A: tag
+        ("git tag v1 -d", "git tag deletion"),
+        ("git tag -l -d v1", "git tag deletion"),
+        ("git tag --d v1", "git tag deletion"),
+        ("git tag -m msg v1", None),
+        ("git tag -a -m msg v1", None),
+        ("git tag -md v1", None),
+        # A: reset
+        ("git reset -q --hard", "git reset --hard"),
+        ("git reset HEAD~1 --hard", "git reset --hard"),
+        ("git reset --ha", "git reset --hard"),
+        ("git reset --soft HEAD~1", None),
+        ("git reset -q", None),
+        # A + coverage: remote
+        ("git remote -v add up https://example.com/r.git", "remote management"),
+        ("git remote rename origin old", "remote management"),
+        ("git remote prune origin", "remote management"),
+        ("git remote set-head origin -a", "remote management"),
+        ("git remote update --prune", "remote management"),
+        ("git remote -v update -p origin", "remote management"),
+        ("git remote -v", None),
+        ("git remote show origin", None),
+        ("git remote get-url origin", None),
+        ("git remote update", None),
+        # A: submodule
+        ("git submodule --quiet add https://example.com/r.git lib", "submodule management"),
+        ("git submodule -q deinit lib", "submodule management"),
+        ("git submodule status", None),
+        ("git submodule update --init", None),
+    ])
+    def test_verdict(self, command, rule):
+        result = check_command(command)
+        assert (result[0] if result else None) == rule, (command, result)
+
+    def test_other_rules_stay_linear(self):
+        """Each of these read to the end of its command from every start, or
+        backtracked through a bundle. Run in a subprocess so a regression
+        fails on the timeout rather than hanging the suite."""
+        script = (
+            "import importlib, sys\n"
+            f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..')!r})\n"
+            "g = importlib.import_module('permission-guard')\n"
+            "R = g._RULE_RE_BY_DESCRIPTION\n"
+            "n = 20000\n"
+            "cases = {\n"
+            "    'git tag deletion': ['git tag a ' * n, 'git tag ' + '-m x ' * n],\n"
+            "    'git reset --hard': ['git reset a ' * n],\n"
+            "    'remote management': ['git remote ' + '-v ' * n, 'git remote update ' + 'a ' * n],\n"
+            "    'git checkout': ['git -C ' + '$(a) ' * n, 'git ' + '-c $(git ' * n],\n"
+            "}\n"
+            "for d, inputs in cases.items():\n"
+            "    for s in inputs:\n"
+            "        R[d].search(s)\n"
+        )
+        subprocess.run([sys.executable, "-c", script], check=True, timeout=30)

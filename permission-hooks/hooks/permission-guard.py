@@ -71,6 +71,106 @@ _PGPASS_FILE_PATTERNS = [
     (re.compile(r"(^|/)\.pgpass$"), "PostgreSQL password file"),
 ]
 
+# ── Shell words ─────────────────────────────────────────────────────────────
+# Several rules read a command's own words: git's options, and the arguments
+# of push, branch, tag, reset, rm, curl and the other _cmd_arg rules. A `.*`
+# there ran on into the next command: `git push origin v6 && git log
+# main..build-f-crawl` asked as a force push, because `push\s+.*-f\b` read past
+# the `&&` and took the `-f` inside a branch name for the flag.
+#
+# A word splits at a space, tab or newline, as bash splits it, and the command
+# ends at `;`, `|`, `&` or a paren. Within a word:
+#   - a redirect belongs to the command: `2>&1`, `&>log`, `>|log`, `<<<`.
+#   - a substitution is one piece: `$(…)`, `<(…)`, `>(…)` and backticks, with
+#     parens nested two deep for `$((…))`. Its separators do not end the
+#     command, so `"$(git branch | head -1)" --force` is still read, and its
+#     words are not the command's, so the `+` of `v$(date +%Y)` is not a
+#     refspec. A command inside one is read where it starts, like any other.
+#   - a quoted span without whitespace is one piece too. check_command masks
+#     quotes to filler, except in a command that nests a shell. There the text
+#     stays as written, and `-o 'a;b' --force` must not end at the `;`. A span
+#     with whitespace is left alone, because there a command often starts
+#     inside the quotes: the first quote it meets closes them, and pairing
+#     that quote with the next one would hide `--force` in
+#     `eval "git push x" --force "y"`.
+#   - a backslash takes the next character with it, so `\;` does not end the
+#     command.
+# Each piece has one reading and every loop is possessive, so nothing
+# backtracks. A quote or `$` that opens nothing is an ordinary character.
+_SUBST = r"(?:[$<>]\((?:[^()]++|\((?:[^()]++|\([^()]*+\))*+\))*+\)|`[^`]*+`)"
+_WORD = (
+    r"(?:" + _SUBST
+    + r"""|'[^' \t\n]*+'|"(?:[^" \t\n\\]++|\\.)*+"|[^ \t\n;|&<>()`\\$'"]++|\\.|[$'"]"""
+    + r"|>[&|]?+|<&?+|&>)++"
+)
+
+# The start of a word, up to where another command can begin inside it: plain
+# characters and escapes, but no paren or backtick, so never inside a
+# substitution. `x/git`, `\git` and `$x/git` get there; `$(git` does not. A
+# backslash right before the name escapes its first letter, and bash still
+# runs git for `\git`.
+_TO_CMD = r"(?:[^ \t\n;|&()`\\]|\\.)*?\\?"
+
+
+def _abbrev(option, shortest):
+    """*option*, or any prefix of it down to *shortest*.
+
+    git and getopt_long take any unambiguous prefix of a long option;
+    *shortest* is the shortest one no other option of the command shares.
+    """
+    rest = ""
+    for char in reversed(option[len(shortest):]):
+        rest = "(?:" + re.escape(char) + rest + ")?+"
+    return re.escape(shortest) + rest
+
+
+# The scan of a command's words stops at a word that starts another such
+# command, `x/git push` included. The search starts again there and reads the
+# rest, so no word is read twice: scanning each push to the end of its
+# command read `git push a git push a …` over and over, quadratic in its
+# length.
+#
+# The restart reads the words between `git` and the subcommand as git's
+# options, with the same _WORD. So a command with options (`git -C d push`)
+# stops the scan only when none of those words is the argument the rule looks
+# for, which the outer command would have read as its own. A command behind a
+# paren, a backtick or a substitution does not stop it, since those pieces can
+# run past its name and the restart would split the words differently.
+#
+# That leaves backticks. The same character opens and closes them, so a
+# command that starts inside a pair takes the closing backtick for an opening
+# one and reads on to the next: `` git push `git push `git push … `` reads to
+# the end once per push, quadratic in its length, as it did with `.*`.
+# Refusing a push inside a backtick span would fix that, and miss the flag in
+# `` git branch `git branch --show-current`-bak -f ``.
+def _cmd_arg(head, restart, arg, values=None):
+    """Pattern for a command that has an argument matching *arg*.
+
+    *head* matches the command up to its arguments. *restart(guard)* matches
+    another such command from its name on, checking *guard* on each word it
+    reads before the arguments. *values* matches the options whose value is
+    the next word; that word is skipped, not read as an argument, so the
+    `-refname` of `git branch --sort -refname` is not an -f.
+
+    bash drops a backslash in front of the argument, so `\\--force` is
+    `--force`. A redirect may follow the head with no space, as in
+    `git push>log --force`.
+    """
+    arg = r"\\?(?:" + arg + r")"
+    another = _TO_CMD + restart(r"(?!" + arg + r")") + r"(?=[ \t<>]|&>)"
+    skip = r"(?!" + arg + r"|" + another + r")"
+    word = skip + _WORD
+    if values:
+        # A value may look like the argument; it only has to not start
+        # another command.
+        word = (skip + r"(?:(?:" + values + r")[ \t]++(?!" + another + r")" + _WORD
+                + r"|" + _WORD + r")")
+    return (
+        head + r"(?:(?=[<>]|&>)" + _WORD + r")?+"
+        r"(?:[ \t]++" + word + r")*+[ \t]++" + arg
+    )
+
+
 # ── git's own options ───────────────────────────────────────────────────────
 # git takes options of its own ahead of the subcommand: `git -C <dir> reset
 # --hard`, `git -c k=v rebase …`, `git --no-pager push --force`. Every git rule
@@ -79,79 +179,53 @@ _PGPASS_FILE_PATTERNS = [
 # subcommand. Only option words are consumed: in `git log --grep reset` the
 # subcommand is `log`, and no rule reads `reset` there.
 #
+# A value is one _WORD. With `\S+`, the value of
+# `git -C "$(git rev-parse --show-toplevel)" push --force` ended at the first
+# space, `rev-parse` read as the subcommand, and no rule asked.
+#
 # The options are read possessively (`*+`), so each word gets one reading.
 # Git gives -c and -C the next word even when it starts with a dash, so the
 # first reading is also git's. With backtracking, `-c -c` could be a pair or
 # two bare options. `git -c -c -c … x` had exponentially many readings to try
 # before the match failed: 26 of them took most of a second, and every step
 # added about 60%.
-_GIT = (
-    r"\bgit"
-    r"(?:\s+(?:-[Cc]\s+\S+"
-    r"|--(?:git-dir|work-tree|namespace|super-prefix|config-env)\s+(?!-)\S+"
-    r"|-\S+))*+"
-    r"\s+"
-)
-
-# ── git push ────────────────────────────────────────────────────────────────
-# The push rules read push's own arguments, not the rest of the line. With
-# `push\s+.*-f\b`, `git push origin v6 && git log main..build-f-crawl` asked as
-# a force push: the scan ran on past the `&&`, and `\b` let the `-f` inside a
-# branch name pass for the flag. So _git_push reads push's words one at a time
-# and matches only a whole word.
 #
-# Words split at a space, tab or newline, as bash splits them, and the command
-# ends at `;`, `|`, `&` or a paren. Within a word:
-#   - a redirect belongs to the command: `2>&1`, `&>log`, `>|log`, `<<<`.
-#   - a substitution is one piece: `$(…)`, `<(…)`, `>(…)` and backticks, with
-#     parens nested two deep for `$((…))`. Its separators do not end the push,
-#     so `"$(git branch | head -1)" --force` is still read, and its words are
-#     not push's, so the `+` of `v$(date +%Y)` is not a refspec. A git push
-#     inside one is read where it starts, like any other.
-#   - a quoted span without whitespace is one piece too. check_command masks
-#     quotes to filler, except in a command that nests a shell. There the text
-#     stays as written, and `-o 'a;b' --force` must not end at the `;`. A span
-#     with whitespace is left alone, because there a push often starts inside
-#     the quotes: the first quote it meets closes them, and pairing that quote
-#     with the next one would hide `--force` in `eval "git push x" --force "y"`.
-#   - a backslash takes the next character with it, so `\;` does not end the
-#     command.
-# Each piece has one reading and every loop is possessive, so nothing
-# backtracks. A quote or `$` that opens nothing is an ordinary character.
-_GIT_PUSH_SUBST = (
-    r"(?:[$<>]\((?:[^()]++|\((?:[^()]++|\([^()]*+\))*+\))*+\)|`[^`]*+`)"
-)
-_GIT_PUSH_WORD = (
-    r"(?:" + _GIT_PUSH_SUBST
-    + r"""|'[^' \t\n]*+'|"(?:[^" \t\n\\]++|\\.)*+"|[^ \t\n;|&<>()`\\$'"]++|\\.|[$'"]"""
-    + r"|>[&|]?+|<&?+|&>)++"
-)
-
-# The scan stops at a word that starts another `git push`, `x/git push`
-# included. The search starts again there and reads the rest, so no word is
-# read twice: scanning each push to the end of its command read `git push a
-# git push a …` over and over, quadratic in its length. A push that takes git
-# options (`git -C d push`) does not stop the scan, since the restart would
-# read those options as git's, and one of them could be the flag. Nor does a
-# `git push` behind a substitution or a backslash, since those pieces can run
-# past the `git` and the restart would split the words differently. A quote
-# is fine there: a quoted piece holds no whitespace, so it ends before the
-# `git`, or it never forms.
-_GIT_PUSH_RESTART = r"[^ \t\n;|&<>()`\\$]*?\bgit[ \t]++push[ \t]"
+# The scan also stops at a word that ends in a `git` the search can start
+# from again: the value of `-c git`, or of `-C ~/src/git`. The search reads the
+# same options from that `git`, so no rule misses a match. Without the stop,
+# every `git` in `git -c git -c git …` read all the options after it once
+# more, quadratic in the length: 5,000 of them took 40 seconds. _TO_CMD keeps
+# the stop out of substitutions, so a match that starts at such a `git` always
+# has the outer command in front of it (`git -C ~/src/`), and the worktree
+# exemption, which wants the git command at the start of its command, asks.
+_GIT_STOP = r"(?!" + _TO_CMD + r"\bgit(?![^ \t\n]))"
 
 
-def _git_push(arg):
-    """Pattern for a git push that has an argument matching *arg*.
-
-    bash drops a backslash in front of the argument, so `\\--force` is
-    `--force`.
-    """
-    arg = r"\\?(?:" + arg + r")"
+def _git_options(guard=""):
+    """git's own options, each option and value word checked by *guard*."""
+    guard = _GIT_STOP + guard
     return (
-        _GIT + r"push(?:[ \t]++(?!" + arg + r"|" + _GIT_PUSH_RESTART + r")"
-        + _GIT_PUSH_WORD + r")*+[ \t]++" + arg
+        r"(?:[ \t]++" + guard + r"(?:-[Cc][ \t]++" + guard + _WORD
+        + r"|--(?:git-dir|work-tree|namespace|super-prefix|config-env)[ \t]++(?!-)"
+        + guard + _WORD + r"|-" + _WORD + r"))*+"
     )
 
+
+_GIT = r"\bgit" + _git_options() + r"[ \t]++"
+
+
+def _git_arg(sub, arg, values=None):
+    """Pattern for a `git <sub>` that has an argument matching *arg*."""
+    return _cmd_arg(
+        _GIT + sub,
+        lambda guard: r"\bgit" + _git_options(guard) + r"[ \t]++" + sub,
+        arg, values,
+    )
+
+
+# ── git push ────────────────────────────────────────────────────────────────
+# Options whose value is the next word.
+_PUSH_VALUES = r"-o|--(?:push-option|repo|receive-pack|exec)"
 
 # A force push is spelled three ways:
 #   - -f, also inside a bundle (-uf). A bundle's -o takes the rest of it as its
@@ -161,13 +235,89 @@ def _git_push(arg):
 #     ambiguous, and git refuses it.
 #   - a refspec with a leading `+`, which forces just that ref (`git push
 #     origin +main`).
-_GIT_FORCE_PUSH = _git_push(
+_GIT_FORCE_PUSH = _git_arg(
+    "push",
     r"(?:(?:-(?=[A-Za-np-z0-9]*f)[A-Za-z0-9]++|--force(?:-[\w-]*+)?(?:=\S*+)?)(?![\w-])"
-    r"|\+[^ \t\n;|&])"
+    r"|\+[^ \t\n;|&])",
+    _PUSH_VALUES,
 )
 
-# --tags, and the abbreviations git accepts for it.
-_GIT_TAGS_PUSH = _git_push(r"--ta(?:gs?)?+(?![\w-])")
+# --mirror force-updates every remote ref and deletes the ones gone locally.
+_GIT_MIRROR_PUSH = _git_arg("push", _abbrev("--mirror", "--m") + r"(?![\w-])", _PUSH_VALUES)
+
+# Deleting remote refs: -d, also inside a bundle, or --delete (down to --de,
+# since --d could be --dry-run); a refspec with no source, `:feature`, but
+# not the bare `:` that pushes matching branches; and --prune, which deletes
+# every remote branch that no local one matches.
+_GIT_DELETE_PUSH = _git_arg(
+    "push",
+    r"(?:-(?=[A-Za-np-z0-9]*d)[A-Za-z0-9]++|" + _abbrev("--delete", "--de") + r")(?![\w-])",
+    _PUSH_VALUES,
+)
+_GIT_COLON_DELETE_PUSH = _git_arg("push", r":[^ \t\n;|&<>()]", _PUSH_VALUES)
+_GIT_PRUNE_PUSH = _git_arg("push", _abbrev("--prune", "--pru") + r"(?![\w-])", _PUSH_VALUES)
+
+_GIT_TAGS_PUSH = _git_arg("push", _abbrev("--tags", "--ta") + r"(?![\w-])", _PUSH_VALUES)
+
+# ── git branch and tag ──────────────────────────────────────────────────────
+_BRANCH_VALUES = (
+    r"-u|--(?:set-upstream-to|sort|format|contains|no-contains|merged|no-merged|points-at)"
+)
+
+# -f resets an existing branch; -M and -C overwrite the one they name. In a
+# bundle they must come before any t or u, which take the rest of the bundle
+# as their value: -uf sets the upstream to `f`. --force takes the
+# abbreviations down to --forc, since --for could be --format.
+_GIT_FORCED_BRANCH = _git_arg(
+    "branch",
+    r"(?:-(?=[A-Za-sv-z]*[fMC])[A-Za-z]++|" + _abbrev("--force", "--forc") + r")(?![\w-])",
+    _BRANCH_VALUES,
+)
+
+# -d deletes a merged branch and -D any branch, in a bundle under the same
+# rule as above (-dr, -rD). --delete takes every abbreviation down to --d,
+# which no other branch option starts with.
+_GIT_BRANCH_DELETE = _git_arg(
+    "branch",
+    r"(?:-(?=[A-Za-sv-z]*[dD])[A-Za-z]++|" + _abbrev("--delete", "--d") + r")(?![\w-])",
+    _BRANCH_VALUES,
+)
+
+# The same for tags: -d in a bundle before -m, -F, -u or -n, which take the
+# rest of it as their value, or --delete down to --d.
+_TAG_VALUES = (
+    r"-[mFu]|--(?:message|file|local-user|cleanup|sort|format|contains|no-contains"
+    r"|merged|no-merged|points-at)"
+)
+_GIT_TAG_DELETE = _git_arg(
+    "tag",
+    r"(?:-(?=[A-EG-Za-lo-tv-z]*d)[A-Za-z]++|" + _abbrev("--delete", "--d") + r")(?![\w-])",
+    _TAG_VALUES,
+)
+
+# ── git reset, remote, submodule ────────────────────────────────────────────
+# --hard anywhere in the reset (`git reset -q --hard`, `git reset HEAD~1
+# --hard`), down to --h, which no other reset option starts with.
+_GIT_RESET_HARD = _git_arg("reset", _abbrev("--hard", "--h") + r"(?![\w-])",
+                           r"--pathspec-from-file")
+
+# `git remote` takes -v before its subcommand. Every subcommand that changes
+# a remote asks: add, remove, set-url, rename and set-head, and prune, which
+# deletes the remote-tracking branches the remote no longer has, as
+# `update -p` does on the way.
+_GIT_REMOTE = r"remote(?:[ \t]++(?:-v|" + _abbrev("--verbose", "--v") + r")(?![\w-]))*+"
+_GIT_REMOTE_WRITE = (
+    _GIT + _GIT_REMOTE
+    + r"[ \t]++(?:add|remove|rm|set-url|rename|prune|set-head)(?![\w-])"
+    + r"|" + _git_arg(_GIT_REMOTE + r"[ \t]++update",
+                      r"(?:-p|" + _abbrev("--prune", "--p") + r")(?![\w-])")
+)
+
+# `git submodule` takes --quiet and --cached before its subcommand.
+_GIT_SUBMODULE_WRITE = (
+    _GIT + r"submodule(?:[ \t]++(?:-q|--quiet|--cached)(?![\w-]))*+"
+    r"[ \t]++(?:add|deinit)(?![\w-])"
+)
 
 # ── git config ──────────────────────────────────────────────────────────────
 # `git config` needs more than one pattern's worth of care: scope and format
@@ -353,23 +503,23 @@ CATEGORIES = {
     "Git Branch & History": [
         (_GIT + r"checkout\b", GIT_CHECKOUT_RULE),
         (_GIT + r"switch\b", GIT_SWITCH_RULE),
-        (_GIT + r"branch\s+(-[dD]|--delete)\b", "branch deletion"),
-        # -f resets an existing branch; -M and -C overwrite the one they name.
-        (_GIT + r"branch\s+(?:[^\n;|&]*\s)?(?:-[A-Za-z]*[fMC][A-Za-z]*|--force)(?![\w-])",
-         "forced branch move"),
+        (_GIT_BRANCH_DELETE, "branch deletion"),
+        (_GIT_FORCED_BRANCH, "forced branch move"),
         (_GIT + r"rebase\s+(?!--abort|--continue|--quit|--skip)", GIT_REBASE_RULE),
-        (_GIT + r"reset\s+--hard\b", "git reset --hard"),
+        (_GIT_RESET_HARD, "git reset --hard"),
         (_GIT + r"stash\s+(drop|clear)\b", GIT_STASH_RULE),
-        (_GIT + r"tag\s+(-d|--delete)\b", "git tag deletion"),
+        (_GIT_TAG_DELETE, "git tag deletion"),
     ],
     "Git Destructive Remote": [
         (_GIT_FORCE_PUSH, "force push"),
-        (_GIT + r"push\s+\S+\s+--delete\b", "remote branch deletion"),
-        (_GIT + r"push\s+\S+\s+:", "remote branch deletion (colon syntax)"),
+        (_GIT_MIRROR_PUSH, "mirror push"),
+        (_GIT_DELETE_PUSH, "remote branch deletion"),
+        (_GIT_COLON_DELETE_PUSH, "remote branch deletion (colon syntax)"),
+        (_GIT_PRUNE_PUSH, "remote branch pruning"),
         (_GIT_TAGS_PUSH, "pushing tags"),
-        (_GIT + r"remote\s+(add|remove|rm|set-url)\b", "remote management"),
+        (_GIT_REMOTE_WRITE, "remote management"),
         (_GIT_CONFIG_WRITE, "git config write"),
-        (_GIT + r"submodule\s+(add|deinit)\b", "submodule management"),
+        (_GIT_SUBMODULE_WRITE, "submodule management"),
     ],
     "GitHub CLI": [
         (r"\bgh\s+pr\s+(merge|close)\b", "PR merge/close"),
