@@ -143,14 +143,16 @@ def _abbrev(option, shortest):
 # the end once per push, quadratic in its length, as it did with `.*`.
 # Refusing a push inside a backtick span would fix that, and miss the flag in
 # `` git branch `git branch --show-current`-bak -f ``.
-def _cmd_arg(head, restart, arg, values=None):
+def _cmd_arg(head, restart, arg, values=None, end_of_options=False):
     """Pattern for a command that has an argument matching *arg*.
 
     *head* matches the command up to its arguments. *restart(guard)* matches
     another such command from its name on, checking *guard* on each word it
     reads before the arguments. *values* matches the options whose value is
     the next word; that word is skipped, not read as an argument, so the
-    `-refname` of `git branch --sort -refname` is not an -f.
+    `-refname` of `git branch --sort -refname` is not an -f. With
+    *end_of_options*, a `--` word ends the scan: what follows is operands, so
+    `rm -- -r` removes a file named `-r`.
 
     bash drops a backslash in front of the argument, so `\\--force` is
     `--force`. A redirect may follow the head with no space, as in
@@ -158,7 +160,8 @@ def _cmd_arg(head, restart, arg, values=None):
     """
     arg = r"\\?(?:" + arg + r")"
     another = _TO_CMD + restart(r"(?!" + arg + r")") + r"(?=[ \t<>]|&>)"
-    skip = r"(?!" + arg + r"|" + another + r")"
+    stop = r"|--(?![^ \t\n;|&<>()])" if end_of_options else ""
+    skip = r"(?!" + arg + r"|" + another + stop + r")"
     word = skip + _WORD
     if values:
         # A value may look like the argument; it only has to not start
@@ -206,7 +209,7 @@ def _git_options(guard=""):
     guard = _GIT_STOP + guard
     return (
         r"(?:[ \t]++" + guard + r"(?:-[Cc][ \t]++" + guard + _WORD
-        + r"|--(?:git-dir|work-tree|namespace|super-prefix|config-env)[ \t]++(?!-)"
+        + r"|--(?:git-dir|work-tree|namespace|super-prefix|config-env|attr-source)[ \t]++(?!-)"
         + guard + _WORD + r"|-" + _WORD + r"))*+"
     )
 
@@ -368,10 +371,6 @@ _GIT_CONFIG_WRITE = (
 #   - the start of the string, `;`, `&`, a newline, a pipe, `||`, a subshell,
 #     a group, a command or process substitution: `| kill`, `(ln …)`,
 #     `{ kill …; }`, `$(dd …)`, `` `kill …` ``, `<(kill …)`
-#   - a nested shell's string, which check_command scans unmasked:
-#     `bash -c "kill …"`, `eval 'kill …'`. Only a quote with the command right
-#     behind it counts; a closing quote and a space (`grep "x" kill.md`) is
-#     followed by an argument.
 #   - after a reserved word or an assignment: `if kill …`, `! kill`,
 #     `FOO=1 kill …`
 #   - behind a command that runs its arguments: `xargs kill`, `timeout 30
@@ -401,11 +400,17 @@ _CMD_PREFIX = (
     r"|" + _RUNNERS + _RUNNER_ARGS
     + r")[ \t]+)*+"
 )
-_CMD_START = (
-    r"(?:(?:^|[;&|\n(`]|(?<!\$)\{(?=\s)|[ \t]-(?:exec|execdir|ok|okdir)(?=[ \t]))[ \t]*+"
-    r"|[\"'])"
-    + _CMD_PREFIX
-)
+_CMD_AT = r"(?:^|[;&|\n(`]|(?<!\$)\{(?=\s)|[ \t]-(?:exec|execdir|ok|okdir)(?=[ \t]))[ \t]*+"
+_CMD_START = _CMD_AT + _CMD_PREFIX
+
+# systemctl also starts where a nested shell's string does, which
+# check_command reads unmasked: `bash -c "systemctl …"`, `eval 'systemctl …'`.
+# Only a quote with the command right behind it counts; a closing quote and a
+# space (`grep "x" systemctl.md`) is followed by an argument. The other
+# command-position rules leave this out: their words are common in quoted
+# prose, and `xargs grep -l "passwd reset"` is read unmasked because of the
+# xargs.
+_CMD_START_OR_QUOTE = r"(?:" + _CMD_AT + r"|[\"'])" + _CMD_PREFIX
 
 # A command called by its path: `/usr/bin/kill`.
 _CMD_PATH = r"(?:(?:/[\w.-]+)*/)?"
@@ -446,7 +451,7 @@ _SYSTEMCTL_READ = (
 #
 # The `word` group marks where the command starts, for _rule_commands.
 _SYSTEMCTL_WRITE = (
-    _CMD_START
+    _CMD_START_OR_QUOTE
     + r"(?P<word>" + _CMD_PATH + r"systemctl)(?![\w-])"
     # Bare `systemctl [options]`, redirected or not, just lists units.
     + r"(?!" + _SYSTEMCTL_OPTS + r"\s*(?:$|[)\n;&|]|\d*[<>]))"
@@ -472,25 +477,46 @@ def _named(name):
     return name + r"(?![\w-])", lambda _guard: name
 
 
-# rm -r, -R or --recursive (down to --r) anywhere among its arguments: GNU rm
-# takes options after the operands too, as in `rm build -rf`.
+# rm -r, -R or --recursive (down to --r) anywhere among its options: GNU rm
+# takes options after the operands too, as in `rm build -rf`, until a `--`.
 _RECURSIVE_RM = _cmd_arg(
     *_named(_NOT_FLAG + r"\brm"),
     r"(?:-(?=[A-Za-z]*[rR])[A-Za-z]++|" + _abbrev("--recursive", "--r") + r")(?![\w-])",
+    end_of_options=True,
 )
 
+
+def _subcommand(name, value_options, subcommands):
+    """*name* whose first word after its options is one of *subcommands*.
+
+    *value_options* take the next word as their value, so the value is not
+    read as the subcommand. `brew search install` searches; it installs
+    nothing.
+    """
+    return (
+        name + r"(?![\w-])(?:[ \t]++(?:" + value_options + r")[ \t]++[^ \t\n;|&]++"
+        r"|[ \t]++-[^ \t\n;|&]*+)*+[ \t]++(?:" + subcommands + r")(?![\w-])"
+    )
+
+
 # Installing or removing packages. apt, yum, dnf and brew name it with a
-# subcommand, which may follow options (`apt-get -y install`); pacman with an
-# operation flag (-S, -R, -U, also in a bundle such as -Syu, but not the -S
-# queries -Ss, -Si, -Sl, -Sg, -Sp); apk with add and del.
+# subcommand after their options (`apt-get -y install`), apk with add and
+# del; pacman with an operation flag (-S, -R, -U, also in a bundle such as
+# -Syu, but not the -S queries -Ss, -Si, -Sl, -Sg, -Sp).
+_PACKAGE_WORDS = r"install|remove|purge|uninstall"
 _PACKAGE_CHANGE = (
-    _cmd_arg(*_named(r"\b(?:apt-get|apt|yum|dnf|brew)"),
-             r"(?:install|remove|purge|uninstall)(?![\w-])")
+    _subcommand(r"\b(?:apt-get|apt)", r"-[oct]|--(?:option|config-file|target-release)",
+                _PACKAGE_WORDS)
+    + r"|" + _subcommand(r"\b(?:yum|dnf)",
+                         r"-[cdexR]|--(?:config|repo|repoid|exclude|installroot|releasever"
+                         r"|enablerepo|disablerepo)", _PACKAGE_WORDS)
+    + r"|" + _subcommand(r"\bbrew", r"(?!)", _PACKAGE_WORDS)
+    + r"|" + _subcommand(r"\bapk", r"-[Xp]|--(?:repository|root|keys-dir|cache-dir|arch)",
+                         r"add|del")
     + r"|" + _cmd_arg(
         *_named(r"\bpacman"),
         r"(?:-(?=[A-Za-z]*[RU])[A-Za-z]++|-(?=[A-Za-z]*S)(?![A-Za-z]*[silgp])[A-Za-z]++"
         r"|--(?:sync|remove|upgrade))(?![\w-])")
-    + r"|" + _cmd_arg(*_named(r"\bapk"), r"(?:add|del)(?![\w-])")
 )
 
 # A request that sends data or writes: a POST, PUT, PATCH or DELETE method, or
@@ -526,36 +552,65 @@ _GH_API_WRITE = _cmd_arg(
     + r"|--(?:field|raw-field|input)(?![\w-])",
 )
 
-# A download run as code: piped into an interpreter in the same pipeline, with
-# `sudo` or `env` in front or not (`curl … | tee log | sudo bash`), or handed
-# to one as a process or command substitution (`bash <(curl …)`,
-# `sh -c "$(curl …)"`, `eval "$(curl …)"`, `. <(curl …)`). The pipeline ends
-# at `;`, `&&`, `||` and a newline. Its scan stops at the next curl or wget,
-# which reads the rest itself, so it stays linear.
-_INTERPRETER = (
-    _CMD_PATH + r"(?:(?:ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node)(?![\w.-])"
+
+def _runs_stdin(name, script_options, stdin_word=r"-"):
+    """An interpreter *name* that runs the program on its standard input.
+
+    It does when it is given only options: no script operand, and none of
+    *script_options*, which hand it the program another way. *stdin_word*
+    names stdin as the program outright. A quote or backtick after the
+    options closes the nested shell string the pipeline sits in.
+    """
+    stdin_word = r"(?:" + stdin_word + r")(?![^ \t\n;|&)])"
+    return (
+        _CMD_PATH + name + r"(?![\w.-])"
+        r"(?:[ \t]++(?!" + script_options + r"|" + stdin_word + r")[-+][^ \t\n;|&)]*+)*+"
+        r"(?:[ \t]++" + stdin_word + r"|[ \t]*+(?![^;|&)\n\"'`]))"
+    )
+
+
+# A download run as code. Piped into an interpreter that runs its standard
+# input, later in the same pipeline, with `sudo` or `env` in front or not:
+# `curl … | tee log | sudo bash`. A pipe may be followed by a newline, and the
+# pipeline goes on. `| python3 -m json.tool`, `| python3 -c …`, `| node -e …`
+# and `| perl -ne …` read the download as data, so they do not count. Or
+# handed to a command as a process or command substitution: `bash <(curl …)`,
+# `sh -c "$(curl …)"`, `eval "$(curl …)"`, `. <(curl …)`, where the command
+# has to be at a command start (not the `.` of `diff . <(curl …)`). The
+# pipeline ends at `;`, `&&`, `||` and a newline; its scan stops at the next
+# curl or wget, which reads the rest itself, so it stays linear.
+_STDIN_INTERPRETER = (
+    r"(?:" + _runs_stdin(r"(?:ba|z|da|k)?sh", r"-[A-Za-z]*c", r"-s?")
+    + r"|" + _runs_stdin(r"python[0-9.]*", r"-[A-Za-z]*[cm]")
+    + r"|" + _runs_stdin(r"(?:perl|ruby)", r"-[A-Za-z]*[eE]")
+    + r"|" + _runs_stdin(r"node", r"-[A-Za-z]*[ep]|--(?:eval|print)")
+    + r")"
 )
 _PIPE_INTO = (
-    r"\|&?[ \t]*+(?:sudo(?:[ \t]++-\S++)*+[ \t]++"
-    r"|env(?:[ \t]++[A-Za-z_]\w*+=\S*+)*+[ \t]++)?" + _INTERPRETER
+    r"\|&?[ \t\n]*+(?:sudo(?:[ \t]++-\S++)*+[ \t]++"
+    r"|env(?:[ \t]++[A-Za-z_]\w*+=\S*+)*+[ \t]++)?" + _STDIN_INTERPRETER
 )
 _DOWNLOAD = r"\b(?:curl|wget)(?![\w-])"
 _PIPE_TO_SHELL = (
     _DOWNLOAD
     + r"(?:(?!" + _DOWNLOAD + r")(?:[^\n;&|]|(?<=[<>])&|&(?=>)"
-    + r"|(?!" + _PIPE_INTO + r")\|&?+(?![|&])))*+"
+    + r"|(?!" + _PIPE_INTO + r")\|&?+(?![|&])[ \t\n]*+))*+"
     + _PIPE_INTO
-    + r"|(?:^|(?<=[\s;&|(`]))(?:" + _INTERPRETER + r"|source|\.|eval)"
+    + r"|" + _CMD_START + r"(?:" + _CMD_PATH
+    + r"(?:(?:ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node)|source|\.)(?![\w.-])"
     r"(?:[ \t]++-\S++)*+[ \t]++[\"']?(?:[<$]\(|`)[ \t]*+" + _DOWNLOAD
+    # _CMD_START reads eval as a runner and takes it in, so eval stands alone.
+    + r"|(?<![\w.-])eval[ \t]++[\"']?(?:\$\(|`)[ \t]*+" + _DOWNLOAD
 )
 
 # `export` of a variable named like a secret, wherever it sits among the
-# assignments (`export PATH=… GITHUB_TOKEN=…`). The scan stops at the next
-# export, which reads the rest itself.
+# assignments (`export PATH=… GITHUB_TOKEN=…`). The scan stops at a word
+# that starts another export, `a.export` included, which reads the rest
+# itself.
 _SECRET_NAME = r"(?=[A-Za-z_])\w*?(?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL)="
 _CREDENTIAL_EXPORT = (
-    r"\bexport(?:[ \t]++(?!export(?![\w-])|" + _SECRET_NAME + r")" + _WORD + r")*+"
-    r"[ \t]++" + _SECRET_NAME
+    r"\bexport(?:[ \t]++(?!" + _TO_CMD + r"\bexport(?![\w-])|" + _SECRET_NAME + r")"
+    + _WORD + r")*+[ \t]++" + _SECRET_NAME
 )
 
 # ── Category definitions ────────────────────────────────────────────────────
@@ -653,7 +708,9 @@ CATEGORIES = {
         (_CMD_START + _CMD_PATH + r"(iptables|ufw)\s+\S", "firewall management"),
         # Behind xargs, kill takes its arguments from stdin.
         (_CMD_START + _CMD_PATH + r"(kill|killall)\s+\S"
-         r"|\bxargs(?:[ \t]++-\S++)*+[ \t]++" + _CMD_PATH + r"(?:kill|killall)(?![\w-])",
+         r"|\bxargs(?:[ \t]++(?:-[adEILnPs]|--(?:arg-file|delimiter|eof|replace|max-lines"
+         r"|max-args|max-procs|max-chars))[ \t]++\S++|[ \t]++-\S++)*+[ \t]++"
+         + _CMD_PATH + r"(?:kill|killall)(?![\w-])",
          "process termination"),
     ],
 }
@@ -1233,6 +1290,45 @@ def _mask_quoted(command):
                     stack.pop()
         elif context[0] == "`" and char == "`":
             stack.pop()
+        i += 1
+    return "".join(out)
+
+
+def _mask_nested_quoted(command):
+    """Return *command* with each top-level quoted span read as a nested shell does.
+
+    A nested shell runs a quoted string as a command, and quotes inside that
+    string are its own. Unmasked, the quoted `;` of
+    `bash -c "curl -H 'a; b' -X POST …"` ends the curl, and nothing reads the
+    `-X POST`; masked, the whole curl is filler. Here the top-level quotes
+    stay as written and what they hold goes through _mask_quoted, after
+    `\\"` inside double quotes is read as the quote the nested shell sees.
+    Comments are masked, as _mask_quoted masks them. Length is preserved.
+    """
+    out = list(command)
+    i, n = 0, len(command)
+    while i < n:
+        char = command[i]
+        if char == "\\":
+            i += 2
+            continue
+        if char == "#" and (i == 0 or command[i - 1] in _COMMENT_START_AFTER):
+            newline = command.find("\n", i)
+            end = n if newline == -1 else newline
+            out[i:end] = _MASK_CHAR * (end - i)
+            i = end
+            continue
+        if char in "'\"":
+            end = i + 1
+            while end < n and command[end] != char:
+                end += 2 if char == '"' and command[end] == "\\" else 1
+            end = min(end, n)
+            inner = command[i + 1:end]
+            if char == '"':
+                inner = inner.replace('\\"', ' "')
+            out[i + 1:end] = _mask_quoted(inner)
+            i = end + 1
+            continue
         i += 1
     return "".join(out)
 
@@ -2334,8 +2430,16 @@ def _plain_git_options(word):
 
     `-c` is not: it can set core.worktree, rebase.updateRefs, sequence.editor
     or an alias for the subcommand itself.
+
+    Split as the shell splits, like _command_worktree: split on spaces, the
+    `-C a\\ b` of `git -C a\\ b -c core.fsmonitor=x reset --hard` took `b` for
+    the next option and let the `-c` through. Text shlex cannot split is not
+    read as harmless.
     """
-    tokens = word.split()[1:]
+    try:
+        tokens = shlex.split(word)[1:]
+    except ValueError:
+        return False
     index = 0
     while index < len(tokens) and tokens[index].startswith("-"):
         if tokens[index] == "-C":
@@ -2414,8 +2518,10 @@ def check_command(command, skip_descriptions=()):
     quoted span can never carry the part a rule needs to match — masking it
     costs the rules nothing and retires a whole class of false positive.
     Nested shell invocations are the exception, since there the quoted string
-    IS the command; same trade as check_write_targets and
-    check_exit_code_masking.
+    IS the command: then the raw text and the nested shell's view
+    (_mask_nested_quoted) are read too, and a match in any of them counts.
+    check_write_targets and check_exit_code_masking make the same trade with
+    the raw text alone.
 
     The one rule that does read an operand is _ENV_RULES' `> ….env` redirect;
     see the note there before enabling ENV_PROTECTION.
@@ -2427,15 +2533,22 @@ def check_command(command, skip_descriptions=()):
     Returns (description, category, matched_text) or None.
     """
     command = _command_text(command)
-    # Masking is length-preserving, so a match found in the masked copy slices
-    # the real text out of the original for reporting.
-    scanned = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
+    # With a nested shell, the masked copy alone hides the commands in its
+    # strings, and the raw copy alone ends a command at any quoted `;` —
+    # `eval "$(ssh-agent -s)" && curl -H 'a; b' -X POST …` read no -X. So all
+    # three copies are read: masked, raw, and the nested shell's view.
+    # Masking is length-preserving, so a match found in any copy slices the
+    # real text out of the original for reporting.
+    copies = [_mask_quoted(command)]
+    if _SHELL_INVOKER_RE.search(command):
+        copies += [command, _mask_nested_quoted(command)]
     for compiled_re, description, category in RULES:
         if description in skip_descriptions:
             continue
-        match = compiled_re.search(scanned)
-        if match:
-            return (description, category, command[match.start():match.end()])
+        for scanned in copies:
+            match = compiled_re.search(scanned)
+            if match:
+                return (description, category, command[match.start():match.end()])
     return None
 
 
