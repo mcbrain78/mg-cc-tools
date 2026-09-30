@@ -5420,10 +5420,30 @@ class TestGitGlobalOptions:
         ("git -C /other submodule add https://example.com/r.git lib", "submodule management"),
         ("git -c user.name=x config --global user.email y@example.com", "git config write"),
         ("git -C /other branch -f main HEAD~1", "forced branch move"),
+        # -c and -C take the next word even when it starts with a dash.
+        ("git -C -C reset --hard", "git reset --hard"),
+        ("git -c -c -c -c reset --hard", "git reset --hard"),
+        ("git -c -x rebase main", "git rebase (not recovery)"),
     ])
     def test_rule_still_matches(self, command, rule):
         result = check_command(command)
         assert result is not None and result[0] == rule, (command, result)
+
+    def test_option_scan_stays_linear(self):
+        """Backtracking read `-c -c` as a pair or as two bare options, so
+        `git -c -c -c … x` was exponential. Run in a subprocess so a
+        regression fails on the timeout rather than hanging the suite; each
+        input takes well under a second when the scan is linear."""
+        script = (
+            "import importlib, sys\n"
+            f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..')!r})\n"
+            "g = importlib.import_module('permission-guard')\n"
+            "n = 20000\n"
+            "for s in ['git ' + '-c ' * n + 'x', 'git ' + '-C ' * n + 'x',\n"
+            "          'git ' + '-c -C ' * n + 'x', 'git ' + '--git-dir -c ' * n + 'x']:\n"
+            "    g.check_command(s)\n"
+        )
+        subprocess.run([sys.executable, "-c", script], check=True, timeout=30)
 
     @pytest.mark.parametrize("command", [
         "git -C /other status",

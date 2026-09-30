@@ -78,11 +78,18 @@ _PGPASS_FILE_PATTERNS = [
 # that take a separate value swallow it, so the value is never read as the
 # subcommand. Only option words are consumed: in `git log --grep reset` the
 # subcommand is `log`, and no rule reads `reset` there.
+#
+# The options are read possessively (`*+`), so each word gets one reading.
+# Git gives -c and -C the next word even when it starts with a dash, so the
+# first reading is also git's. With backtracking, `-c -c` could be a pair or
+# two bare options. `git -c -c -c … x` had exponentially many readings to try
+# before the match failed: 26 of them took most of a second, and every step
+# added about 60%.
 _GIT = (
     r"\bgit"
     r"(?:\s+(?:-[Cc]\s+\S+"
     r"|--(?:git-dir|work-tree|namespace|super-prefix|config-env)\s+(?!-)\S+"
-    r"|-\S+))*"
+    r"|-\S+))*+"
     r"\s+"
 )
 
