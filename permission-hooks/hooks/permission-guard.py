@@ -462,6 +462,102 @@ SYSTEMCTL_MANAGED_UNITS = (
     "stock-ranker-worker.service",
 )
 
+# ── Arguments of other commands ─────────────────────────────────────────────
+# The same word reading as the git rules, through _cmd_arg. These commands
+# take no options before their name, so the restart is the name alone.
+
+
+def _named(name):
+    """Head and restart for _cmd_arg: a command called *name*."""
+    return name + r"(?![\w-])", lambda _guard: name
+
+
+# rm -r, -R or --recursive (down to --r) anywhere among its arguments: GNU rm
+# takes options after the operands too, as in `rm build -rf`.
+_RECURSIVE_RM = _cmd_arg(
+    *_named(_NOT_FLAG + r"\brm"),
+    r"(?:-(?=[A-Za-z]*[rR])[A-Za-z]++|" + _abbrev("--recursive", "--r") + r")(?![\w-])",
+)
+
+# Installing or removing packages. apt, yum, dnf and brew name it with a
+# subcommand, which may follow options (`apt-get -y install`); pacman with an
+# operation flag (-S, -R, -U, also in a bundle such as -Syu, but not the -S
+# queries -Ss, -Si, -Sl, -Sg, -Sp); apk with add and del.
+_PACKAGE_CHANGE = (
+    _cmd_arg(*_named(r"\b(?:apt-get|apt|yum|dnf|brew)"),
+             r"(?:install|remove|purge|uninstall)(?![\w-])")
+    + r"|" + _cmd_arg(
+        *_named(r"\bpacman"),
+        r"(?:-(?=[A-Za-z]*[RU])[A-Za-z]++|-(?=[A-Za-z]*S)(?![A-Za-z]*[silgp])[A-Za-z]++"
+        r"|--(?:sync|remove|upgrade))(?![\w-])")
+    + r"|" + _cmd_arg(*_named(r"\bapk"), r"(?:add|del)(?![\w-])")
+)
+
+# A request that sends data or writes: a POST, PUT, PATCH or DELETE method, or
+# a body. curl's short options bundle, and the first one in a bundle that
+# takes a value takes the rest of it, so only its flag options may come first:
+# -sd sends data, -XGET does not, -sXPOST does. curl sends a body with -d and
+# every --data form, --json, -F/--form and -T/--upload-file; wget with
+# --post-data, --post-file, --body-data and --body-file, and --data, which
+# wget refuses but the rule has always caught.
+_HTTP_WRITE_METHOD = r"(?i:post|put|patch|delete)(?![\w-])"
+_CURL_FLAGS = r"[#0-46aBfgGIijJklLMnNOpqRsSvVZ]*+"
+_HTTP_SUBMIT = (
+    _cmd_arg(
+        *_named(r"\bcurl"),
+        r"-" + _CURL_FLAGS + r"(?:X[ \t]*+" + _HTTP_WRITE_METHOD + r"|[dFT])"
+        r"|--request(?:=|[ \t]++)" + _HTTP_WRITE_METHOD
+        + r"|--(?:data[\w-]*+|json|form[\w-]*+|upload-file)(?![\w-])",
+    )
+    + r"|" + _cmd_arg(
+        *_named(r"\bwget"),
+        r"--(?:post|body)-(?:data|file)(?![\w-])|--data[\w-]*+(?![\w-])"
+        r"|--method(?:=|[ \t]++)" + _HTTP_WRITE_METHOD,
+    )
+)
+
+# `gh api` writes with a POST, PUT, PATCH or DELETE method, or with a field or
+# an input body, which make it a POST. Its only flag short option is -i, so
+# only that may come first in a bundle.
+_GH_API_WRITE = _cmd_arg(
+    *_named(r"\bgh[ \t]++api"),
+    r"-i*+(?:X[ \t]*+" + _HTTP_WRITE_METHOD + r"|[fF])"
+    r"|--method(?:=|[ \t]++)" + _HTTP_WRITE_METHOD
+    + r"|--(?:field|raw-field|input)(?![\w-])",
+)
+
+# A download run as code: piped into an interpreter in the same pipeline, with
+# `sudo` or `env` in front or not (`curl … | tee log | sudo bash`), or handed
+# to one as a process or command substitution (`bash <(curl …)`,
+# `sh -c "$(curl …)"`, `eval "$(curl …)"`, `. <(curl …)`). The pipeline ends
+# at `;`, `&&`, `||` and a newline. Its scan stops at the next curl or wget,
+# which reads the rest itself, so it stays linear.
+_INTERPRETER = (
+    _CMD_PATH + r"(?:(?:ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node)(?![\w.-])"
+)
+_PIPE_INTO = (
+    r"\|&?[ \t]*+(?:sudo(?:[ \t]++-\S++)*+[ \t]++"
+    r"|env(?:[ \t]++[A-Za-z_]\w*+=\S*+)*+[ \t]++)?" + _INTERPRETER
+)
+_DOWNLOAD = r"\b(?:curl|wget)(?![\w-])"
+_PIPE_TO_SHELL = (
+    _DOWNLOAD
+    + r"(?:(?!" + _DOWNLOAD + r")(?:[^\n;&|]|(?<=[<>])&|&(?=>)"
+    + r"|(?!" + _PIPE_INTO + r")\|&?+(?![|&])))*+"
+    + _PIPE_INTO
+    + r"|(?:^|(?<=[\s;&|(`]))(?:" + _INTERPRETER + r"|source|\.|eval)"
+    r"(?:[ \t]++-\S++)*+[ \t]++[\"']?(?:[<$]\(|`)[ \t]*+" + _DOWNLOAD
+)
+
+# `export` of a variable named like a secret, wherever it sits among the
+# assignments (`export PATH=… GITHUB_TOKEN=…`). The scan stops at the next
+# export, which reads the rest itself.
+_SECRET_NAME = r"(?=[A-Za-z_])\w*?(?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL)="
+_CREDENTIAL_EXPORT = (
+    r"\bexport(?:[ \t]++(?!export(?![\w-])|" + _SECRET_NAME + r")" + _WORD + r")*+"
+    r"[ \t]++" + _SECRET_NAME
+)
+
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
@@ -518,7 +614,7 @@ CATEGORIES = {
         (r"\bgh\s+pr\s+(merge|close)\b", "PR merge/close"),
         (r"\bgh\s+repo\s+(create|delete|fork|archive)\b", "repo management"),
         (r"\bgh\s+release\s+(create|delete)\b", "release management"),
-        (r"\bgh\s+api\b.*(-X\s*(POST|PUT|PATCH|DELETE)|--method\s*(POST|PUT|PATCH|DELETE)|-f\s|-F\s|--field\s|--raw-field\s|--input\s)", "GitHub API mutation"),
+        (_GH_API_WRITE, "GitHub API mutation"),
         (r"\bgh\s+auth\b", "GitHub auth"),
         (r"\bgh\s+secret\b", "GitHub secret management"),
     ],
@@ -532,7 +628,7 @@ CATEGORIES = {
         (r"\bscp\s", "remote file transfer (scp)"),
     ],
     "Destructive Filesystem": [
-        (_NOT_FLAG + r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
+        (_RECURSIVE_RM, "recursive rm"),
         (r"\b(chmod|chown)\b", PERMISSION_CHANGE_RULE),
         (_CMD_START + _CMD_PATH + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
@@ -540,13 +636,13 @@ CATEGORIES = {
     ],
     "Secrets & Credentials": [
         *(_ENV_RULES if ENV_PROTECTION else []),
-        (r"\bexport\s+\w*(TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|API_KEY)=", "credential export"),
-        (r"\b(curl|wget)\s+.*(-X\s*(POST|PUT|PATCH|DELETE)|-d\s|--data)", HTTP_SUBMIT_RULE),
-        (r"\b(curl|wget)\s+.*\|\s*(bash|sh|zsh)\b", "pipe-to-shell"),
+        (_CREDENTIAL_EXPORT, "credential export"),
+        (_HTTP_SUBMIT, HTTP_SUBMIT_RULE),
+        (_PIPE_TO_SHELL, "pipe-to-shell"),
     ],
     "System Operations": [
         (r"\bsudo\b", "sudo"),
-        (r"\b(apt|apt-get|brew|yum|dnf|pacman|apk)\s+(install|remove|purge|uninstall)\b", "package manager"),
+        (_PACKAGE_CHANGE, "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
         (_SYSTEMCTL_WRITE, SYSTEMCTL_RULE),
         # Only where bash starts a command (see _CMD_START), and only with an
