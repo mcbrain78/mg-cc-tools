@@ -86,6 +86,82 @@ _GIT = (
     r"\s+"
 )
 
+# ── git push ────────────────────────────────────────────────────────────────
+# The push rules read push's own arguments, not the rest of the line. With
+# `push\s+.*-f\b`, `git push origin v6 && git log main..build-f-crawl` asked as
+# a force push: the scan ran on past the `&&`, and `\b` let the `-f` inside a
+# branch name pass for the flag. So _git_push reads push's words one at a time
+# and matches only a whole word.
+#
+# Words split at a space, tab or newline, as bash splits them, and the command
+# ends at `;`, `|`, `&` or a paren. Within a word:
+#   - a redirect belongs to the command: `2>&1`, `&>log`, `>|log`, `<<<`.
+#   - a substitution is one piece: `$(…)`, `<(…)`, `>(…)` and backticks, with
+#     parens nested two deep for `$((…))`. Its separators do not end the push,
+#     so `"$(git branch | head -1)" --force` is still read, and its words are
+#     not push's, so the `+` of `v$(date +%Y)` is not a refspec. A git push
+#     inside one is read where it starts, like any other.
+#   - a quoted span without whitespace is one piece too. check_command masks
+#     quotes to filler, except in a command that nests a shell. There the text
+#     stays as written, and `-o 'a;b' --force` must not end at the `;`. A span
+#     with whitespace is left alone, because there a push often starts inside
+#     the quotes: the first quote it meets closes them, and pairing that quote
+#     with the next one would hide `--force` in `eval "git push x" --force "y"`.
+#   - a backslash takes the next character with it, so `\;` does not end the
+#     command.
+# Each piece has one reading and every loop is possessive, so nothing
+# backtracks. A quote or `$` that opens nothing is an ordinary character.
+_GIT_PUSH_SUBST = (
+    r"(?:[$<>]\((?:[^()]++|\((?:[^()]++|\([^()]*+\))*+\))*+\)|`[^`]*+`)"
+)
+_GIT_PUSH_WORD = (
+    r"(?:" + _GIT_PUSH_SUBST
+    + r"""|'[^' \t\n]*+'|"(?:[^" \t\n\\]++|\\.)*+"|[^ \t\n;|&<>()`\\$'"]++|\\.|[$'"]"""
+    + r"|>[&|]?+|<&?+|&>)++"
+)
+
+# The scan stops at a word that starts another `git push`, `x/git push`
+# included. The search starts again there and reads the rest, so no word is
+# read twice: scanning each push to the end of its command read `git push a
+# git push a …` over and over, quadratic in its length. A push that takes git
+# options (`git -C d push`) does not stop the scan, since the restart would
+# read those options as git's, and one of them could be the flag. Nor does a
+# `git push` behind a substitution or a backslash, since those pieces can run
+# past the `git` and the restart would split the words differently. A quote
+# is fine there: a quoted piece holds no whitespace, so it ends before the
+# `git`, or it never forms.
+_GIT_PUSH_RESTART = r"[^ \t\n;|&<>()`\\$]*?\bgit[ \t]++push[ \t]"
+
+
+def _git_push(arg):
+    """Pattern for a git push that has an argument matching *arg*.
+
+    bash drops a backslash in front of the argument, so `\\--force` is
+    `--force`.
+    """
+    arg = r"\\?(?:" + arg + r")"
+    return (
+        _GIT + r"push(?:[ \t]++(?!" + arg + r"|" + _GIT_PUSH_RESTART + r")"
+        + _GIT_PUSH_WORD + r")*+[ \t]++" + arg
+    )
+
+
+# A force push is spelled three ways:
+#   - -f, also inside a bundle (-uf). A bundle's -o takes the rest of it as its
+#     value, so the f must come before any o: -of is not a force push.
+#   - any --force option. That covers --force-with-lease[=…] and the
+#     abbreviations git accepts (--force-w); anything shorter than --force is
+#     ambiguous, and git refuses it.
+#   - a refspec with a leading `+`, which forces just that ref (`git push
+#     origin +main`).
+_GIT_FORCE_PUSH = _git_push(
+    r"(?:(?:-(?=[A-Za-np-z0-9]*f)[A-Za-z0-9]++|--force(?:-[\w-]*+)?(?:=\S*+)?)(?![\w-])"
+    r"|\+[^ \t\n;|&])"
+)
+
+# --tags, and the abbreviations git accepts for it.
+_GIT_TAGS_PUSH = _git_push(r"--ta(?:gs?)?+(?![\w-])")
+
 # ── git config ──────────────────────────────────────────────────────────────
 # `git config` needs more than one pattern's worth of care: scope and format
 # options sit between the subcommand and the operands, a key with no value is
@@ -280,10 +356,10 @@ CATEGORIES = {
         (_GIT + r"tag\s+(-d|--delete)\b", "git tag deletion"),
     ],
     "Git Destructive Remote": [
-        (_GIT + r"push\s+.*(-f\b|--force|--force-with-lease)", "force push"),
+        (_GIT_FORCE_PUSH, "force push"),
         (_GIT + r"push\s+\S+\s+--delete\b", "remote branch deletion"),
         (_GIT + r"push\s+\S+\s+:", "remote branch deletion (colon syntax)"),
-        (_GIT + r"push\s+.*--tags\b", "pushing tags"),
+        (_GIT_TAGS_PUSH, "pushing tags"),
         (_GIT + r"remote\s+(add|remove|rm|set-url)\b", "remote management"),
         (_GIT_CONFIG_WRITE, "git config write"),
         (_GIT + r"submodule\s+(add|deinit)\b", "submodule management"),

@@ -215,9 +215,113 @@ class TestGitDestructiveRemote:
         assert_blocked("git push --force origin main", self.CAT)
         assert_blocked("git push --force-with-lease origin main", self.CAT)
 
+    @pytest.mark.parametrize("command", [
+        "git push -uf origin main",
+        "git push origin main -f",
+        "git push --force-with-lease=main:abc123 origin main",
+        "git push --force-if-includes --force-with-lease origin main",
+        "git push --force-w origin main",
+        "git push origin main 2>&1 --force",
+        "git push &>/dev/null --force origin main",
+        "git push origin main --force 2>&1 | tail -1",
+        "git push\t-f",
+        "git push origin +main",
+        "git push origin +HEAD:main",
+        "git push -u origin main +refs/heads/v6:refs/heads/v6",
+        "git push \\--force origin main",
+        "git push \\-f origin main",
+        # A substitution's separators do not end the push.
+        'git push -u origin "$(git rev-parse --abbrev-ref HEAD | tr / -)" --force',
+        "git push origin $(git branch | grep '^\\*' | cut -c3-) -f",
+        "git push `git remote | head -1` -f",
+        "git push $(cd sub; git remote) -f",
+        "git push origin HEAD:$(git config user.name | tr ' ' -)/wip +HEAD:refs/heads/x",
+        "git push origin \"$(\n git rev-parse HEAD\n)\" --force",
+        # Nor do a `>|` redirect or whitespace bash does not split on.
+        "git push >|log --force origin main",
+        "git push origin main 2>|/dev/null --force",
+        "git push 2>/tmp/log\r --force origin main",
+        "git push 2>/tmp/log\xa0 --force origin main",
+        # With a nested shell, quotes stay unmasked, but a quoted `;` is data.
+        "git push -o 'a;b' --force origin main; echo x | xargs echo",
+        'git push -o "a|b" --force origin main && ssh host true',
+        # A restart would read --force as git's option, or pair the quotes
+        # differently, so the scan goes on.
+        "git push origin git --force push main",
+        'eval "git push x" --force "y"',
+    ])
+    def test_block_force_push_spellings(self, command):
+        result = check_command(command)
+        assert result is not None and result[0] == "force push", (command, result)
+
     def test_allow_normal_push(self):
         assert_allowed("git push origin main")
         assert_allowed("git push")
+
+    @pytest.mark.parametrize("command", [
+        # The call that prompted in a real session.
+        "git push origin v6 2>&1 | tail -1 && git log --oneline 36592d2..build-f-crawl-status"
+        " && git diff --stat 36592d2 build-f-crawl-status",
+        "git push origin build-f-crawl-status",
+        "git push origin fix-f",
+        "git push origin main && tail -f server.log",
+        "git push origin main; rm -f build.tmp",
+        "git push origin main | grep -f patterns.txt",
+        "git push origin main &>/dev/null && tail -f server.log",
+        "git push origin main\ntail -f server.log",
+        "git push origin main && date -u +%FT%TZ",
+        "git push origin main 2>&1 && git log --tags",
+        "git push origin main --no-force-with-lease",
+        "git push origin main --follow-tags",
+        "git push origin main --no-tags",
+        # A substitution's words are not push's.
+        "git push origin v$(date +%Y.%m.%d)",
+        "git tag v$(date +%Y%m%d) && git push origin v$(date +%Y%m%d)",
+        'git push origin "release-$(date +%Y-%m-%d)"',
+        "git push origin HEAD:refs/heads/snap-`date +%s`",
+        'git push origin $(cut -d/ -f2 <<< "$ref")',
+        "git push origin $(git describe --tags --abbrev=0)",
+        "echo $(git push origin main) -f",
+        # -o takes the rest of its bundle as the value.
+        "git push -oforce origin main",
+        "git push -uof origin main",
+    ])
+    def test_allow_what_push_does_not_read(self, command):
+        assert_allowed(command)
+
+    @pytest.mark.parametrize("command, rule", [
+        ("git push origin git push --force", "force push"),
+        ("git push origin git -C . push origin +main", "force push"),
+        ("git push origin git push --tags", "pushing tags"),
+        ("git push origin x/git push --force", "force push"),
+        ("git push $(git push origin +main)", "force push"),
+    ])
+    def test_a_push_among_push_words_is_still_read(self, command, rule):
+        result = check_command(command)
+        assert result is not None and result[0] == rule, (command, result)
+
+    def test_push_rules_stay_linear(self):
+        """Scanning each push to the end of its command made `git push a git
+        push a …` quadratic, and a flag class that could split a word
+        backtracked over `-ff…f_`. Run in a subprocess so a regression fails
+        on the timeout rather than hanging the suite; each input takes
+        milliseconds when the scan is linear."""
+        script = (
+            "import importlib, sys\n"
+            f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..')!r})\n"
+            "g = importlib.import_module('permission-guard')\n"
+            "rules = [g._RULE_RE_BY_DESCRIPTION[d] for d in ('force push', 'pushing tags')]\n"
+            "n = 20000\n"
+            "for s in ['git push a ' * n, 'git push ' + 'x/git push ' * n,\n"
+            "          'git push ' + 'a ' * n + ';', 'git push ' + '>&' * n + ' x',\n"
+            "          'git push ' + '2>&1 ' * n + 'x', 'git push ' + '\\t ' * n + 'x',\n"
+            "          'git push --force=' + 'a' * n + '-', 'git push -' + 'f' * n + '_',\n"
+            "          'git push $(' + 'a ' * n, 'git push \"' + 'a ' * n,\n"
+            "          'git push ' + '$(git push ' * n, 'git push ' + '$(a) ' * n + 'x']:\n"
+            "    for rule in rules:\n"
+            "        rule.search(s)\n"
+        )
+        subprocess.run([sys.executable, "-c", script], check=True, timeout=30)
 
     def test_block_remote_delete(self):
         assert_blocked("git push origin --delete feature", self.CAT)
@@ -228,6 +332,12 @@ class TestGitDestructiveRemote:
     def test_block_push_tags(self):
         assert_blocked("git push --tags", self.CAT)
         assert_blocked("git push origin --tags", self.CAT)
+        assert_blocked("git push origin --tags 2>&1 | tail -1", self.CAT)
+        assert_blocked("git push $(git remote | head -1) --tags", self.CAT)
+        assert_blocked("git push origin >|log --tags", self.CAT)
+        # git takes any unambiguous prefix of an option.
+        assert_blocked("git push --ta origin", self.CAT)
+        assert_blocked("git push --tag origin", self.CAT)
 
     def test_block_remote_management(self):
         assert_blocked("git remote add upstream url", self.CAT)
