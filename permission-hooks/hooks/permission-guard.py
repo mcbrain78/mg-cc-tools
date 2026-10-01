@@ -1393,6 +1393,18 @@ def _mask_quoted(command):
             out[i:end] = _MASK_CHAR * (end - i)
             i = end
             continue
+        if command.startswith("$'", i):
+            # ANSI-C quoting: a backslash escapes the next character, so the
+            # `\'` of `$'don\'t'` does not close the span. Read as a plain
+            # single quote, the span ended there, and the next `'` opened one
+            # that hid every command up to the one after it.
+            end = i + 2
+            while end < n and command[end] != "'":
+                end += 2 if command[end] == "\\" else 1
+            end = min(end, n)
+            out[i + 2:end] = _MASK_CHAR * (end - i - 2)
+            i = end + 1
+            continue
         if char == "'":
             close = command.find("'", i + 1)
             end = n if close == -1 else close
@@ -1439,14 +1451,20 @@ def _mask_nested_quoted(command):
             out[i:end] = _MASK_CHAR * (end - i)
             i = end
             continue
-        if char in "'\"":
+        ansi = command.startswith("$'", i)
+        if ansi or char in "'\"":
+            if ansi:
+                i += 1
+                char = "'"
             end = i + 1
             while end < n and command[end] != char:
-                end += 2 if char == '"' and command[end] == "\\" else 1
+                end += 2 if (char == '"' or ansi) and command[end] == "\\" else 1
             end = min(end, n)
             inner = command[i + 1:end]
             if char == '"':
                 inner = inner.replace('\\"', ' "')
+            elif ansi:
+                inner = inner.replace("\\'", " '")
             out[i + 1:end] = _mask_quoted(inner)
             i = end + 1
             continue

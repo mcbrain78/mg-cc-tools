@@ -5869,6 +5869,11 @@ class TestHeredocScan:
         ("cat <<'A' <<'B'\ngit push --force\nA\ngit reset --hard\nB\necho done", None),
         ("cat <<'A' <<'B'\nx\nA\ny\nB\ngit push --force", "force push"),
         ("cat <<-EOF\n\tgit push --force\n\tEOF\necho done", None),
+        # ANSI-C quoting: \' does not close the span.
+        ("echo $'don\\'t' && git push --force origin main 'x'", "force push"),
+        ("echo $'a\\\\' && git push -f", "force push"),
+        ("echo $'git push --force'", None),
+        ("echo \\$'x' && git push --force 'y'", "force push"),
     ])
     def test_verdict(self, command, rule):
         result = check_command(command)
