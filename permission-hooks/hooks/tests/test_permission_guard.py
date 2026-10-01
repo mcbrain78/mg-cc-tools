@@ -5849,3 +5849,46 @@ class TestCommandWords:
         assert guard._plain_git_options("git -C a\\ b reset")
         assert not guard._plain_git_options("git -C a\\ b -c core.fsmonitor=x reset")
         assert not guard._plain_git_options("git -C 'unclosed reset")
+
+
+# ── Heredocs, ANSI-C quotes, rerouted local HTTP ──────────────────────────────
+
+class TestHeredocScan:
+    @pytest.mark.parametrize("command, rule", [
+        # An operator in quotes or a comment opens no heredoc.
+        ('echo "<<EOF"\ngit push --force\nEOF', "force push"),
+        ("echo '<<EOF'\ngit push --force\nEOF", "force push"),
+        ("echo x # <<EOF\ngit push --force\nEOF", "force push"),
+        ('cat <<< "x"\ngit push --force\nx', "force push"),
+        # A heredoc that never ends is read as commands.
+        ("cat <<EOF\ngit push --force", "force push"),
+        # One in a command substitution in double quotes is real.
+        ("git commit -m \"$(cat <<'EOF'\nmsg, it's \"quoted\"\nEOF\n)\" && git push --force",
+         "force push"),
+        ("git commit -m \"$(cat <<'EOF'\ngit push --force\nEOF\n)\"", None),
+        ("cat <<'A' <<'B'\ngit push --force\nA\ngit reset --hard\nB\necho done", None),
+        ("cat <<'A' <<'B'\nx\nA\ny\nB\ngit push --force", "force push"),
+        ("cat <<-EOF\n\tgit push --force\n\tEOF\necho done", None),
+    ])
+    def test_verdict(self, command, rule):
+        result = check_command(command)
+        assert (result[0] if result else None) == rule, (command, result)
+
+    def test_strip_keeps_the_delimiter_lines_newline(self):
+        assert guard._strip_heredocs("cat <<EOF\nbody\nEOF\necho done") == "cat <<EOF\n\necho done"
+
+    def test_strip_stays_linear(self):
+        """The pattern this replaced scanned to the end from every
+        unterminated `<<`. Run in a subprocess so a regression fails on the
+        timeout rather than hanging the suite."""
+        script = (
+            "import importlib, sys\n"
+            f"sys.path.insert(0, {os.path.join(os.path.dirname(__file__), '..')!r})\n"
+            "g = importlib.import_module('permission-guard')\n"
+            "n = 200000\n"
+            "for s in ['cat <<a\\n' * n, ''.join(f'cat <<a{i}\\n' for i in range(n)),\n"
+            "          '\"' + '$(' * n, \"$'\" + '\\\\x' * n]:\n"
+            "    g._strip_heredocs(s)\n"
+            "    g._mask_quoted(s)\n"
+        )
+        subprocess.run([sys.executable, "-c", script], check=True, timeout=30)

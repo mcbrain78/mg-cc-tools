@@ -18,6 +18,7 @@ applies; unknown/missing modes fail safe (the guard stays active).
 PROJECT_ROOT is embedded at install time via sed. For --global installs
 it's empty and falls back to cwd from the hook event.
 """
+import bisect
 import ipaddress
 import json
 import os
@@ -1146,12 +1147,39 @@ _REDIRECT_TARGET_RE = re.compile(r"(?<!\d)>{1,2}\s*(?!&)([^\s;|&<>]+)")
 
 # Heredoc body stripping — removes content between heredoc markers
 # so that data inside heredocs is not mistaken for shell arguments.
-_HEREDOC_RE = re.compile(
-    r"(<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n)"  # opener line, through its newline
-    r".*?"                                   # body (non-greedy, crosses lines)
-    r"^\t*\2\s*$",                           # terminator: DELIM on its own line
-    re.MULTILINE | re.DOTALL,
-)
+# A heredoc operator and its delimiter word: `<<EOF`, `<<-EOF`, `<< 'EOF'`,
+# `<<"EOF"`, `<<\EOF`.
+_HEREDOC_OPERATOR_RE = re.compile(r"<<(-?)[ \t]*\\?['\"]?(\w+)['\"]?")
+
+
+def _heredoc_lines(command):
+    """Map each line of *command*, as a delimiter line reads, to where those lines end.
+
+    A delimiter line may have tabs before it and whitespace after it. The
+    ends are in order, so _heredoc_body_end finds the first one after a
+    body's start by bisection rather than by reading the lines again: every
+    unterminated `cat <<a` read the rest of the command once more.
+    """
+    lines = {}
+    start, n = 0, len(command)
+    while start <= n:
+        newline = command.find("\n", start)
+        end = n if newline == -1 else newline
+        lines.setdefault(command[start:end].lstrip("\t").rstrip(), []).append((start, end))
+        start = end + 1
+    return lines
+
+
+def _heredoc_body_end(lines, start, delimiter):
+    """Return where the heredoc body at *start* ends, or None if it never does.
+
+    The body runs to the first line at or after *start* holding only
+    *delimiter* (see _heredoc_lines). The returned index is that line's
+    newline, which stays; the body and the delimiter line go.
+    """
+    spans = lines.get(delimiter, [])
+    found = bisect.bisect_left(spans, (start, -1))
+    return spans[found][1] if found < len(spans) else None
 
 
 def _strip_heredocs(command):
@@ -1159,8 +1187,101 @@ def _strip_heredocs(command):
 
     The rest of the opener line stays: only the lines after it are the body,
     so in `cat > f <<'EOF' && git push --force` the push is still a command.
+
+    A scan rather than a pattern, reading quotes as bash does. An operator
+    inside quotes or a comment opens nothing: `echo "<<EOF"` is text, and the
+    lines after it are commands. One inside a command substitution in double
+    quotes does, as in `git commit -m "$(cat <<'EOF' … EOF)"`. A body starts
+    after the first newline outside quotes and ends at its delimiter line; a
+    body that never ends stays in place and is read as commands. Each
+    character is read once: the pattern this replaced scanned to the end of
+    the command from every unterminated `<<`, quadratic in its length.
     """
-    return _HEREDOC_RE.sub(r"\1", command)
+    if "<<" not in command:
+        return command
+    out = []
+    lines = None  # built on the first heredoc, see _heredoc_lines
+    pending = []  # delimiters whose bodies start after the next newline
+    # Enclosing contexts, as in _mask_quoted: '"' a double-quoted span, ')' and
+    # '`' a command substitution opened inside one; None the top level.
+    stack = [[None, 0]]
+    copied = 0
+    i, n = 0, len(command)
+    while i < n:
+        context = stack[-1]
+        char = command[i]
+        if context[0] == '"':
+            if char == "\\":
+                i += 2
+            elif char == '"':
+                stack.pop()
+                i += 1
+            elif command.startswith("$(", i):
+                stack.append([")", 0])
+                i += 2
+            elif char == "`":
+                stack.append(["`", 0])
+                i += 1
+            else:
+                i += 1
+            continue
+        if char == "\\":
+            i += 2
+            continue
+        if char == "\n":
+            i += 1
+            if pending:
+                if lines is None:
+                    lines = _heredoc_lines(command)
+                end = i
+                for delimiter in pending:
+                    end = _heredoc_body_end(lines, end, delimiter)
+                    if end is None:
+                        break
+                    end += 1
+                pending = []
+                if end is not None:
+                    out.append(command[copied:i])
+                    copied = i = end - 1  # keep the delimiter line's newline
+            continue
+        if char == "#" and (i == 0 or command[i - 1] in _COMMENT_START_AFTER):
+            newline = command.find("\n", i)
+            i = n if newline == -1 else newline
+            continue
+        if command.startswith("$'", i):
+            i += 2
+            while i < n and command[i] != "'":
+                i += 2 if command[i] == "\\" else 1
+            i += 1
+            continue
+        if char == "'":
+            close = command.find("'", i + 1)
+            i = n if close == -1 else close + 1
+            continue
+        if char == '"':
+            stack.append(['"', 0])
+        elif command.startswith("<<<", i):
+            i += 3
+            continue
+        elif command.startswith("<<", i):
+            operator = _HEREDOC_OPERATOR_RE.match(command, i)
+            if operator:
+                pending.append(operator.group(2))
+                i = operator.end()
+                continue
+        elif context[0] == ")":
+            if char == "(":
+                context[1] += 1
+            elif char == ")":
+                if context[1]:
+                    context[1] -= 1
+                else:
+                    stack.pop()
+        elif context[0] == "`" and char == "`":
+            stack.pop()
+        i += 1
+    out.append(command[copied:])
+    return "".join(out)
 
 
 # Quote masking — the contents of quoted spans are replaced by this filler so
