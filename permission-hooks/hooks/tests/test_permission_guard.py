@@ -5851,7 +5851,50 @@ class TestCommandWords:
         assert not guard._plain_git_options("git -C 'unclosed reset")
 
 
-# ── Heredocs, ANSI-C quotes, rerouted local HTTP ──────────────────────────────
+# ── Command size, heredocs, ANSI-C quotes, rerouted local HTTP ────────────────
+
+class TestCommandSize:
+    PROJECT = "/home/user/myproject"
+
+    def _run(self, tmp_path, monkeypatch, command):
+        decisions = []
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp_path / "sc"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", self.PROJECT)
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr(guard, "run_evaluators", lambda command, event: (None, ""))
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "transcript_path": "/tmp/command-size.jsonl",
+            "cwd": self.PROJECT,
+        })))
+        guard.main()
+        return decisions
+
+    def test_limit(self):
+        limit = guard.MAX_CHECKED_COMMAND
+        assert guard.check_command_size("x" * limit) is None
+        assert guard.check_command_size("x" * (limit + 1)) == limit + 1
+
+    def test_heredoc_bodies_do_not_count(self):
+        command = "cat > notes.txt <<'EOF'\n" + "a line of notes\n" * 2000 + "EOF\necho done"
+        assert len(command) > guard.MAX_CHECKED_COMMAND
+        assert guard.check_command_size(command) is None
+
+    def test_a_long_command_asks(self, tmp_path, monkeypatch):
+        decisions = self._run(tmp_path, monkeypatch, "echo " + "a " * 6000)
+        assert decisions and decisions[0][1] == "ask"
+        assert "Command size" in decisions[0][0]
+
+    def test_a_long_heredoc_write_does_not(self, tmp_path, monkeypatch):
+        command = "cat > notes.txt <<'EOF'\n" + "a line of notes\n" * 2000 + "EOF"
+        assert self._run(tmp_path, monkeypatch, command) == []
+
 
 class TestHeredocScan:
     @pytest.mark.parametrize("command, rule", [

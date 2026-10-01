@@ -2671,6 +2671,31 @@ SENSITIVE_FILE_PATTERNS = [
 ]
 
 
+# ── Command size ────────────────────────────────────────────────────────────
+# The checks read a command in time linear in its length, with known
+# exceptions that are quadratic: backticks interleaved with the command a rule
+# reads (`` git push `git push `git push … ``, see _cmd_arg), and chains of
+# assignments behind the command-start anchor (`a=|a=|…`). With a nested shell
+# in the call, check_command reads three copies, so the worst of them took
+# 3 seconds at 10,000 characters and 12 at 20,000, and a hook that runs past
+# Claude Code's timeout decides nothing. A command over this length asks
+# before any check reads it. It is counted after heredoc bodies are dropped,
+# so a file written through a heredoc does not count; ordinary commands run
+# to a few hundred characters.
+MAX_CHECKED_COMMAND = 10_000
+
+
+def check_command_size(command):
+    """Return the length of *command* as the checks read it, if that is over the limit.
+
+    Returns None for a command within MAX_CHECKED_COMMAND.
+    """
+    if len(command) <= MAX_CHECKED_COMMAND:  # dropping bodies only shortens it
+        return None
+    length = len(_command_text(command))
+    return length if length > MAX_CHECKED_COMMAND else None
+
+
 def check_command(command, skip_descriptions=()):
     """Check command against category rules.
 
@@ -3449,6 +3474,17 @@ def main():
                 )
             else:
                 _ask("[permission-guard] Session context emitter — requires human approval")
+            return
+
+    # ── Command size ────────────────────────────────────────────────────
+    # Ahead of every stage that reads the command, the worktree check below
+    # included, so it holds inside the auto-approve window too: a command too
+    # long to check in time asks (see MAX_CHECKED_COMMAND).
+    if tool_name == "Bash" and tool_input.get("command"):
+        size = check_command_size(tool_input["command"])
+        if size:
+            _ask(f"[permission-guard] Command size: {size:,} characters, over the "
+                 f"{MAX_CHECKED_COMMAND:,} the guard can check in time")
             return
 
     # ── Git worktree destruction ────────────────────────────────────────
