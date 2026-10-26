@@ -5040,6 +5040,32 @@ class TestManagedSystemctl:
 
     @pytest.mark.parametrize("command", [
         "timeout 30 systemctl stop prefect-server.service",
+        "date; timeout 120 systemctl restart prefect-server finance-data-worker; echo $?",
+        "timeout 1.5m systemctl restart prefect-server",
+        "timeout -k 5 30 systemctl restart prefect-server",
+        "timeout --kill-after=5 --signal=TERM 30 systemctl restart prefect-server",
+        "timeout --foreground --preserve-status -v 30s systemctl --no-block stop prefect-server",
+        "if timeout 30 systemctl restart prefect-server; then echo ok; fi",
+    ])
+    def test_behind_timeout_is_exempt(self, command):
+        """timeout runs the same command with a time limit and adds no arguments."""
+        assert check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
+        "timeout 30 systemctl restart nginx",
+        "timeout 30 systemctl enable prefect-server",
+        "timeout 30 systemctl -H build.example.com stop prefect-server",
+        "timeout --frobnicate 30 systemctl stop prefect-server",
+        "timeout -vk 5 30 systemctl stop prefect-server",
+        "timeout systemctl stop prefect-server",
+        "timeout 30 nice systemctl stop prefect-server",
+        "nice timeout 30 systemctl stop prefect-server",
+        "timeout 30 xargs systemctl stop < units.txt",
+    ])
+    def test_behind_timeout_the_rest_still_must_qualify(self, command):
+        assert not check_managed_systemctl(command)
+
+    @pytest.mark.parametrize("command", [
         "echo prefect-server | xargs systemctl stop",
         "FOO=1 systemctl stop prefect-server.service",
         r"find . -name x -exec systemctl stop prefect-server.service \;",
@@ -5085,6 +5111,16 @@ class TestManagedSystemctlInMain:
 
     def test_prefect_shutdown_does_not_prompt(self, tmp_path, monkeypatch):
         assert self._run(tmp_path, monkeypatch, _PREFECT_SHUTDOWN) == []
+
+    def test_restart_behind_timeout_does_not_prompt(self, tmp_path, monkeypatch):
+        """The shape that prompted in a real session, on a fictitious path."""
+        command = (
+            "cd /home/user/myproject; A=temp/act1; "
+            "systemctl show prefect-server finance-data-worker -p ActiveState > $A/units.txt 2>&1; "
+            "timeout 120 systemctl restart prefect-server finance-data-worker; "
+            "echo \"restart exit=$?\" | tee -a $A/restart-time.txt"
+        )
+        assert self._run(tmp_path, monkeypatch, command) == []
 
     def test_unmanaged_unit_still_asks(self, tmp_path, monkeypatch):
         decisions = self._run(tmp_path, monkeypatch, "systemctl restart nginx")

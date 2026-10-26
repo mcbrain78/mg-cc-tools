@@ -2168,8 +2168,8 @@ def check_exec_bit_chmod(command):
 # isolate, daemon-reload; a glob, variable or quoted unit, whose target this
 # cannot read; any option outside the output-only ones below (-H and -M reach
 # another host or container, --job-mode=isolate stops everything else); and a
-# systemctl behind a runner (`timeout 30 systemctl …`) or in a nested shell's
-# string, which is not read as a command of its own.
+# systemctl behind a runner other than `timeout` (`xargs systemctl …`) or in a
+# nested shell's string, which is not read as a command of its own.
 
 _SYSTEMCTL_LIFECYCLE_VERBS = frozenset({
     "start", "stop", "restart", "try-restart", "reload",
@@ -2182,11 +2182,43 @@ _SYSTEMCTL_SAFE_OPTS = frozenset({
 })
 
 # Reserved words leave the systemctl behind them its own command
-# (`if systemctl restart …; then`). A runner does not: `timeout`, `xargs` and
-# the rest of _RUNNERS keep asking.
+# (`if systemctl restart …; then`). A runner does not: `xargs` adds arguments
+# from stdin, `env` and `exec` change what runs, so they and the rest of
+# _RUNNERS keep asking.
 _SHELL_RESERVED_WORDS = frozenset({"if", "then", "elif", "else", "do", "while", "until", "!", "{"})
 
+# `timeout` is the exception: it runs the same command with a time limit,
+# adding no arguments, and its options only pick the signal and how it is
+# sent. Anything else in front of the duration keeps the rule in force.
+_TIMEOUT_VALUE_OPTS = frozenset({"-k", "-s", "--kill-after", "--signal"})
+_TIMEOUT_FLAG_RE = re.compile(
+    r"-v|--verbose|--foreground|--preserve-status|--(?:kill-after|signal)=\S+|-[ks]\S+"
+)
+_TIMEOUT_DURATION_RE = re.compile(r"(?:\d+\.?\d*|\.\d+)[smhd]?")
+
 _SYSTEMCTL_PATHS = frozenset({"systemctl", "/usr/bin/systemctl", "/bin/systemctl"})
+
+
+def _skip_timeout(tokens):
+    """Return *tokens* past a leading `timeout [options] DURATION`.
+
+    Returns *tokens* unchanged when they do not start with timeout, and None
+    when the timeout's own words cannot be read.
+    """
+    if not tokens or tokens[0] != "timeout":
+        return tokens
+    rest = tokens[1:]
+    while rest and rest[0].startswith("-"):
+        option = rest.pop(0)
+        if option in _TIMEOUT_VALUE_OPTS:
+            if not rest:
+                return None
+            rest.pop(0)
+        elif not _TIMEOUT_FLAG_RE.fullmatch(option):
+            return None
+    if not rest or not _TIMEOUT_DURATION_RE.fullmatch(rest[0]):
+        return None
+    return rest[1:]
 
 
 def _is_managed_systemctl(segment):
@@ -2194,6 +2226,7 @@ def _is_managed_systemctl(segment):
     tokens = _TOKEN_RE.findall(_REDIRECT_STRIP_RE.sub(" ", segment))
     while tokens and tokens[0] in _SHELL_RESERVED_WORDS:
         tokens = tokens[1:]
+    tokens = _skip_timeout(tokens)
     if not tokens or tokens[0] not in _SYSTEMCTL_PATHS:
         return False
     words = []
