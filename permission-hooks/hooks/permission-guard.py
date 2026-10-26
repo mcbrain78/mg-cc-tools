@@ -375,11 +375,12 @@ _GIT_CONFIG_WRITE = (
 #   - after a reserved word or an assignment: `if kill …`, `! kill`,
 #     `FOO=1 kill …`
 #   - behind a command that runs its arguments: `xargs kill`, `timeout 30
-#     kill`, `find … -exec kill`, env, nohup, nice and the rest of _RUNNERS.
-#     Their options are followed as flags, numbers and `{}`; one that takes a
-#     word (`timeout -s KILL 5 …`) ends the prefix, so that form is not seen.
-#     `command` takes only -p: `command -v kill` asks where it is, it does not
-#     run it.
+#     kill`, `find … -exec kill`, env, nohup, nice and the rest of _RUNNERS,
+#     by name or by path (`/usr/bin/timeout`). Their options are followed as
+#     flags, numbers and `{}`, and each runner's own options that take the
+#     next word as their value take it (`timeout -s KILL 5 …`, `env -u X …`;
+#     see _RUNNER_VALUE_OPTS). `command` takes only -p: `command -v kill`
+#     asks where it is, it does not run it.
 #
 # A `{` opens a group only with a space behind it, so brace expansion
 # (`docs/{kill,ln}.md`) and `${kill}` stay text.
@@ -392,13 +393,45 @@ _GIT_CONFIG_WRITE = (
 # number argument holds no `=`, and an assignment value is read to at most
 # 512 characters, so a quote-dense line with no spaces cannot make every
 # anchor rescan the rest of it. A longer value ends the prefix.
-_RUNNERS = r"(?:env|nohup|setsid|exec|eval|time|nice|stdbuf|timeout|xargs|watch)"
-_RUNNER_ARGS = r"(?:[ \t]+(?:-\S*+|\d[^\s=]*+(?!=)|\{\}))*+"
+
+# A command called by its path: `/usr/bin/kill`.
+_CMD_PATH = r"(?:(?:/[\w.-]+)*/)?"
+
+# The options of each runner that take the next word as their value. Each
+# runner has its own: `-i` takes a value for stdbuf but is a flag of env, and
+# a flag read as taking a value would take the command behind it for one
+# (`env -i systemctl …`). The value is one word that crosses no command break.
+_RUNNER_VALUE_OPTS = {
+    "env": r"-[uCS]|--(?:unset|chdir|split-string)",
+    "exec": r"-a",
+    "nice": r"-n|--adjustment",
+    "stdbuf": r"-[ioe]|--(?:input|output|error)",
+    "time": r"-[fo]|--(?:format|output)",
+    "timeout": r"-[ks]|--(?:kill-after|signal)",
+    "watch": r"-[nq]|--(?:interval|equexit)",
+    "xargs": (r"-[adEILnPs]|--(?:arg-file|delimiter|max-args|max-procs|max-chars"
+              r"|process-slot-var)"),
+}
+_RUNNER_ARG = r"-\S*+|\d[^\s=]*+(?!=)|\{\}"
+
+
+def _runner(name):
+    """Return a pattern for runner *name* and its arguments."""
+    value = _RUNNER_VALUE_OPTS.get(name)
+    value = r"(?:" + value + r")[ \t]++[^\s;&|()`<>]++|" if value else ""
+    return name + r"(?:[ \t]++(?:" + value + _RUNNER_ARG + r"))*+"
+
+
+# timeout before time, which would otherwise take the first four letters.
+_RUNNERS = _CMD_PATH + r"(?:" + r"|".join(_runner(name) for name in (
+    "env", "nohup", "setsid", "exec", "eval", "timeout", "time", "nice", "stdbuf",
+    "xargs", "watch",
+)) + r")"
 _CMD_PREFIX = (
     r"(?>(?:if|then|elif|else|do|while|until|!"
     r"|[A-Za-z_]\w*+=\S{0,512}+"
     r"|command(?:[ \t]+-p)?"
-    r"|" + _RUNNERS + _RUNNER_ARGS
+    r"|" + _RUNNERS
     + r")[ \t]+)*+"
 )
 _CMD_AT = r"(?:^|[;&|\n(`]|(?<!\$)\{(?=\s)|[ \t]-(?:exec|execdir|ok|okdir)(?=[ \t]))[ \t]*+"
@@ -412,9 +445,6 @@ _CMD_START = _CMD_AT + _CMD_PREFIX
 # prose, and `xargs grep -l "passwd reset"` is read unmasked because of the
 # xargs.
 _CMD_START_OR_QUOTE = r"(?:" + _CMD_AT + r"|[\"'])" + _CMD_PREFIX
-
-# A command called by its path: `/usr/bin/kill`.
-_CMD_PATH = r"(?:(?:/[\w.-]+)*/)?"
 
 # `\brm` also matches the tail of a flag: `-` is not a word character, so
 # `docker run --rm` has a word boundary right before the `r`. Put this in front
@@ -2195,6 +2225,7 @@ _TIMEOUT_FLAG_RE = re.compile(
     r"-v|--verbose|--foreground|--preserve-status|--(?:kill-after|signal)=\S+|-[ks]\S+"
 )
 _TIMEOUT_DURATION_RE = re.compile(r"(?:\d+\.?\d*|\.\d+)[smhd]?")
+_TIMEOUT_PATHS = frozenset({"timeout", "/usr/bin/timeout", "/bin/timeout"})
 
 _SYSTEMCTL_PATHS = frozenset({"systemctl", "/usr/bin/systemctl", "/bin/systemctl"})
 
@@ -2205,7 +2236,7 @@ def _skip_timeout(tokens):
     Returns *tokens* unchanged when they do not start with timeout, and None
     when the timeout's own words cannot be read.
     """
-    if not tokens or tokens[0] != "timeout":
+    if not tokens or tokens[0] not in _TIMEOUT_PATHS:
         return tokens
     rest = tokens[1:]
     while rest and rest[0].startswith("-"):

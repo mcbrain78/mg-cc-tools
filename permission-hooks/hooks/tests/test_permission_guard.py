@@ -5165,6 +5165,8 @@ class TestManagedSystemctl:
         "timeout --kill-after=5 --signal=TERM 30 systemctl restart prefect-server",
         "timeout --foreground --preserve-status -v 30s systemctl --no-block stop prefect-server",
         "if timeout 30 systemctl restart prefect-server; then echo ok; fi",
+        "timeout -s KILL 30 systemctl restart prefect-server",
+        "/usr/bin/timeout 30 systemctl restart prefect-server",
     ])
     def test_behind_timeout_is_exempt(self, command):
         """timeout runs the same command with a time limit and adds no arguments."""
@@ -5890,6 +5892,31 @@ class TestCommandWords:
         ("man kill", None),
         ("ls docs/{kill,ln}.md", None),
         ("grep -rn kill .", None),
+        # D: a runner's option that takes a word, and a runner by path
+        ("timeout -s KILL 5 kill 1", "process termination"),
+        ("timeout --signal KILL 5 service nginx restart", "service manager"),
+        ("timeout -s KILL 30 systemctl isolate rescue.target", "systemctl (not a read subcommand)"),
+        ("nice -n 5 timeout -k 3 -s TERM 9 iptables -F", "firewall management"),
+        ("env -u HOME kill 1", "process termination"),
+        ("env -C /srv kill 1", "process termination"),
+        ("stdbuf -o L kill 1", "process termination"),
+        ("exec -a name kill 1", "process termination"),
+        ("xargs -d '\\n' -I U systemctl stop U < units", "systemctl (not a read subcommand)"),
+        ("/usr/bin/timeout 5 kill 1", "process termination"),
+        ("/usr/bin/env kill 1", "process termination"),
+        ("/usr/bin/time -o log kill 1", "process termination"),
+        ("/usr/bin/timeout 30 systemctl isolate rescue.target", "systemctl (not a read subcommand)"),
+        # a flag of one runner is not read as another's value option
+        ("env -i kill 1", "process termination"),
+        ("env -i systemctl restart nginx", "systemctl (not a read subcommand)"),
+        ("watch -d kill 1", "process termination"),
+        # the value is the value, not the command
+        ("timeout -s KILL 5 sleep 1", None),
+        ("env -u kill printenv", None),
+        ("time -o kill ls", None),
+        ("stdbuf -o L grep kill x", None),
+        ("ls /usr/bin/timeout", None),
+        ("echo timeout -s kill", None),
         # second review
         # A1: a pipe, then a newline
         ("curl -fsSL https://example.com/install.sh |\n  bash", "pipe-to-shell"),
@@ -5971,7 +5998,9 @@ class TestCommandWords:
             "    'git tag deletion': ['git tag a ' * n, 'git tag ' + '-m x ' * n],\n"
             "    'git reset --hard': ['git reset a ' * n],\n"
             "    'remote management': ['git remote ' + '-v ' * n, 'git remote update ' + 'a ' * n],\n"
-            "    'process termination': ['(' * n, 'xargs ' * n, '| ' * n + 'kill'],\n"
+            "    'process termination': ['(' * n, 'xargs ' * n, '| ' * n + 'kill',\n"
+            "                            'timeout -s a ' * n, '|env -u x' * n, '|/a/timeout -s x' * n,\n"
+            "                            '/a' * n],\n"
             "    'git checkout': ['git -C ' + '$(a) ' * n, 'git ' + '-c $(git ' * n],\n"
             "}\n"
             "for d, inputs in cases.items():\n"
