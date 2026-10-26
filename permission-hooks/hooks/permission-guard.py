@@ -379,8 +379,10 @@ _GIT_CONFIG_WRITE = (
 #     by name or by path (`/usr/bin/timeout`). Their options are followed as
 #     flags, numbers and `{}`, and each runner's own options that take the
 #     next word as their value take it (`timeout -s KILL 5 …`, `env -u X …`;
-#     see _RUNNER_VALUE_OPTS). `command` takes only -p: `command -v kill`
-#     asks where it is, it does not run it.
+#     see _RUNNER_VALUE_OPTS), as does the one argument some runners take
+#     before the command (`flock /tmp/lock …`; see _RUNNER_OPERANDS).
+#     `command` takes only -p: `command -v kill` asks where it is, it does
+#     not run it.
 #
 # A `{` opens a group only with a space behind it, so brace expansion
 # (`docs/{kill,ln}.md`) and `${kill}` stay text.
@@ -411,7 +413,20 @@ _RUNNER_VALUE_OPTS = {
     "watch": r"-[nq]|--(?:interval|equexit)",
     "xargs": (r"-[adEILnPs]|--(?:arg-file|delimiter|max-args|max-procs|max-chars"
               r"|process-slot-var)"),
+    "ionice": r"-[cnpPu]|--(?:class|classdata|pid|pgid|uid)",
+    "chrt": r"-[TPD]|--sched-(?:runtime|period|deadline)",
+    "flock": r"-[wE]|--(?:timeout|wait|conflict-exit-code)",
+    "chroot": r"--(?:groups|userspec)",
+    "strace": (r"-[abeEIoOpPsSuUX]|--(?:output|attach|trace|trace-path|string-limit"
+               r"|user|env)"),
 }
+
+# Runners that take one argument of their own before the command: flock's lock
+# file, chroot's new root, chrt's priority, taskset's CPU mask. Their options
+# stop at it, so a number there is that argument, not an option value
+# (`chrt -f 10 kill …`).
+_RUNNER_OPERANDS = frozenset({"flock", "chroot", "chrt", "taskset"})
+
 _RUNNER_ARG = r"-\S*+|\d[^\s=]*+(?!=)|\{\}"
 
 
@@ -419,13 +434,16 @@ def _runner(name):
     """Return a pattern for runner *name* and its arguments."""
     value = _RUNNER_VALUE_OPTS.get(name)
     value = r"(?:" + value + r")[ \t]++[^\s;&|()`<>]++|" if value else ""
+    if name in _RUNNER_OPERANDS:
+        return name + r"(?:[ \t]++(?:" + value + r"-\S*+))*+[ \t]++[^\s;&|()`<>]++"
     return name + r"(?:[ \t]++(?:" + value + _RUNNER_ARG + r"))*+"
 
 
 # timeout before time, which would otherwise take the first four letters.
+# sudo is no runner here: its own rule asks whatever follows.
 _RUNNERS = _CMD_PATH + r"(?:" + r"|".join(_runner(name) for name in (
     "env", "nohup", "setsid", "exec", "eval", "timeout", "time", "nice", "stdbuf",
-    "xargs", "watch",
+    "xargs", "watch", "ionice", "taskset", "chrt", "flock", "chroot", "strace",
 )) + r")"
 _CMD_PREFIX = (
     r"(?>(?:if|then|elif|else|do|while|until|!"
