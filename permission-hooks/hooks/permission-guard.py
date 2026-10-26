@@ -399,6 +399,13 @@ _GIT_CONFIG_WRITE = (
 # A command called by its path: `/usr/bin/kill`.
 _CMD_PATH = r"(?:(?:/[\w.-]+)*/)?"
 
+# A character of an argument in front of a command: anything but a space and
+# what ends a command or opens another one. Read with \S, `-a|timeout` was one
+# option, so from every pipe in `|timeout -a|timeout -a…` the scan ran to the
+# end of the line, quadratic in its length: 4 s at 44,000 characters. Bash
+# ends the word at the pipe anyway, and the anchor there reads what follows.
+_ARG_CHAR = r"[^\s;&|()`<>]"
+
 # The options of each runner that take the next word as their value. Each
 # runner has its own: `-i` takes a value for stdbuf but is a flag of env, and
 # a flag read as taking a value would take the command behind it for one
@@ -427,15 +434,17 @@ _RUNNER_VALUE_OPTS = {
 # (`chrt -f 10 kill …`).
 _RUNNER_OPERANDS = frozenset({"flock", "chroot", "chrt", "taskset"})
 
-_RUNNER_ARG = r"-\S*+|\d[^\s=]*+(?!=)|\{\}"
+# A number holds no `=` (see above), and stops where _ARG_CHAR does.
+_RUNNER_ARG = r"-" + _ARG_CHAR + r"*+|\d[^\s=;&|()`<>]*+(?!=)|\{\}"
 
 
 def _runner(name):
     """Return a pattern for runner *name* and its arguments."""
     value = _RUNNER_VALUE_OPTS.get(name)
-    value = r"(?:" + value + r")[ \t]++[^\s;&|()`<>]++|" if value else ""
+    value = r"(?:" + value + r")[ \t]++" + _ARG_CHAR + r"++|" if value else ""
     if name in _RUNNER_OPERANDS:
-        return name + r"(?:[ \t]++(?:" + value + r"-\S*+))*+[ \t]++[^\s;&|()`<>]++"
+        return (name + r"(?:[ \t]++(?:" + value + r"-" + _ARG_CHAR + r"*+))*+"
+                + r"[ \t]++" + _ARG_CHAR + r"++")
     return name + r"(?:[ \t]++(?:" + value + _RUNNER_ARG + r"))*+"
 
 
@@ -483,8 +492,12 @@ _NOT_FLAG = r"(?<!-)"
 
 # Global options that may sit between `systemctl` and the subcommand. The short
 # options that take a separate value swallow it, so the `service` in
-# `systemctl -t service list-units` can't be mistaken for a subcommand.
-_SYSTEMCTL_OPTS = r"(?:\s+(?:-[HMtpnosP]\s+\S+|--[\w-]+=\S+|--[\w-]+|-[A-Za-z]+))*"
+# `systemctl -t service list-units` can't be mistaken for a subcommand. A value
+# ends where _ARG_CHAR does.
+_SYSTEMCTL_OPTS = (
+    r"(?:\s+(?:-[HMtpnosP]\s+" + _ARG_CHAR + r"+|--[\w-]+=" + _ARG_CHAR + r"+"
+    r"|--[\w-]+|-[A-Za-z]+))*"
+)
 
 _SYSTEMCTL_READ = (
     r"(?:status|show|show-environment|cat|help|get-default"
@@ -637,8 +650,9 @@ _STDIN_INTERPRETER = (
     + r")"
 )
 _PIPE_INTO = (
-    r"\|&?[ \t\n]*+(?:(?:sudo|doas)(?:[ \t]++-\S++)*+[ \t]++"
-    r"|env(?:[ \t]++[A-Za-z_]\w*+=\S*+)*+[ \t]++)?" + _CMD_PREFIX + _STDIN_INTERPRETER
+    r"\|&?[ \t\n]*+(?:(?:sudo|doas)(?:[ \t]++-" + _ARG_CHAR + r"++)*+[ \t]++"
+    r"|env(?:[ \t]++[A-Za-z_]\w*+=" + _ARG_CHAR + r"*+)*+[ \t]++)?"
+    + _CMD_PREFIX + _STDIN_INTERPRETER
 )
 _DOWNLOAD = r"\b(?:curl|wget)(?![\w-])"
 _PIPE_TO_SHELL = (
@@ -648,7 +662,7 @@ _PIPE_TO_SHELL = (
     + _PIPE_INTO
     + r"|" + _CMD_START + r"(?:" + _CMD_PATH
     + r"(?:(?:ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node)|source|\.)(?![\w.-])"
-    r"(?:[ \t]++-\S++)*+[ \t]++[\"']?(?:[<$]\(|`)[ \t]*+" + _DOWNLOAD
+    + r"(?:[ \t]++-" + _ARG_CHAR + r"++)*+[ \t]++[\"']?(?:[<$]\(|`)[ \t]*+" + _DOWNLOAD
     # _CMD_START reads eval as a runner and takes it in, so eval stands alone.
     + r"|(?<![\w.-])eval[ \t]++[\"']?(?:\$\(|`)[ \t]*+" + _DOWNLOAD
 )
@@ -749,7 +763,8 @@ CATEGORIES = {
         # Behind xargs, kill takes its arguments from stdin.
         (_CMD_START + _CMD_PATH + r"(kill|killall)\s+\S"
          r"|\bxargs(?:[ \t]++(?:-[adEILnPs]|--(?:arg-file|delimiter|eof|replace|max-lines"
-         r"|max-args|max-procs|max-chars))[ \t]++\S++|[ \t]++-\S++)*+[ \t]++"
+         r"|max-args|max-procs|max-chars))[ \t]++" + _ARG_CHAR + r"++"
+         r"|[ \t]++-" + _ARG_CHAR + r"++)*+[ \t]++"
          + _CMD_PATH + r"(?:kill|killall)(?![\w-])",
          "process termination"),
     ],
