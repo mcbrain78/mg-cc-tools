@@ -440,7 +440,7 @@ def _runner(name):
 
 
 # timeout before time, which would otherwise take the first four letters.
-# sudo is no runner here: its own rule asks whatever follows.
+# sudo and doas are no runners here: their own rule asks whatever follows.
 _RUNNERS = _CMD_PATH + r"(?:" + r"|".join(_runner(name) for name in (
     "env", "nohup", "setsid", "exec", "eval", "timeout", "time", "nice", "stdbuf",
     "xargs", "watch", "ionice", "taskset", "chrt", "flock", "chroot", "strace",
@@ -619,8 +619,8 @@ def _runs_stdin(name, script_options, stdin_word=r"-"):
 
 
 # A download run as code. Piped into an interpreter that runs its standard
-# input, later in the same pipeline, with `sudo`, `env` or another runner in
-# front or not, read as _CMD_PREFIX reads them: `curl … | tee log | sudo bash`,
+# input, later in the same pipeline, with `sudo`, `doas`, `env` or another
+# runner in front or not, read as _CMD_PREFIX reads them: `curl … | sudo bash`,
 # `curl … | timeout -s KILL 60 bash`. A pipe may be followed by a newline, and the
 # pipeline goes on. `| python3 -m json.tool`, `| python3 -c …`, `| node -e …`
 # and `| perl -ne …` read the download as data, so they do not count. Or
@@ -637,7 +637,7 @@ _STDIN_INTERPRETER = (
     + r")"
 )
 _PIPE_INTO = (
-    r"\|&?[ \t\n]*+(?:sudo(?:[ \t]++-\S++)*+[ \t]++"
+    r"\|&?[ \t\n]*+(?:(?:sudo|doas)(?:[ \t]++-\S++)*+[ \t]++"
     r"|env(?:[ \t]++[A-Za-z_]\w*+=\S*+)*+[ \t]++)?" + _CMD_PREFIX + _STDIN_INTERPRETER
 )
 _DOWNLOAD = r"\b(?:curl|wget)(?![\w-])"
@@ -736,6 +736,7 @@ CATEGORIES = {
     ],
     "System Operations": [
         (r"\bsudo\b", "sudo"),
+        (r"\bdoas\b", "doas"),
         (_PACKAGE_CHANGE, "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
         (_SYSTEMCTL_WRITE, SYSTEMCTL_RULE),
