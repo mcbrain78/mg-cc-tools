@@ -601,8 +601,9 @@ def _runs_stdin(name, script_options, stdin_word=r"-"):
 
 
 # A download run as code. Piped into an interpreter that runs its standard
-# input, later in the same pipeline, with `sudo` or `env` in front or not:
-# `curl … | tee log | sudo bash`. A pipe may be followed by a newline, and the
+# input, later in the same pipeline, with `sudo`, `env` or another runner in
+# front or not, read as _CMD_PREFIX reads them: `curl … | tee log | sudo bash`,
+# `curl … | timeout -s KILL 60 bash`. A pipe may be followed by a newline, and the
 # pipeline goes on. `| python3 -m json.tool`, `| python3 -c …`, `| node -e …`
 # and `| perl -ne …` read the download as data, so they do not count. Or
 # handed to a command as a process or command substitution: `bash <(curl …)`,
@@ -619,7 +620,7 @@ _STDIN_INTERPRETER = (
 )
 _PIPE_INTO = (
     r"\|&?[ \t\n]*+(?:sudo(?:[ \t]++-\S++)*+[ \t]++"
-    r"|env(?:[ \t]++[A-Za-z_]\w*+=\S*+)*+[ \t]++)?" + _STDIN_INTERPRETER
+    r"|env(?:[ \t]++[A-Za-z_]\w*+=\S*+)*+[ \t]++)?" + _CMD_PREFIX + _STDIN_INTERPRETER
 )
 _DOWNLOAD = r"\b(?:curl|wget)(?![\w-])"
 _PIPE_TO_SHELL = (
