@@ -2966,7 +2966,7 @@ def check_file_outside_project(file_path, project_root):
     return None
 
 
-def _candidate_write_targets(command):
+def _candidate_write_targets(command, operands_only=False):
     """Yield tokens that are genuine write targets in *command*.
 
     Only these positions can write outside the project, so only these are
@@ -2987,6 +2987,9 @@ def _candidate_write_targets(command):
     yields no redirect and ``git commit -m "rm /etc/x"`` runs no rm. Every
     token is sliced back out of the original command by offset, so a quoted
     write target keeps its real text (spaces included).
+
+    With *operands_only*, a segment yields only the words after its
+    file-modifying command, not the runners and assignments in front of it.
     """
     masked = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
 
@@ -2996,17 +2999,47 @@ def _candidate_write_targets(command):
 
     # 2. File-modifying command arguments (per segment)
     for segment in _SEGMENT_RE.finditer(masked):
-        if FILE_MODIFYING_CMDS.search(segment.group()):
-            for token in _TOKEN_RE.finditer(segment.group()):
+        name = FILE_MODIFYING_CMDS.search(segment.group())
+        if name:
+            for token in _TOKEN_RE.finditer(segment.group(), name.end() if operands_only else 0):
                 start = segment.start() + token.start()
                 yield command[start:start + len(token.group())]
 
 
-def check_outside_project(command, project_root):
+# A relative write target is relative to the directory the call runs in: the
+# session's cwd, or wherever a leading `cd` moved it (see _leading_cd). Read
+# from anywhere else, `cd sub; cp ../a b` looked outside the project and
+# `cd ~; touch x` looked inside it. Any other change of directory in the call,
+# or one this cannot read, leaves the directory unknown, and then a `../`
+# target resolves against the hook's own cwd and a plain one is assumed to
+# be in the project, as before.
+
+# A plain relative word: no option, no expansion, no assignment or redirect.
+_RELATIVE_WORD_RE = re.compile(r"(?![-+~/])[^$`=<>\\]+")
+
+
+def _write_base(command, cwd):
+    """Return the directory *command* runs its writes in, or None if unknown."""
+    if (not cwd or not os.path.isabs(cwd) or os.environ.get("CDPATH")
+            or _SHELL_INVOKER_RE.search(command)):
+        return None
+    masked = _mask_quoted(command)
+    spans = _command_spans(masked)
+    here = _leading_cd(command, masked, spans, cwd)
+    for start, end in spans[1:] if here else spans:
+        tokens = _tokenize_segment(command[start:end])
+        if (_DIR_CHANGERS | _SAME_SHELL_RUNNERS) & set(tokens) or tokens[:1] == ["."]:
+            return None
+    return here or os.path.realpath(cwd)
+
+
+def check_outside_project(command, project_root, cwd=None):
     """Check if command writes to a path outside the project root.
 
     Only genuine write targets are examined (see _candidate_write_targets);
-    path-shaped substrings elsewhere in the command are ignored.
+    path-shaped substrings elsewhere in the command are ignored. Relative
+    targets resolve against *cwd*, the session's working directory, or the
+    directory a leading `cd` moves the call into (see _write_base).
 
     Returns (description, matched_path) or None.
     """
@@ -3018,6 +3051,10 @@ def check_outside_project(command, project_root):
 
     # Normalize project root (remove trailing slash)
     project_root = project_root.rstrip("/")
+    # Resolved targets have their symlinks followed, so they are judged
+    # against the root with its symlinks followed too.
+    real_root = os.path.realpath(project_root)
+    base = _write_base(command, cwd)
 
     for token in _candidate_write_targets(command):
         # Strip quotes and shell punctuation
@@ -3045,9 +3082,22 @@ def check_outside_project(command, project_root):
                 return (f"home directory path: {token}", token)
 
         elif "../" in token:
-            resolved = os.path.realpath(token)
-            if not _resolved_path_allowed(resolved, project_root):
+            resolved = os.path.realpath(os.path.join(base, token) if base else token)
+            if not _resolved_path_allowed(resolved, real_root):
                 return (f"parent directory traversal: {token}", token)
+
+    if base is None:
+        return None
+    # Plain relative targets, now that the directory they land in is known.
+    # Joined, not resolved: a symlink inside the project (.venv/bin/python)
+    # is still a file in it to rm or overwrite.
+    for token in _candidate_write_targets(command, operands_only=True):
+        token = token.strip(_TOKEN_STRIP_CHARS)
+        if not _RELATIVE_WORD_RE.fullmatch(token) or "../" in token:
+            continue
+        resolved = os.path.normpath(os.path.join(base, token))
+        if not _is_claude_internal(resolved) and not _resolved_path_allowed(resolved, real_root):
+            return (f"path outside project root: {token} (in {base})", token)
 
     return None
 
@@ -3640,7 +3690,7 @@ def main():
     # 3. Out-of-project path guard
     root = _resolve_project_root(event)
     if root:
-        result = check_outside_project(command, root)
+        result = check_outside_project(command, root, event.get("cwd"))
         if result:
             description, _matched_path = result
             _ask(f"[permission-guard] {trace_prefix}Out-of-project: {description}")

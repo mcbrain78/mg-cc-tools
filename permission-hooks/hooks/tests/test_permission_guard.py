@@ -1398,6 +1398,125 @@ class TestOutsideProject:
         assert "/etc/foo" in result[1]
 
 
+class TestOutsideProjectFollowsCd:
+    """Relative write targets resolve where the call runs: the session's cwd,
+    or wherever a leading `cd` moved it. The tree is real because the cd is
+    only followed into a directory that exists; these strings are only
+    scanned, never run."""
+
+    @pytest.fixture
+    def tree(self, tmp_path, monkeypatch):
+        # tmp_path is under /tmp, which is a safe path; take it out so the
+        # tree is judged like any other location.
+        monkeypatch.setattr(guard, "SAFE_ABSOLUTE_PATHS", ["/dev/null"])
+        project = tmp_path / "ws" / "proj"
+        (project / "temp" / "gate" / "act1").mkdir(parents=True)
+        (project / "temp" / "run").mkdir()
+        (project / ".venv" / "bin").mkdir(parents=True)
+        (tmp_path / "elsewhere" / "sub").mkdir(parents=True)
+        (project / ".venv" / "bin" / "python").symlink_to(tmp_path / "elsewhere" / "python")
+        return tmp_path, str(project)
+
+    def test_parent_traversal_after_cd_into_the_project(self, tree):
+        """The shape that prompted in a real session."""
+        _, project = tree
+        command = (f"cd {project}/temp/gate/act1; cp ../../run/before.log before.log; "
+                   "cp ../../run/after.log after.log; ls")
+        assert check_outside_project(command, project, project) is None
+
+    def test_parent_traversal_from_a_cwd_inside_the_project(self, tree):
+        _, project = tree
+        assert check_outside_project("touch ../x", project, f"{project}/temp") is None
+
+    def test_parent_traversal_out_of_the_project_from_the_cwd(self, tree):
+        _, project = tree
+        result = check_outside_project("cp a ../../../elsewhere/x", project, f"{project}/temp")
+        assert result is not None
+        assert result[1] == "../../../elsewhere/x"
+
+    def test_parent_traversal_after_cd_out_of_the_project(self, tree):
+        tmp, project = tree
+        result = check_outside_project(f"cd {tmp}/elsewhere/sub; cp x ../probe-file", project, project)
+        assert result is not None
+        assert result[1] == "../probe-file"
+
+    def test_plain_target_after_cd_out_of_the_project(self, tree):
+        tmp, project = tree
+        result = check_outside_project(f"cd {tmp}/elsewhere && touch probe-file", project, project)
+        assert result is not None
+        assert result[1] == "probe-file"
+
+    def test_plain_redirect_after_cd_out_of_the_project(self, tree):
+        tmp, project = tree
+        result = check_outside_project(f"cd {tmp}/elsewhere; ls > out.txt", project, project)
+        assert result is not None
+        assert result[1] == "out.txt"
+
+    def test_plain_targets_inside_the_project(self, tree):
+        _, project = tree
+        command = f"cd {project}/temp; rm -rf build && mkdir -p out && echo x | tee -a log"
+        assert check_outside_project(command, project, project) is None
+
+    def test_words_in_front_of_the_command_are_not_targets(self, tree):
+        """`timeout` and `5` are not files, and the operands are absolute and inside."""
+        tmp, project = tree
+        command = f"cd {tmp}/elsewhere; A=1 timeout 5 cp {project}/a {project}/b"
+        assert check_outside_project(command, project, project) is None
+
+    def test_options_and_expansions_are_not_judged(self, tree):
+        tmp, project = tree
+        assert check_outside_project(f"cd {tmp}/elsewhere; rm -f $F", project, project) is None
+
+    def test_symlink_inside_the_project_is_a_file_in_it(self, tree):
+        """rm removes the link itself, so the link's target does not matter."""
+        _, project = tree
+        assert check_outside_project("rm .venv/bin/python", project, project) is None
+
+    def test_claude_internal_after_cd_is_allowed(self, tree):
+        _, project = tree
+        claude_dir = os.path.expanduser("~/.claude")
+        if not os.path.isdir(claude_dir):
+            pytest.skip("no ~/.claude here")
+        assert check_outside_project(f"cd {claude_dir}; echo x > notes.md", project, project) is None
+
+    @pytest.mark.parametrize("command", [
+        'cd "$D"; touch x',
+        "cd {tmp}/elsewhere; cd sub; touch x",
+        "cd {tmp}/elsewhere | touch x",
+        "bash -c 'cd {tmp}/elsewhere; touch x'",
+        "cd {tmp}/elsewhere; source env.sh; touch x",
+    ])
+    def test_a_directory_this_cannot_follow_keeps_the_old_reading(self, tree, command):
+        """Plain targets are assumed in the project, as before the cd was followed."""
+        tmp, project = tree
+        assert check_outside_project(command.format(tmp=tmp), project, project) is None
+
+    def test_without_a_cwd_nothing_changes(self, tree):
+        tmp, project = tree
+        assert check_outside_project(f"cd {tmp}/elsewhere; touch probe-file", project) is None
+
+    def test_main_passes_the_event_cwd(self, tree, monkeypatch):
+        import io as _io
+        tmp, project = tree
+        decisions = []
+        monkeypatch.setenv("MG_SESSION_BASE", str(tmp / "sc"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", project)
+        monkeypatch.setattr(guard, "_decide",
+                            lambda reason, decision="ask": decisions.append((reason, decision)))
+        monkeypatch.setattr(guard, "_ask", lambda reason: decisions.append((reason, "ask")))
+        monkeypatch.setattr(guard, "_write_edit_guard_bridge", lambda event: None)
+        monkeypatch.setattr(guard, "run_evaluators", lambda command, event: (None, ""))
+        monkeypatch.setattr("sys.stdin", _io.StringIO(json.dumps({
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {"command": "cp a ../../../elsewhere/x"},
+            "transcript_path": "/tmp/outside-project-cwd.jsonl",
+            "cwd": f"{project}/temp",
+        })))
+        guard.main()
+        assert decisions and "Out-of-project" in decisions[0][0]
+
+
 class TestCandidateWriteTargets:
     """Unit tests for the write-target extractor."""
 
