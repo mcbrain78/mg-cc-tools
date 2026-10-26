@@ -604,16 +604,6 @@ _PIPE_TO_SHELL = (
     + r"|(?<![\w.-])eval[ \t]++[\"']?(?:\$\(|`)[ \t]*+" + _DOWNLOAD
 )
 
-# `export` of a variable named like a secret, wherever it sits among the
-# assignments (`export PATH=… GITHUB_TOKEN=…`). The scan stops at a word
-# that starts another export, `a.export` included, which reads the rest
-# itself.
-_SECRET_NAME = r"(?=[A-Za-z_])\w*?(?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL)="
-_CREDENTIAL_EXPORT = (
-    r"\bexport(?:[ \t]++(?!" + _TO_CMD + r"\bexport(?![\w-])|" + _SECRET_NAME + r")"
-    + _WORD + r")*+[ \t]++" + _SECRET_NAME
-)
-
 # ── Category definitions ────────────────────────────────────────────────────
 # Each category maps to a list of (regex_string, description) tuples.
 
@@ -692,7 +682,6 @@ CATEGORIES = {
     ],
     "Secrets & Credentials": [
         *(_ENV_RULES if ENV_PROTECTION else []),
-        (_CREDENTIAL_EXPORT, "credential export"),
         (_HTTP_SUBMIT, HTTP_SUBMIT_RULE),
         (_PIPE_TO_SHELL, "pipe-to-shell"),
     ],
