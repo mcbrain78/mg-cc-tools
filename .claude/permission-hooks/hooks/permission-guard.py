@@ -18,6 +18,7 @@ applies; unknown/missing modes fail safe (the guard stays active).
 PROJECT_ROOT is embedded at install time via sed. For --global installs
 it's empty and falls back to cwd from the hook event.
 """
+import bisect
 import ipaddress
 import json
 import os
@@ -71,6 +72,257 @@ _PGPASS_FILE_PATTERNS = [
     (re.compile(r"(^|/)\.pgpass$"), "PostgreSQL password file"),
 ]
 
+# ── Shell words ─────────────────────────────────────────────────────────────
+# Several rules read a command's own words: git's options, and the arguments
+# of push, branch, tag, reset, rm, curl and the other _cmd_arg rules. A `.*`
+# there ran on into the next command: `git push origin v6 && git log
+# main..build-f-crawl` asked as a force push, because `push\s+.*-f\b` read past
+# the `&&` and took the `-f` inside a branch name for the flag.
+#
+# A word splits at a space, tab or newline, as bash splits it, and the command
+# ends at `;`, `|`, `&` or a paren. Within a word:
+#   - a redirect belongs to the command: `2>&1`, `&>log`, `>|log`, `<<<`.
+#   - a substitution is one piece: `$(…)`, `<(…)`, `>(…)` and backticks, with
+#     parens nested two deep for `$((…))`. Its separators do not end the
+#     command, so `"$(git branch | head -1)" --force` is still read, and its
+#     words are not the command's, so the `+` of `v$(date +%Y)` is not a
+#     refspec. A command inside one is read where it starts, like any other.
+#   - a quoted span without whitespace is one piece too. check_command masks
+#     quotes to filler, except in a command that nests a shell. There the text
+#     stays as written, and `-o 'a;b' --force` must not end at the `;`. A span
+#     with whitespace is left alone, because there a command often starts
+#     inside the quotes: the first quote it meets closes them, and pairing
+#     that quote with the next one would hide `--force` in
+#     `eval "git push x" --force "y"`.
+#   - a backslash takes the next character with it, so `\;` does not end the
+#     command.
+# Each piece has one reading and every loop is possessive, so nothing
+# backtracks. A quote or `$` that opens nothing is an ordinary character.
+_SUBST = r"(?:[$<>]\((?:[^()]++|\((?:[^()]++|\([^()]*+\))*+\))*+\)|`[^`]*+`)"
+_WORD = (
+    r"(?:" + _SUBST
+    + r"""|'[^' \t\n]*+'|"(?:[^" \t\n\\]++|\\.)*+"|[^ \t\n;|&<>()`\\$'"]++|\\.|[$'"]"""
+    + r"|>[&|]?+|<&?+|&>)++"
+)
+
+# The start of a word, up to where another command can begin inside it: plain
+# characters and escapes, but no paren or backtick, so never inside a
+# substitution. `x/git`, `\git` and `$x/git` get there; `$(git` does not. A
+# backslash right before the name escapes its first letter, and bash still
+# runs git for `\git`.
+_TO_CMD = r"(?:[^ \t\n;|&()`\\]|\\.)*?\\?"
+
+
+def _abbrev(option, shortest):
+    """*option*, or any prefix of it down to *shortest*.
+
+    git and getopt_long take any unambiguous prefix of a long option;
+    *shortest* is the shortest one no other option of the command shares.
+    """
+    rest = ""
+    for char in reversed(option[len(shortest):]):
+        rest = "(?:" + re.escape(char) + rest + ")?+"
+    return re.escape(shortest) + rest
+
+
+# The scan of a command's words stops at a word that starts another such
+# command, `x/git push` included. The search starts again there and reads the
+# rest, so no word is read twice: scanning each push to the end of its
+# command read `git push a git push a …` over and over, quadratic in its
+# length.
+#
+# The restart reads the words between `git` and the subcommand as git's
+# options, with the same _WORD. So a command with options (`git -C d push`)
+# stops the scan only when none of those words is the argument the rule looks
+# for, which the outer command would have read as its own. A command behind a
+# paren, a backtick or a substitution does not stop it, since those pieces can
+# run past its name and the restart would split the words differently.
+#
+# That leaves backticks. The same character opens and closes them, so a
+# command that starts inside a pair takes the closing backtick for an opening
+# one and reads on to the next: `` git push `git push `git push … `` reads to
+# the end once per push, quadratic in its length, as it did with `.*`.
+# Refusing a push inside a backtick span would fix that, and miss the flag in
+# `` git branch `git branch --show-current`-bak -f ``.
+def _cmd_arg(head, restart, arg, values=None, end_of_options=False):
+    """Pattern for a command that has an argument matching *arg*.
+
+    *head* matches the command up to its arguments. *restart(guard)* matches
+    another such command from its name on, checking *guard* on each word it
+    reads before the arguments. *values* matches the options whose value is
+    the next word; that word is skipped, not read as an argument, so the
+    `-refname` of `git branch --sort -refname` is not an -f. With
+    *end_of_options*, a `--` word ends the scan: what follows is operands, so
+    `rm -- -r` removes a file named `-r`.
+
+    bash drops a backslash in front of the argument, so `\\--force` is
+    `--force`. A redirect may follow the head with no space, as in
+    `git push>log --force`.
+    """
+    arg = r"\\?(?:" + arg + r")"
+    another = _TO_CMD + restart(r"(?!" + arg + r")") + r"(?=[ \t<>]|&>)"
+    stop = r"|--(?![^ \t\n;|&<>()])" if end_of_options else ""
+    skip = r"(?!" + arg + r"|" + another + stop + r")"
+    word = skip + _WORD
+    if values:
+        # A value may look like the argument; it only has to not start
+        # another command.
+        word = (skip + r"(?:(?:" + values + r")[ \t]++(?!" + another + r")" + _WORD
+                + r"|" + _WORD + r")")
+    return (
+        head + r"(?:(?=[<>]|&>)" + _WORD + r")?+"
+        r"(?:[ \t]++" + word + r")*+[ \t]++" + arg
+    )
+
+
+# ── git's own options ───────────────────────────────────────────────────────
+# git takes options of its own ahead of the subcommand: `git -C <dir> reset
+# --hard`, `git -c k=v rebase …`, `git --no-pager push --force`. Every git rule
+# starts with _GIT, so none of them can be stepped around that way. The options
+# that take a separate value swallow it, so the value is never read as the
+# subcommand. Only option words are consumed: in `git log --grep reset` the
+# subcommand is `log`, and no rule reads `reset` there.
+#
+# A value is one _WORD. With `\S+`, the value of
+# `git -C "$(git rev-parse --show-toplevel)" push --force` ended at the first
+# space, `rev-parse` read as the subcommand, and no rule asked.
+#
+# The options are read possessively (`*+`), so each word gets one reading.
+# Git gives -c and -C the next word even when it starts with a dash, so the
+# first reading is also git's. With backtracking, `-c -c` could be a pair or
+# two bare options. `git -c -c -c … x` had exponentially many readings to try
+# before the match failed: 26 of them took most of a second, and every step
+# added about 60%.
+#
+# The scan also stops at a word that ends in a `git` the search can start
+# from again: the value of `-c git`, or of `-C ~/src/git`. The search reads the
+# same options from that `git`, so no rule misses a match. Without the stop,
+# every `git` in `git -c git -c git …` read all the options after it once
+# more, quadratic in the length: 5,000 of them took 40 seconds. _TO_CMD keeps
+# the stop out of substitutions, so a match that starts at such a `git` always
+# has the outer command in front of it (`git -C ~/src/`), and the worktree
+# exemption, which wants the git command at the start of its command, asks.
+_GIT_STOP = r"(?!" + _TO_CMD + r"\bgit(?![^ \t\n]))"
+
+
+def _git_options(guard=""):
+    """git's own options, each option and value word checked by *guard*."""
+    guard = _GIT_STOP + guard
+    return (
+        r"(?:[ \t]++" + guard + r"(?:-[Cc][ \t]++" + guard + _WORD
+        + r"|--(?:git-dir|work-tree|namespace|super-prefix|config-env|attr-source)[ \t]++(?!-)"
+        + guard + _WORD + r"|-" + _WORD + r"))*+"
+    )
+
+
+_GIT = r"\bgit" + _git_options() + r"[ \t]++"
+
+
+def _git_arg(sub, arg, values=None):
+    """Pattern for a `git <sub>` that has an argument matching *arg*."""
+    return _cmd_arg(
+        _GIT + sub,
+        lambda guard: r"\bgit" + _git_options(guard) + r"[ \t]++" + sub,
+        arg, values,
+    )
+
+
+# ── git push ────────────────────────────────────────────────────────────────
+# Options whose value is the next word.
+_PUSH_VALUES = r"-o|--(?:push-option|repo|receive-pack|exec)"
+
+# A force push is spelled three ways:
+#   - -f, also inside a bundle (-uf). A bundle's -o takes the rest of it as its
+#     value, so the f must come before any o: -of is not a force push.
+#   - any --force option. That covers --force-with-lease[=…] and the
+#     abbreviations git accepts (--force-w); anything shorter than --force is
+#     ambiguous, and git refuses it.
+#   - a refspec with a leading `+`, which forces just that ref (`git push
+#     origin +main`).
+_GIT_FORCE_PUSH = _git_arg(
+    "push",
+    r"(?:(?:-(?=[A-Za-np-z0-9]*f)[A-Za-z0-9]++|--force(?:-[\w-]*+)?(?:=\S*+)?)(?![\w-])"
+    r"|\+[^ \t\n;|&])",
+    _PUSH_VALUES,
+)
+
+# --mirror force-updates every remote ref and deletes the ones gone locally.
+_GIT_MIRROR_PUSH = _git_arg("push", _abbrev("--mirror", "--m") + r"(?![\w-])", _PUSH_VALUES)
+
+# Deleting remote refs: -d, also inside a bundle, or --delete (down to --de,
+# since --d could be --dry-run); a refspec with no source, `:feature`, but
+# not the bare `:` that pushes matching branches; and --prune, which deletes
+# every remote branch that no local one matches.
+_GIT_DELETE_PUSH = _git_arg(
+    "push",
+    r"(?:-(?=[A-Za-np-z0-9]*d)[A-Za-z0-9]++|" + _abbrev("--delete", "--de") + r")(?![\w-])",
+    _PUSH_VALUES,
+)
+_GIT_COLON_DELETE_PUSH = _git_arg("push", r":[^ \t\n;|&<>()]", _PUSH_VALUES)
+_GIT_PRUNE_PUSH = _git_arg("push", _abbrev("--prune", "--pru") + r"(?![\w-])", _PUSH_VALUES)
+
+_GIT_TAGS_PUSH = _git_arg("push", _abbrev("--tags", "--ta") + r"(?![\w-])", _PUSH_VALUES)
+
+# ── git branch and tag ──────────────────────────────────────────────────────
+_BRANCH_VALUES = (
+    r"-u|--(?:set-upstream-to|sort|format|contains|no-contains|merged|no-merged|points-at)"
+)
+
+# -f resets an existing branch; -M and -C overwrite the one they name. In a
+# bundle they must come before any t or u, which take the rest of the bundle
+# as their value: -uf sets the upstream to `f`. --force takes the
+# abbreviations down to --forc, since --for could be --format.
+_GIT_FORCED_BRANCH = _git_arg(
+    "branch",
+    r"(?:-(?=[A-Za-sv-z]*[fMC])[A-Za-z]++|" + _abbrev("--force", "--forc") + r")(?![\w-])",
+    _BRANCH_VALUES,
+)
+
+# -d deletes a merged branch and -D any branch, in a bundle under the same
+# rule as above (-dr, -rD). --delete takes every abbreviation down to --d,
+# which no other branch option starts with.
+_GIT_BRANCH_DELETE = _git_arg(
+    "branch",
+    r"(?:-(?=[A-Za-sv-z]*[dD])[A-Za-z]++|" + _abbrev("--delete", "--d") + r")(?![\w-])",
+    _BRANCH_VALUES,
+)
+
+# The same for tags: -d in a bundle before -m, -F, -u or -n, which take the
+# rest of it as their value, or --delete down to --d.
+_TAG_VALUES = (
+    r"-[mFu]|--(?:message|file|local-user|cleanup|sort|format|contains|no-contains"
+    r"|merged|no-merged|points-at)"
+)
+_GIT_TAG_DELETE = _git_arg(
+    "tag",
+    r"(?:-(?=[A-EG-Za-lo-tv-z]*d)[A-Za-z]++|" + _abbrev("--delete", "--d") + r")(?![\w-])",
+    _TAG_VALUES,
+)
+
+# ── git reset, remote, submodule ────────────────────────────────────────────
+# --hard anywhere in the reset (`git reset -q --hard`, `git reset HEAD~1
+# --hard`), down to --h, which no other reset option starts with.
+_GIT_RESET_HARD = _git_arg("reset", _abbrev("--hard", "--h") + r"(?![\w-])",
+                           r"--pathspec-from-file")
+
+# `git remote` takes -v before its subcommand. Every subcommand that changes
+# a remote asks: add, remove, set-url, rename and set-head, and prune, which
+# deletes the remote-tracking branches the remote no longer has, as
+# `update -p` does on the way.
+_GIT_REMOTE = r"remote(?:[ \t]++(?:-v|" + _abbrev("--verbose", "--v") + r")(?![\w-]))*+"
+_GIT_REMOTE_WRITE = (
+    _GIT + _GIT_REMOTE
+    + r"[ \t]++(?:add|remove|rm|set-url|rename|prune|set-head)(?![\w-])"
+    + r"|" + _git_arg(_GIT_REMOTE + r"[ \t]++update",
+                      r"(?:-p|" + _abbrev("--prune", "--p") + r")(?![\w-])")
+)
+
+# `git submodule` takes --quiet and --cached before its subcommand.
+_GIT_SUBMODULE_WRITE = (
+    _GIT + r"submodule(?:[ \t]++(?:-q|--quiet|--cached)(?![\w-]))*+"
+    r"[ \t]++(?:add|deinit)(?![\w-])"
+)
+
 # ── git config ──────────────────────────────────────────────────────────────
 # `git config` needs more than one pattern's worth of care: scope and format
 # options sit between the subcommand and the operands, a key with no value is
@@ -99,7 +351,7 @@ _GIT_CONFIG_OPTS = (
 # (`url.https://github.com/.insteadOf`) but must end on a key character, so a
 # trailing-dot abbreviation ("git config e.g. foo") is not a write either.
 _GIT_CONFIG_WRITE = (
-    r"\bgit\s+config(?!\s+(?:get|list)\b)"
+    _GIT + r"config(?!\s+(?:get|list)\b)"
     + _GIT_CONFIG_OPTS
     + r"\s+(?:"
     r"--(?:add|unset|unset-all|replace-all|rename-section|remove-section|edit)\b"
@@ -110,23 +362,122 @@ _GIT_CONFIG_WRITE = (
 )
 
 # ── Command position ────────────────────────────────────────────────────────
-# Words like "service", "kill" and "systemctl" are common in prose, paths and
-# regex alternations, and these rules scan the command string with heredocs
-# stripped but quotes intact. Anchoring such a word to command position — start
-# of the string, or after a shell separator — is what keeps the text cases
-# quiet. `\n` belongs in the separator class because a multi-line Bash command
-# is a script: without it only its first line is guarded.
-_CMD_POS = r"(?:^|[;&\n]\s*)"
+# Words like "service" and "kill" are common in prose, paths and regex
+# alternations. Anchoring such a word to a place where bash starts a command
+# keeps the text cases quiet; quoted text is masked before the rules read it,
+# so the `| service` in `git commit -m "a | service"` is filler. Anchored at
+# only the start, `;`, `&` and a newline, these commands ran unasked from
+# everywhere else a command starts. _CMD_START takes in:
+#
+#   - the start of the string, `;`, `&`, a newline, a pipe, `||`, a subshell,
+#     a group, a command or process substitution: `| kill`, `(ln …)`,
+#     `{ kill …; }`, `$(dd …)`, `` `kill …` ``, `<(kill …)`
+#   - after a reserved word or an assignment: `if kill …`, `! kill`,
+#     `FOO=1 kill …`
+#   - behind a command that runs its arguments: `xargs kill`, `timeout 30
+#     kill`, `find … -exec kill`, env, nohup, nice and the rest of _RUNNERS,
+#     by name or by path (`/usr/bin/timeout`). Their options are followed as
+#     flags, numbers and `{}`, and each runner's own options that take the
+#     next word as their value take it (`timeout -s KILL 5 …`, `env -u X …`;
+#     see _RUNNER_VALUE_OPTS), as does the one argument some runners take
+#     before the command (`flock /tmp/lock …`; see _RUNNER_OPERANDS).
+#     `command` takes only -p: `command -v kill` asks where it is, it does
+#     not run it.
+#
+# A `{` opens a group only with a space behind it, so brace expansion
+# (`docs/{kill,ln}.md`) and `${kill}` stay text.
+#
+# The anchor runs at every `"`, `(` and `|` of every Bash call, once per rule
+# that uses it, so no two of its alternatives may match the same token, and
+# each token is taken atomically: with `\w+=\S*` both an env argument and an
+# assignment of its own, `env A=1 A=1 …` went quadratic and `nice 1=1 1=1 …`
+# exponential. An assignment starts with a letter or `_`, as bash's do, a
+# number argument holds no `=`, and an assignment value is read to at most
+# 512 characters, so a quote-dense line with no spaces cannot make every
+# anchor rescan the rest of it. A longer value ends the prefix.
 
-# Same, plus after a pipe. Only for commands that are never a word you would
-# meet in text, so "| dd" can be read as syntax rather than as data.
-_CMD_POS_PIPE = r"(?:^|[;&|\n]\s*)"
+# A command called by its path: `/usr/bin/kill`.
+_CMD_PATH = r"(?:(?:/[\w.-]+)*/)?"
+
+# A character of an argument in front of a command: anything but a space and
+# what ends a command or opens another one. Read with \S, `-a|timeout` was one
+# option, so from every pipe in `|timeout -a|timeout -a…` the scan ran to the
+# end of the line, quadratic in its length: 4 s at 44,000 characters. Bash
+# ends the word at the pipe anyway, and the anchor there reads what follows.
+_ARG_CHAR = r"[^\s;&|()`<>]"
+
+# The options of each runner that take the next word as their value. Each
+# runner has its own: `-i` takes a value for stdbuf but is a flag of env, and
+# a flag read as taking a value would take the command behind it for one
+# (`env -i systemctl …`). The value is one word that crosses no command break.
+_RUNNER_VALUE_OPTS = {
+    "env": r"-[uCS]|--(?:unset|chdir|split-string)",
+    "exec": r"-a",
+    "nice": r"-n|--adjustment",
+    "stdbuf": r"-[ioe]|--(?:input|output|error)",
+    "time": r"-[fo]|--(?:format|output)",
+    "timeout": r"-[ks]|--(?:kill-after|signal)",
+    "watch": r"-[nq]|--(?:interval|equexit)",
+    "xargs": (r"-[adEILnPs]|--(?:arg-file|delimiter|max-args|max-procs|max-chars"
+              r"|process-slot-var)"),
+    "ionice": r"-[cnpPu]|--(?:class|classdata|pid|pgid|uid)",
+    "chrt": r"-[TPD]|--sched-(?:runtime|period|deadline)",
+    "flock": r"-[wE]|--(?:timeout|wait|conflict-exit-code)",
+    "chroot": r"--(?:groups|userspec)",
+    "strace": (r"-[abeEIoOpPsSuUX]|--(?:output|attach|trace|trace-path|string-limit"
+               r"|user|env)"),
+}
+
+# Runners that take one argument of their own before the command: flock's lock
+# file, chroot's new root, chrt's priority, taskset's CPU mask. Their options
+# stop at it, so a number there is that argument, not an option value
+# (`chrt -f 10 kill …`).
+_RUNNER_OPERANDS = frozenset({"flock", "chroot", "chrt", "taskset"})
+
+# A number holds no `=` (see above), and stops where _ARG_CHAR does.
+_RUNNER_ARG = r"-" + _ARG_CHAR + r"*+|\d[^\s=;&|()`<>]*+(?!=)|\{\}"
+
+
+def _runner(name):
+    """Return a pattern for runner *name* and its arguments."""
+    value = _RUNNER_VALUE_OPTS.get(name)
+    value = r"(?:" + value + r")[ \t]++" + _ARG_CHAR + r"++|" if value else ""
+    if name in _RUNNER_OPERANDS:
+        return (name + r"(?:[ \t]++(?:" + value + r"-" + _ARG_CHAR + r"*+))*+"
+                + r"[ \t]++" + _ARG_CHAR + r"++")
+    return name + r"(?:[ \t]++(?:" + value + _RUNNER_ARG + r"))*+"
+
+
+# timeout before time, which would otherwise take the first four letters.
+# sudo and doas are no runners here: their own rule asks whatever follows.
+_RUNNERS = _CMD_PATH + r"(?:" + r"|".join(_runner(name) for name in (
+    "env", "nohup", "setsid", "exec", "eval", "timeout", "time", "nice", "stdbuf",
+    "xargs", "watch", "ionice", "taskset", "chrt", "flock", "chroot", "strace",
+)) + r")"
+_CMD_PREFIX = (
+    r"(?>(?:if|then|elif|else|do|while|until|!"
+    r"|[A-Za-z_]\w*+=\S{0,512}+"
+    r"|command(?:[ \t]+-p)?"
+    r"|" + _RUNNERS
+    + r")[ \t]+)*+"
+)
+_CMD_AT = r"(?:^|[;&|\n(`]|(?<!\$)\{(?=\s)|[ \t]-(?:exec|execdir|ok|okdir)(?=[ \t]))[ \t]*+"
+_CMD_START = _CMD_AT + _CMD_PREFIX
+
+# systemctl also starts where a nested shell's string does, which
+# check_command reads unmasked: `bash -c "systemctl …"`, `eval 'systemctl …'`.
+# Only a quote with the command right behind it counts; a closing quote and a
+# space (`grep "x" systemctl.md`) is followed by an argument. The other
+# command-position rules leave this out: their words are common in quoted
+# prose, and `xargs grep -l "passwd reset"` is read unmasked because of the
+# xargs.
+_CMD_START_OR_QUOTE = r"(?:" + _CMD_AT + r"|[\"'])" + _CMD_PREFIX
 
 # `\brm` also matches the tail of a flag: `-` is not a word character, so
 # `docker run --rm` has a word boundary right before the `r`. Put this in front
 # of a command word so a flag spelled like the command is not read as a call to
-# it. Unlike _CMD_POS it keeps `xargs rm`, `sudo rm` and
-# `find -exec rm` in view.
+# it. It anchors nothing else, so `xargs rm`, `sudo rm` and `find -exec rm`
+# stay in view.
 _NOT_FLAG = r"(?<!-)"
 
 # ── systemctl ───────────────────────────────────────────────────────────────
@@ -141,8 +492,12 @@ _NOT_FLAG = r"(?<!-)"
 
 # Global options that may sit between `systemctl` and the subcommand. The short
 # options that take a separate value swallow it, so the `service` in
-# `systemctl -t service list-units` can't be mistaken for a subcommand.
-_SYSTEMCTL_OPTS = r"(?:\s+(?:-[HMtpnosP]\s+\S+|--[\w-]+=\S+|--[\w-]+|-[A-Za-z]+))*"
+# `systemctl -t service list-units` can't be mistaken for a subcommand. A value
+# ends where _ARG_CHAR does.
+_SYSTEMCTL_OPTS = (
+    r"(?:\s+(?:-[HMtpnosP]\s+" + _ARG_CHAR + r"+|--[\w-]+=" + _ARG_CHAR + r"+"
+    r"|--[\w-]+|-[A-Za-z]+))*"
+)
 
 _SYSTEMCTL_READ = (
     r"(?:status|show|show-environment|cat|help|get-default"
@@ -155,12 +510,161 @@ _SYSTEMCTL_READ = (
 # group followed by a positive match backtracks until the option itself is
 # taken for the subcommand, which is how `--user status` would get flagged. A
 # lookahead that fails has nothing to backtrack into.
+#
+# The `word` group marks where the command starts, for _rule_commands.
 _SYSTEMCTL_WRITE = (
-    _CMD_POS
-    + r"systemctl(?![\w-])"
+    _CMD_START_OR_QUOTE
+    + r"(?P<word>" + _CMD_PATH + r"systemctl)(?![\w-])"
     # Bare `systemctl [options]`, redirected or not, just lists units.
     + r"(?!" + _SYSTEMCTL_OPTS + r"\s*(?:$|[)\n;&|]|\d*[<>]))"
     + r"(?!" + _SYSTEMCTL_OPTS + r"\s+" + _SYSTEMCTL_READ + r")"
+)
+
+# Services any project may start, stop and restart without asking; see the
+# Managed systemd units section. Adding one here takes an edit and a reinstall,
+# like the rule groups above.
+SYSTEMCTL_MANAGED_UNITS = (
+    "prefect-server.service",
+    "finance-data-worker.service",
+    "stock-ranker-worker.service",
+)
+
+# ── Arguments of other commands ─────────────────────────────────────────────
+# The same word reading as the git rules, through _cmd_arg. These commands
+# take no options before their name, so the restart is the name alone.
+
+
+def _named(name):
+    """Head and restart for _cmd_arg: a command called *name*."""
+    return name + r"(?![\w-])", lambda _guard: name
+
+
+# rm -r, -R or --recursive (down to --r) anywhere among its options: GNU rm
+# takes options after the operands too, as in `rm build -rf`, until a `--`.
+_RECURSIVE_RM = _cmd_arg(
+    *_named(_NOT_FLAG + r"\brm"),
+    r"(?:-(?=[A-Za-z]*[rR])[A-Za-z]++|" + _abbrev("--recursive", "--r") + r")(?![\w-])",
+    end_of_options=True,
+)
+
+
+def _subcommand(name, value_options, subcommands):
+    """*name* whose first word after its options is one of *subcommands*.
+
+    *value_options* take the next word as their value, so the value is not
+    read as the subcommand. `brew search install` searches; it installs
+    nothing.
+    """
+    return (
+        name + r"(?![\w-])(?:[ \t]++(?:" + value_options + r")[ \t]++[^ \t\n;|&]++"
+        r"|[ \t]++-[^ \t\n;|&]*+)*+[ \t]++(?:" + subcommands + r")(?![\w-])"
+    )
+
+
+# Installing or removing packages. apt, yum, dnf and brew name it with a
+# subcommand after their options (`apt-get -y install`), apk with add and
+# del; pacman with an operation flag (-S, -R, -U, also in a bundle such as
+# -Syu, but not the -S queries -Ss, -Si, -Sl, -Sg, -Sp).
+_PACKAGE_WORDS = r"install|remove|purge|uninstall"
+_PACKAGE_CHANGE = (
+    _subcommand(r"\b(?:apt-get|apt)", r"-[oct]|--(?:option|config-file|target-release)",
+                _PACKAGE_WORDS)
+    + r"|" + _subcommand(r"\b(?:yum|dnf)",
+                         r"-[cdexR]|--(?:config|repo|repoid|exclude|installroot|releasever"
+                         r"|enablerepo|disablerepo)", _PACKAGE_WORDS)
+    + r"|" + _subcommand(r"\bbrew", r"(?!)", _PACKAGE_WORDS)
+    + r"|" + _subcommand(r"\bapk", r"-[Xp]|--(?:repository|root|keys-dir|cache-dir|arch)",
+                         r"add|del")
+    + r"|" + _cmd_arg(
+        *_named(r"\bpacman"),
+        r"(?:-(?=[A-Za-z]*[RU])[A-Za-z]++|-(?=[A-Za-z]*S)(?![A-Za-z]*[silgp])[A-Za-z]++"
+        r"|--(?:sync|remove|upgrade))(?![\w-])")
+)
+
+# A request that sends data or writes: a POST, PUT, PATCH or DELETE method, or
+# a body. curl's short options bundle, and the first one in a bundle that
+# takes a value takes the rest of it, so only its flag options may come first:
+# -sd sends data, -XGET does not, -sXPOST does. curl sends a body with -d and
+# every --data form, --json, -F/--form and -T/--upload-file; wget with
+# --post-data, --post-file, --body-data and --body-file, and --data, which
+# wget refuses but the rule has always caught.
+_HTTP_WRITE_METHOD = r"(?i:post|put|patch|delete)(?![\w-])"
+_CURL_FLAGS = r"[#0-46aBfgGIijJklLMnNOpqRsSvVZ]*+"
+_HTTP_SUBMIT = (
+    _cmd_arg(
+        *_named(r"\bcurl"),
+        r"-" + _CURL_FLAGS + r"(?:X[ \t]*+" + _HTTP_WRITE_METHOD + r"|[dFT])"
+        r"|--request(?:=|[ \t]++)" + _HTTP_WRITE_METHOD
+        + r"|--(?:data[\w-]*+|json|form[\w-]*+|upload-file)(?![\w-])",
+    )
+    + r"|" + _cmd_arg(
+        *_named(r"\bwget"),
+        r"--(?:post|body)-(?:data|file)(?![\w-])|--data[\w-]*+(?![\w-])"
+        r"|--method(?:=|[ \t]++)" + _HTTP_WRITE_METHOD,
+    )
+)
+
+# `gh api` writes with a POST, PUT, PATCH or DELETE method, or with a field or
+# an input body, which make it a POST. Its only flag short option is -i, so
+# only that may come first in a bundle.
+_GH_API_WRITE = _cmd_arg(
+    *_named(r"\bgh[ \t]++api"),
+    r"-i*+(?:X[ \t]*+" + _HTTP_WRITE_METHOD + r"|[fF])"
+    r"|--method(?:=|[ \t]++)" + _HTTP_WRITE_METHOD
+    + r"|--(?:field|raw-field|input)(?![\w-])",
+)
+
+
+def _runs_stdin(name, script_options, stdin_word=r"-"):
+    """An interpreter *name* that runs the program on its standard input.
+
+    It does when it is given only options: no script operand, and none of
+    *script_options*, which hand it the program another way. *stdin_word*
+    names stdin as the program outright. A quote or backtick after the
+    options closes the nested shell string the pipeline sits in.
+    """
+    stdin_word = r"(?:" + stdin_word + r")(?![^ \t\n;|&)])"
+    return (
+        _CMD_PATH + name + r"(?![\w.-])"
+        r"(?:[ \t]++(?!" + script_options + r"|" + stdin_word + r")[-+][^ \t\n;|&)]*+)*+"
+        r"(?:[ \t]++" + stdin_word + r"|[ \t]*+(?![^;|&)\n\"'`]))"
+    )
+
+
+# A download run as code. Piped into an interpreter that runs its standard
+# input, later in the same pipeline, with `sudo`, `doas`, `env` or another
+# runner in front or not, read as _CMD_PREFIX reads them: `curl … | sudo bash`,
+# `curl … | timeout -s KILL 60 bash`. A pipe may be followed by a newline, and the
+# pipeline goes on. `| python3 -m json.tool`, `| python3 -c …`, `| node -e …`
+# and `| perl -ne …` read the download as data, so they do not count. Or
+# handed to a command as a process or command substitution: `bash <(curl …)`,
+# `sh -c "$(curl …)"`, `eval "$(curl …)"`, `. <(curl …)`, where the command
+# has to be at a command start (not the `.` of `diff . <(curl …)`). The
+# pipeline ends at `;`, `&&`, `||` and a newline; its scan stops at the next
+# curl or wget, which reads the rest itself, so it stays linear.
+_STDIN_INTERPRETER = (
+    r"(?:" + _runs_stdin(r"(?:ba|z|da|k)?sh", r"-[A-Za-z]*c", r"-s?")
+    + r"|" + _runs_stdin(r"python[0-9.]*", r"-[A-Za-z]*[cm]")
+    + r"|" + _runs_stdin(r"(?:perl|ruby)", r"-[A-Za-z]*[eE]")
+    + r"|" + _runs_stdin(r"node", r"-[A-Za-z]*[ep]|--(?:eval|print)")
+    + r")"
+)
+_PIPE_INTO = (
+    r"\|&?[ \t\n]*+(?:(?:sudo|doas)(?:[ \t]++-" + _ARG_CHAR + r"++)*+[ \t]++"
+    r"|env(?:[ \t]++[A-Za-z_]\w*+=" + _ARG_CHAR + r"*+)*+[ \t]++)?"
+    + _CMD_PREFIX + _STDIN_INTERPRETER
+)
+_DOWNLOAD = r"\b(?:curl|wget)(?![\w-])"
+_PIPE_TO_SHELL = (
+    _DOWNLOAD
+    + r"(?:(?!" + _DOWNLOAD + r")(?:[^\n;&|]|(?<=[<>])&|&(?=>)"
+    + r"|(?!" + _PIPE_INTO + r")\|&?+(?![|&])[ \t\n]*+))*+"
+    + _PIPE_INTO
+    + r"|" + _CMD_START + r"(?:" + _CMD_PATH
+    + r"(?:(?:ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node)|source|\.)(?![\w.-])"
+    + r"(?:[ \t]++-" + _ARG_CHAR + r"++)*+[ \t]++[\"']?(?:[<$]\(|`)[ \t]*+" + _DOWNLOAD
+    # _CMD_START reads eval as a runner and takes it in, so eval stands alone.
+    + r"|(?<![\w.-])eval[ \t]++[\"']?(?:\$\(|`)[ \t]*+" + _DOWNLOAD
 )
 
 # ── Category definitions ────────────────────────────────────────────────────
@@ -175,6 +679,12 @@ _SYSTEMCTL_WRITE = (
 # not, and everything else — branch switches, --detach, --force — asks here.
 GIT_CHECKOUT_RULE = "git checkout"
 
+# Read by check_linked_worktree_rule, which judges these rules' forms; see the
+# Linked worktrees section.
+GIT_SWITCH_RULE = "git switch"
+GIT_REBASE_RULE = "git rebase (not recovery)"
+GIT_STASH_RULE = "git stash destruction"
+
 # Suppressed for local targets by check_local_http; see the Local HTTP targets
 # section for what "local" means and why only this one rule is exempted.
 HTTP_SUBMIT_RULE = "HTTP data submission"
@@ -183,33 +693,37 @@ HTTP_SUBMIT_RULE = "HTTP data submission"
 # chmod section.
 PERMISSION_CHANGE_RULE = "permission/ownership change"
 
+# Suppressed for lifecycle calls on SYSTEMCTL_MANAGED_UNITS by
+# check_managed_systemctl; see the Managed systemd units section.
+SYSTEMCTL_RULE = "systemctl (not a read subcommand)"
+
 CATEGORIES = {
     "Git Branch & History": [
-        (r"\bgit\s+checkout\b", GIT_CHECKOUT_RULE),
-        (r"\bgit\s+switch\b", "git switch"),
-        (r"\bgit\s+branch\s+(?!-)[A-Za-z]", "branch creation"),
-        (r"\bgit\s+branch\s+(-[dD]|--delete)\b", "branch deletion"),
-        (r"\bgit\s+merge\s+(?!--abort|--continue|--quit)", "git merge (not recovery)"),
-        (r"\bgit\s+rebase\s+(?!--abort|--continue|--quit|--skip)", "git rebase (not recovery)"),
-        (r"\bgit\s+cherry-pick\s+(?!--abort|--continue|--quit)", "git cherry-pick (not recovery)"),
-        (r"\bgit\s+reset\s+--hard\b", "git reset --hard"),
-        (r"\bgit\s+stash\s+(drop|clear)\b", "git stash destruction"),
-        (r"\bgit\s+tag\s+(-d|--delete)\b", "git tag deletion"),
+        (_GIT + r"checkout\b", GIT_CHECKOUT_RULE),
+        (_GIT + r"switch\b", GIT_SWITCH_RULE),
+        (_GIT_BRANCH_DELETE, "branch deletion"),
+        (_GIT_FORCED_BRANCH, "forced branch move"),
+        (_GIT + r"rebase\s+(?!--abort|--continue|--quit|--skip)", GIT_REBASE_RULE),
+        (_GIT_RESET_HARD, "git reset --hard"),
+        (_GIT + r"stash\s+(drop|clear)\b", GIT_STASH_RULE),
+        (_GIT_TAG_DELETE, "git tag deletion"),
     ],
     "Git Destructive Remote": [
-        (r"\bgit\s+push\s+.*(-f\b|--force|--force-with-lease)", "force push"),
-        (r"\bgit\s+push\s+\S+\s+--delete\b", "remote branch deletion"),
-        (r"\bgit\s+push\s+\S+\s+:", "remote branch deletion (colon syntax)"),
-        (r"\bgit\s+push\s+.*--tags\b", "pushing tags"),
-        (r"\bgit\s+remote\s+(add|remove|rm|set-url)\b", "remote management"),
+        (_GIT_FORCE_PUSH, "force push"),
+        (_GIT_MIRROR_PUSH, "mirror push"),
+        (_GIT_DELETE_PUSH, "remote branch deletion"),
+        (_GIT_COLON_DELETE_PUSH, "remote branch deletion (colon syntax)"),
+        (_GIT_PRUNE_PUSH, "remote branch pruning"),
+        (_GIT_TAGS_PUSH, "pushing tags"),
+        (_GIT_REMOTE_WRITE, "remote management"),
         (_GIT_CONFIG_WRITE, "git config write"),
-        (r"\bgit\s+submodule\s+(add|deinit)\b", "submodule management"),
+        (_GIT_SUBMODULE_WRITE, "submodule management"),
     ],
     "GitHub CLI": [
         (r"\bgh\s+pr\s+(merge|close)\b", "PR merge/close"),
         (r"\bgh\s+repo\s+(create|delete|fork|archive)\b", "repo management"),
         (r"\bgh\s+release\s+(create|delete)\b", "release management"),
-        (r"\bgh\s+api\b.*(-X\s*(POST|PUT|PATCH|DELETE)|--method\s*(POST|PUT|PATCH|DELETE)|-f\s|-F\s|--field\s|--raw-field\s|--input\s)", "GitHub API mutation"),
+        (_GH_API_WRITE, "GitHub API mutation"),
         (r"\bgh\s+auth\b", "GitHub auth"),
         (r"\bgh\s+secret\b", "GitHub secret management"),
     ],
@@ -223,34 +737,36 @@ CATEGORIES = {
         (r"\bscp\s", "remote file transfer (scp)"),
     ],
     "Destructive Filesystem": [
-        (_NOT_FLAG + r"\brm\s+(-\w+\s+)*-\w*[rR]", "recursive rm"),
+        (_RECURSIVE_RM, "recursive rm"),
         (r"\b(chmod|chown)\b", PERMISSION_CHANGE_RULE),
-        (_CMD_POS_PIPE + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
+        (_CMD_START + _CMD_PATH + r"ln\s+(?!=)(?:-|\S+\s)", "symlink creation"),
         (r"\b(mkfs|mount|umount)\b", "disk operations"),
-        (_CMD_POS_PIPE + r"dd\s", "raw disk operations"),
+        (_CMD_START + _CMD_PATH + r"dd\s", "raw disk operations"),
     ],
     "Secrets & Credentials": [
         *(_ENV_RULES if ENV_PROTECTION else []),
-        (r"\bexport\s+\w*(TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|API_KEY)=", "credential export"),
-        (r"\b(curl|wget)\s+.*(-X\s*(POST|PUT|PATCH|DELETE)|-d\s|--data)", HTTP_SUBMIT_RULE),
-        (r"\b(curl|wget)\s+.*\|\s*(bash|sh|zsh)\b", "pipe-to-shell"),
+        (_HTTP_SUBMIT, HTTP_SUBMIT_RULE),
+        (_PIPE_TO_SHELL, "pipe-to-shell"),
     ],
     "System Operations": [
         (r"\bsudo\b", "sudo"),
-        (r"\b(apt|apt-get|brew|yum|dnf|pacman|apk)\s+(install|remove|purge|uninstall)\b", "package manager"),
+        (r"\bdoas\b", "doas"),
+        (_PACKAGE_CHANGE, "package manager"),
         (r"\bcrontab\s+(?!-l\b)", "crontab modification"),
-        (_SYSTEMCTL_WRITE, "systemctl (not a read subcommand)"),
-        # Command-position only (see _CMD_POS), and must take an argument. NOT
-        # after a pipe: you never pipe into service/launchctl, but "|service" is
-        # common in TEXT (regex alternations, markdown tables) and the guard
-        # scans the raw command string with quotes intact.
-        (_CMD_POS + r"(launchctl|service)\s+\S", "service manager"),
-        # Same command-position + argument anchoring as the service rule above:
-        # these words are common in prose/paths ("kill the test", /etc/passwd,
-        # "iptables rules"), so only flag them as an actual command invocation.
-        (_CMD_POS + r"(useradd|userdel|usermod|passwd)\s+\S", "user management"),
-        (_CMD_POS + r"(iptables|ufw)\s+\S", "firewall management"),
-        (_CMD_POS + r"(kill|killall)\s+\S", "process termination"),
+        (_SYSTEMCTL_WRITE, SYSTEMCTL_RULE),
+        # Only where bash starts a command (see _CMD_START), and only with an
+        # argument: these words are common in prose and paths ("kill the
+        # test", /etc/passwd, "iptables rules").
+        (_CMD_START + _CMD_PATH + r"(launchctl|service)\s+\S", "service manager"),
+        (_CMD_START + _CMD_PATH + r"(useradd|userdel|usermod|passwd)\s+\S", "user management"),
+        (_CMD_START + _CMD_PATH + r"(iptables|ufw)\s+\S", "firewall management"),
+        # Behind xargs, kill takes its arguments from stdin.
+        (_CMD_START + _CMD_PATH + r"(kill|killall)\s+\S"
+         r"|\bxargs(?:[ \t]++(?:-[adEILnPs]|--(?:arg-file|delimiter|eof|replace|max-lines"
+         r"|max-args|max-procs|max-chars))[ \t]++" + _ARG_CHAR + r"++"
+         r"|[ \t]++-" + _ARG_CHAR + r"++)*+[ \t]++"
+         + _CMD_PATH + r"(?:kill|killall)(?![\w-])",
+         "process termination"),
     ],
 }
 
@@ -685,23 +1201,151 @@ _REDIRECT_TARGET_RE = re.compile(r"(?<!\d)>{1,2}\s*(?!&)([^\s;|&<>]+)")
 
 # Heredoc body stripping — removes content between heredoc markers
 # so that data inside heredocs is not mistaken for shell arguments.
-_HEREDOC_RE = re.compile(
-    r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n"  # start: <<'DELIM'...\n
-    r".*?"                                 # body (non-greedy, crosses lines)
-    r"^\1\s*$",                            # terminator: DELIM on its own line
-    re.MULTILINE | re.DOTALL,
-)
+# A heredoc operator and its delimiter word: `<<EOF`, `<<-EOF`, `<< 'EOF'`,
+# `<<"EOF"`, `<<\EOF`.
+_HEREDOC_OPERATOR_RE = re.compile(r"<<(-?)[ \t]*\\?['\"]?(\w+)['\"]?")
+
+
+def _heredoc_lines(command):
+    """Map each line of *command*, as a delimiter line reads, to where those lines end.
+
+    A delimiter line may have tabs before it and whitespace after it. The
+    ends are in order, so _heredoc_body_end finds the first one after a
+    body's start by bisection rather than by reading the lines again: every
+    unterminated `cat <<a` read the rest of the command once more.
+    """
+    lines = {}
+    start, n = 0, len(command)
+    while start <= n:
+        newline = command.find("\n", start)
+        end = n if newline == -1 else newline
+        lines.setdefault(command[start:end].lstrip("\t").rstrip(), []).append((start, end))
+        start = end + 1
+    return lines
+
+
+def _heredoc_body_end(lines, start, delimiter):
+    """Return where the heredoc body at *start* ends, or None if it never does.
+
+    The body runs to the first line at or after *start* holding only
+    *delimiter* (see _heredoc_lines). The returned index is that line's
+    newline, which stays; the body and the delimiter line go.
+    """
+    spans = lines.get(delimiter, [])
+    found = bisect.bisect_left(spans, (start, -1))
+    return spans[found][1] if found < len(spans) else None
 
 
 def _strip_heredocs(command):
-    """Remove heredoc bodies so their content is not parsed as shell arguments."""
-    return _HEREDOC_RE.sub("", command)
+    """Remove heredoc bodies so their content is not parsed as shell arguments.
+
+    The rest of the opener line stays: only the lines after it are the body,
+    so in `cat > f <<'EOF' && git push --force` the push is still a command.
+
+    A scan rather than a pattern, reading quotes as bash does. An operator
+    inside quotes or a comment opens nothing: `echo "<<EOF"` is text, and the
+    lines after it are commands. One inside a command substitution in double
+    quotes does, as in `git commit -m "$(cat <<'EOF' … EOF)"`. A body starts
+    after the first newline outside quotes and ends at its delimiter line; a
+    body that never ends stays in place and is read as commands. Each
+    character is read once: the pattern this replaced scanned to the end of
+    the command from every unterminated `<<`, quadratic in its length.
+    """
+    if "<<" not in command:
+        return command
+    out = []
+    lines = None  # built on the first heredoc, see _heredoc_lines
+    pending = []  # delimiters whose bodies start after the next newline
+    # Enclosing contexts, as in _mask_quoted: '"' a double-quoted span, ')' and
+    # '`' a command substitution opened inside one; None the top level.
+    stack = [[None, 0]]
+    copied = 0
+    i, n = 0, len(command)
+    while i < n:
+        context = stack[-1]
+        char = command[i]
+        if context[0] == '"':
+            if char == "\\":
+                i += 2
+            elif char == '"':
+                stack.pop()
+                i += 1
+            elif command.startswith("$(", i):
+                stack.append([")", 0])
+                i += 2
+            elif char == "`":
+                stack.append(["`", 0])
+                i += 1
+            else:
+                i += 1
+            continue
+        if char == "\\":
+            i += 2
+            continue
+        if char == "\n":
+            i += 1
+            if pending:
+                if lines is None:
+                    lines = _heredoc_lines(command)
+                end = i
+                for delimiter in pending:
+                    end = _heredoc_body_end(lines, end, delimiter)
+                    if end is None:
+                        break
+                    end += 1
+                pending = []
+                if end is not None:
+                    out.append(command[copied:i])
+                    copied = i = end - 1  # keep the delimiter line's newline
+            continue
+        if char == "#" and (i == 0 or command[i - 1] in _COMMENT_START_AFTER):
+            newline = command.find("\n", i)
+            i = n if newline == -1 else newline
+            continue
+        if command.startswith("$'", i):
+            i += 2
+            while i < n and command[i] != "'":
+                i += 2 if command[i] == "\\" else 1
+            i += 1
+            continue
+        if char == "'":
+            close = command.find("'", i + 1)
+            i = n if close == -1 else close + 1
+            continue
+        if char == '"':
+            stack.append(['"', 0])
+        elif command.startswith("<<<", i):
+            i += 3
+            continue
+        elif command.startswith("<<", i):
+            operator = _HEREDOC_OPERATOR_RE.match(command, i)
+            if operator:
+                pending.append(operator.group(2))
+                i = operator.end()
+                continue
+        elif context[0] == ")":
+            if char == "(":
+                context[1] += 1
+            elif char == ")":
+                if context[1]:
+                    context[1] -= 1
+                else:
+                    stack.pop()
+        elif context[0] == "`" and char == "`":
+            stack.pop()
+        i += 1
+    out.append(command[copied:])
+    return "".join(out)
 
 
 # Quote masking — the contents of quoted spans are replaced by this filler so
 # shell punctuation inside a string literal (a `>` closing an XML tag in a sed
 # pattern, an `rm` inside a commit message) is not read as shell syntax.
+# Comments are masked the same way: bash never runs them.
 _MASK_CHAR = "x"
+
+# A `#` starts a comment only at the start of a word.
+_COMMENT_START_AFTER = " \t\n;&|()<>"
 
 # Nested shell invocations: the quoted argument IS a command, so masking it
 # would hide a real redirect or a real rm target. Those commands are scanned
@@ -718,6 +1362,30 @@ _SHELL_INVOKER_RE = re.compile(
 _SEGMENT_RE = re.compile(r"[^\n;|&]+")
 _TOKEN_RE = re.compile(r"\S+")
 
+# A backslash at the end of a line joins it to the next one, unless that
+# backslash is itself escaped (an even run of backslashes before it).
+_CONTINUATION_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\\n")
+
+
+def _join_continuations(command):
+    """Return *command* with each backslash-newline continuation read as spaces.
+
+    Two spaces for the two characters, so offsets into the result still line
+    up with the original command.
+    """
+    return _CONTINUATION_RE.sub(lambda match: match.group(1) + "  ", command)
+
+
+def _command_text(command):
+    """Return *command* the way every check reads it.
+
+    Heredoc bodies are dropped first, since a `\\` ending a line inside a
+    quoted heredoc is data, not a continuation. Continuation lines are then
+    joined, so `git push origin main \\` + newline + `--force` reads as the
+    one command bash runs.
+    """
+    return _join_continuations(_strip_heredocs(command))
+
 
 def _mask_quoted(command):
     """Return *command* with the contents of quoted spans replaced by filler.
@@ -730,23 +1398,129 @@ def _mask_quoted(command):
 
     Backslash escapes are honoured outside single quotes; an unterminated
     quote masks to the end of the string, as the shell would keep reading.
+
+    A command substitution inside double quotes — `"$(…)"` or a backtick
+    pair — is left visible: bash runs it, so `echo "$(sudo ls)"` is a sudo,
+    not a string. Inside it, quoting starts afresh, so the pattern in
+    `"$(grep "rm -rf" log)"` is still data.
+
+    A comment is masked up to its newline. Left alone, the apostrophe in
+    `# it's done` would open a quote that hides every line down to the next
+    apostrophe.
+    """
+    out = list(command)
+    # Enclosing contexts, innermost last: '"' is a double-quoted span; ')' and
+    # '`' are a command substitution opened inside one, waiting for its closer;
+    # None is the top level. A ')' context counts the parentheses opened inside
+    # it, so a subshell does not close it early. A stack rather than recursion,
+    # so no nesting depth can make the hook raise.
+    stack = [[None, 0]]
+    i, n = 0, len(command)
+    while i < n:
+        context = stack[-1]
+        char = command[i]
+        if context[0] == '"':
+            if char == "\\":
+                # \" and \$ do not close the span or open a substitution.
+                width = min(2, n - i)
+                out[i:i + width] = _MASK_CHAR * width
+                i += 2
+            elif char == '"':
+                stack.pop()
+                i += 1
+            elif command.startswith("$(", i):
+                stack.append([")", 0])
+                i += 2
+            elif char == "`":
+                stack.append(["`", 0])
+                i += 1
+            else:
+                out[i] = _MASK_CHAR
+                i += 1
+            continue
+        if char == "\\":
+            i += 2  # escaped char outside quotes — nothing to mask
+            continue
+        if char == "#" and (i == 0 or command[i - 1] in _COMMENT_START_AFTER):
+            newline = command.find("\n", i)
+            end = n if newline == -1 else newline
+            out[i:end] = _MASK_CHAR * (end - i)
+            i = end
+            continue
+        if command.startswith("$'", i):
+            # ANSI-C quoting: a backslash escapes the next character, so the
+            # `\'` of `$'don\'t'` does not close the span. Read as a plain
+            # single quote, the span ended there, and the next `'` opened one
+            # that hid every command up to the one after it.
+            end = i + 2
+            while end < n and command[end] != "'":
+                end += 2 if command[end] == "\\" else 1
+            end = min(end, n)
+            out[i + 2:end] = _MASK_CHAR * (end - i - 2)
+            i = end + 1
+            continue
+        if char == "'":
+            close = command.find("'", i + 1)
+            end = n if close == -1 else close
+            out[i + 1:end] = _MASK_CHAR * (end - i - 1)
+            i = end + 1
+            continue
+        if char == '"':
+            stack.append(['"', 0])
+        elif context[0] == ")":
+            if char == "(":
+                context[1] += 1
+            elif char == ")":
+                if context[1]:
+                    context[1] -= 1
+                else:
+                    stack.pop()
+        elif context[0] == "`" and char == "`":
+            stack.pop()
+        i += 1
+    return "".join(out)
+
+
+def _mask_nested_quoted(command):
+    """Return *command* with each top-level quoted span read as a nested shell does.
+
+    A nested shell runs a quoted string as a command, and quotes inside that
+    string are its own. Unmasked, the quoted `;` of
+    `bash -c "curl -H 'a; b' -X POST …"` ends the curl, and nothing reads the
+    `-X POST`; masked, the whole curl is filler. Here the top-level quotes
+    stay as written and what they hold goes through _mask_quoted, after
+    `\\"` inside double quotes is read as the quote the nested shell sees.
+    Comments are masked, as _mask_quoted masks them. Length is preserved.
     """
     out = list(command)
     i, n = 0, len(command)
     while i < n:
         char = command[i]
         if char == "\\":
-            i += 2  # escaped char outside quotes — nothing to mask
+            i += 2
             continue
-        if char in "'\"":
-            i += 1
-            while i < n and command[i] != char:
-                # Inside double quotes a backslash escapes the next char, so
-                # \" does not close the span.
-                width = 2 if (char == '"' and command[i] == "\\") else 1
-                out[i:i + width] = _MASK_CHAR * min(width, n - i)
-                i += width
-            i += 1  # skip the closing quote (or run past the end)
+        if char == "#" and (i == 0 or command[i - 1] in _COMMENT_START_AFTER):
+            newline = command.find("\n", i)
+            end = n if newline == -1 else newline
+            out[i:end] = _MASK_CHAR * (end - i)
+            i = end
+            continue
+        ansi = command.startswith("$'", i)
+        if ansi or char in "'\"":
+            if ansi:
+                i += 1
+                char = "'"
+            end = i + 1
+            while end < n and command[end] != char:
+                end += 2 if (char == '"' or ansi) and command[end] == "\\" else 1
+            end = min(end, n)
+            inner = command[i + 1:end]
+            if char == '"':
+                inner = inner.replace('\\"', ' "')
+            elif ansi:
+                inner = inner.replace("\\'", " '")
+            out[i + 1:end] = _mask_quoted(inner)
+            i = end + 1
             continue
         i += 1
     return "".join(out)
@@ -832,7 +1606,7 @@ _GIT_TIMEOUT_S = 5
 
 # Redirects are stripped before tokenising so `2>/dev/null` is not read as a
 # pathspec. Matches an optional fd, the operator, and its target.
-_REDIRECT_STRIP_RE = re.compile(r"\d*(?:>>|>|<<<|<)\s*&?\S+")
+_REDIRECT_STRIP_RE = re.compile(r"&?\d*(?:>>|>|<<<|<)\s*&?\S+")
 
 # git's own options that take a separate value, so a value can never be read as
 # the subcommand. `-C` is captured: it moves the repo the command acts on.
@@ -1136,7 +1910,7 @@ def check_worktree_destruction(command, base_dir):
     text. A `cd` in an earlier segment moves the base directory, because that
     is where the git command will actually run.
     """
-    command = _strip_heredocs(command)
+    command = _command_text(command)
     masked = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
     cwd = base_dir
     cleared = False
@@ -1268,6 +2042,22 @@ def _host_is_local(host):
     return all(_ip_is_local(address) for address in addresses)
 
 
+# Ways to send a request somewhere its URL does not name. curl's --resolve and
+# --connect-to pin a name to another address, a proxy or SOCKS option relays
+# it, --doh-url and --dns-servers resolve the name elsewhere, and -K/--config
+# reads more options from a file; wget takes the same from -e/--execute and
+# --config. A *_proxy variable in the command reroutes either one.
+_HTTP_REROUTE_RE = re.compile(
+    _cmd_arg(
+        *_named(r"\bcurl"),
+        r"--(?:resolve|connect-to|proxy[\w.-]*+|preproxy|socks[\w-]*+|doh-url|dns-servers"
+        r"|config)(?![\w-])|-" + _CURL_FLAGS + r"[xK]",
+    )
+    + r"|" + _cmd_arg(*_named(r"\bwget"), r"(?:-e|--execute|--config)(?![\w-])")
+    + r"|(?i:\b(?:https?|ftp|all)_proxy=)"
+)
+
+
 def check_local_http(command):
     """Return True if every URL in *command* points at a local address.
 
@@ -1280,10 +2070,17 @@ def check_local_http(command):
     target this cannot see (a bare host, a --url read from a variable), and
     an unseen target is not a local one. So does any single untrusted URL —
     ``curl -d @x localhost && curl -d @x api.example.com`` is one command,
-    and one leak is enough.
+    and one leak is enough. So does a request rerouted past its URL
+    (_HTTP_REROUTE_RE): ``curl -d @x --resolve localhost:80:203.0.113.5
+    http://localhost/`` sends the data to 203.0.113.5.
     """
+    text = _command_text(command)
+    # Every reading check_command uses, so no quoted `;` hides the option.
+    if any(_HTTP_REROUTE_RE.search(copy)
+           for copy in (text, _mask_quoted(text), _mask_nested_quoted(text))):
+        return False
     hosts = set()
-    for match in _URL_AUTHORITY_RE.finditer(_strip_heredocs(command)):
+    for match in _URL_AUTHORITY_RE.finditer(text):
         host = _url_host(match.group(1))
         if not host:
             return False
@@ -1291,6 +2088,75 @@ def check_local_http(command):
     if not hosts:
         return False
     return all(_host_is_local(host) for host in hosts)
+
+
+# ── Reading a rule's matches for an exemption ───────────────────────────────
+# An exemption retires a whole rule, so it must read every command that rule
+# matched, and read each one as bash will run it. Three ways to get that wrong,
+# each of which once let a real change through as a harmless one:
+#
+#   - A command substitution or subshell is a command of its own, but splits
+#     no _SEGMENT_RE segment: `chmod +x a $(chmod 777 b)` read as one chmod
+#     whose mode is +x.
+#   - A backslash-newline joins two lines into one command:
+#     `find / | xargs \` + newline + `chmod +x f` read as a chmod of its own,
+#     though xargs runs it on every file find prints.
+#   - With a nested shell in the command, check_command scans quoted text too,
+#     so the rule can match inside a string that masking hides from segment
+#     parsing: `bash -c "chmod 777 x"`.
+#
+# The third used to be handled by refusing any command with a nested shell in
+# it, which also refused a plain `chmod +x a` that merely shared a command line
+# with an unrelated `bash -c 'echo hi'`. Now only a match that actually sits
+# inside a quoted span refuses; a chmod run BY another command (`sudo chmod`,
+# `xargs chmod`, `find -exec chmod`) still fails each check's own test, since
+# the chmod is not where the command starts.
+
+# Split points for one simple command: _SEGMENT_RE's, plus the parentheses and
+# backticks that open and close a subshell or a command substitution. The `&`
+# of a redirect (`2>&1`, `&>log`) is not one.
+_COMMAND_BREAK_RE = re.compile(r"[\n;|()`]|(?<![<>])&(?!>)")
+
+_RULE_RE_BY_DESCRIPTION = {description: compiled
+                           for compiled, description, _category in RULES}
+
+
+def _rule_commands(command, description):
+    """Return (before, word, after) for every match of rule *description*.
+
+    *word* is the matched text; *before* and *after* run from it to the
+    nearest command break on each side. All three are read off the masked
+    command, after heredocs are dropped and continuation lines joined.
+
+    Returns None when a match cannot be read this way: one inside a quoted
+    span (see above), or one that itself runs across a command break, as
+    `git rebase` + newline does — bash runs a bare `git rebase` there.
+
+    A rule that matches context in front of its command (systemctl's
+    command-position anchor takes in `; `, `$(`, `xargs `) marks where the
+    command starts with a `word` group; *word* and *before* split there.
+    """
+    rule_re = _RULE_RE_BY_DESCRIPTION[description]
+    has_word = "word" in rule_re.groupindex
+    command = _command_text(command)
+    masked = _mask_quoted(command)
+    matches = list(rule_re.finditer(masked))
+    if _SHELL_INVOKER_RE.search(command):
+        visible = {match.start() for match in matches}
+        if any(match.start() not in visible for match in rule_re.finditer(command)):
+            return None
+    found = []
+    for match in matches:
+        word_start = match.start("word") if has_word else match.start()
+        word = masked[word_start:match.end()]
+        if _COMMAND_BREAK_RE.search(word):
+            return None
+        breaks_before = list(_COMMAND_BREAK_RE.finditer(masked, 0, word_start))
+        start = breaks_before[-1].end() if breaks_before else 0
+        next_break = _COMMAND_BREAK_RE.search(masked, match.end())
+        end = next_break.start() if next_break else len(masked)
+        found.append((masked[start:word_start], word, masked[match.end():end]))
+    return found
 
 
 # ── Exec-bit chmod ──────────────────────────────────────────────────────────
@@ -1316,8 +2182,6 @@ def check_local_http(command):
 # ask. Out-of-project targets still ask: chmod is in FILE_MODIFYING_CMDS, and
 # check_outside_project runs after the category rules regardless of what they
 # skipped.
-
-_PERMISSION_WORD_RE = re.compile(r"\b(?:chmod|chown)\b")
 
 # Clauses like u+x, a+x or +x, comma-separated: execute added, nothing taken.
 _EXEC_BIT_MODE_RE = re.compile(r"[ugoa]*\+x(?:,[ugoa]*\+x)*")
@@ -1348,22 +2212,523 @@ def check_exec_bit_chmod(command):
     """Return True if every chmod/chown in *command* is a plain `chmod +x`.
 
     The hook check reads the raw command, since a quoted or variable target is
-    exactly what quote masking would hide. The segment check reads the masked
-    one, like check_command, so a quoted `;` does not split a segment. A nested
-    shell (`bash -c`, `eval`, `xargs`) hides its real command in a string and
-    gets no exemption.
+    exactly what quote masking would hide. Each chmod is then read as its own
+    command by _rule_commands.
     """
-    command = _strip_heredocs(command)
-    if _HOOK_MENTION_RE.search(command) or _SHELL_INVOKER_RE.search(command):
+    if _HOOK_MENTION_RE.search(_command_text(command)):
         return False
-    found = False
-    for segment in _SEGMENT_RE.findall(_mask_quoted(command)):
-        if not _PERMISSION_WORD_RE.search(segment):
+    found = _rule_commands(command, PERMISSION_CHANGE_RULE)
+    return bool(found) and all(_is_exec_bit_chmod("".join(parts)) for parts in found)
+
+
+# ── Managed systemd units ───────────────────────────────────────────────────
+# SYSTEMCTL_RULE asks on every systemctl that is not a read, so bouncing the
+# Prefect server and its workers — routine for the projects that run them —
+# asks as loudly as `systemctl isolate rescue.target`.
+#
+# check_managed_systemctl suppresses THAT ONE RULE, and only when every
+# systemctl in the command starts, stops, restarts, reloads or resets named
+# SYSTEMCTL_MANAGED_UNITS. A bare name means its .service, as it does to
+# systemctl. Everything else still asks: enable/disable, mask, edit, kill,
+# isolate, daemon-reload; a glob, variable or quoted unit, whose target this
+# cannot read; any option outside the output-only ones below (-H and -M reach
+# another host or container, --job-mode=isolate stops everything else); and a
+# systemctl behind a runner other than `timeout` (`xargs systemctl …`) or in a
+# nested shell's string, which is not read as a command of its own.
+
+_SYSTEMCTL_LIFECYCLE_VERBS = frozenset({
+    "start", "stop", "restart", "try-restart", "reload",
+    "reload-or-restart", "try-reload-or-restart", "reset-failed",
+})
+
+_SYSTEMCTL_SAFE_OPTS = frozenset({
+    "--user", "--system", "--no-block", "--no-pager", "--no-ask-password",
+    "--wait", "-q", "--quiet",
+})
+
+# Reserved words leave the systemctl behind them its own command
+# (`if systemctl restart …; then`). A runner does not: `xargs` adds arguments
+# from stdin, `env` and `exec` change what runs, so they and the rest of
+# _RUNNERS keep asking.
+_SHELL_RESERVED_WORDS = frozenset({"if", "then", "elif", "else", "do", "while", "until", "!", "{"})
+
+# `timeout` is the exception: it runs the same command with a time limit,
+# adding no arguments, and its options only pick the signal and how it is
+# sent. Anything else in front of the duration keeps the rule in force.
+_TIMEOUT_VALUE_OPTS = frozenset({"-k", "-s", "--kill-after", "--signal"})
+_TIMEOUT_FLAG_RE = re.compile(
+    r"-v|--verbose|--foreground|--preserve-status|--(?:kill-after|signal)=\S+|-[ks]\S+"
+)
+_TIMEOUT_DURATION_RE = re.compile(r"(?:\d+\.?\d*|\.\d+)[smhd]?")
+_TIMEOUT_PATHS = frozenset({"timeout", "/usr/bin/timeout", "/bin/timeout"})
+
+_SYSTEMCTL_PATHS = frozenset({"systemctl", "/usr/bin/systemctl", "/bin/systemctl"})
+
+
+def _skip_timeout(tokens):
+    """Return *tokens* past a leading `timeout [options] DURATION`.
+
+    Returns *tokens* unchanged when they do not start with timeout, and None
+    when the timeout's own words cannot be read.
+    """
+    if not tokens or tokens[0] not in _TIMEOUT_PATHS:
+        return tokens
+    rest = tokens[1:]
+    while rest and rest[0].startswith("-"):
+        option = rest.pop(0)
+        if option in _TIMEOUT_VALUE_OPTS:
+            if not rest:
+                return None
+            rest.pop(0)
+        elif not _TIMEOUT_FLAG_RE.fullmatch(option):
+            return None
+    if not rest or not _TIMEOUT_DURATION_RE.fullmatch(rest[0]):
+        return None
+    return rest[1:]
+
+
+def _is_managed_systemctl(segment):
+    """Return True if *segment* is a lifecycle verb on managed units only."""
+    tokens = _TOKEN_RE.findall(_REDIRECT_STRIP_RE.sub(" ", segment))
+    while tokens and tokens[0] in _SHELL_RESERVED_WORDS:
+        tokens = tokens[1:]
+    tokens = _skip_timeout(tokens)
+    if not tokens or tokens[0] not in _SYSTEMCTL_PATHS:
+        return False
+    words = []
+    for token in tokens[1:]:
+        if token.startswith("-"):
+            if token not in _SYSTEMCTL_SAFE_OPTS:
+                return False
+        else:
+            words.append(token)
+    if len(words) < 2 or words[0] not in _SYSTEMCTL_LIFECYCLE_VERBS:
+        return False
+    return all((unit if "." in unit else unit + ".service") in SYSTEMCTL_MANAGED_UNITS
+               for unit in words[1:])
+
+
+def check_managed_systemctl(command):
+    """Return True if every systemctl write in *command* is on a managed unit."""
+    found = _rule_commands(command, SYSTEMCTL_RULE)
+    return bool(found) and all(_is_managed_systemctl("".join(parts)) for parts in found)
+
+
+# ── Linked worktrees ────────────────────────────────────────────────────────
+# The Git Branch & History rules protect the repository's real history, above
+# all the branch checked out in the main working tree. A linked worktree
+# (`git worktree add`, and every worktree CC gives an isolated agent) is a
+# workspace of its own: resetting, rebasing or discarding changes there is the
+# work, and asking about each step costs an approval per step of an unattended
+# run.
+#
+# A worktree still shares the repository with the main tree and every other
+# worktree: all branches, all tags, the stash list, config and remotes. So only
+# the rules whose effect stays in the worktree and on its own branch stand down
+# there (LINKED_WORKTREE_RULES). Branch and tag deletion, forced branch moves,
+# `stash clear` and everything under Git Destructive Remote keep asking. So do
+# the forms of the retired rules that reach further:
+#
+#   - switching the worktree onto an existing branch (`git checkout main`,
+#     `git switch main`, `checkout -B`, `switch -C`). A branch checked out
+#     nowhere else — which can be the official one, when the main tree is on
+#     another branch — could otherwise be reset or rebased from here. Creating
+#     a new branch or detaching HEAD stays exempt.
+#   - a rebase that checks out another branch (`git rebase <upstream>
+#     <branch>`), moves other branches along (`--update-refs`, or
+#     rebase.updateRefs), or runs commands of its own (`-x`/`--exec`, and
+#     `-i`, whose editor is one).
+#   - dropping a stash that was not made on this worktree's branch. The stash
+#     list is shared, so `stash@{0}` can be another worktree's; a stash's
+#     subject names the branch it was made on, and git refuses to check one
+#     branch out in two worktrees unless forced. A drop is judged only when it
+#     is the one stash command in the call and nothing repeats it: any other
+#     stash command, loop or function can move a different stash into the slot
+#     the check looked at.
+#
+# The uncommitted-work check (Git worktree destruction) stands down in a
+# linked worktree too: discarding the worktree's own changes is the trade.
+#
+# The worktree must not be the checkout this CC session started in. That one
+# is the user's own — say, the main checkout of a bare repository set up with
+# worktrees — and keeps every prompt. CC files a session's transcripts, its
+# subagents' included, under a name made from the start directory; when the
+# transcript path does not have that shape, nothing is exempt.
+#
+# All of this needs every command in the call to provably run inside one
+# linked worktree: the one the call starts in, or the one a leading
+# `cd <dir> &&` enters. A later `cd` or `git -C` is followed when its target
+# is literal — absolute, or relative without `..` — stays inside the worktree,
+# and does not enter a repository nested in it. Anything that can move git
+# elsewhere less plainly (pushd to a new place, env -C, --git-dir, GIT_DIR,
+# CDPATH, source, eval, trap, a variable target) turns the exemption off for
+# the whole call, and every rule asks as before.
+
+LinkedWorktree = namedtuple("LinkedWorktree", "top branch")
+
+LINKED_WORKTREE_RULES = frozenset({
+    GIT_CHECKOUT_RULE, GIT_SWITCH_RULE, GIT_REBASE_RULE, "git reset --hard",
+    GIT_STASH_RULE,
+})
+
+# Ways to point git, or cd, somewhere no literal `cd` or `-C` spells out.
+_RELOCATE_RE = re.compile(
+    r"\bGIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|NAMESPACE)\b"
+    r"|--git-dir\b|--work-tree\b|\bCDPATH\b"
+)
+
+_ASSIGNMENT_RE = re.compile(r"\w+=")
+
+_DIR_CHANGERS = frozenset({"cd", "pushd", "popd"})
+
+# Commands that run text in THIS shell, where a `cd` would stick. `.` does too,
+# but only counts where a command starts; anywhere else it is just the current
+# directory (`git add .`).
+_SAME_SHELL_RUNNERS = frozenset({"source", "eval", "trap"})
+
+# Words that can stand in front of a command in the same shell.
+_COMMAND_PREFIXES = frozenset({
+    "if", "then", "else", "elif", "do", "while", "until", "!", "{",
+    "command", "builtin", "exec", "time", "nohup",
+})
+
+# Anything that can run a command more than once.
+_REPEATS_RE = re.compile(
+    r"(?:^|[\n;&|(){}`])\s*(?:for|while|until|select|function)\b|\(\s*\)"
+)
+
+# Any stash command that can change the stash list; list and show only read it.
+_GIT_STASH_ANY_RE = re.compile(_GIT + r"stash\b(?!\s+(?:list|show)\b)")
+
+# A word that means the same thing to bash as it reads here: no expansion,
+# no quoting left over.
+_LITERAL_WORD_RE = re.compile(r"[^$`~*?\[\]{}'\"\\]+")
+
+
+def _command_spans(masked):
+    """Return (start, end) for each simple command in *masked*: the text between breaks."""
+    spans, start = [], 0
+    for brk in _COMMAND_BREAK_RE.finditer(masked):
+        if brk.start() > start:
+            spans.append((start, brk.start()))
+        start = brk.end()
+    if start < len(masked):
+        spans.append((start, len(masked)))
+    return spans
+
+
+def _worktree_at(path):
+    """Return the LinkedWorktree containing *path*, or None.
+
+    None for the main working tree (its git dir is the common dir), for a path
+    outside any repository, and whenever git does not answer.
+    """
+    out = _run_git(path, ["rev-parse", "--path-format=absolute",
+                          "--show-toplevel", "--git-dir", "--git-common-dir"])
+    lines = out.splitlines() if out else []
+    if len(lines) != 3:
+        return None
+    top, git_dir, common_dir = lines
+    if os.path.realpath(git_dir) == os.path.realpath(common_dir):
+        return None
+    # The full ref, not --short: that one says heads/<b> when a tag shares the name.
+    ref = (_run_git(top, ["symbolic-ref", "-q", "HEAD"]) or "").strip()
+    branch = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else None
+    return LinkedWorktree(os.path.realpath(top), branch)
+
+
+def _inside(path, top):
+    return os.path.commonpath([path, top]) == top
+
+
+def _nested_repo_between(path, top):
+    """Return True if a directory from *path* up to, not including, *top* holds a .git."""
+    while path != top and _inside(path, top):
+        if os.path.lexists(os.path.join(path, ".git")):
+            return True
+        path = os.path.dirname(path)
+    return False
+
+
+def _follow_dir(here, target, top):
+    """Return where `cd <target>` from *here* lands, or None if not provably in *top*.
+
+    *here* is None once the walk no longer knows the exact directory (after a
+    popd): from there only an absolute target can be followed. Landing in a
+    repository nested inside the worktree counts as leaving it, since git
+    would act on that repository instead.
+    """
+    if not _LITERAL_WORD_RE.fullmatch(target) or ".." in target.split("/"):
+        return None
+    if here is None and not os.path.isabs(target):
+        return None
+    landed = os.path.realpath(os.path.join(here or "/", target))
+    if not _inside(landed, top) or _nested_repo_between(landed, top):
+        return None
+    return landed
+
+
+def _cd_target(tokens):
+    """Return the one directory a `cd`/`pushd` names, "" for none, None if unreadable."""
+    args = [token for token in tokens[1:] if token not in ("-L", "-P", "-e", "-@", "--")]
+    if not args:
+        return ""
+    if len(args) > 1 or args[0] == "-":
+        return None
+    return args[0]
+
+
+def _leading_cd(command, masked, spans, cwd):
+    """Return the directory a leading `cd <dir>` moves the whole call into, or None.
+
+    Only a cd the rest of the call provably runs after: first thing on the
+    line, not in a pipeline or in the background (both run it in a subshell),
+    and into a directory that exists and can be entered, so that it cannot
+    fail and leave the rest running where the call started. No `..`: bash
+    resolves it against the path as typed, not the one symlinks lead to.
+    """
+    if not spans or spans[0][0] != 0:
+        return None
+    start, end = spans[0]
+    tokens = _tokenize_segment(command[start:end])
+    if not tokens or tokens[0] != "cd":
+        return None
+    after = masked[end:end + 2]
+    if (after.startswith("|") and after != "||") or (after.startswith("&") and after != "&&"):
+        return None
+    target = _cd_target(tokens)
+    if not target or not _LITERAL_WORD_RE.fullmatch(target) or ".." in target.split("/"):
+        return None
+    landed = os.path.realpath(os.path.join(cwd, target))
+    return landed if os.path.isdir(landed) and os.access(landed, os.X_OK) else None
+
+
+def _command_worktree(command, cwd):
+    """Return the LinkedWorktree every command in *command* runs inside, or None."""
+    if not cwd or not os.path.isabs(cwd) or os.environ.get("CDPATH"):
+        return None
+    command = _command_text(command)
+    if _RELOCATE_RE.search(command):
+        return None
+    masked = _mask_quoted(command)
+    spans = _command_spans(masked)
+    here = _leading_cd(command, masked, spans, cwd)
+    if here:
+        spans = spans[1:]  # already followed
+    else:
+        here = os.path.realpath(cwd)
+    worktree = _worktree_at(here)
+    if worktree is None or not _inside(here, worktree.top):
+        return None
+    for start, end in spans:
+        tokens = _tokenize_segment(command[start:end])
+        while tokens and _ASSIGNMENT_RE.match(tokens[0]):
+            tokens.pop(0)
+        if _SAME_SHELL_RUNNERS & set(tokens):
+            return None
+        while tokens and tokens[0] in _COMMAND_PREFIXES:
+            tokens.pop(0)
+        if not tokens:
             continue
-        if not _is_exec_bit_chmod(segment):
+        verb = tokens[0]
+        if verb == "." or _DIR_CHANGERS & set(tokens[1:]):
+            return None
+        if verb in _DIR_CHANGERS:
+            target = "" if verb == "popd" else _cd_target(tokens)
+            if target is None or (verb == "cd" and target == ""):
+                return None  # a bare cd goes to $HOME
+            if verb == "popd" or target == "" or re.fullmatch(r"[+-]\d+", target):
+                # Back to, or around, places this call already went: all in
+                # the worktree, but no longer one this walk can name.
+                here = None
+            else:
+                here = _follow_dir(here, target, worktree.top)
+                if here is None:
+                    return None
+        elif os.path.basename(verb) == "git":
+            # `git -C <dir>` moves only this one git; each has to stay inside.
+            at, index = here, 1
+            while index < len(tokens) and tokens[index].startswith("-"):
+                if tokens[index] == "-C" and index + 1 < len(tokens):
+                    at = _follow_dir(at, tokens[index + 1], worktree.top)
+                    if at is None:
+                        return None
+                index += 2 if tokens[index] in _GIT_GLOBAL_VALUE_OPTS else 1
+    return worktree
+
+
+def _path_slug(path):
+    """Return *path* the way CC names a project directory after it."""
+    return re.sub(r"[^A-Za-z0-9-]", "-", path)
+
+
+def _is_session_checkout(worktree, transcript_path):
+    """Return True unless *worktree* is provably not where this session started.
+
+    Transcripts live at <config>/projects/<slug of the start directory>/…,
+    subagents' included. A start directory inside the worktree counts too.
+    """
+    parts = (transcript_path or "").replace("\\", "/").split("/")
+    starts = [parts[i + 1] for i in range(len(parts) - 1)
+              if parts[i] == "projects" and parts[i + 1].startswith("-")]
+    if not starts:
+        return True
+    start, top = starts[-1], _path_slug(worktree.top)
+    return start == top or start.startswith(top + "-")
+
+
+def _names_other_branch(name, worktree):
+    """Return True unless *name* is provably not a branch other than the worktree's own.
+
+    Checking one out moves the worktree onto a shared branch. A name git
+    cannot answer for, or one that is not literal, counts as one.
+    """
+    if name == worktree.branch:
+        return False
+    if name == "-" or "@{" in name or not _LITERAL_WORD_RE.fullmatch(name):
+        return True
+    out = _run_git(worktree.top, ["for-each-ref", "--format=%(refname)",
+                                  "refs/heads/" + name])
+    return out is None or bool(out.strip())
+
+
+_CHECKOUT_WORKTREE_VALUE_OPTS = _CHECKOUT_VALUE_OPTS | {"-b", "-B", "--orphan"}
+_SWITCH_VALUE_OPTS = frozenset({
+    "-c", "-C", "--create", "--force-create", "--orphan", "--conflict",
+})
+_REBASE_VALUE_OPTS = frozenset({
+    "--onto", "-s", "--strategy", "-X", "--strategy-option", "-x", "--exec",
+})
+# Rebase options that reach past the worktree's own branch.
+_REBASE_REACHING_OPTS = frozenset({
+    "--exec", "--interactive", "--edit-todo", "--update-refs",
+})
+
+# A stash subject names the branch it was made on: "On <branch>: <message>",
+# or "WIP on <branch>: <sha> <subject>" when no message was given. A branch
+# name cannot contain a colon.
+_STASH_SUBJECT_RE = re.compile(r"(?:WIP on|On) ([^:]+): ")
+_STASH_REF_RE = re.compile(r"stash@\{(\d+)\}|(\d+)")
+
+
+def _checkout_stays(args, worktree):
+    flags, pre, _post, saw_dashdash = _split_operands(args, _CHECKOUT_WORKTREE_VALUE_OPTS)
+    names, shorts = _flag_names(flags)
+    if "B" in shorts:
+        return False
+    if "b" in shorts or names & {"--orphan", "--detach"}:
+        return True
+    # With `--`, what comes first is a tree-ish to restore paths from.
+    if saw_dashdash or not pre:
+        return True
+    return not _names_other_branch(pre[0], worktree)
+
+
+def _switch_stays(args, worktree):
+    flags, pre, _post, _ = _split_operands(args, _SWITCH_VALUE_OPTS)
+    names, shorts = _flag_names(flags)
+    if "C" in shorts or "--force-create" in names:
+        return False
+    if "c" in shorts or "d" in shorts or names & {"--create", "--orphan", "--detach"}:
+        return True
+    return bool(pre) and not _names_other_branch(pre[0], worktree)
+
+
+def _rebase_stays(args, worktree):
+    flags, pre, post, _ = _split_operands(args, _REBASE_VALUE_OPTS)
+    names, shorts = _flag_names(flags)
+    if names & _REBASE_REACHING_OPTS or "x" in shorts or "i" in shorts:
+        return False
+    # A second operand, or the only one after --root, is a branch to check out.
+    if len(pre) + len(post) >= (1 if "--root" in names else 2):
+        return False
+    if "--no-update-refs" in names:
+        return True
+    setting = _run_git(worktree.top, ["config", "--type=bool", "--default=false",
+                                      "--get", "rebase.updateRefs"])
+    return setting is not None and setting.strip() == "false"
+
+
+def _stash_drop_is_own(word, args, worktree):
+    if "drop" not in word or worktree.branch is None:
+        return False
+    refs = [arg for arg in args if arg not in ("-q", "--quiet")]
+    if len(refs) > 1:
+        return False
+    match = _STASH_REF_RE.fullmatch(refs[0] if refs else "stash@{0}")
+    if not match:
+        return False
+    ref = "stash@{%s}" % (match.group(1) or match.group(2))
+    subject = _run_git(worktree.top, ["log", "-1", "--format=%s", ref, "--"])
+    made_on = _STASH_SUBJECT_RE.match(subject or "")
+    return bool(made_on) and made_on.group(1) == worktree.branch
+
+
+def _stash_drop_alone(command):
+    """Return True if the drop is the call's one stash change, and nothing repeats it."""
+    masked = _mask_quoted(_command_text(command))
+    return len(_GIT_STASH_ANY_RE.findall(masked)) == 1 and not _REPEATS_RE.search(masked)
+
+
+# git options that change nothing about what a command does or where it runs,
+# besides `-C`, which _command_worktree follows.
+_PLAIN_GIT_OPTS = frozenset({"--no-pager", "-P", "--no-optional-locks", "--no-advice"})
+
+
+def _plain_git_options(word):
+    """Return True if the options between `git` and its subcommand in *word* are harmless.
+
+    `-c` is not: it can set core.worktree, rebase.updateRefs, sequence.editor
+    or an alias for the subcommand itself.
+
+    Split as the shell splits, like _command_worktree: split on spaces, the
+    `-C a\\ b` of `git -C a\\ b -c core.fsmonitor=x reset --hard` took `b` for
+    the next option and let the `-c` through. Text shlex cannot split is not
+    read as harmless.
+    """
+    try:
+        tokens = shlex.split(word)[1:]
+    except ValueError:
+        return False
+    index = 0
+    while index < len(tokens) and tokens[index].startswith("-"):
+        if tokens[index] == "-C":
+            index += 2
+        elif tokens[index] in _PLAIN_GIT_OPTS:
+            index += 1
+        else:
             return False
-        found = True
-    return found
+    return True
+
+
+def check_linked_worktree_rule(description, command, worktree):
+    """Return True if every match of rule *description* stays inside *worktree*.
+
+    *worktree* is what _command_worktree found for the whole call. Each match
+    has to be a git command at the very start of its simple command — not
+    behind an assignment, and not an argument of `find -execdir`, `xargs` or
+    `sudo` — whose form reaches no further. Its arguments are read off the
+    masked text, so a quoted one is opaque, and a check that needs its value
+    does not exempt.
+    """
+    found = _rule_commands(command, description)
+    if not found:
+        return False
+    if description == GIT_STASH_RULE and not _stash_drop_alone(command):
+        return False
+    for before, word, after in found:
+        if before.strip() or not _plain_git_options(word):
+            return False
+        args = _TOKEN_RE.findall(_REDIRECT_STRIP_RE.sub(" ", after))
+        if description == GIT_CHECKOUT_RULE and not _checkout_stays(args, worktree):
+            return False
+        if description == GIT_SWITCH_RULE and not _switch_stays(args, worktree):
+            return False
+        if description == GIT_REBASE_RULE and not _rebase_stays(args, worktree):
+            return False
+        if description == GIT_STASH_RULE and not _stash_drop_is_own(word, args, worktree):
+            return False
+    return True
 
 
 # Rules a more precise check can retire for one command, keyed by the rule's
@@ -1372,6 +2737,7 @@ def check_exec_bit_chmod(command):
 RULE_EXEMPTIONS = {
     HTTP_SUBMIT_RULE: check_local_http,
     PERMISSION_CHANGE_RULE: check_exec_bit_chmod,
+    SYSTEMCTL_RULE: check_managed_systemctl,
 }
 
 
@@ -1393,6 +2759,31 @@ SENSITIVE_FILE_PATTERNS = [
 ]
 
 
+# ── Command size ────────────────────────────────────────────────────────────
+# The checks read a command in time linear in its length, with known
+# exceptions that are quadratic: backticks interleaved with the command a rule
+# reads (`` git push `git push `git push … ``, see _cmd_arg), and chains of
+# assignments behind the command-start anchor (`a=|a=|…`). With a nested shell
+# in the call, check_command reads three copies, so the worst of them took
+# 3 seconds at 10,000 characters and 12 at 20,000, and a hook that runs past
+# Claude Code's timeout decides nothing. A command over this length asks
+# before any check reads it. It is counted after heredoc bodies are dropped,
+# so a file written through a heredoc does not count; ordinary commands run
+# to a few hundred characters.
+MAX_CHECKED_COMMAND = 10_000
+
+
+def check_command_size(command):
+    """Return the length of *command* as the checks read it, if that is over the limit.
+
+    Returns None for a command within MAX_CHECKED_COMMAND.
+    """
+    if len(command) <= MAX_CHECKED_COMMAND:  # dropping bodies only shortens it
+        return None
+    length = len(_command_text(command))
+    return length if length > MAX_CHECKED_COMMAND else None
+
+
 def check_command(command, skip_descriptions=()):
     """Check command against category rules.
 
@@ -1402,8 +2793,10 @@ def check_command(command, skip_descriptions=()):
     quoted span can never carry the part a rule needs to match — masking it
     costs the rules nothing and retires a whole class of false positive.
     Nested shell invocations are the exception, since there the quoted string
-    IS the command; same trade as check_write_targets and
-    check_exit_code_masking.
+    IS the command: then the raw text and the nested shell's view
+    (_mask_nested_quoted) are read too, and a match in any of them counts.
+    check_write_targets and check_exit_code_masking make the same trade with
+    the raw text alone.
 
     The one rule that does read an operand is _ENV_RULES' `> ….env` redirect;
     see the note there before enabling ENV_PROTECTION.
@@ -1414,16 +2807,23 @@ def check_command(command, skip_descriptions=()):
 
     Returns (description, category, matched_text) or None.
     """
-    command = _strip_heredocs(command)
-    # Masking is length-preserving, so a match found in the masked copy slices
-    # the real text out of the original for reporting.
-    scanned = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
+    command = _command_text(command)
+    # With a nested shell, the masked copy alone hides the commands in its
+    # strings, and the raw copy alone ends a command at any quoted `;` —
+    # `eval "$(ssh-agent -s)" && curl -H 'a; b' -X POST …` read no -X. So all
+    # three copies are read: masked, raw, and the nested shell's view.
+    # Masking is length-preserving, so a match found in any copy slices the
+    # real text out of the original for reporting.
+    copies = [_mask_quoted(command)]
+    if _SHELL_INVOKER_RE.search(command):
+        copies += [command, _mask_nested_quoted(command)]
     for compiled_re, description, category in RULES:
         if description in skip_descriptions:
             continue
-        match = compiled_re.search(scanned)
-        if match:
-            return (description, category, command[match.start():match.end()])
+        for scanned in copies:
+            match = compiled_re.search(scanned)
+            if match:
+                return (description, category, command[match.start():match.end()])
     return None
 
 
@@ -1543,7 +2943,7 @@ def check_sensitive_in_command(command):
 
     Returns (description, matched_path) or None.
     """
-    command = _strip_heredocs(command)
+    command = _command_text(command)
     # Segment and token boundaries are read off the masked copy so a quoted `;`
     # or a space inside a pattern does not split, but each token is sliced from
     # the original. Nested shell invocations are scanned raw — there the quoted
@@ -1632,7 +3032,7 @@ def check_file_outside_project(file_path, project_root):
     return None
 
 
-def _candidate_write_targets(command):
+def _candidate_write_targets(command, operands_only=False):
     """Yield tokens that are genuine write targets in *command*.
 
     Only these positions can write outside the project, so only these are
@@ -1653,6 +3053,9 @@ def _candidate_write_targets(command):
     yields no redirect and ``git commit -m "rm /etc/x"`` runs no rm. Every
     token is sliced back out of the original command by offset, so a quoted
     write target keeps its real text (spaces included).
+
+    With *operands_only*, a segment yields only the words after its
+    file-modifying command, not the runners and assignments in front of it.
     """
     masked = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
 
@@ -1662,17 +3065,47 @@ def _candidate_write_targets(command):
 
     # 2. File-modifying command arguments (per segment)
     for segment in _SEGMENT_RE.finditer(masked):
-        if FILE_MODIFYING_CMDS.search(segment.group()):
-            for token in _TOKEN_RE.finditer(segment.group()):
+        name = FILE_MODIFYING_CMDS.search(segment.group())
+        if name:
+            for token in _TOKEN_RE.finditer(segment.group(), name.end() if operands_only else 0):
                 start = segment.start() + token.start()
                 yield command[start:start + len(token.group())]
 
 
-def check_outside_project(command, project_root):
+# A relative write target is relative to the directory the call runs in: the
+# session's cwd, or wherever a leading `cd` moved it (see _leading_cd). Read
+# from anywhere else, `cd sub; cp ../a b` looked outside the project and
+# `cd ~; touch x` looked inside it. Any other change of directory in the call,
+# or one this cannot read, leaves the directory unknown, and then a `../`
+# target resolves against the hook's own cwd and a plain one is assumed to
+# be in the project, as before.
+
+# A plain relative word: no option, no expansion, no assignment or redirect.
+_RELATIVE_WORD_RE = re.compile(r"(?![-+~/])[^$`=<>\\]+")
+
+
+def _write_base(command, cwd):
+    """Return the directory *command* runs its writes in, or None if unknown."""
+    if (not cwd or not os.path.isabs(cwd) or os.environ.get("CDPATH")
+            or _SHELL_INVOKER_RE.search(command)):
+        return None
+    masked = _mask_quoted(command)
+    spans = _command_spans(masked)
+    here = _leading_cd(command, masked, spans, cwd)
+    for start, end in spans[1:] if here else spans:
+        tokens = _tokenize_segment(command[start:end])
+        if (_DIR_CHANGERS | _SAME_SHELL_RUNNERS) & set(tokens) or tokens[:1] == ["."]:
+            return None
+    return here or os.path.realpath(cwd)
+
+
+def check_outside_project(command, project_root, cwd=None):
     """Check if command writes to a path outside the project root.
 
     Only genuine write targets are examined (see _candidate_write_targets);
-    path-shaped substrings elsewhere in the command are ignored.
+    path-shaped substrings elsewhere in the command are ignored. Relative
+    targets resolve against *cwd*, the session's working directory, or the
+    directory a leading `cd` moves the call into (see _write_base).
 
     Returns (description, matched_path) or None.
     """
@@ -1680,10 +3113,14 @@ def check_outside_project(command, project_root):
         return None
 
     # Strip heredoc bodies so their content isn't parsed as paths
-    command = _strip_heredocs(command)
+    command = _command_text(command)
 
     # Normalize project root (remove trailing slash)
     project_root = project_root.rstrip("/")
+    # Resolved targets have their symlinks followed, so they are judged
+    # against the root with its symlinks followed too.
+    real_root = os.path.realpath(project_root)
+    base = _write_base(command, cwd)
 
     for token in _candidate_write_targets(command):
         # Strip quotes and shell punctuation
@@ -1711,9 +3148,22 @@ def check_outside_project(command, project_root):
                 return (f"home directory path: {token}", token)
 
         elif "../" in token:
-            resolved = os.path.realpath(token)
-            if not _resolved_path_allowed(resolved, project_root):
+            resolved = os.path.realpath(os.path.join(base, token) if base else token)
+            if not _resolved_path_allowed(resolved, real_root):
                 return (f"parent directory traversal: {token}", token)
+
+    if base is None:
+        return None
+    # Plain relative targets, now that the directory they land in is known.
+    # Joined, not resolved: a symlink inside the project (.venv/bin/python)
+    # is still a file in it to rm or overwrite.
+    for token in _candidate_write_targets(command, operands_only=True):
+        token = token.strip(_TOKEN_STRIP_CHARS)
+        if not _RELATIVE_WORD_RE.fullmatch(token) or "../" in token:
+            continue
+        resolved = os.path.normpath(os.path.join(base, token))
+        if not _is_claude_internal(resolved) and not _resolved_path_allowed(resolved, real_root):
+            return (f"path outside project root: {token} (in {base})", token)
 
     return None
 
@@ -1732,7 +3182,7 @@ _PASSTHROUGH_SINK = r"(?:tee|cat|less|more|bat)"
 # Commands whose arguments are patterns or paths rather than code to run:
 # `grep -rn pytest CLAUDE.md | head` searches for the word, it does not run
 # tests. Anchored to the head of a stage, the same command-position reasoning
-# as _CMD_POS, applied one pipeline stage at a time.
+# as _CMD_START, applied one pipeline stage at a time.
 _TEXT_TOOL = (
     r"(?:grep|egrep|fgrep|rg|ag|ack|sed|awk|echo|printf|ls|find|cat|head|tail"
     r"|git|jq|wc|sort|uniq|column|man)"
@@ -1762,7 +3212,7 @@ def check_exit_code_masking(command):
 
     Returns a reason string or None.
     """
-    command = _strip_heredocs(command)
+    command = _command_text(command)
     # Quoted text is data: a commit message about this rule is not a test run.
     # Nested shell invocations are the exception — there the quoted string IS
     # the command, so scan it raw (same trade as check_write_targets).
@@ -2164,6 +3614,17 @@ def main():
                 _ask("[permission-guard] Session context emitter — requires human approval")
             return
 
+    # ── Command size ────────────────────────────────────────────────────
+    # Ahead of every stage that reads the command, the worktree check below
+    # included, so it holds inside the auto-approve window too: a command too
+    # long to check in time asks (see MAX_CHECKED_COMMAND).
+    if tool_name == "Bash" and tool_input.get("command"):
+        size = check_command_size(tool_input["command"])
+        if size:
+            _ask(f"[permission-guard] Command size: {size:,} characters, over the "
+                 f"{MAX_CHECKED_COMMAND:,} the guard can check in time")
+            return
+
     # ── Git worktree destruction ────────────────────────────────────────
     # Ahead of the auto-approve window, and for the same reason the pause latch
     # and the usage gate are: the window exists to skip ROUTINE approvals for
@@ -2171,15 +3632,30 @@ def main():
     # work is not routine. Everything else in this guard interrupts something
     # that can be retried; this one cannot. The window still covers the common
     # case, because a restore over a clean path clears here and never prompts.
+    #
+    # A linked worktree is the exception (see the Linked worktrees section):
+    # there the changes at stake are the worktree's own. Resolved at most once
+    # per call, and only once something has asked for it, since it runs git.
+    worktree_memo = []
+
+    def linked_worktree():
+        if not worktree_memo:
+            worktree = _command_worktree(tool_input.get("command", ""), event.get("cwd", ""))
+            if worktree and _is_session_checkout(worktree, event.get("transcript_path", "")):
+                worktree = None
+            worktree_memo.append(worktree)
+        return worktree_memo[0]
+
     skip_rules = ()
     if tool_name == "Bash" and tool_input.get("command"):
         verdict = check_worktree_destruction(
             tool_input["command"], _resolve_project_root(event)
         )
         if verdict and verdict[0] == "ask":
-            _ask(f"[permission-guard] Git Worktree Destruction: {verdict[1]}")
-            return
-        if verdict:
+            if linked_worktree() is None:
+                _ask(f"[permission-guard] Git Worktree Destruction: {verdict[1]}")
+                return
+        elif verdict:
             skip_rules = (GIT_CHECKOUT_RULE,)
 
     # ── Session context auto-approve ───────────────────────────────────
@@ -2254,10 +3730,15 @@ def main():
     # An exemption retires its rule and only that rule, so the scan runs again
     # for whatever it was standing in front of (a `sudo`, a pipe-to-shell).
     # Each one is tested only once its rule has matched, which keeps
-    # check_local_http's name lookup off every other Bash call. The loop ends
-    # because a skipped rule cannot match again.
-    while (result and result[0] in RULE_EXEMPTIONS
-           and RULE_EXEMPTIONS[result[0]](command)):
+    # check_local_http's name lookup and the worktree's git calls off every
+    # other Bash call. The loop ends because a skipped rule cannot match again.
+    def exempt(rule):
+        if rule in RULE_EXEMPTIONS and RULE_EXEMPTIONS[rule](command):
+            return True
+        return (rule in LINKED_WORKTREE_RULES and linked_worktree() is not None
+                and check_linked_worktree_rule(rule, command, linked_worktree()))
+
+    while result and exempt(result[0]):
         skip_rules += (result[0],)
         result = check_command(command, skip_rules)
     if result:
@@ -2275,7 +3756,7 @@ def main():
     # 3. Out-of-project path guard
     root = _resolve_project_root(event)
     if root:
-        result = check_outside_project(command, root)
+        result = check_outside_project(command, root, event.get("cwd"))
         if result:
             description, _matched_path = result
             _ask(f"[permission-guard] {trace_prefix}Out-of-project: {description}")
