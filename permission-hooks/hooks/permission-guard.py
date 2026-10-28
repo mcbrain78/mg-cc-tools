@@ -1349,7 +1349,8 @@ _COMMENT_START_AFTER = " \t\n;&|()<>"
 
 # Nested shell invocations: the quoted argument IS a command, so masking it
 # would hide a real redirect or a real rm target. Those commands are scanned
-# raw instead — a spurious prompt beats a missed out-of-project write.
+# raw instead — a spurious prompt beats a missed out-of-project write — or,
+# by check_sensitive_in_command, the way the nested shell reads them.
 # The invoker is a word of its own: `-` and `.` join a name, and a `/` after
 # it makes it a directory, so `temp/extraction-eval-review/`, `ssh-keygen`,
 # `~/.ssh/` and `run.sh -c` invoke nothing. A `/` in front is a command's path
@@ -1483,7 +1484,7 @@ def _mask_quoted(command):
     return "".join(out)
 
 
-def _mask_nested_quoted(command):
+def _mask_nested_quoted(command, delimiter=None):
     """Return *command* with each top-level quoted span read as a nested shell does.
 
     A nested shell runs a quoted string as a command, and quotes inside that
@@ -1493,6 +1494,11 @@ def _mask_nested_quoted(command):
     stay as written and what they hold goes through _mask_quoted, after
     `\\"` inside double quotes is read as the quote the nested shell sees.
     Comments are masked, as _mask_quoted masks them. Length is preserved.
+
+    With *delimiter*, the top-level quotes are replaced by it instead, so a
+    caller splitting on it reads each quoted string as a command of its own.
+    A string that runs a nested shell again is then left unmasked, since its
+    quotes hold commands too: `ssh db "bash -c 'cat a.key; ls'"`.
     """
     out = list(command)
     i, n = 0, len(command)
@@ -1521,7 +1527,14 @@ def _mask_nested_quoted(command):
                 inner = inner.replace('\\"', ' "')
             elif ansi:
                 inner = inner.replace("\\'", " '")
-            out[i + 1:end] = _mask_quoted(inner)
+            if delimiter and _SHELL_INVOKER_RE.search(inner):
+                out[i + 1:end] = inner
+            else:
+                out[i + 1:end] = _mask_quoted(inner)
+            if delimiter:
+                out[i] = delimiter
+                if end < n:
+                    out[end] = delimiter
             i = end + 1
             continue
         i += 1
@@ -2948,10 +2961,16 @@ def check_sensitive_in_command(command):
     command = _command_text(command)
     # Segment and token boundaries are read off the masked copy so a quoted `;`
     # or a space inside a pattern does not split, but each token is sliced from
-    # the original. Nested shell invocations are scanned raw — there the quoted
-    # string is itself a command, and its leading word is `bash`, so no
-    # exemption applies and every token is checked.
-    scanned = command if _SHELL_INVOKER_RE.search(command) else _mask_quoted(command)
+    # the original. With a nested shell, each top-level quoted string is itself
+    # a command, so the nested shell's view starts a segment at its quotes and
+    # masks only the quotes inside it: `bash -c "cat server.key"` is a cat of
+    # the key, while the query of `ssh db "psql -c 'select s.key from t'"` is
+    # one token that ends in `t`, and the exemptions apply to the nested
+    # command as they do at the top level.
+    if _SHELL_INVOKER_RE.search(command):
+        scanned = _mask_nested_quoted(command, delimiter="\n")
+    else:
+        scanned = _mask_quoted(command)
 
     for segment in _SEGMENT_RE.finditer(scanned):
         exempt = set(_exempt_token_spans(segment.group(), segment.start()))

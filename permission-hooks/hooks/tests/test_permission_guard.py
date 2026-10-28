@@ -1816,6 +1816,36 @@ class TestPatternPositionExemption:
         assert_bash_blocked('grep "id_rsa" src/; cat ~/.ssh/id_rsa')
 
 
+class TestNestedShellSensitivePaths:
+    """A nested shell's quoted string is checked as the command it runs."""
+
+    @pytest.mark.parametrize("command", [
+        "ssh mcbrain-server2 \"psql -At -c 'select s.key from t'\"",
+        "bash -c \"psql -c 'select s.key from t'\"",
+        "bash -c \"grep -rn 'id_rsa' src/\"",
+        "eval \"sed -n 's/id_rsa/x/p' notes.md\"",
+    ])
+    def test_quoted_data_inside_the_nested_command_allowed(self, command):
+        assert check_sensitive_in_command(command) is None
+
+    @pytest.mark.parametrize("command", [
+        'bash -c "cat server.key"',
+        "bash -c \"cat 'server.key'\"",
+        "bash -c \"ls; cat certs/tls.key\"",
+        "ssh host 'cat ~/.ssh/id_rsa'",
+        'bash -c "grep pat ~/.ssh/id_rsa"',
+        'eval cat "~/.ssh/id_rsa"',
+        "bash -c $'cat server.key; ls'",
+        "find . -name x | xargs sh -c 'cat server.key; ls'",
+    ])
+    def test_key_read_by_the_nested_command_still_blocked(self, command):
+        assert check_sensitive_in_command(command) is not None
+
+    def test_doubly_nested_shell_read_raw(self):
+        # The inner quotes hold a command too, so they are not masked.
+        assert check_sensitive_in_command("ssh db \"bash -c 'cat a.key; ls'\"")
+
+
 # ── Sensitive file path guard (Read/Edit/Write) ─────────────────────────────
 
 class TestSensitiveFilePaths:
