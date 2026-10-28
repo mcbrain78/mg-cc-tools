@@ -1403,6 +1403,16 @@ class TestOutsideProject:
         assert result is not None
         assert "/etc/foo" in result[1]
 
+    @pytest.mark.parametrize("command", [
+        'bash -c "cp x \\"/etc/y\\""',
+        'bash -c "echo x > \\"/etc/y\\""',
+    ])
+    def test_block_escaped_quoted_target_inside_nested_shell(self, command):
+        """The backslash of an escaped quote is no part of the path."""
+        result = check_outside_project(command, self.PROJECT)
+        assert result is not None
+        assert result[1] == "/etc/y"
+
 
 class TestOutsideProjectFollowsCd:
     """Relative write targets resolve where the call runs: the session's cwd,
@@ -1837,6 +1847,9 @@ class TestNestedShellSensitivePaths:
         'eval cat "~/.ssh/id_rsa"',
         "bash -c $'cat server.key; ls'",
         "find . -name x | xargs sh -c 'cat server.key; ls'",
+        'bash -c "cat \\"server.key\\""',
+        'bash -c "cat \\"server.key\\"; ls"',
+        'bash -c "cat \\"my server.key\\""',
     ])
     def test_key_read_by_the_nested_command_still_blocked(self, command):
         assert check_sensitive_in_command(command) is not None

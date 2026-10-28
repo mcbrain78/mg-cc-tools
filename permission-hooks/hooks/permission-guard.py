@@ -1184,8 +1184,10 @@ def _is_claude_internal(path):
     return path.startswith(_CLAUDE_DIR_TILDE) or path.startswith(_CLAUDE_DIR_ABS)
 
 # Characters to strip from tokens when extracting potential file paths.
-# Quotes plus common shell/code punctuation that isn't part of real paths.
-_TOKEN_STRIP_CHARS = "'\"`(),[]{}"
+# Quotes plus common shell/code punctuation that isn't part of real paths, and
+# the backslash of an escaped quote: in `bash -c "cat \"server.key\""` the
+# token is `\"server.key\"`.
+_TOKEN_STRIP_CHARS = "'\"`(),[]{}\\"
 
 # Commands that modify files (used by out-of-project path guard). chmod and
 # chown are here for the one chmod the category rules let through (see the
