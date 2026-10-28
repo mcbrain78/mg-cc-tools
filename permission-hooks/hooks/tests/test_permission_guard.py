@@ -1877,6 +1877,18 @@ class TestScriptFlagExemption:
     def test_operand_beside_the_script_still_blocked(self, command):
         assert check_sensitive_in_command(command) is not None
 
+    @pytest.mark.parametrize("command, path", [
+        ("python -c \"print(open(os.path.expanduser('~/.ssh/id_rsa')).read())\"",
+         "~/.ssh/id_rsa"),
+        ("psql -c \"select pg_read_file('/etc/ssl/private/server.key')\"",
+         "/etc/ssl/private/server.key"),
+        ("node -e \"fs.readFileSync('certs/tls.key')\"", "certs/tls.key"),
+        ("python -c \"open(f'{home}/.ssh/id_rsa')\"", "/.ssh/id_rsa"),
+    ])
+    def test_path_inside_the_script_still_blocked(self, command, path):
+        # A word of the code with a `/` in it is a path.
+        assert check_sensitive_in_command(command)[1] == path
+
     @pytest.mark.parametrize("command", [
         "python -m pytest -c server.key",
         "python script.py -c server.key",

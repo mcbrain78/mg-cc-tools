@@ -2871,8 +2871,8 @@ _DATA_ARG_TOOLS = re.compile(r"^(?:echo|printf)$")
 
 # Interpreters and clients whose script flag takes code — a query, a program —
 # as its value: `psql -c "select s.key"` ends in a key-file name and is still
-# a query. Only that value is exempt; `python -c … server.key` passes the key
-# as an argument, and `psql -f` reads a file. An interpreter reads its own
+# a query. Only that value is code; `python -c … server.key` passes the key as
+# an argument, and `psql -f` reads a file. An interpreter reads its own
 # options only up to its script or `-m` module (in `python -m pytest -c x`
 # the `-c` names pytest's config file), so there the flag counts only in front
 # of the first operand, and only once. psql permutes its arguments and takes
@@ -2885,6 +2885,11 @@ _SCRIPT_FLAG_TOOLS = (
     (re.compile(r"^ruby$"), re.compile(r"^-[anlpsw]*e$"), False),
     (re.compile(r"^psql$"), re.compile(r"^(?:-c$|--command(?:=|$))"), True),
 )
+
+# A word of code. In code a name is as often an attribute or a column as a
+# file (`d.key`, `s.key`), so only a word with a `/` is read as a path: the
+# `~/.ssh/id_rsa` of `open(os.path.expanduser('~/.ssh/id_rsa'))` still asks.
+_CODE_WORD_RE = re.compile(r"[^\s" + re.escape(_TOKEN_STRIP_CHARS) + r";<>|&]+")
 
 # -e/--regexp supplies the pattern itself, so the pattern position moves to
 # that flag's value and no positional argument is exempt.
@@ -2906,13 +2911,12 @@ _VALUE_FLAG_RE = re.compile(
 _ASSIGN_TOKEN_RE = re.compile(r"^\w+=\S*$")
 
 
-def _exempt_token_spans(segment, offset):
-    """Yield (start, end) spans of tokens in *segment* that hold pattern or
-    script data rather than a path.
+def _command_args(segment, offset):
+    """Return the command word of *segment* and its argument tokens.
 
-    Spans are absolute offsets into the command *segment* was sliced from.
-    Whole tokens are yielded: a glued `--regexp=~/.ssh/id_rsa` is a pattern in
-    its entirety.
+    Each token is (start, end, text), with absolute offsets into the command
+    *segment* was sliced from. The command word is None for a segment of
+    assignments alone.
     """
     tokens = [(offset + m.start(), offset + m.end(), m.group())
               for m in _TOKEN_RE.finditer(segment)]
@@ -2921,20 +2925,26 @@ def _exempt_token_spans(segment, offset):
     while index < len(tokens) and _ASSIGN_TOKEN_RE.match(tokens[index][2]):
         index += 1
     if index >= len(tokens):
-        return
+        return None, []
+    return os.path.basename(tokens[index][2]), tokens[index + 1:]
 
-    command_word = os.path.basename(tokens[index][2])
-    rest = tokens[index + 1:]
+
+def _exempt_token_spans(segment, offset):
+    """Yield (start, end) spans of tokens in *segment* that hold pattern or
+    literal data rather than a path.
+
+    Spans are absolute offsets into the command *segment* was sliced from.
+    Whole tokens are yielded: a glued `--regexp=~/.ssh/id_rsa` is a pattern in
+    its entirety.
+    """
+    command_word, rest = _command_args(segment, offset)
+    if command_word is None:
+        return
 
     if _DATA_ARG_TOOLS.match(command_word):
         for start, end, _ in rest:
             yield (start, end)
         return
-
-    for tool_re, flag_re, anywhere in _SCRIPT_FLAG_TOOLS:
-        if tool_re.match(command_word):
-            yield from _script_spans(rest, flag_re, anywhere)
-            return
 
     if not _PATTERN_ARG_TOOLS.match(command_word):
         return
@@ -2970,6 +2980,18 @@ def _exempt_token_spans(segment, offset):
         return
 
 
+def _code_token_spans(segment, offset):
+    """Yield (start, end) spans of tokens in *segment* that hold code: the
+    script values of a _SCRIPT_FLAG_TOOLS command."""
+    command_word, rest = _command_args(segment, offset)
+    if command_word is None:
+        return
+    for tool_re, flag_re, anywhere in _SCRIPT_FLAG_TOOLS:
+        if tool_re.match(command_word):
+            yield from _script_spans(rest, flag_re, anywhere)
+            return
+
+
 def _script_spans(rest, flag_re, anywhere):
     """Yield (start, end) spans of the script values among *rest*, the
     arguments of a _SCRIPT_FLAG_TOOLS command.
@@ -2999,8 +3021,9 @@ def check_sensitive_in_command(command):
 
     Tokenises the command on whitespace and shell operators, strips quotes
     and shell punctuation, and tests each token against SENSITIVE_FILE_PATTERNS.
-    Tokens holding a search pattern or script rather than a path are skipped
-    (see _exempt_token_spans); every other token stays guarded.
+    Tokens holding a search pattern or literal data rather than a path are
+    skipped (see _exempt_token_spans), a token of code is tested word by word
+    (see _CODE_WORD_RE), and every other token stays guarded.
 
     Returns (description, matched_path) or None.
     """
@@ -3020,6 +3043,7 @@ def check_sensitive_in_command(command):
 
     for segment in _SEGMENT_RE.finditer(scanned):
         exempt = set(_exempt_token_spans(segment.group(), segment.start()))
+        code = set(_code_token_spans(segment.group(), segment.start()))
         for match in _TOKEN_RE.finditer(segment.group()):
             span = (segment.start() + match.start(), segment.start() + match.end())
             if span in exempt:
@@ -3027,9 +3051,12 @@ def check_sensitive_in_command(command):
             token = command[span[0]:span[1]].strip(_TOKEN_STRIP_CHARS)
             if not token:
                 continue
-            for compiled_re, description in SENSITIVE_FILE_PATTERNS:
-                if compiled_re.search(token):
-                    return (description, token)
+            words = ([word for word in _CODE_WORD_RE.findall(token) if "/" in word]
+                     if span in code else [token])
+            for word in words:
+                for compiled_re, description in SENSITIVE_FILE_PATTERNS:
+                    if compiled_re.search(word):
+                        return (description, word)
     return None
 
 
