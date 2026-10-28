@@ -1846,6 +1846,47 @@ class TestNestedShellSensitivePaths:
         assert check_sensitive_in_command("ssh db \"bash -c 'cat a.key; ls'\"")
 
 
+class TestScriptFlagExemption:
+    """The script value of psql -c, python -c, node -e, … is code, not a path."""
+
+    @pytest.mark.parametrize("command", [
+        'psql -c "select s.key"',
+        'psql -h db -U u -d x -At -c "select s.key"',
+        'psql --command="select s.key"',
+        'psql -At -c "select 1" -c "select s.key"',
+        'python -c "print(d.key)"',
+        'python3 -I -c "print(d.key)"',
+        '/usr/bin/python3.12 -c "print(d.key)"',
+        'node -e "console.log(o.key)"',
+        'node --eval="console.log(o.key)"',
+        'node -pe "o.key"',
+        "perl -lne 'print $s.key' notes.txt",
+        "ruby -e 'puts h.key'",
+        "ssh db \"psql -c 'select s.key'\"",
+    ])
+    def test_script_value_allowed(self, command):
+        assert check_sensitive_in_command(command) is None
+
+    @pytest.mark.parametrize("command", [
+        'python -c "import sys; print(open(sys.argv[1]).read())" server.key',
+        "psql -f server.key",
+        'psql -c "select 1" -f certs/tls.key',
+        "perl -pe 's/a/b/' server.key",
+        'node -e "x" server.key',
+    ])
+    def test_operand_beside_the_script_still_blocked(self, command):
+        assert check_sensitive_in_command(command) is not None
+
+    @pytest.mark.parametrize("command", [
+        "python -m pytest -c server.key",
+        "python script.py -c server.key",
+        "python -- -c server.key",
+    ])
+    def test_flag_after_the_options_end_is_no_script(self, command):
+        # The interpreter has stopped reading options: this -c is its script's.
+        assert check_sensitive_in_command(command) is not None
+
+
 # ── Sensitive file path guard (Read/Edit/Write) ─────────────────────────────
 
 class TestSensitiveFilePaths:

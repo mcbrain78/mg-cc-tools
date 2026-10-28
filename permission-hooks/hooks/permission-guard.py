@@ -2869,6 +2869,23 @@ _PATTERN_ARG_TOOLS = re.compile(r"^(?:grep|egrep|fgrep|rg|ag|ack|sed|awk|jq)$")
 # Tools whose arguments are all literal data and never paths.
 _DATA_ARG_TOOLS = re.compile(r"^(?:echo|printf)$")
 
+# Interpreters and clients whose script flag takes code — a query, a program —
+# as its value: `psql -c "select s.key"` ends in a key-file name and is still
+# a query. Only that value is exempt; `python -c … server.key` passes the key
+# as an argument, and `psql -f` reads a file. An interpreter reads its own
+# options only up to its script or `-m` module (in `python -m pytest -c x`
+# the `-c` names pytest's config file), so there the flag counts only in front
+# of the first operand, and only once. psql permutes its arguments and takes
+# several -c, so its flag counts anywhere.
+# Each is (command word, script flag, read anywhere).
+_SCRIPT_FLAG_TOOLS = (
+    (re.compile(r"^python[0-9.]*$"), re.compile(r"^-[bBdEiIOPqRsSuvx]*c$"), False),
+    (re.compile(r"^node$"), re.compile(r"^(?:-(?:e|p|pe)$|--(?:eval|print)(?:=|$))"), False),
+    (re.compile(r"^perl$"), re.compile(r"^-[anlpsw]*[eE]$"), False),
+    (re.compile(r"^ruby$"), re.compile(r"^-[anlpsw]*e$"), False),
+    (re.compile(r"^psql$"), re.compile(r"^(?:-c$|--command(?:=|$))"), True),
+)
+
 # -e/--regexp supplies the pattern itself, so the pattern position moves to
 # that flag's value and no positional argument is exempt.
 _PATTERN_FLAG_RE = re.compile(r"^(?:-e|--regexp)(?:=|$)")
@@ -2914,6 +2931,11 @@ def _exempt_token_spans(segment, offset):
             yield (start, end)
         return
 
+    for tool_re, flag_re, anywhere in _SCRIPT_FLAG_TOOLS:
+        if tool_re.match(command_word):
+            yield from _script_spans(rest, flag_re, anywhere)
+            return
+
     if not _PATTERN_ARG_TOOLS.match(command_word):
         return
 
@@ -2946,6 +2968,30 @@ def _exempt_token_spans(segment, offset):
             continue
         yield (rest[position][0], rest[position][1])
         return
+
+
+def _script_spans(rest, flag_re, anywhere):
+    """Yield (start, end) spans of the script values among *rest*, the
+    arguments of a _SCRIPT_FLAG_TOOLS command.
+
+    A glued `--command=…` is a script in its entirety. Unless *anywhere*, the
+    first operand or `--` ends the options, and the first script value ends
+    the search.
+    """
+    position = 0
+    while position < len(rest):
+        text = rest[position][2]
+        if flag_re.match(text):
+            if "=" in text:
+                yield (rest[position][0], rest[position][1])
+            elif position + 1 < len(rest):
+                position += 1
+                yield (rest[position][0], rest[position][1])
+            if not anywhere:
+                return
+        elif not anywhere and (text == "--" or not text.startswith("-")):
+            return
+        position += 1
 
 
 def check_sensitive_in_command(command):
