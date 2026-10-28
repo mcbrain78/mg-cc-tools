@@ -2918,13 +2918,23 @@ _VALUE_FLAG_RE = re.compile(
 # A leading `FOO=1 grep …` assignment belongs to the command that follows it.
 _ASSIGN_TOKEN_RE = re.compile(r"^\w+=\S*$")
 
+# The options of `uv run` that take the next word as their value
+# (`uv run --with pandas python -c …`). One missing here only costs a
+# prompt: its value reads as the command, and no exemption applies.
+_UV_RUN_VALUE_OPT_RE = re.compile(
+    r"^(?:-[wp]|--(?:with|with-editable|with-requirements|python|project"
+    r"|directory|package|extra|group|only-group|no-group|env-file|index"
+    r"|index-url|extra-index-url))$"
+)
+
 
 def _command_args(segment, offset):
     """Return the command word of *segment* and its argument tokens.
 
     Each token is (start, end, text), with absolute offsets into the command
     *segment* was sliced from. The command word is None for a segment of
-    assignments alone.
+    assignments alone. `uv run` and its options are stepped over to the
+    command it runs.
     """
     tokens = [(offset + m.start(), offset + m.end(), m.group())
               for m in _TOKEN_RE.finditer(segment)]
@@ -2932,6 +2942,14 @@ def _command_args(segment, offset):
     index = 0
     while index < len(tokens) and _ASSIGN_TOKEN_RE.match(tokens[index][2]):
         index += 1
+    if (index + 1 < len(tokens) and os.path.basename(tokens[index][2]) == "uv"
+            and tokens[index + 1][2] == "run"):
+        index += 2
+        while index < len(tokens) and tokens[index][2].startswith("-"):
+            text = tokens[index][2]
+            index += 2 if _UV_RUN_VALUE_OPT_RE.match(text) else 1
+            if text == "--":
+                break
     if index >= len(tokens):
         return None, []
     return os.path.basename(tokens[index][2]), tokens[index + 1:]

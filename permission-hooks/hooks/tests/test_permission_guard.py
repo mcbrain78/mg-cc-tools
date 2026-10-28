@@ -1932,6 +1932,32 @@ class TestScriptFlagExemption:
         # The interpreter has stopped reading options: this -c is its script's.
         assert check_sensitive_in_command(command) is not None
 
+    def test_uv_run_python_script_allowed(self):
+        assert_bash_allowed('uv run python -c "print(d.key)"')
+
+    @pytest.mark.parametrize("command", [
+        'uv run --with pandas python -c "print(d.key)"',
+        'uv run --with=pandas python -c "print(d.key)"',
+        'uv run -p 3.12 python3 -c "print(d.key)"',
+        'uv run --frozen -- python -c "print(d.key)"',
+        '~/.local/bin/uv run python -c "print(d.key)"',
+        'UV_FROZEN=1 uv run psql -c "select s.key"',
+        'uv run grep -rn "id_rsa" src/',
+    ])
+    def test_uv_run_stepped_over_to_its_command(self, command):
+        assert check_sensitive_in_command(command) is None
+
+    @pytest.mark.parametrize("command", [
+        'uv run python -c "x" server.key',
+        "uv run python -c \"open('/x/server.key')\"",
+        "uv run python -m pytest -c server.key",
+        "uv run cat server.key",
+        "uv run -- cat server.key",
+        "uv run echo ~/.ssh/id_rsa | xargs cat",
+    ])
+    def test_uv_run_operand_still_blocked(self, command):
+        assert check_sensitive_in_command(command) is not None
+
 
 # ── Sensitive file path guard (Read/Edit/Write) ─────────────────────────────
 
