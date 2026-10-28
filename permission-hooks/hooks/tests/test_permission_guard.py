@@ -1790,6 +1790,27 @@ class TestPatternPositionExemption:
     def test_echo_arguments_are_data(self):
         assert_bash_allowed('echo "~/.ssh/id_rsa"')
 
+    @pytest.mark.parametrize("command", [
+        'echo "~/.ssh/id_rsa" || true',
+        'echo "key at ~/.ssh/id_rsa" > notes.txt',
+        'echo "~/.ssh/id_rsa"; grep "a|b" notes.md',
+    ])
+    def test_echo_arguments_with_no_pipe_after_are_data(self, command):
+        assert check_sensitive_in_command(command) is None
+
+    @pytest.mark.parametrize("command", [
+        "echo ~/.ssh/id_rsa | xargs cat",
+        "printf '%s\\n' ~/.ssh/id_rsa | xargs cat",
+        "echo ~/.ssh/id_rsa |& xargs cat",
+        "{ echo a; echo ~/.ssh/id_rsa; } | xargs cat",
+        'bash -c "echo ~/.ssh/id_rsa" | xargs cat',
+        'bash -c "echo ~/.ssh/id_rsa | xargs cat"',
+        'echo certs/tls.key | while read f; do cat "$f"; done',
+    ])
+    def test_echo_arguments_a_pipe_reads_still_blocked(self, command):
+        # What echo prints, the command behind the pipe can read as a path.
+        assert check_sensitive_in_command(command) is not None
+
     def test_key_shaped_pattern_with_unquoted_path_operand(self):
         # The pattern position holds a key-shaped string; the operand is a
         # normal file. Searching FOR the name is not reading the key.

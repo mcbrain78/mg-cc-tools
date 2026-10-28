@@ -2868,8 +2868,14 @@ def check_file_path(file_path):
 # Tools whose first non-flag argument is a pattern or script, not a path.
 _PATTERN_ARG_TOOLS = re.compile(r"^(?:grep|egrep|fgrep|rg|ag|ack|sed|awk|jq)$")
 
-# Tools whose arguments are all literal data and never paths.
+# Tools whose arguments are all literal data and never paths — unless a pipe
+# follows them anywhere in the call: then they may be the input that
+# `| xargs cat` reads as paths, as in `echo ~/.ssh/id_rsa | xargs cat` or
+# `{ echo a; echo ~/.ssh/id_rsa; } | xargs cat`.
 _DATA_ARG_TOOLS = re.compile(r"^(?:echo|printf)$")
+
+# A pipe, `|` or `|&`, not the `||` of a list.
+_PIPE_RE = re.compile(r"(?<!\|)\|(?!\|)")
 
 # Interpreters and clients whose script flag takes code — a query, a program —
 # as its value: `psql -c "select s.key"` ends in a key-file name and is still
@@ -2931,21 +2937,22 @@ def _command_args(segment, offset):
     return os.path.basename(tokens[index][2]), tokens[index + 1:]
 
 
-def _exempt_token_spans(segment, offset):
+def _exempt_token_spans(segment, offset, piped=False):
     """Yield (start, end) spans of tokens in *segment* that hold pattern or
     literal data rather than a path.
 
     Spans are absolute offsets into the command *segment* was sliced from.
     Whole tokens are yielded: a glued `--regexp=~/.ssh/id_rsa` is a pattern in
-    its entirety.
+    its entirety. *piped* says a pipe follows *segment* in the call.
     """
     command_word, rest = _command_args(segment, offset)
     if command_word is None:
         return
 
     if _DATA_ARG_TOOLS.match(command_word):
-        for start, end, _ in rest:
-            yield (start, end)
+        if not piped:
+            for start, end, _ in rest:
+                yield (start, end)
         return
 
     if not _PATTERN_ARG_TOOLS.match(command_word):
@@ -3044,7 +3051,8 @@ def check_sensitive_in_command(command):
         scanned = _mask_quoted(command)
 
     for segment in _SEGMENT_RE.finditer(scanned):
-        exempt = set(_exempt_token_spans(segment.group(), segment.start()))
+        piped = bool(_PIPE_RE.search(scanned, segment.end()))
+        exempt = set(_exempt_token_spans(segment.group(), segment.start(), piped))
         code = set(_code_token_spans(segment.group(), segment.start()))
         for match in _TOKEN_RE.finditer(segment.group()):
             span = (segment.start() + match.start(), segment.start() + match.end())
