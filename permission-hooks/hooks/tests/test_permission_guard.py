@@ -1674,6 +1674,38 @@ class TestQuotedDataNotSyntax:
     def test_eval_scanned_raw(self):
         assert_bash_blocked('eval "chmod 777 /etc"', "Destructive Filesystem")
 
+    @pytest.mark.parametrize("command", [
+        'eval "$x"',
+        "(eval x)",
+        "x=$(eval y)",
+        "find . | xargs rm",
+        "/usr/bin/xargs rm",
+        "ssh host ls",
+        "/bin/sh -c 'ls'",
+    ])
+    def test_invoker_word_is_a_nested_shell(self, command):
+        assert guard._SHELL_INVOKER_RE.search(command)
+
+    @pytest.mark.parametrize("command", [
+        "ls temp/extraction-eval-review-2026-10-28/",
+        "ls temp/eval/",
+        "cat eval.py",
+        "ssh-keygen -l -f key.pub",
+        "ls ~/.ssh/",
+        "./run.sh -c config.toml",
+    ])
+    def test_invoker_inside_a_name_is_no_nested_shell(self, command):
+        assert not guard._SHELL_INVOKER_RE.search(command)
+
+    def test_path_naming_an_invoker_keeps_quotes_masked(self):
+        # The reported prompt: `eval` in a directory name had the quoted sed
+        # script read raw, and its SQL alias `s.key` read as a key file.
+        assert_bash_allowed(
+            "O=temp/extraction-eval-review-2026-10-28/orchestrator; "
+            "sed -i \"s/f as (select s.key acc, s.value st/f as (select "
+            "split_part(s.key, ':', 3) acc, s.value st/\" $O/run_cells.sql"
+        )
+
     def test_reported_match_is_real_text_not_filler(self):
         # Masking is length-preserving, so the match slices the original.
         result = check_command("rm -rf /data")

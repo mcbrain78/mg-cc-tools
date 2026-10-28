@@ -1350,11 +1350,13 @@ _COMMENT_START_AFTER = " \t\n;&|()<>"
 # Nested shell invocations: the quoted argument IS a command, so masking it
 # would hide a real redirect or a real rm target. Those commands are scanned
 # raw instead — a spurious prompt beats a missed out-of-project write.
+# The invoker is a word of its own: `-` and `.` join a name, and a `/` after
+# it makes it a directory, so `temp/extraction-eval-review/`, `ssh-keygen`,
+# `~/.ssh/` and `run.sh -c` invoke nothing. A `/` in front is a command's path
+# (`/usr/bin/xargs`).
 _SHELL_INVOKER_RE = re.compile(
-    r"\b(?:bash|sh|zsh|ksh|dash)\s+(?:-\w+\s+)*-\w*c\b"  # bash -c, sh -lc, …
-    r"|\beval\b"
-    r"|\bxargs\b"
-    r"|\bssh\b"
+    r"(?<![\w.-])(?:bash|sh|zsh|ksh|dash)\s+(?:-\w+\s+)*-\w*c\b"  # bash -c, sh -lc, …
+    r"|(?<![\w.-])(?:eval|xargs|ssh)(?![\w./-])"
 )
 
 # Shell segment (split points: newline ; | &) and whitespace-delimited token,
